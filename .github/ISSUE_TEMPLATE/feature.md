@@ -1,5 +1,5 @@
 ---
-name: 커스텀 이슈 생성 템플릿
+name: feature
 about: 새로운 기능을 개발하거나 기존 기능을 개선할 때 사용하는 이슈입니다.
 title: ''
 labels: ''
