@@ -6,6 +6,12 @@ spring:
     default: dev
   jpa:
     open-in-view: false
+  servlet:
+    multipart:
+      # 파일 하나의 최대 크기
+      max-file-size: ${EVERYONE_MULTIPART_MAX_FILE_SIZE:10MB}
+      # 파일과 폼 데이터를 포함한 요청 전체의 최대 크기
+      max-request-size: ${EVERYONE_MULTIPART_MAX_REQUEST_SIZE:12MB}
 
 springdoc:
   api-docs:
