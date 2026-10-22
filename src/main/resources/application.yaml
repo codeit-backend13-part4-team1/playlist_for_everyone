@@ -6,6 +6,16 @@ spring:
     default: dev
   jpa:
     open-in-view: false
+    properties:
+      hibernate:
+        # 지연 로딩 시 배치 조회를 적용해 N+1 문제 완화
+        default_batch_fetch_size: 100
+        # 동일한 형태의 DML을 JDBC batch로 묶어 전송
+        jdbc:
+          batch_size: 50
+        # 같은 SQL 템플릿의 insert/update를 최대한 연속 배치로 묶도록 정렬
+        order_inserts: true
+        order_updates: true
   servlet:
     multipart:
       # 파일 하나의 최대 크기
