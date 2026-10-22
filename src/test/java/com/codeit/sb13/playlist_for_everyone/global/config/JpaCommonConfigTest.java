@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.global.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.codeit.sb13.playlist_for_everyone.PlaylistForEveryoneApplication;
 import com.codeit.sb13.testsupport.persistence.AuditedTestEntity;
 import com.querydsl.core.types.dsl.PathBuilder;
 import com.querydsl.jpa.impl.JPAQueryFactory;
@@ -22,7 +23,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.data.auditing.AuditingHandler;
 
 @DataJpaTest(showSql = false)
-@EntityScan(basePackageClasses = AuditedTestEntity.class)
+@EntityScan(basePackageClasses = {PlaylistForEveryoneApplication.class, AuditedTestEntity.class})
 @Import({JpaAuditingConfig.class, QueryDslConfig.class})
 @DisplayName("JPA Auditing 및 Querydsl 설정")
 class JpaCommonConfigTest {
