@@ -75,7 +75,7 @@ Spring 설정의 파일 import는 `optional`이지만, Compose 실행에는 `--e
 
 프로필을 별도로 지정하지 않으면 `dev`가 적용됩니다. 현재 설정에서는 Spring Boot가 Compose를 통해 PostgreSQL과 Redis를 실행하고 연결합니다. 기본 절차에서는 `docker compose up`을 먼저 실행할 필요가 없습니다.
 
-Compose 연동은 컨테이너에 매핑된 호스트 포트를 자동으로 인식합니다. 예를 들어 `EVERYONE_REDIS_PORT=16379`로 변경하면 애플리케이션은 호스트의 `16379` 포트로 연결하고, 컨테이너 내부 Redis 포트는 `6379`로 유지됩니다. 이 구성에서는 별도의 `RedisConfig`나 `spring.data.redis.host/port` 설정 없이 연결할 수 있습니다. [Spring Boot의 서비스 연결](https://docs.spring.io/spring-boot/reference/features/dev-services.html)
+Compose 연동은 컨테이너에 매핑된 호스트 포트를 자동으로 인식합니다. 예를 들어 `EVERYONE_REDIS_PORT=16379`로 변경하면 애플리케이션은 호스트의 `16379` 포트로 연결하고, 컨테이너 내부 Redis 포트는 `6379`로 유지됩니다. 자동 연동이 켜져 있으면 이렇게 발견한 서비스 연결 정보가 YAML의 데이터소스 및 Redis 연결 속성보다 우선합니다. [Spring Boot의 서비스 연결](https://docs.spring.io/spring-boot/reference/features/dev-services.html)
 
 애플리케이션 실행 후 다른 터미널에서 컨테이너 상태와 Redis 응답을 확인합니다.
 
@@ -98,13 +98,19 @@ docker compose --env-file .env.dev up -d
 docker compose --env-file .env.dev stop
 ```
 
-Compose의 자동 실행·연결을 사용하지 않으려면 `.env.dev`에서 `EVERYONE_DOCKER_COMPOSE_ENABLED=false`로 설정합니다. 이 경우 PostgreSQL과 Redis를 직접 준비하고 DB 접속 정보와 Redis 접속 정보를 각각 지정해야 합니다. Redis 접속 정보는 다음처럼 애플리케이션 실행 인자로 전달할 수 있습니다. 호스트와 포트는 직접 준비한 Redis에 맞게 변경합니다.
+Compose의 자동 실행·연결을 사용하지 않으려면 PostgreSQL과 Redis를 직접 준비하고, `.env.dev`의 기존 항목을 다음과 같이 수정합니다. Redis 호스트와 포트는 직접 준비한 서버에 맞게 변경하고, `EVERYONE_DB_*` 항목도 실제 DB 접속 정보에 맞춥니다.
 
-```bash
-./gradlew bootRun --args='--spring.data.redis.host=localhost --spring.data.redis.port=6379'
+```properties
+EVERYONE_DOCKER_COMPOSE_ENABLED=false
+EVERYONE_REDIS_HOST=localhost
+EVERYONE_REDIS_PORT=6379
 ```
 
-`EVERYONE_REDIS_PORT`는 Compose의 호스트 포트 매핑에 사용하는 변수이며, Compose 연동을 끈 상태에서는 이 값만으로 Spring의 Redis 접속 포트가 설정되지 않습니다. Compose 연동이 켜져 있으면 자동으로 발견한 서비스 연결 정보가 데이터소스 및 Redis 접속 속성보다 우선합니다. [Spring Boot의 서비스 연결](https://docs.spring.io/spring-boot/reference/features/dev-services.html)
+`dev` 프로필은 `.env.dev`를 읽으며, 개발 YAML이 위 Redis 값을 `spring.data.redis.host`와 `spring.data.redis.port`에 연결합니다. Compose 연동을 꺼도 이 값이 적용되므로 다음 명령으로 실행합니다.
+
+```bash
+./gradlew bootRun
+```
 
 ### 4. API 문서 접근
 
@@ -133,7 +139,10 @@ Compose의 자동 실행·연결을 사용하지 않으려면 `.env.dev`에서 `
 | `EVERYONE_DB_NAME` | `everyone` | 데이터베이스 이름 |
 | `EVERYONE_DB_USERNAME` | `everyone` | DB 사용자 |
 | `EVERYONE_DB_PASSWORD` | `change-me` | 개인 환경에 맞게 변경할 예시 비밀번호 |
-| `EVERYONE_REDIS_PORT` | `6379` | Compose Redis의 호스트 포트. 컨테이너 내부 포트는 `6379` |
+| `EVERYONE_REDIS_HOST` | `localhost` | Spring Redis 접속 호스트. Compose 자동 연동 시 발견한 연결 정보가 우선 |
+| `EVERYONE_REDIS_PORT` | `6379` | Compose Redis의 호스트 포트 매핑과 Spring Redis 접속 포트. 컨테이너 내부 포트는 `6379` |
+| `EVERYONE_MULTIPART_MAX_FILE_SIZE` | `10MB` | 업로드 파일 하나의 최대 크기 |
+| `EVERYONE_MULTIPART_MAX_REQUEST_SIZE` | `12MB` | 파일과 폼 데이터 등을 포함한 multipart 요청 전체의 최대 크기 |
 | `EVERYONE_JPA_DDL_AUTO` | `validate` | 엔티티와 DB 스키마 일치 여부 검증 |
 | `EVERYONE_JPA_FORMAT_SQL` | `true` | 개발 환경 SQL 포맷 설정 |
 | `EVERYONE_JPA_SHOW_SQL` | `false` | 개발 환경 JPA SQL 출력 설정 |
@@ -154,7 +163,13 @@ S3 관련 값은 현재 공통 설정에 선언되어 있지만 실제 S3 연동
 
 설정 파일: [개발](../src/main/resources/application-dev.yaml), [테스트](../src/test/resources/application-test.yaml), [운영](../src/main/resources/application-prod.yaml).
 
-테스트는 [테스트용 application.properties](../src/test/resources/application.properties)에서 `test` 프로필을 활성화합니다. `prod`는 `.env.dev`를 자동으로 읽지 않으므로 DB 정보와 `EVERYONE_OPENAPI_SERVER_URL` 등을 배포 환경에서 공급해야 합니다.
+`dev`는 `.env.dev`와 외부 환경변수를 통해 Redis 접속 정보를 받습니다. Redis 호스트와 포트를 생략하면 개발 YAML의 기본값인 `localhost:6379`를 사용하며, Compose 자동 연동이 켜져 있으면 발견한 연결 정보가 우선합니다.
+
+테스트는 [테스트용 application.properties](../src/test/resources/application.properties)에서 `test` 프로필을 활성화합니다.
+
+운영에서는 배포 환경에 `SPRING_PROFILES_ACTIVE=prod`를 지정합니다. `prod`는 `.env.dev`를 자동으로 읽지 않으므로 DB 정보와 `EVERYONE_OPENAPI_SERVER_URL` 등을 외부 환경변수로 공급해야 합니다. Redis의 `EVERYONE_REDIS_HOST`와 `EVERYONE_REDIS_PORT`도 기본값 없이 필수로 받으므로 실제 운영 Redis 주소와 포트를 반드시 지정합니다.
+
+파일 업로드 제한은 [공통 application.yaml](../src/main/resources/application.yaml)에 정의되어 dev와 prod 모두에 적용됩니다. `EVERYONE_MULTIPART_MAX_FILE_SIZE`와 `EVERYONE_MULTIPART_MAX_REQUEST_SIZE`를 생략하면 각각 `10MB`, `12MB`를 사용합니다. 개발에서는 `.env.dev`, 운영에서는 배포 환경의 환경변수로 조정할 수 있습니다. 요청 전체 크기에는 파일뿐 아니라 폼 데이터와 multipart 구분자 등 부가 정보도 포함됩니다. 파일당 제한과 요청 전체 제한은 별도로 적용되며, 여러 파일을 한 번에 받는 경우에도 요청 전체 제한을 넘을 수 없습니다.
 
 현재 [초기 스키마](../src/main/resources/db/migration/V202610220902__init_schema.sql)에 13개 테이블과 PK·FK가 정의되어 있으며, 실제 도메인 엔티티는 구현 전입니다. 엔티티를 추가할 때 초기 스키마의 컬럼·타입·제약조건과 매핑을 맞추고, 이후 스키마 변경은 새 Flyway 마이그레이션으로 작성합니다. 작성 규칙과 적용 절차는 [Flyway 마이그레이션 가이드](flyway-migration-guide.md)를 참고합니다. H2 테스트 통과만으로 PostgreSQL 마이그레이션까지 검증한 것으로 보지 않습니다.
 
@@ -196,6 +211,23 @@ DB 파일은 Compose의 `postgres-data` 볼륨에 저장됩니다. 기존 볼륨
 | [UpdatedAtEntity](../src/main/java/com/codeit/sb13/playlist_for_everyone/global/domain/UpdatedAtEntity.java) | `id`, `createdAt`, 수정 시각 `updatedAt` |
 
 생성·수정 시각은 `LocalDateTime`이며 [JpaAuditingConfig](../src/main/java/com/codeit/sb13/playlist_for_everyone/global/config/JpaAuditingConfig.java)에서 JPA Auditing을 활성화합니다. 실제 사용 방식은 [테스트용 엔티티](../src/test/java/com/codeit/sb13/testsupport/persistence/AuditedTestEntity.java)와 [JPA 공통 설정 테스트](../src/test/java/com/codeit/sb13/playlist_for_everyone/global/config/JpaCommonConfigTest.java)를 참고합니다.
+
+### Hibernate 배치 설정
+
+[공통 application.yaml](../src/main/resources/application.yaml)의 `spring.jpa.properties`에 다음 Hibernate 설정을 정의합니다. 현재 네 값은 고정값으로 관리하며 dev·test·prod에 공통 적용되므로, 별도 환경변수를 추가할 필요는 없습니다.
+
+| 설정 | 현재 값 | 역할 |
+| --- | --- | --- |
+| `hibernate.default_batch_fetch_size` | `100` | 지연 로딩 대상 엔티티·컬렉션의 배치 조회 크기 |
+| `hibernate.jdbc.batch_size` | `50` | JDBC 쓰기 배치의 최대 크기 |
+| `hibernate.order_inserts` | `true` | INSERT 순서를 정렬해 배치 처리 기회 증가 |
+| `hibernate.order_updates` | `true` | UPDATE 순서를 정렬해 배치 처리 기회 증가 |
+
+배치 조회는 지연 로딩 대상들을 묶어 조회하여 N+1 문제를 완화합니다. JDBC 쓰기 배치는 flush 과정에서 같은 SQL 형태의 호환되는 쓰기 작업을 최대 50개씩 묶어 처리합니다. 실제 배치에는 최대 크기보다 적은 작업이 포함될 수 있습니다. 각 설정의 정의는 Hibernate의 [조회 배치 설정](https://docs.hibernate.org/orm/7.2/javadocs/org/hibernate/cfg/FetchSettings.html)과 [JDBC 배치 설정](https://docs.hibernate.org/orm/7.2/javadocs/org/hibernate/cfg/BatchSettings.html)을 참고합니다.
+
+dev·test에서는 `org.hibernate.orm.jdbc.batch` 로그 수준이 `trace`로 설정되어 있습니다. 엔티티 저장·수정 후 flush할 때 출력되는 `Executing JDBC batch` 로그에서 쓰기 배치의 실행 여부와 크기를 확인할 수 있습니다.
+
+배치 설정의 효과는 연관관계 매핑과 조회 방식, 처리할 데이터량에 따라 달라집니다. 도메인 구현 후 실제 쿼리 수와 처리 시간을 측정해 N+1 감소 및 쓰기 성능을 검증하고 배치 크기를 조정합니다.
 
 ### Querydsl
 
