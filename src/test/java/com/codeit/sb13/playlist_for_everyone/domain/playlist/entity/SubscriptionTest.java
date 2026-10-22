@@ -21,7 +21,7 @@ public class SubscriptionTest {
 
     // then
     assertThat(subscription.getPlaylistId()).isEqualTo(playlistId);
-    assertThat(subscription.getSubscriberId()).isEqualTo(subscription);
+    assertThat(subscription.getSubscriberId()).isEqualTo(subscriberId);
 
   }
 
