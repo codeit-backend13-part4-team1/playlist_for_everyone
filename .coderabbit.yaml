@@ -1,0 +1,42 @@
+language: "ko-KR"
+
+reviews:
+  profile: "assertive"
+  review_status: true
+  request_changes_workflow: false
+
+  high_level_summary_instructions: |
+    Write the PR summary in Korean using concise, clear written prose.
+    Actively use Markdown tables and Mermaid diagrams to explain the changes.
+    Use tables to organize changes and comparisons, and Mermaid diagrams to
+    illustrate relevant flows, interactions, or dependencies.
+    Keep visuals concise and grounded in the actual changes.
+
+    Organize the summary in the following order:
+
+    1. 주요 목적
+       - State the main purpose of the changes in one or two sentences.
+       - Explain why the changes are needed when supported by the PR context.
+
+    2. 변경사항
+       - Summarize the essential changes concisely.
+       - Group related changes and use a compact Markdown table.
+       - Add Mermaid diagrams where they help explain the changes.
+       - Avoid exhaustive file listings and repetitive implementation details.
+
+    3. 영향·주의사항 및 검증
+       - Place this section at the end of the summary.
+       - Describe supported impacts, compatibility changes, and precautions.
+       - Report only verification activities and results supported by evidence
+         available in the PR context.
+       - Never invent or infer unconfirmed test execution or test results.
+       - If verification results are unavailable, state "확인되지 않음".
+       - Clearly distinguish suggested additional checks from checks actually
+         performed and their confirmed results.
+
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    drafts: true
+    base_branches:
+      - ".*"
