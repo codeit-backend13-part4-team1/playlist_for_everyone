@@ -21,7 +21,11 @@ import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.auditing.AuditingHandler;
 
-@DataJpaTest(showSql = false)
+// 공통 Auditing·Querydsl 설정만 검증하므로 도메인 Repository 자동 등록을 비활성화한다.
+@DataJpaTest(
+        showSql = false,
+        properties = "spring.data.jpa.repositories.enabled=false"
+)
 @EntityScan(basePackageClasses = AuditedTestEntity.class)
 @Import({JpaAuditingConfig.class, QueryDslConfig.class})
 @DisplayName("JPA Auditing 및 Querydsl 설정")
