@@ -1,0 +1,36 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:everyone-test;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        format_sql: false
+    show-sql: false
+  flyway:
+    enabled: false
+  docker:
+    compose:
+      enabled: false
+  h2:
+    console:
+      enabled: false
+
+logging:
+  level:
+    root: info
+    com.codeit.sb13.playlist_for_everyone: debug
+
+    org.hibernate.SQL: debug
+    org.hibernate.orm.jdbc.batch: trace
+    org.hibernate.orm.jdbc.bind: off
+
+everyone:
+  s3:
+    bucket: everyone-test-backup
+    region: ap-northeast-2
+    endpoint:

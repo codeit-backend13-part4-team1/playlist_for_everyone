@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: playlist_for_everyone
+
+  profiles:
+    default: dev
+  jpa:
+    open-in-view: false
+
+springdoc:
+  api-docs:
+    # OpenAPI 명세 제공 경로
+    path: /v3/api-docs
+
+  swagger-ui:
+    # Swagger UI 설정
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+
+everyone:
+  s3:
+    bucket: ${EVERYONE_S3_BUCKET}
+    region: ${EVERYONE_AWS_REGION}
+    endpoint: ${EVERYONE_AWS_ENDPOINT}
+
+  openapi:
+    server-url: http://localhost:${server.port:8080}
+    server-description: 로컬 개발 서버

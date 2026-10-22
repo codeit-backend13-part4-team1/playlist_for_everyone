@@ -1,0 +1,143 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '4.0.8'
+	id 'io.spring.dependency-management' version '1.1.7'
+	id 'jacoco'
+}
+
+group = 'com.codeit.sb13'
+version = '0.0.1-SNAPSHOT'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(17)
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+def dependencyVersions = [
+	awsSdk: '2.46.7',
+	jjwt: '0.13.0',
+	querydsl: '5.1.0',
+	s3Mock: '5.2.3',
+	springdoc: '3.1.1',
+	springRetry: '2.0.13'
+]
+
+dependencies {
+	// 웹 및 API 문서
+	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+	implementation 'org.springframework.boot:spring-boot-starter-websocket'
+	implementation 'org.springframework.boot:spring-boot-starter-validation'
+	implementation "org.springdoc:springdoc-openapi-starter-webmvc-ui:${dependencyVersions.springdoc}"
+
+	// 인증 및 WebSocket 메시지 보안
+	implementation 'org.springframework.boot:spring-boot-starter-security'
+	implementation 'org.springframework.security:spring-security-messaging'
+	implementation "io.jsonwebtoken:jjwt-api:${dependencyVersions.jjwt}"
+	runtimeOnly "io.jsonwebtoken:jjwt-impl:${dependencyVersions.jjwt}"
+	runtimeOnly "io.jsonwebtoken:jjwt-jackson:${dependencyVersions.jjwt}"
+
+	// 데이터 저장 및 마이그레이션
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+	implementation 'org.springframework.boot:spring-boot-starter-flyway'
+	implementation "com.querydsl:querydsl-jpa:${dependencyVersions.querydsl}:jakarta"
+	runtimeOnly 'org.flywaydb:flyway-database-postgresql'
+	runtimeOnly 'org.postgresql:postgresql'
+	runtimeOnly 'com.h2database:h2'
+	developmentOnly 'org.springframework.boot:spring-boot-h2console'
+
+	// 로컬 개발용 Docker Compose 연동
+	developmentOnly 'org.springframework.boot:spring-boot-docker-compose'
+
+	// 외부 연동 및 배치
+	implementation 'org.springframework.boot:spring-boot-starter-mail'
+	implementation 'org.springframework.boot:spring-boot-starter-batch'
+	implementation platform("software.amazon.awssdk:bom:${dependencyVersions.awsSdk}")
+	implementation 'software.amazon.awssdk:s3'
+
+	// 모니터링, AOP 및 재시도
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+	implementation 'org.springframework.boot:spring-boot-starter-aspectj'
+	implementation "org.springframework.retry:spring-retry:${dependencyVersions.springRetry}"
+
+	// Lombok 및 Querydsl 코드 생성
+	compileOnly 'org.projectlombok:lombok'
+	annotationProcessor 'org.projectlombok:lombok'
+	annotationProcessor "com.querydsl:querydsl-apt:${dependencyVersions.querydsl}:jakarta"
+	annotationProcessor 'jakarta.annotation:jakarta.annotation-api'
+	annotationProcessor 'jakarta.persistence:jakarta.persistence-api'
+
+	// Spring Boot 4 기능별 테스트 지원 (공통 테스트 도구 포함)
+	testImplementation 'org.springframework.boot:spring-boot-starter-actuator-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-batch-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-data-redis-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-flyway-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-mail-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-security-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-websocket-test'
+
+	// PostgreSQL 및 S3 통합 테스트 지원. 컨테이너 실행에는 Docker가 필요합니다.
+	testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+	testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
+	testImplementation 'org.testcontainers:testcontainers-postgresql'
+	testImplementation "com.adobe.testing:s3mock-testcontainers:${dependencyVersions.s3Mock}"
+
+	testCompileOnly 'org.projectlombok:lombok'
+	testAnnotationProcessor 'org.projectlombok:lombok'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+// annotation processor가 생성한 Java 소스 경로
+def generatedMainSources = tasks.named('compileJava').flatMap {
+	it.options.generatedSourceOutputDirectory
+}
+
+// 자동 생성된 Q 클래스를 제외한 커버리지 측정 대상
+def coverageClasses = sourceSets.main.output.classesDirs.asFileTree.matching{
+	exclude{ element ->
+		if (!element.name.startsWith('Q') ||
+				!element.name.endsWith('.class')){
+			return false
+		}
+
+		// QUser.class → QUser.java
+		// QUser$Inner.class → QUser.java
+		def sourcePath = element.path.replaceAll(
+				/(\$.*)?\.class$/,
+				'.java'
+		)
+		return generatedMainSources.get()
+				.file(sourcePath)
+				.asFile
+				.isFile()
+	}
+}
+
+// 보고서와 커버리지 검증에 동일한 제외 기준 적용
+tasks.withType(
+		org.gradle.testing.jacoco.tasks.JacocoReportBase
+).configureEach {
+	dependsOn tasks.named('test')
+	classDirectories.setFrom(coverageClasses)
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+	finalizedBy tasks.named('jacocoTestReport')
+}
+
+tasks.named('jacocoTestReport') {
+	dependsOn tasks.named('test')
+	reports {
+		xml.required = true
+		html.required = true
+	}
+}
