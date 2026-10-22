@@ -21,6 +21,10 @@ spring:
       arguments:
         - "--env-file"
         - ".env.dev"
+  data:
+    redis:
+      host: ${EVERYONE_REDIS_HOST:localhost}
+      port: ${EVERYONE_REDIS_PORT:6379}
 
 server:
   port: ${EVERYONE_SERVER_PORT:8080}
