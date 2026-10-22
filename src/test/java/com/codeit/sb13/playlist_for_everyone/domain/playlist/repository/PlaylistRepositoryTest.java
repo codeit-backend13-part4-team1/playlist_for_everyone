@@ -1,10 +1,13 @@
 package com.codeit.sb13.playlist_for_everyone.domain.playlist.repository;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Playlist;
 import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.context.annotation.Import;
 
@@ -12,6 +15,9 @@ import org.springframework.context.annotation.Import;
 @Import(JpaAuditingConfig.class)
 @DisplayName("PlaylistRepository")
 public class PlaylistRepositoryTest {
+
+  @Autowired
+  private PlaylistRepository playlistRepository;
 
   @Test
   @DisplayName("저장하면 ID와 생성,수정 시각이 기록되고 구독자 수는 0이다.")
