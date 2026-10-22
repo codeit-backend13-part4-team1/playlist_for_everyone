@@ -12,6 +12,7 @@
 | 도메인 예외 | 사용자·콘텐츠·대화방·팔로우·알림·플레이리스트·리뷰의 미존재 예외 7종을 작성 예시로 제공 |
 | 도메인 기능 | 회원·콘텐츠·플레이리스트 등의 실제 API와 서비스 구현 전 |
 | 로컬 인프라 | Docker Compose에 PostgreSQL과 Redis 서비스 정의 |
+| 개발용 보안 | `dev` 프로필에서 전체 요청을 인증 없이 허용하고 CSRF 검사를 비활성화하는 임시 설정 |
 | 후속 기능 | JWT 인증, Redis 기반 캐시·세션, 배치 작업, S3 연동, SSE·WebSocket 기능 등은 별도 구현 필요 |
 
 라이브러리 의존성과 로컬 인프라를 준비한 상태와 기능 구현 완료를 구분합니다. Redis 서비스는 Compose에 포함되어 있으며, 이를 사용하는 캐시·세션 기능은 구현 전입니다. Kafka와 Elasticsearch는 현재 Compose에 포함되어 있지 않습니다.
@@ -114,7 +115,9 @@ Compose의 자동 실행·연결을 사용하지 않으려면 `.env.dev`에서 `
 | Swagger UI | `http://localhost:8080/swagger-ui.html` |
 | OpenAPI JSON | `http://localhost:8080/v3/api-docs` |
 
-현재 별도의 `SecurityFilterChain`이나 사용자 인증 구현이 없어 Spring Boot의 기본 보안 설정이 적용됩니다. Swagger 접근에도 인증이 필요할 수 있습니다. 기본 개발용 계정명은 `user`이며, 임시 비밀번호는 서버 시작 로그에서 확인합니다. 이 계정은 프로젝트의 JWT 로그인이나 관리자 초기화 기능과 별개입니다. [Spring Boot 기본 Security 설정](https://docs.spring.io/spring-boot/reference/web/spring-security.html)
+현재 [SecurityConfig](../src/main/java/com/codeit/sb13/playlist_for_everyone/global/config/SecurityConfig.java)는 `@Profile("dev")`가 적용된 개발 초기 임시 설정입니다. `dev`에서는 정적 리소스, Swagger UI, OpenAPI JSON 및 API 요청을 인증 없이 허용하고 CSRF 검사를 비활성화합니다. `STATELESS` 정책으로 인증 정보를 HTTP 세션에 저장하지 않으며, JWT 인증·인가 기능은 아직 구현 전입니다.
+
+`dev`가 활성화되지 않은 환경에는 이 임시 설정이 적용되지 않습니다. 현재 `test` 또는 `prod` 프로필만 사용하는 경우에는 Spring Boot의 기본 보안 자동 설정이 적용되어 Swagger 접근에도 인증이 필요할 수 있습니다. [Spring Boot 기본 Security 설정](https://docs.spring.io/spring-boot/reference/web/spring-security.html)
 
 현재는 도메인 컨트롤러가 없으므로 API 문서 설정이 있어도 실제 도메인 API 목록은 아직 제공되지 않습니다. 설정 경로는 [application.yaml](../src/main/resources/application.yaml)과 [OpenApiConfig](../src/main/java/com/codeit/sb13/playlist_for_everyone/global/config/OpenApiConfig.java)를 참고합니다.
 
@@ -155,6 +158,16 @@ S3 관련 값은 현재 공통 설정에 선언되어 있지만 실제 S3 연동
 
 현재 [초기 스키마](../src/main/resources/db/migration/V202610220902__init_schema.sql)에 13개 테이블과 PK·FK가 정의되어 있으며, 실제 도메인 엔티티는 구현 전입니다. 엔티티를 추가할 때 초기 스키마의 컬럼·타입·제약조건과 매핑을 맞추고, 이후 스키마 변경은 새 Flyway 마이그레이션으로 작성합니다. 작성 규칙과 적용 절차는 [Flyway 마이그레이션 가이드](flyway-migration-guide.md)를 참고합니다. H2 테스트 통과만으로 PostgreSQL 마이그레이션까지 검증한 것으로 보지 않습니다.
 
+### 운영 배포 시 보안 설정 전환
+
+운영 배포를 시작할 때 개발용 임시 보안 설정을 다음 순서로 전환합니다.
+
+1. JWT 인증·인가를 구현하고, 전체 요청을 허용하는 정책을 공개 경로와 인증·권한이 필요한 경로별 정책으로 교체합니다.
+2. CSRF 검사를 활성화하고 `XSRF-TOKEN` 쿠키와 `X-XSRF-TOKEN` 헤더를 사용하는 쿠키 기반 CSRF 정책을 적용합니다.
+3. 운영 보안 정책 적용을 완료한 뒤 `SecurityConfig`의 `@Profile("dev")` 제한을 제거합니다.
+
+제거 대상은 Security 설정의 프로필 제한입니다. `application-dev.yaml`은 로컬 개발 환경 설정으로 유지합니다.
+
 ### 실행 중 확인할 항목
 
 | 증상 | 확인할 내용 |
@@ -164,7 +177,7 @@ S3 관련 값은 현재 공통 설정에 선언되어 있지만 실제 S3 연동
 | 포트 충돌 | `EVERYONE_SERVER_PORT`, `EVERYONE_DB_PORT`, `EVERYONE_REDIS_PORT`에 지정한 포트를 사용 중인 다른 프로세스 |
 | `Redis health check failed` 또는 Redis 연결 거부 | Redis 컨테이너 실행 상태와 `PING` 응답, 호스트 포트, 설정 변경 후 애플리케이션 재시작 여부. Compose 연동을 끈 경우 직접 지정한 Redis 접속 정보 |
 | 엔티티 추가 후 스키마 검증 실패 | DB 테이블과 마이그레이션 적용 상태 |
-| Swagger 로그인 화면 또는 401 응답 | 기본 Security 적용 상태와 시작 로그의 개발용 인증 정보 |
+| Swagger 로그인 화면 또는 401 응답 | 활성 프로필과 `SecurityConfig` 로드 여부. `dev`에서는 인증 없이 접근하며, `dev`가 활성화되지 않으면 현재는 기본 보안 자동 설정 적용 |
 
 DB 파일은 Compose의 `postgres-data` 볼륨에 저장됩니다. 기존 볼륨을 사용하는 경우 환경변수의 DB 계정 정보를 바꿔도 이미 초기화된 계정이 자동 변경되는 것은 아니므로 실제 DB 설정을 함께 확인합니다.
 
@@ -314,7 +327,7 @@ DTO에는 커서 계산이나 값 보정 로직이 없습니다. 목록 API 구�
 다음 항목은 후속 작업으로 관리합니다.
 
 - 도메인별 API·서비스·엔티티와 PostgreSQL/Flyway 검증
-- JWT 인증·인가, 관리자 초기화 및 인증 실패 응답 처리
+- JWT 인증·인가 및 쿠키 기반 CSRF 정책 적용, 운영 배포 시 개발용 Security 프로필 제한 제거, 관리자 초기화 및 인증 실패 응답 처리
 - 목록 API의 커서 규칙 확정과 직렬화·페이징 테스트
 - Redis 기반 캐시·세션 기능 구현과 데이터 보관 정책 결정
 - 배치, S3, SSE·WebSocket 등 기능별 구현과 필요한 인프라 추가
