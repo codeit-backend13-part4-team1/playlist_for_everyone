@@ -316,13 +316,19 @@ DTO에는 커서 계산이나 값 보정 로직이 없습니다. 목록 API 구�
 
 ## 테스트와 커버리지
 
-프로젝트 루트에서 실행합니다.
+Docker Desktop 또는 Docker 엔진을 실행한 뒤 프로젝트 루트에서 실행합니다.
 
 ```bash
 ./gradlew test jacocoTestReport
 ```
 
-현재 테스트는 `test` 프로필과 H2를 사용하므로 로컬 PostgreSQL, `.env.dev`, Docker 실행 없이 수행할 수 있습니다. 향후 Testcontainers 기반 테스트를 추가하면 해당 테스트에는 Docker가 필요합니다.
+공통 테스트는 `test` 프로필과 H2를 사용합니다. 알림 통합 테스트는 Testcontainers로 별도의 PostgreSQL 16 컨테이너를 실행하고 실제 Flyway 마이그레이션을 적용합니다. 전체 테스트와 빌드에는 Docker가 필요하며, 로컬 PostgreSQL이나 `.env.dev`는 필요하지 않습니다. 최초 실행 시 테스트용 컨테이너 이미지 다운로드가 필요할 수 있습니다.
+
+제목 말줄임 단위 테스트만 확인하려면 Docker 없이 다음 명령을 사용할 수 있습니다.
+
+```bash
+./gradlew test --tests '*NotificationCommandTest'
+```
 
 빌드까지 확인할 때는 다음 명령을 사용합니다.
 
@@ -346,9 +352,10 @@ DTO에는 커서 계산이나 값 보정 로직이 없습니다. 목록 API 구�
 - 테스트 클래스와 메서드에 한글 `@DisplayName`으로 대상과 기대 결과를 설명합니다. 파라미터화 테스트는 개별 사례도 구분할 수 있게 이름을 지정합니다.
 - 공통 예외 테스트에는 [TestEveryOneException](../src/test/java/com/codeit/sb13/testsupport/exception/TestEveryOneException.java)을 사용합니다. 도메인 예외 예시의 변경이 공통 동작 테스트에 영향을 주지 않도록 분리합니다.
 - 기존 테스트는 애플리케이션 컨텍스트, 예외 응답, 검증 오류, MDC, JPA Auditing, Querydsl 조회, 비밀번호 인코더, OpenAPI 설정을 확인합니다.
+- 알림 테스트는 제목 말줄임, 입력 검증, 커밋 후 저장, 롤백·트랜잭션 외 발행 시 미저장, 저장 실패 시 원 업무 보존 및 후속 정상 저장을 확인합니다. 통합 테스트는 `TransactionTemplate`으로 실제 커밋·롤백을 수행합니다.
 - MVC 테스트는 Security 필터를 제외해 핸들러와 인터셉터를 검증합니다. 이 테스트의 통과는 인증·인가 동작 검증을 의미하지 않습니다.
 
-문서 작성 시 기존 공통 테스트의 통과 결과를 확인했습니다. PostgreSQL에서의 애플리케이션 기동, Flyway 마이그레이션, 실제 Redis 연결과 캐시·세션 동작, Swagger 접속 및 커서 목록 API의 응답은 해당 결과에 포함되지 않습니다. 최신 결과와 수치는 각자의 코드에서 명령을 실행해 보고서로 확인합니다.
+알림 통합 테스트는 PostgreSQL에서 테스트 프로필의 애플리케이션 컨텍스트 기동과 Flyway 마이그레이션을 확인합니다. 실제 Redis 연결과 캐시·세션 동작, Swagger 접속 및 커서 목록 API의 응답은 해당 결과에 포함되지 않습니다. 최신 결과와 수치는 각자의 코드에서 명령을 실행해 보고서로 확인합니다.
 
 ## 협업과 후속 작업
 
