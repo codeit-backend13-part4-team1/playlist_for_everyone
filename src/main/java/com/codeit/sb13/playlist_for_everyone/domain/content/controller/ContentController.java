@@ -10,6 +10,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/contents")
 public class ContentController {
 
-    private ContentService contentService;
+    private final ContentService contentService;
 
 }

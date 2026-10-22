@@ -8,6 +8,6 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class ContentService {
 
-    private ContentRepository contentRepository;
+    private final ContentRepository contentRepository;
 
 }
