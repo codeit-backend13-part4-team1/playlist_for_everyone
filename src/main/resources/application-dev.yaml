@@ -1,0 +1,39 @@
+spring:
+  config:
+    import: optional:file:.env.dev[.properties]
+  datasource:
+    url: jdbc:postgresql://${EVERYONE_DB_HOST:localhost}:${EVERYONE_DB_PORT:5432}/${EVERYONE_DB_NAME:everyone}
+    username: ${EVERYONE_DB_USERNAME:everyone}
+    password: ${EVERYONE_DB_PASSWORD:change-me}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: ${EVERYONE_JPA_DDL_AUTO:validate}
+    properties:
+      hibernate:
+        format_sql: ${EVERYONE_JPA_FORMAT_SQL:true}
+    show-sql: ${EVERYONE_JPA_SHOW_SQL:false}
+  flyway:
+    enabled: ${EVERYONE_FLYWAY_ENABLED:true}
+  docker:
+    compose:
+      enabled: ${EVERYONE_DOCKER_COMPOSE_ENABLED:true}
+      arguments:
+        - "--env-file"
+        - ".env.dev"
+
+server:
+  port: ${EVERYONE_SERVER_PORT:8080}
+
+logging:
+  level:
+    root: info
+    com.codeit.sb13.playlist_for_everyone: debug
+    org.hibernate.SQL: debug
+    org.hibernate.orm.jdbc.batch: trace
+    org.hibernate.orm.jdbc.bind: off
+
+everyone:
+  openapi:
+    server-url: http://localhost:${server.port:8080}
+    server-description: 로컬 개발 서버
