@@ -2,6 +2,8 @@ package com.codeit.sb13.playlist_for_everyone.domain.user.entity;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.assertj.core.api.Assertions.*;
 
@@ -47,6 +49,18 @@ class UserTest {
 
         assertThat(user.getName()).isEqualTo("테스트");
     }
+
+    @ParameterizedTest(name = "{index}: 입력값: \"{0}\"")
+    @ValueSource(strings = {"", " ", "   ", "\t", "\n", " \t\n "})
+    @DisplayName("이름이 빈 문자열이거나 공백뿐이면 기존 이름을 유지한다.")
+    void 이름이_비어있으면_기존_이름을_유지한다(String name){
+        User user = createUser();
+
+        user.updateName(name);
+
+        assertThat(user.getName()).isEqualTo("테스트");
+    }
+
 
     @Test
     @DisplayName("권한을 변경할 수 있다")

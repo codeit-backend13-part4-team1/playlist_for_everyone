@@ -6,6 +6,7 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.springframework.util.StringUtils;
 
 import java.util.Objects;
 
@@ -53,8 +54,7 @@ public class User extends UpdatedAtEntity {
     }
 
     public void updateName(String name) {
-        if (name == null) {
-            // 입력 값이 없다면 기존 이름 유지
+        if (!StringUtils.hasText(name)) {
             return;
         }
         this.name = name;
