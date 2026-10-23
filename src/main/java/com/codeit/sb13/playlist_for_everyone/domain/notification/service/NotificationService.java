@@ -38,7 +38,7 @@ public class NotificationService {
         List<Notification> notifications = notificationRepository.search(condition);
         long totalCount = notificationRepository.searchCount(condition);
 
-        boolean hasNext = notifications.size() == condition.limit() + 1;
+        boolean hasNext = notifications.size() > condition.limit();
 
         List<NotificationDto> data = retrieveNotifications(hasNext, notifications)
                 .stream()
