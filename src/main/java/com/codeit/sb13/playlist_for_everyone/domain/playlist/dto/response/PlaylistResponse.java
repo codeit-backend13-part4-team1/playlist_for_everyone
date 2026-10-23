@@ -5,7 +5,7 @@ import java.util.UUID;
 
 public record PlaylistResponse(
     UUID playlistId,
-    TemporaryUserSummary owner,
+    UserSummary owner,
     String title,
     String description,
     LocalDateTime updatedAt,
