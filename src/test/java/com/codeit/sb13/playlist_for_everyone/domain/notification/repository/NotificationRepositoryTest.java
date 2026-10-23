@@ -673,6 +673,30 @@ public class NotificationRepositoryTest {
         assertThat(notificationRepository.searchCount(otherCondition)).isEqualTo(1L);
     }
 
+    @Test
+    @DisplayName("limit이 정수 최댓값이어도 오버플로 없이 알림을 조회한다.")
+    void searchesNotificationsWithMaximumIntegerLimit(){
+        UUID receiverId = createReceiver();
+        LocalDateTime createdAt = LocalDateTime.of(2026, 10, 23, 10, 30);
+
+        UUID firstId = insertNotification(receiverId, createdAt);
+        UUID secondId = insertNotification(receiverId, createdAt.minusMinutes(1));
+
+        NotificationSearchCondition condition = new NotificationSearchCondition(
+                null,
+                null,
+                Integer.MAX_VALUE,
+                SortDirection.DESCENDING,
+                SortBy.CREATED_AT,
+                receiverId
+        );
+
+        List<Notification> result = notificationRepository.search(condition);
+        assertThat(result)
+                .extracting(Notification::getId)
+                .containsExactly(firstId, secondId);
+    }
+
     private UUID createReceiver(){
         UUID receiverId = UUID.randomUUID();
 
