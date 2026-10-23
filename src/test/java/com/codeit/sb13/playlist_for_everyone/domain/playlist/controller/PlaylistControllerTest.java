@@ -70,7 +70,8 @@ class PlaylistControllerTest {
         .andExpect(jsonPath("$.owner.userId").value(ownerId.toString()))
         .andExpect(jsonPath("$.owner.name").value("tester"))
         .andExpect(jsonPath("$.subscriberCount").value(0))
-        .andExpect(jsonPath("$.subscribedByMe").value(false));
+        .andExpect(jsonPath("$.subscribedByMe").value(false))
+        .andExpect(jsonPath("$.updatedAt").isNotEmpty());
   }
 
   @Test
