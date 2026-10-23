@@ -21,7 +21,10 @@ import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.auditing.AuditingHandler;
 
-@DataJpaTest(showSql = false)
+@DataJpaTest(
+    showSql = false,
+    properties = "spring.data.jpa.repositories.enabled=false"
+)
 @EntityScan(basePackageClasses = AuditedTestEntity.class)
 @Import({JpaAuditingConfig.class, QueryDslConfig.class})
 @DisplayName("JPA Auditing 및 Querydsl 설정")
