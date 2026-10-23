@@ -36,7 +36,7 @@ public class Review extends UpdatedAtEntity {
     private double rating;
 
     @Builder
-    private Review(Content content, User author, String text, Double rating) {
+    private Review(Content content, User author, String text, double rating) {
         this.content = content;
         this.author = author;
         this.text = text;
