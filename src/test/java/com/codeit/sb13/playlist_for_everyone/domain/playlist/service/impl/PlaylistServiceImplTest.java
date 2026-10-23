@@ -39,7 +39,15 @@ public class PlaylistServiceImplTest {
   void 플레이리스트_생성시_요청값과_소유자로_저장한다() {
     // given
     UUID ownerId = UUID.randomUUID();
+    User owner = User.builder()
+        .email("test@test.com")
+        .name("test")
+        .role(Role.USER)
+        .build();
+    ReflectionTestUtils.setField(owner, "id",  ownerId);
     PlaylistCreateRequest request = new PlaylistCreateRequest("제목", "설명");
+
+    given(userRepository.findById(ownerId)).willReturn(Optional.of(owner));
     given(playlistRepository.save(any(Playlist.class)))
         .willAnswer(invocation -> invocation.getArgument(0));
 
