@@ -1,8 +1,10 @@
 package com.codeit.sb13.playlist_for_everyone.domain.playlist.service.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistCreateRequest;
@@ -12,6 +14,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.Playlist
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
+import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -94,6 +97,20 @@ public class PlaylistServiceImplTest {
     assertThat(response.subscriberCount()).isZero();
     assertThat(response.subscribedByMe()).isFalse();
 
+  }
+
+  @Test
+  @DisplayName("생성시 소유자가 없으면 UserNotFoundException를 던진다")
+  void 플레이리스트_생성시_소유자가_없으면_예외를_던지고_save는_호출되지_않는다() {
+    // given
+    UUID ownerId = UUID.randomUUID();
+    PlaylistCreateRequest request = new PlaylistCreateRequest("title", "description");
+    given(userRepository.findById(ownerId)).willReturn(Optional.empty());
+
+    // when & then
+    assertThatThrownBy(() -> playlistService.create(ownerId, request))
+        .isInstanceOf(UserNotFoundException.class);
+    verify(playlistRepository, never()).save(any());
   }
 
 }
