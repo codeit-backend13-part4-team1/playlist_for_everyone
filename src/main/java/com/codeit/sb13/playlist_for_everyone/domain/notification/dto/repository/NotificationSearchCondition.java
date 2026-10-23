@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.notification.dto.repository
 
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.SortBy;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
+import org.springframework.util.StringUtils;
 
 import java.util.Objects;
 import java.util.UUID;
@@ -19,5 +20,14 @@ public record NotificationSearchCondition(
         Objects.requireNonNull(sortBy);
         Objects.requireNonNull(sortDirection);
     }
+
+    public boolean isDesc(){
+        return sortDirection.equals(SortDirection.DESCENDING);
+    }
+
+    public boolean isCursorAndIdPresent(){
+        return StringUtils.hasText(cursor) && idAfter != null;
+    }
+
 
 }
