@@ -4,7 +4,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 public record PlaylistResponse(
-    UUID playlistId,
+    UUID id,
     UserSummary owner,
     String title,
     String description,
