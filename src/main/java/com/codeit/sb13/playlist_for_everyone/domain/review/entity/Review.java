@@ -26,8 +26,8 @@ public class Review extends UpdatedAtEntity {
     private Content content;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
-    private User user;
+    @JoinColumn(name = "author_id", nullable = false)
+    private User author;
 
     @Column(name = "text", nullable = false, columnDefinition = "TEXT")
     private String text;
@@ -36,9 +36,9 @@ public class Review extends UpdatedAtEntity {
     private double rating;
 
     @Builder
-    private Review(Content content, User user, String text, Double rating) {
+    private Review(Content content, User author, String text, Double rating) {
         this.content = content;
-        this.user = user;
+        this.author = author;
         this.text = text;
         this.rating = rating;
     }
