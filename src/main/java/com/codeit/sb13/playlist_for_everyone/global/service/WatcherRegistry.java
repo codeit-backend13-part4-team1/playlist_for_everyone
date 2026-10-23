@@ -6,7 +6,6 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.Set;
-import java.util.UUID;
 import java.util.function.BiConsumer;
 
 import static com.codeit.sb13.playlist_for_everyone.global.service.RedisLockProvider.*;
@@ -62,8 +61,20 @@ public class WatcherRegistry {
     }
 
     private void lockProxy(String roomId, String sessionId,BiConsumer<String,String> function){
-        String lockKey = UUID.randomUUID().toString();
+        String lockKey = roomId;  // contents 단위로 락이 걸려야 함
         String lockId = null;
+
+        // contents 단위로 락을 걸기 위해 session 만 남은 경우(disconnect) 는 session 에서 content 추출
+        // 기능상 한 세션에 하나의 공통채널 구독(한 페이지당 하나의 채널 시청 가능) 만 존재.
+        // 만약 하나의 세션으로 여러개의 동시시청 채널을 구독한다면, 반복문으로 세션에 걸린 모든 채널 락?
+        if (roomId == null) {
+            // 이부분이 동시성 문제가 생긴다. 어떻게 해결할지 고민.
+            // 그냥 로컬에 세션 - 컨텐츠 키를 저장하고, disconnect 시에는 해당 키를 없애면 될까?
+            Set<String> channelIdListPerSession = redis.opsForSet().members(sessionKey(sessionId));
+            lockKey = channelIdListPerSession.stream().findFirst().orElse(null);
+            if (lockKey == null) return; // NPE 방지. 키가 없다면 진행 안한다.
+        }
+
         try {
             lockId = lockProvider.lock(lockKey);
             function.accept(roomId,sessionId);
@@ -73,7 +84,8 @@ public class WatcherRegistry {
             throw new RuntimeException(e);
         }
         finally {
-            lockProvider.unlock(lockKey, lockId);
+            if (lockId != null)
+                lockProvider.unlock(lockKey, lockId);
         }
     }
 
