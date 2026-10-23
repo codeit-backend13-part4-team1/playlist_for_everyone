@@ -15,4 +15,14 @@ public record NotificationDto(
         NotificationLevel level
 ) {
 
+    public static NotificationDto from(Notification notification){
+        return new NotificationDto(
+                notification.getId(),
+                notification.getCreatedAt(),
+                notification.getReceiver(),
+                notification.getTitle(),
+                notification.getContent(),
+                notification.getLevel()
+        );
+    }
 }
