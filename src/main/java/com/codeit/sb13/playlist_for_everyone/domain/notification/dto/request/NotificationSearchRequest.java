@@ -37,4 +37,7 @@ public record NotificationSearchRequest(
         }
     }
 
+    public NotificationSearchCondition toCondition(UUID receiverId){
+        return new NotificationSearchCondition(cursor, idAfter, limit, sortDirection, sortBy, receiverId);
+    }
 }
