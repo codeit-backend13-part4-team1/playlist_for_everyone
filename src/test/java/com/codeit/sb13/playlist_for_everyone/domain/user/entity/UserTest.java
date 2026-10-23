@@ -94,6 +94,18 @@ class UserTest {
     }
 
     @Test
+    @DisplayName("잠긴 계정을 해제하면 활성 상태가 된다.")
+    void 잠긴_계정을_해제하면_활성_상태가_된다() {
+        User user = createUser();
+        user.lock();
+
+        user.unlock();
+
+        assertThat(user.isLocked()).isFalse();
+        assertThat(user.isEnabled()).isTrue();
+    }
+
+    @Test
     @DisplayName("권한 없이 유저를 생성하면 예외가 발생한다")
     void 권한_없이_유저를_생성하면_예외가_발생한다() {
 
