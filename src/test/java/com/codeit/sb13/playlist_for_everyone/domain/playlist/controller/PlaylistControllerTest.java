@@ -74,8 +74,9 @@ class PlaylistControllerTest {
             .header("X-User-Id", ownerId.toString())
             .contentType(MediaType.APPLICATION_JSON)
             .content(objectMapper.writeValueAsString(request)))
-        .andDo(print())
-        .andExpect(status().isBadRequest());
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.exceptionName").value("MethodArgumentNotValidException"))
+        .andExpect(jsonPath("$.details.title").exists());
   }
 
   @Test
