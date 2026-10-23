@@ -11,13 +11,14 @@ import java.time.Duration;
 import java.util.Collections;
 import java.util.UUID;
 
+import static com.codeit.sb13.playlist_for_everyone.global.config.RedisConfig.*;
+
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class RedisLockProvider {
 
     static private final Duration LOCK_TIMEOUT = Duration.ofSeconds(3);
-    static private final String LOCK_KEY_PREFIX = "lock:";
 
     private final StringRedisTemplate redisTemplate;
 
@@ -30,7 +31,7 @@ public class RedisLockProvider {
         UNLOCK_SCRIPT.setScriptText("""
                 if redis.call('GET',KEYS[1]) == ARGV[1] then
                     return redis.call('DEL',KEYS[1])
-                else 
+                else
                     return 0
                 end
                 """);
