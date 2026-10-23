@@ -4,8 +4,8 @@ import java.util.UUID;
 
 public record UserSummary(
     //컴파일을 위한 임시 클래스
-    UUID userID,
-    String username,
+    UUID userId,
+    String name,
     String profileImageUrl
 ) {
 

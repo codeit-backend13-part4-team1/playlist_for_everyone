@@ -10,7 +10,7 @@ public record PlaylistResponse(
     String description,
     LocalDateTime updatedAt,
     long subscriberCount,
-    boolean subscribedBtMw
+    boolean subscribedByMe
 ) {
 
 }

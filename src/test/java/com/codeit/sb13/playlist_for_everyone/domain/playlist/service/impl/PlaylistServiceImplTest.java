@@ -6,8 +6,13 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistCreateRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.PlaylistResponse;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Playlist;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
+import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
+import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -16,12 +21,15 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 public class PlaylistServiceImplTest {
 
   @Mock
   private PlaylistRepository playlistRepository;
+  @Mock
+  private UserRepository userRepository;
 
   @InjectMocks
   private PlaylistServiceImpl playlistService;
@@ -45,7 +53,38 @@ public class PlaylistServiceImplTest {
     assertThat(saved.getOwnerId()).isEqualTo(ownerId);
     assertThat(saved.getTitle()).isEqualTo("제목");
     assertThat(saved.getDescription()).isEqualTo("설명");
+  }
 
+
+
+  @Test
+  @DisplayName("생성시 요청값과 소유자 정보를 응답으로 반환한다.")
+  void 플레이리스트_생성시_응답에_요청값과_소유자정보가_담긴다() {
+    // given
+    UUID ownerId = UUID.randomUUID();
+    User owner = User.builder()
+        .email("test@test.com")
+        .name("tester")
+        .role(Role.USER)
+        .build();
+    ReflectionTestUtils.setField(owner, "id", ownerId);
+    PlaylistCreateRequest request = new PlaylistCreateRequest("title", "description");
+
+    given(userRepository.findById(ownerId)).willReturn(Optional.of(owner));
+    given(playlistRepository.save(any(Playlist.class))).willAnswer(
+        invocation -> invocation.getArgument(0));
+
+    // when
+    PlaylistResponse response = playlistService.create(ownerId, request);
+
+    // then
+    assertThat(response.title()).isEqualTo("title");
+    assertThat(response.description()).isEqualTo("description");
+    assertThat(response.owner().userId()).isEqualTo(ownerId);
+    assertThat(response.owner().name()).isEqualTo("tester");
+    assertThat(response.owner().profileImageUrl()).isNull();
+    assertThat(response.subscriberCount()).isZero();
+    assertThat(response.subscribedByMe()).isFalse();
 
   }
 
