@@ -59,7 +59,8 @@ class PlaylistControllerTest {
             .contentType(MediaType.APPLICATION_JSON)
             .content(objectMapper.writeValueAsString(request)))
         .andExpect(status().isCreated())
-        .andExpect(jsonPath("$.title").value("title"));
+        .andExpect(jsonPath("$.title").value("title"))
+        .andExpect(jsonPath("$.id").exists());
   }
 
   @Test
