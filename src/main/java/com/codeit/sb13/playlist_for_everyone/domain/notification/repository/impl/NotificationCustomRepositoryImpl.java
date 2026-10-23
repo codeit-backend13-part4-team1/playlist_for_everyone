@@ -35,7 +35,7 @@ public class NotificationCustomRepositoryImpl implements NotificationCustomRepos
                         filterNotificationsByCondition(condition),
                         generateReceiverFilter(condition)
                 )
-                .limit(condition.limit()+1)
+                .limit(condition.limit()+1L)
                 .orderBy(getSortOrder(condition), getSortOrderId(condition))
                 .fetch();
     }
