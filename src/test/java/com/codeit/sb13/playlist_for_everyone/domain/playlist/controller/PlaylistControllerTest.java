@@ -46,10 +46,15 @@ class PlaylistControllerTest {
     // given
     UUID ownerId = UUID.randomUUID();
     PlaylistCreateRequest request = new PlaylistCreateRequest("title", "description");
+
     UserSummary owner = new UserSummary(ownerId, "tester", null);
+
+    UUID playlistId = UUID.randomUUID();
+
     PlaylistResponse response = new PlaylistResponse(
-        UUID.randomUUID(), owner, "title", "description",
+        playlistId, owner, "title", "description",
         LocalDateTime.now(), 0, false);
+
     given(playlistService.create(eq(ownerId), any(PlaylistCreateRequest.class)))
         .willReturn(response);
 
@@ -59,8 +64,13 @@ class PlaylistControllerTest {
             .contentType(MediaType.APPLICATION_JSON)
             .content(objectMapper.writeValueAsString(request)))
         .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.id").value(playlistId.toString()))
         .andExpect(jsonPath("$.title").value("title"))
-        .andExpect(jsonPath("$.id").exists());
+        .andExpect(jsonPath("$.description").value("description"))
+        .andExpect(jsonPath("$.owner.userId").value(ownerId.toString()))
+        .andExpect(jsonPath("$.owner.name").value("tester"))
+        .andExpect(jsonPath("$.subscriberCount").value(0))
+        .andExpect(jsonPath("$.subscribedByMe").value(false));
   }
 
   @Test
