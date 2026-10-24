@@ -13,7 +13,6 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundE
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.exception.ConstraintViolationException;
-import org.jspecify.annotations.NonNull;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,8 +20,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-
-import static com.codeit.sb13.playlist_for_everyone.domain.follow.entity.QFollow.follow;
 
 @Service
 @RequiredArgsConstructor
@@ -50,7 +47,7 @@ public class FollowServiceImpl implements FollowService {
 
     private Optional<FollowResult> getFollowResult(FollowCommand command) {
         return followRepository.findByFolloweeIdAndFollowerId(command.followeeId(), command.followerId())
-                .map(follow -> new FollowResult(FollowDto.from(follow), false));
+                .map(follow -> FollowResult.alreadyFollowed(FollowDto.from(follow)));
     }
 
     private FollowResult save(FollowCommand command){
@@ -59,7 +56,7 @@ public class FollowServiceImpl implements FollowService {
 
         try {
             Follow follow = followSaver.save(new Follow(follower, followee));
-            return new FollowResult(FollowDto.from(follow), true);
+            return FollowResult.followCreated(FollowDto.from(follow));
         }catch (DataIntegrityViolationException e){
             if (!isFollowUniqueViolation(e)) {
                 throw e;
