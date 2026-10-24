@@ -27,6 +27,11 @@ public class Follow extends CreatedAtEntity {
     @JoinColumn(name = "followee_id", nullable = false)
     private User followee;
 
+    public Follow(User follower, User followee) {
+        this.follower = follower;
+        this.followee = followee;
+    }
+
     public UUID getFollowerId() {
         if (follower == null) {
             return null;

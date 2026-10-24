@@ -5,6 +5,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowDt
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowResult;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.entity.Follow;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.repository.FollowRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
+import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -30,6 +32,9 @@ class FollowServiceImplTest {
     private FollowRepository followRepository;
 
     @Mock
+    private UserRepository userRepository;
+
+    @Mock
     private FollowSaver followSaver;
 
     @InjectMocks
@@ -47,7 +52,16 @@ class FollowServiceImplTest {
                 .willReturn(Optional.empty());
 
         Follow savedFollow = mock(Follow.class);
+        User follower = mock(User.class);
+        User followee = mock(User.class);
+
         given(savedFollow.getId()).willReturn(followId);
+        given(follower.getId()).willReturn(followerId);
+        given(followee.getId()).willReturn(followeeId);
+
+        given(userRepository.findById(followerId)).willReturn(Optional.of(follower));
+        given(userRepository.findById(followeeId)).willReturn(Optional.of(followee));
+
         given(savedFollow.getFollowerId()).willReturn(followerId);
         given(savedFollow.getFolloweeId()).willReturn(followeeId);
         given(followSaver.save(any(Follow.class))).willReturn(savedFollow);
