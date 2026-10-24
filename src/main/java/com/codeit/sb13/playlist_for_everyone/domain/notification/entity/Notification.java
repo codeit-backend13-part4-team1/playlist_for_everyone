@@ -35,4 +35,8 @@ public class Notification extends CreatedAtEntity {
         this.level = command.level();
     }
 
+    public boolean isOwner(UUID receiverId){
+        return this.receiver.equals(receiverId);
+    }
+
 }
