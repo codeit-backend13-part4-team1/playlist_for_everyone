@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.notification.controller;
 
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.response.NotificationDto;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.NotificationLevel;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationService;
 import com.codeit.sb13.playlist_for_everyone.global.config.MDCLoggingInterceptor;
 import com.codeit.sb13.playlist_for_everyone.global.config.WebMvcConfig;
@@ -15,9 +16,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -48,14 +51,22 @@ public class NotificationControllerTest {
     String cursor = "2026-10-23T10:30:00.123456";
 
     @Test
-    @DisplayName("idAfter가 없어도 잘못된 커서는 400을 반환한다.")
+    @DisplayName("idAfter 없이 잘못된 커서를 전달하면 400과 검증 오류 본문을 반환한다.")
     void rejectsInvalidCursorWithoutIdAfter() throws Exception {
         mockMvc.perform(get("/api/notifications")
                 .param("cursor", "invalid-date")
                 .param("limit","20")
                 .param("sortDirection","DESCENDING")
                 .param("sortBy", "createdAt")
-        ).andExpect(status().isBadRequest());
+        ).andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.exceptionName").value("MethodArgumentNotValidException"))
+                .andExpect(jsonPath("$.message").value("요청 데이터가 올바르지 않습니다."))
+                .andExpect(jsonPath("$.details").isMap())
+                .andExpect(jsonPath("$.details.validCursor").isArray())
+                .andExpect(jsonPath("$.details.validCursor.length()").value(1))
+                .andExpect(jsonPath("$.details.validCursor[0]")
+                        .value("cursor는 올바른 날짜와 시간 형식이어야 합니다."));
 
         verifyNoInteractions(notificationService);
     }
@@ -93,16 +104,33 @@ public class NotificationControllerTest {
     }
 
     @Test
-    @DisplayName("정상 커서와 idAfter를 전달하면 200을 반환하고 조회 조건에 반영한다")
+    @DisplayName("정상 커서 요청은 알림 목록과 다음 페이지 정보를 JSON으로 반환하고 조회 조건에 반영한다.")
     void acceptsValidCursorAndIdAfter() throws Exception {
         UUID idAfter = UUID.fromString("550e8400-e29b-41d4-a716-446655440000");
+        UUID receiverId = UUID.fromString("550e8400-e29b-41d4-a716-446655440010");
+        NotificationDto first = new NotificationDto(
+                UUID.fromString("550e8400-e29b-41d4-a716-446655440001"),
+                LocalDateTime.parse("2026-10-23T10:29:00.123456"),
+                receiverId,
+                "첫 번째 알림",
+                "첫 번째 알림 내용",
+                NotificationLevel.INFO
+        );
+        NotificationDto second = new NotificationDto(
+                UUID.fromString("550e8400-e29b-41d4-a716-446655440002"),
+                LocalDateTime.parse("2026-10-23T10:28:00.123456"),
+                receiverId,
+                "두 번째 알림",
+                "두 번째 알림 내용",
+                NotificationLevel.WARNING
+        );
 
         CursorResponse<NotificationDto> response = new CursorResponse<>(
-                List.of(),
-                null,
-                null,
-                false,
-                0L,
+                List.of(first, second),
+                second.createdAt().toString(),
+                second.id(),
+                true,
+                5L,
                 "createdAt",
                 SortDirection.DESCENDING
         );
@@ -113,14 +141,37 @@ public class NotificationControllerTest {
         mockMvc.perform(get("/api/notifications")
                 .param("cursor",cursor)
                 .param("idAfter", idAfter.toString())
-                .param("limit","20")
+                .param("limit","2")
                 .param("sortDirection","DESCENDING")
                 .param("sortBy", "createdAt")
-        ).andExpect(status().isOk());
+        ).andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].id").value(first.id().toString()))
+                .andExpect(jsonPath("$.data[0].createdAt").value("2026-10-23T10:29:00.123456"))
+                .andExpect(jsonPath("$.data[0].receiverId").value(receiverId.toString()))
+                .andExpect(jsonPath("$.data[0].title").value("첫 번째 알림"))
+                .andExpect(jsonPath("$.data[0].content").value("첫 번째 알림 내용"))
+                .andExpect(jsonPath("$.data[0].level").value("INFO"))
+                .andExpect(jsonPath("$.data[1].id").value(second.id().toString()))
+                .andExpect(jsonPath("$.data[1].createdAt").value("2026-10-23T10:28:00.123456"))
+                .andExpect(jsonPath("$.data[1].receiverId").value(receiverId.toString()))
+                .andExpect(jsonPath("$.data[1].title").value("두 번째 알림"))
+                .andExpect(jsonPath("$.data[1].content").value("두 번째 알림 내용"))
+                .andExpect(jsonPath("$.data[1].level").value("WARNING"))
+                .andExpect(jsonPath("$.nextCursor").value("2026-10-23T10:28:00.123456"))
+                .andExpect(jsonPath("$.nextIdAfter").value(second.id().toString()))
+                .andExpect(jsonPath("$.hasNext").value(true))
+                .andExpect(jsonPath("$.totalCount").value(5))
+                .andExpect(jsonPath("$.sortBy").value("createdAt"))
+                .andExpect(jsonPath("$.sortDirection").value("DESCENDING"));
 
         verify(notificationService).getNotifications(
                 argThat(condition ->
-                        cursor.equals(condition.cursor()) && idAfter.equals(condition.idAfter())
+                        cursor.equals(condition.cursor())
+                                && idAfter.equals(condition.idAfter())
+                                && condition.limit() == 2
                 ));
 
     }
