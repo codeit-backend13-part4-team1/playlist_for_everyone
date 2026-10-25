@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.follow.service.impl;
 
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.command.FollowCommand;
+import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.command.UnFollowCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowDto;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowResult;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.entity.Follow;
@@ -305,6 +306,23 @@ class FollowServiceImplTest {
                 .findByFolloweeIdAndFollowerId(followeeId, followerId);
 
         verify(followSaver).save(any(Follow.class));
+    }
+
+    @Test
+    @DisplayName("본인의 팔로우를 취소하면 해당 관계를 삭제한다.")
+    void unfollow_deletesOwnFollow(){
+        UUID followId = UUID.randomUUID();
+        UUID followerId = UUID.randomUUID();
+
+        UnFollowCommand command = new UnFollowCommand(followId, followerId);
+        Follow follow = mock(Follow.class);
+
+        given(followRepository.findById(followId)).willReturn(Optional.of(follow));
+        given(follow.getFollowerId()).willReturn(followerId);
+        followService.unfollow(command);
+
+        verify(followRepository).findById(followId);
+        verify(followRepository).delete(follow);
     }
 
 }
