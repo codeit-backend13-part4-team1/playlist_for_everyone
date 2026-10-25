@@ -26,8 +26,7 @@ import java.sql.SQLException;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
@@ -323,6 +322,24 @@ class FollowServiceImplTest {
 
         verify(followRepository).findById(followId);
         verify(followRepository).delete(follow);
+    }
+
+
+    @Test
+    @DisplayName("팔로우 관계가 없으면 예외 없이 종료하고 삭제하지 않는다")
+    void unfollow_ignoresMissingFollow(){
+        UUID followId = UUID.randomUUID();
+        UUID followerId = UUID.randomUUID();
+
+        UnFollowCommand command = new UnFollowCommand(followId, followerId);
+
+        given(followRepository.findById(followId)).willReturn(Optional.empty());
+
+        assertThatCode(()-> followService.unfollow(command))
+                .doesNotThrowAnyException();
+
+        verify(followRepository).findById(followId);
+        verify(followRepository,never()).delete(any(Follow.class));
     }
 
 }
