@@ -7,6 +7,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.follow.entity.Follow;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.repository.FollowRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
+import com.codeit.sb13.playlist_for_everyone.global.exception.EveryOneException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.follow.SelfFollowNotAllowedException;
 import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -16,12 +18,14 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
 
 import java.sql.SQLException;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
@@ -85,6 +89,22 @@ class FollowServiceImplTest {
     }
 
     @Test
+    @DisplayName("자기 자신을 팔로우하면 예외가 발생하고 조회와 저장을 수행하지 않는다.")
+    void follow_rejectsSelfFollow(){
+        UUID userId = UUID.randomUUID();
+        FollowCommand command = new FollowCommand(userId, userId);
+
+        assertThatThrownBy(()-> followService.follow(command))
+                .isInstanceOf(SelfFollowNotAllowedException.class);
+
+        verifyNoInteractions(
+                followRepository,
+                userRepository,
+                followSaver
+        );
+    }
+
+    @Test
     @DisplayName("이미 팔로우 중이면 추가 저장없이 기존 팔로우를 반환한다")
     void follow_returnsExistingFollow(){
         UUID followerId = UUID.randomUUID();
@@ -113,6 +133,29 @@ class FollowServiceImplTest {
 
         verifyNoInteractions(userRepository, followSaver);
 
+    }
+
+    @Test
+    @DisplayName("팔로우 대상 사용자가 없으면 잘못된 요청 예외가 발생하고 저장하지 않는다.")
+    void follow_rejectMissingFollowee(){
+        UUID followerId = UUID.randomUUID();
+        UUID followeeId = UUID.randomUUID();
+
+        FollowCommand command = new FollowCommand(followeeId, followerId);
+
+        given(followRepository.findByFolloweeIdAndFollowerId(followeeId, followerId))
+                .willReturn(Optional.empty());
+
+        User follower = mock(User.class);
+        given(userRepository.findById(followerId)).willReturn(Optional.of(follower));
+        given(userRepository.findById(followeeId)).willReturn(Optional.empty());
+
+        assertThatThrownBy(()-> followService.follow(command))
+                .isInstanceOfSatisfying(EveryOneException.class,
+                        e -> assertThat(e.getApiErrorCode().getStatus())
+                                .isEqualTo(HttpStatus.BAD_REQUEST));
+
+        verifyNoInteractions(followSaver);
     }
 
     @Test
