@@ -17,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -48,6 +49,7 @@ public class FollowServiceImpl implements FollowService {
     }
 
     @Override
+    @PreAuthorize("isAuthenticated() and @followGuard.canUnfollow(#command.followerId(), #command.followId())")
     public void unfollow(UnFollowCommand command) {
         followRepository.findById(command.followId())
                 .ifPresentOrElse(
