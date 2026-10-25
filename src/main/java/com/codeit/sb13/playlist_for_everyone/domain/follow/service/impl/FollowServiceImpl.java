@@ -9,6 +9,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.follow.repository.FollowRepo
 import com.codeit.sb13.playlist_for_everyone.domain.follow.service.FollowService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
+import com.codeit.sb13.playlist_for_everyone.global.exception.follow.FollowTargetNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.follow.SelfFollowNotAllowedException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,6 +38,10 @@ public class FollowServiceImpl implements FollowService {
 
     @Override
     public FollowResult follow(FollowCommand command) {
+        if (command.followerId().equals(command.followeeId())) {
+            throw new SelfFollowNotAllowedException();
+        }
+
         return getFollowResult(command)
                 .orElseGet(() -> save(command));
     }
@@ -52,7 +58,7 @@ public class FollowServiceImpl implements FollowService {
 
     private FollowResult save(FollowCommand command){
         User follower = getUser(command.followerId());
-        User followee = getUser(command.followeeId());
+        User followee = getFollowee(command);
 
         try {
             Follow follow = followSaver.save(new Follow(follower, followee));
@@ -86,5 +92,13 @@ public class FollowServiceImpl implements FollowService {
     private User getUser(UUID userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException(Map.of("userId", userId)));
+    }
+
+    private User getFollowee(FollowCommand command) {
+        try {
+            return getUser(command.followeeId());
+        }catch (UserNotFoundException e){
+            throw new FollowTargetNotFoundException(Map.of("followeeId", command.followeeId()));
+        }
     }
 }
