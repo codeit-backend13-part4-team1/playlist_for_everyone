@@ -49,7 +49,17 @@ public class FollowServiceImpl implements FollowService {
 
     @Override
     public void unfollow(UnFollowCommand command) {
-
+        followRepository.findById(command.followId())
+                .ifPresentOrElse(
+                        follow -> {
+                            if (!follow.getFollowerId().equals(command.followerId())) {
+                                log.debug("팔로워 ID 가 일치하지 않습니다.: {} vs. {}", follow.getFollowerId(), command.followerId());
+                                return;
+                            }
+                            followRepository.delete(follow);
+                        },
+                        () -> log.debug("팔로우를 찾을수 없습니다.: {}", command.followId())
+                );
     }
 
     private Optional<FollowResult> getFollowResult(FollowCommand command) {
