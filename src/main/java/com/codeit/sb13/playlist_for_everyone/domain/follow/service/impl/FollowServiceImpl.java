@@ -9,6 +9,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.follow.repository.FollowRepo
 import com.codeit.sb13.playlist_for_everyone.domain.follow.service.FollowService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
+import com.codeit.sb13.playlist_for_everyone.global.exception.follow.FollowCreationFailedException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.follow.FollowTargetNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.follow.SelfFollowNotAllowedException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
@@ -65,11 +66,11 @@ public class FollowServiceImpl implements FollowService {
             return FollowResult.followCreated(FollowDto.from(follow));
         }catch (DataIntegrityViolationException e){
             if (!isFollowUniqueViolation(e)) {
-                throw e;
+                throw new FollowCreationFailedException(e);
             }
 
             return getFollowResult(command)
-                    .orElseThrow(() -> e);
+                    .orElseThrow(() -> new FollowCreationFailedException(e));
         }
     }
 
