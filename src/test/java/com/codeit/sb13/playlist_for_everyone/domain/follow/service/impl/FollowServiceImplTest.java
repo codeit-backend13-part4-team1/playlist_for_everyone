@@ -8,6 +8,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.follow.repository.FollowRepo
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.EveryOneException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.follow.FollowCreationFailedException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.follow.SelfFollowNotAllowedException;
 import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.DisplayName;
@@ -199,6 +200,111 @@ class FollowServiceImplTest {
 
         verify(followSaver).save(any(Follow.class));
 
+    }
+
+    @Test
+    @DisplayName("팔로우 UNIQUE 충돌 후 기존 관계를 찾지 못하면 생성 실패 예외가 발생한다.")
+    void follow_throwsWhenExistingFollowMissingAfterUniqueViolation(){
+        UUID followerId = UUID.randomUUID();
+        UUID followeeId = UUID.randomUUID();
+
+        FollowCommand command = new FollowCommand(followeeId, followerId);
+
+        User follower = mock(User.class);
+        User followee = mock(User.class);
+
+        given(userRepository.findById(followerId)).willReturn(Optional.of(follower));
+        given(userRepository.findById(followeeId)).willReturn(Optional.of(followee));
+        given(followRepository.findByFolloweeIdAndFollowerId(followeeId, followerId))
+                .willReturn(Optional.empty());
+
+        SQLException sqlException = new SQLException("duplicate follow", "23505");
+
+        ConstraintViolationException constraintException = new ConstraintViolationException("duplicate follow", sqlException, "uq_follows_follower_followee");
+
+        DataIntegrityViolationException exception = new DataIntegrityViolationException("팔로우 중복 저장", constraintException);
+
+        given(followSaver.save(any(Follow.class))).willThrow(exception);
+
+        assertThatThrownBy(()-> followService.follow(command))
+                .isInstanceOfSatisfying(FollowCreationFailedException.class,
+                        e -> assertThat(e.getCause())
+                                .isSameAs(exception));
+
+        verify(followRepository, times(2))
+                .findByFolloweeIdAndFollowerId(followeeId, followerId);
+        verify(followSaver).save(any(Follow.class));
+    }
+
+    @Test
+    @DisplayName("다른 UNIQUE 제약조건 위반이면 재조회 없이 팔로우 생성 실패 예외가 발생한다.")
+    void follow_throwsWhenOtherUniqueConstraintViolated(){
+        UUID followerId = UUID.randomUUID();
+        UUID followeeId = UUID.randomUUID();
+
+        FollowCommand command = new FollowCommand(followeeId, followerId);
+
+        User follower = mock(User.class);
+        User followee = mock(User.class);
+
+        given(userRepository.findById(followerId)).willReturn(Optional.of(follower));
+        given(userRepository.findById(followeeId)).willReturn(Optional.of(followee));
+        given(followRepository.findByFolloweeIdAndFollowerId(followeeId, followerId))
+                .willReturn(Optional.empty());
+
+
+        SQLException sqlException = new SQLException("other unique violation", "23505");
+
+        ConstraintViolationException constraintException = new ConstraintViolationException("other unique violation", sqlException, "other_unique_constraint");
+
+        DataIntegrityViolationException exception = new DataIntegrityViolationException("다른 UNIQUE 제약조건 위반", constraintException);
+
+        given(followSaver.save(any(Follow.class))).willThrow(exception);
+
+        assertThatThrownBy(()-> followService.follow(command))
+                .isInstanceOfSatisfying(FollowCreationFailedException.class,
+                        e-> assertThat(e.getCause())
+                                .isSameAs(exception));
+
+        verify(followRepository, times(1))
+                .findByFolloweeIdAndFollowerId(followeeId, followerId);
+        verify(followSaver).save(any(Follow.class));
+    }
+
+    @Test
+    @DisplayName("제약조건 이름이 같아도 UNIQUE 위반 코드가 아니면 재조회 없이 생성 실패 예외가 발생한다.")
+    void follow_throwsWhenSqlStateIsNotUniqueViolation(){
+        UUID followerId = UUID.randomUUID();
+        UUID followeeId = UUID.randomUUID();
+
+        FollowCommand command = new FollowCommand(followeeId, followerId);
+
+        User follower = mock(User.class);
+        User followee = mock(User.class);
+
+        given(userRepository.findById(followerId)).willReturn(Optional.of(follower));
+        given(userRepository.findById(followeeId)).willReturn(Optional.of(followee));
+        given(followRepository.findByFolloweeIdAndFollowerId(followeeId, followerId))
+                .willReturn(Optional.empty());
+
+
+        SQLException sqlException = new SQLException("none-unique constraint violation", "23503");
+
+        ConstraintViolationException constraintException = new ConstraintViolationException("none-unique constraint violation", sqlException, "uq_follows_follower_followee");
+
+        DataIntegrityViolationException exception = new DataIntegrityViolationException("UNIQUE 이외의 제약조건 위반", constraintException);
+
+        given(followSaver.save(any(Follow.class))).willThrow(exception);
+
+        assertThatThrownBy(()-> followService.follow(command))
+                .isInstanceOfSatisfying(FollowCreationFailedException.class,
+                        e-> assertThat(e.getCause())
+                                .isSameAs(exception));
+
+        verify(followRepository, times(1))
+                .findByFolloweeIdAndFollowerId(followeeId, followerId);
+
+        verify(followSaver).save(any(Follow.class));
     }
 
 }

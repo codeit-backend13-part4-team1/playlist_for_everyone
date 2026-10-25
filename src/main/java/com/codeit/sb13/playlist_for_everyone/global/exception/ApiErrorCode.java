@@ -18,6 +18,7 @@ public enum ApiErrorCode {
 
     //FOLLOW F
     FOLLOW_NOT_FOUND("F_001", HttpStatus.NOT_FOUND, "팔로우를 찾을 수 없습니다."),
+    FOLLOW_CREATION_FAILED("F_002", HttpStatus.INTERNAL_SERVER_ERROR, "팔로우 생성 처리에 실패했습니다."),
     SELF_FOLLOW_NOT_ALLOWED("F_003", HttpStatus.BAD_REQUEST, "자기 자신을 팔로우할 수 없습니다."),
     FOLLOW_TARGET_NOT_FOUND("F_004", HttpStatus.BAD_REQUEST, "팔로우 대상 사용자를 찾을 수 없습니다."),
 
