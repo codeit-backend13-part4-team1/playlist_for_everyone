@@ -13,13 +13,16 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 
 import java.util.UUID;
 
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -87,6 +90,35 @@ class FollowControllerTest {
                 .andExpect(jsonPath("$.followerId").value(followerId.toString()));
 
         verify(followService).follow(command);
+    }
+
+    @Test
+    @DisplayName("팔로우 대상 ID가 누락되면 400을 반환하고 서비스를 호출하지 않는다.")
+    void follow_returnsBadRequestWhenFolloweeIdMissing() throws Exception {
+        mockMvc.perform(post("/api/follows")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.exceptionName").value(MethodArgumentNotValidException.class.getSimpleName()))
+                .andExpect(jsonPath("$.details.followeeId").isArray());
+
+        verifyNoInteractions(followService);
+    }
+
+    @Test
+    @DisplayName("팔로우 대상 ID의 UUID 형식이 잘못되면 400을 반환하고 서비스를 호출하지 않는다.")
+    void follow_returnsBadRequestWhenFolloweeIdInvalid() throws Exception {
+        mockMvc.perform(post("/api/follows")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                       {
+                         "followeeId": "not-a-uuid"
+                       }
+                       """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.exceptionName").value(HttpMessageNotReadableException.class.getSimpleName()));
+
+        verifyNoInteractions(followService);
     }
 
 
