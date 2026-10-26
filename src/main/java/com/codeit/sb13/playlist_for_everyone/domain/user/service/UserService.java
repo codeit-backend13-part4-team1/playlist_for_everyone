@@ -49,7 +49,7 @@ public class UserService {
             throw exception;
         }
 
-        log.info("[USER] 생성 완료 userId - {} userName: {},", savedUser.getId(), savedUser.getName());
+        log.info("[USER] 생성 완료 userId - {}", savedUser.getId());
 
         return new UserDto(
                 savedUser.getId(),

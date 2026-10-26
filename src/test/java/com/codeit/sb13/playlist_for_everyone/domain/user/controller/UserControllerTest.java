@@ -158,8 +158,36 @@ class UserControllerTest {
                         .value("test@gmail.com"));
 
         verify(userService).create(command);
+    }
 
+    @ParameterizedTest(name = "{index}: 72바이트 초과 비밀번호")
+    @MethodSource("tooLongPasswords")
+    @DisplayName("비밀번호가 72바이트를 초과하면 400을 반환한다")
+    void 비밀번호가_72바이트를_초과하면_거절한다(String password) throws Exception {
+        String requestBody = """
+                {
+                "email": "test@gmail.com",
+                "name": "테스트",
+                "password": "%s"
+                }
+                """.formatted(password);
 
+        mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.exceptionName")
+                        .value("MethodArgumentNotValidException"))
+                .andExpect(jsonPath("$.details.password").isArray());
+
+        verifyNoInteractions(userService);
+    }
+
+    static Stream<String> tooLongPasswords() {
+        return Stream.of(
+                "a".repeat(73),
+                "가".repeat(25)
+        );
     }
 
 
