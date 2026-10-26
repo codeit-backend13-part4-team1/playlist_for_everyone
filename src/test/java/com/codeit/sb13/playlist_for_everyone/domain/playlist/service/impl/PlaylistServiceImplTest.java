@@ -3,8 +3,8 @@ package com.codeit.sb13.playlist_for_everyone.domain.playlist.service.impl;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.BDDMockito.given;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -28,7 +28,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.boot.actuate.management.ThreadDumpEndpoint.ThreadDumpDescriptor;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -43,8 +42,6 @@ public class PlaylistServiceImplTest {
 
   @InjectMocks
   private PlaylistServiceImpl playlistService;
-  
-  
 
   @Test
   @DisplayName("요청한 값과 소유자 ID로 플레이리스트를 저장한다.")
@@ -70,8 +67,6 @@ public class PlaylistServiceImplTest {
     assertThat(saved.getDescription()).isEqualTo("설명");
   }
 
-
-
   @Test
   @DisplayName("생성시 요청값과 소유자 정보를 응답으로 반환한다.")
   void 플레이리스트_생성시_응답에_요청값과_소유자정보가_담긴다() {
@@ -81,8 +76,8 @@ public class PlaylistServiceImplTest {
     PlaylistCreateRequest request = new PlaylistCreateRequest("title", "description");
 
     given(userRepository.findById(ownerId)).willReturn(Optional.of(owner));
-    given(playlistRepository.save(any(Playlist.class))).willAnswer(
-        invocation -> invocation.getArgument(0));
+    given(playlistRepository.save(any(Playlist.class)))
+        .willAnswer(invocation -> invocation.getArgument(0));
 
     // when
     PlaylistResponse response = playlistService.create(ownerId, request);
@@ -95,7 +90,6 @@ public class PlaylistServiceImplTest {
     assertThat(response.owner().profileImageUrl()).isNull();
     assertThat(response.subscriberCount()).isZero();
     assertThat(response.subscribedByMe()).isFalse();
-
   }
 
   @Test
@@ -113,22 +107,20 @@ public class PlaylistServiceImplTest {
   }
 
   @Test
-  @DisplayName("정상적인 단건 조회시 플레이리스트를 반환한다.")
-  void 단건조회시_플레이리스트를_반환한다() {
+  @DisplayName("정상적인 단건 조회시 플레이리스트와 소유자 정보를 반환한다.")
+  void 단건조회시_플레이리스트와_소유자정보를_반환한다() {
     // given
+    UUID requesterId = UUID.randomUUID();
     UUID ownerId = UUID.randomUUID();
     UUID playlistId = UUID.randomUUID();
     User owner = createUser(ownerId);
+    Playlist playlist = createPlaylist(owner, playlistId);
 
-    Playlist playlist = createPlaylist(ownerId, playlistId);
-
-    given(userRepository.findById(ownerId))
-        .willReturn(Optional.of(owner));
-    given(playlistRepository.findById(playlistId))
+    given(playlistRepository.findWithOwnerById(playlistId))
         .willReturn(Optional.of(playlist));
 
     // when
-    PlaylistResponse playlistResponse = playlistService.getPlaylist(playlistId, ownerId);
+    PlaylistResponse playlistResponse = playlistService.getPlaylist(playlistId, requesterId);
 
     // then
     assertThat(playlistResponse.id()).isEqualTo(playlistId);
@@ -147,13 +139,10 @@ public class PlaylistServiceImplTest {
     UUID requesterId = UUID.randomUUID();
     UUID ownerId = UUID.randomUUID();
     UUID playlistId = UUID.randomUUID();
-
     User owner = createUser(ownerId);
-    Playlist playlist = createPlaylist(ownerId, playlistId);
+    Playlist playlist = createPlaylist(owner, playlistId);
 
-    given(userRepository.findById(ownerId))
-        .willReturn(Optional.of(owner));
-    given(playlistRepository.findById(playlistId))
+    given(playlistRepository.findWithOwnerById(playlistId))
         .willReturn(Optional.of(playlist));
     given(subscriptionRepository
         .existsByPlaylistIdAndSubscriberId(playlistId, requesterId)).willReturn(true);
@@ -172,13 +161,10 @@ public class PlaylistServiceImplTest {
     UUID requesterId = UUID.randomUUID();
     UUID ownerId = UUID.randomUUID();
     UUID playlistId = UUID.randomUUID();
-
     User owner = createUser(ownerId);
-    Playlist playlist = createPlaylist(ownerId, playlistId);
+    Playlist playlist = createPlaylist(owner, playlistId);
 
-    given(userRepository.findById(ownerId))
-        .willReturn(Optional.of(owner));
-    given(playlistRepository.findById(playlistId))
+    given(playlistRepository.findWithOwnerById(playlistId))
         .willReturn(Optional.of(playlist));
     given(subscriptionRepository
         .existsByPlaylistIdAndSubscriberId(playlistId, requesterId)).willReturn(false);
@@ -196,7 +182,8 @@ public class PlaylistServiceImplTest {
     // given
     UUID playlistId = UUID.randomUUID();
     UUID requesterId = UUID.randomUUID();
-    given(playlistRepository.findById(playlistId)).willReturn(Optional.empty());
+    given(playlistRepository.findWithOwnerById(playlistId))
+        .willReturn(Optional.empty());
 
     // when & then
     assertThatExceptionOfType(PlayListNotFoundException.class)
@@ -204,16 +191,11 @@ public class PlaylistServiceImplTest {
         .satisfies(e -> assertThat(e.getDetails())
             .containsEntry("playlistId", playlistId));
 
-    verify(userRepository, never()).findById(any());
     verify(subscriptionRepository, never())
         .existsByPlaylistIdAndSubscriberId(any(), any());
   }
 
-
-
-
-  //------[헬퍼 메서드]-------//
-  //User 생성 헬퍼 메서드
+  //헬퍼 메서드
   private User createUser(UUID ownerId) {
     User owner = User.builder()
         .email("test@test.com")
@@ -224,14 +206,12 @@ public class PlaylistServiceImplTest {
     return owner;
   }
 
-  //playlist 생성 헬퍼
-  private Playlist createPlaylist(UUID ownerId, UUID playlistId) {
-    Playlist playlist = new Playlist(ownerId, "title", "description");
-    ReflectionTestUtils.setField(playlist, "id",playlistId );
+  private Playlist createPlaylist(User owner, UUID playlistId) {
+    Playlist playlist = new Playlist(owner.getId(), "title", "description");
+    ReflectionTestUtils.setField(playlist, "id", playlistId);
+    ReflectionTestUtils.setField(playlist, "owner", owner);
     ReflectionTestUtils.setField(playlist, "subscriberCount", 3L);
-    ReflectionTestUtils.setField(playlist,
-        "updatedAt",
-        LocalDateTime.of(2026, 10, 26, 12, 0));
+    ReflectionTestUtils.setField(playlist, "updatedAt", LocalDateTime.of(2026, 10, 26, 12, 0));
     return playlist;
   }
 }
