@@ -2,7 +2,6 @@ package com.codeit.sb13.playlist_for_everyone.domain.follow.service.impl;
 
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.command.FollowCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.command.UnFollowCommand;
-import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowDto;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowResult;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.entity.Follow;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.repository.FollowRepository;
@@ -22,13 +21,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@Transactional
 public class FollowServiceImpl implements FollowService {
 
     private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
@@ -36,6 +33,7 @@ public class FollowServiceImpl implements FollowService {
 
     private final FollowRepository followRepository;
     private final FollowSaver followSaver;
+    private final FollowReader followReader;
     private final UserRepository userRepository;
 
     @Override
@@ -44,12 +42,13 @@ public class FollowServiceImpl implements FollowService {
             throw new SelfFollowNotAllowedException();
         }
 
-        return getFollowResult(command)
+        return followReader.findExistingFollow(command)
                 .orElseGet(() -> save(command));
     }
 
     @Override
     @PreAuthorize("isAuthenticated() and @followGuard.canUnfollow(#command.followerId(), #command.followId())")
+    @Transactional
     public void unfollow(UnFollowCommand command) {
         followRepository.findById(command.followId())
                 .ifPresentOrElse(
@@ -64,24 +63,17 @@ public class FollowServiceImpl implements FollowService {
                 );
     }
 
-    private Optional<FollowResult> getFollowResult(FollowCommand command) {
-        return followRepository.findByFolloweeIdAndFollowerId(command.followeeId(), command.followerId())
-                .map(follow -> FollowResult.alreadyFollowed(FollowDto.from(follow)));
-    }
-
     private FollowResult save(FollowCommand command){
         User follower = getUser(command.followerId());
         User followee = getFollowee(command);
 
         try {
-            Follow follow = followSaver.save(new Follow(follower, followee));
-            return FollowResult.followCreated(FollowDto.from(follow));
-        }catch (DataIntegrityViolationException e){
+            return FollowResult.followCreated(followSaver.save(new Follow(follower, followee)));
+        } catch (DataIntegrityViolationException e){
             if (!isFollowUniqueViolation(e)) {
                 throw new FollowCreationFailedException(e);
             }
-
-            return getFollowResult(command)
+            return followReader.findExistingFollow(command)
                     .orElseThrow(() -> new FollowCreationFailedException(e));
         }
     }
@@ -91,8 +83,8 @@ public class FollowServiceImpl implements FollowService {
 
         while (cause != null) {
             if (cause instanceof ConstraintViolationException violation
-                && UNIQUE_VIOLATION_SQL_STATE.equals(violation.getSQLState())
-                && FOLLOW_UNIQUE_CONSTRAINT.equals(violation.getConstraintName())
+                    && UNIQUE_VIOLATION_SQL_STATE.equals(violation.getSQLState())
+                    && FOLLOW_UNIQUE_CONSTRAINT.equals(violation.getConstraintName())
             ){
                 return true;
             }

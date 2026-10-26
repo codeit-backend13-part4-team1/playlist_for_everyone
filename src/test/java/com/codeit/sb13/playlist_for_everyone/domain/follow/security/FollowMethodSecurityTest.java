@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.command.UnFollowC
 import com.codeit.sb13.playlist_for_everyone.domain.follow.entity.Follow;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.repository.FollowRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.service.FollowService;
+import com.codeit.sb13.playlist_for_everyone.domain.follow.service.impl.FollowReader;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.service.impl.FollowSaver;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.service.impl.FollowServiceImpl;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
@@ -44,6 +45,9 @@ public class FollowMethodSecurityTest {
 
     @MockitoBean
     private FollowSaver followSaver;
+
+    @MockitoBean
+    private FollowReader followReader;
 
     @Test
     @WithMockUser

@@ -44,6 +44,9 @@ class FollowServiceImplTest {
     @Mock
     private FollowSaver followSaver;
 
+    @Mock
+    private FollowReader followReader;
+
     @InjectMocks
     private FollowServiceImpl followService;
 
@@ -55,22 +58,18 @@ class FollowServiceImplTest {
         UUID followId = UUID.randomUUID();
 
         FollowCommand command = new FollowCommand(followeeId, followerId);
-        given(followRepository.findByFolloweeIdAndFollowerId(followeeId, followerId))
+        given(followReader.findExistingFollow(command))
                 .willReturn(Optional.empty());
 
-        Follow savedFollow = mock(Follow.class);
+        FollowDto savedFollow = new FollowDto(followId, followeeId, followerId);
         User follower = mock(User.class);
         User followee = mock(User.class);
 
-        given(savedFollow.getId()).willReturn(followId);
         given(follower.getId()).willReturn(followerId);
         given(followee.getId()).willReturn(followeeId);
 
         given(userRepository.findById(followerId)).willReturn(Optional.of(follower));
         given(userRepository.findById(followeeId)).willReturn(Optional.of(followee));
-
-        given(savedFollow.getFollowerId()).willReturn(followerId);
-        given(savedFollow.getFolloweeId()).willReturn(followeeId);
         given(followSaver.save(any(Follow.class))).willReturn(savedFollow);
 
         FollowResult result = followService.follow(command);
@@ -112,16 +111,11 @@ class FollowServiceImplTest {
         UUID followeeId = UUID.randomUUID();
         UUID followId = UUID.randomUUID();
 
-
         FollowCommand command = new FollowCommand(followeeId, followerId);
 
-        Follow existingFollow = mock(Follow.class);
+        FollowResult existingFollow = FollowResult.alreadyFollowed(new FollowDto(followId, followeeId, followerId));
 
-        given(existingFollow.getId()).willReturn(followId);
-        given(existingFollow.getFollowerId()).willReturn(followerId);
-        given(existingFollow.getFolloweeId()).willReturn(followeeId);
-
-        given(followRepository.findByFolloweeIdAndFollowerId(followeeId, followerId))
+        given(followReader.findExistingFollow(command))
                 .willReturn(Optional.of(existingFollow));
 
         FollowResult result = followService.follow(command);
@@ -129,8 +123,7 @@ class FollowServiceImplTest {
         assertThat(result).isNotNull();
         assertThat(result.created()).isFalse();
         assertThat(result.followDto()).isEqualTo(new FollowDto(followId, followeeId, followerId));
-        verify(followRepository)
-                .findByFolloweeIdAndFollowerId(followeeId, followerId);
+        verify(followReader).findExistingFollow(command);
 
         verifyNoInteractions(userRepository, followSaver);
 
@@ -144,7 +137,7 @@ class FollowServiceImplTest {
 
         FollowCommand command = new FollowCommand(followeeId, followerId);
 
-        given(followRepository.findByFolloweeIdAndFollowerId(followeeId, followerId))
+        given(followReader.findExistingFollow(command))
                 .willReturn(Optional.empty());
 
         User follower = mock(User.class);
@@ -170,16 +163,12 @@ class FollowServiceImplTest {
 
         User follower = mock(User.class);
         User followee = mock(User.class);
-        Follow existingFollow = mock(Follow.class);
+        FollowResult existingFollow = FollowResult.alreadyFollowed(new FollowDto(followId, followeeId, followerId));
 
         given(userRepository.findById(followerId)).willReturn(Optional.of(follower));
         given(userRepository.findById(followeeId)).willReturn(Optional.of(followee));
 
-        given(existingFollow.getId()).willReturn(followId);
-        given(existingFollow.getFollowerId()).willReturn(followerId);
-        given(existingFollow.getFolloweeId()).willReturn(followeeId);
-
-        given(followRepository.findByFolloweeIdAndFollowerId(followeeId, followerId))
+        given(followReader.findExistingFollow(command))
                 .willReturn(Optional.empty())
                 .willReturn(Optional.of(existingFollow));
 
@@ -196,7 +185,7 @@ class FollowServiceImplTest {
         assertThat(result.created()).isFalse();
         assertThat(result.followDto()).isEqualTo(new FollowDto(followId, followeeId, followerId));
 
-        verify(followRepository, times(2)).findByFolloweeIdAndFollowerId(followeeId, followerId);
+        verify(followReader, times(2)).findExistingFollow(command);
 
         verify(followSaver).save(any(Follow.class));
 
@@ -215,7 +204,7 @@ class FollowServiceImplTest {
 
         given(userRepository.findById(followerId)).willReturn(Optional.of(follower));
         given(userRepository.findById(followeeId)).willReturn(Optional.of(followee));
-        given(followRepository.findByFolloweeIdAndFollowerId(followeeId, followerId))
+        given(followReader.findExistingFollow(command))
                 .willReturn(Optional.empty());
 
         SQLException sqlException = new SQLException("duplicate follow", "23505");
@@ -231,8 +220,8 @@ class FollowServiceImplTest {
                         e -> assertThat(e.getCause())
                                 .isSameAs(exception));
 
-        verify(followRepository, times(2))
-                .findByFolloweeIdAndFollowerId(followeeId, followerId);
+        verify(followReader, times(2))
+                .findExistingFollow(command);
         verify(followSaver).save(any(Follow.class));
     }
 
@@ -249,7 +238,7 @@ class FollowServiceImplTest {
 
         given(userRepository.findById(followerId)).willReturn(Optional.of(follower));
         given(userRepository.findById(followeeId)).willReturn(Optional.of(followee));
-        given(followRepository.findByFolloweeIdAndFollowerId(followeeId, followerId))
+        given(followReader.findExistingFollow(command))
                 .willReturn(Optional.empty());
 
 
@@ -266,8 +255,8 @@ class FollowServiceImplTest {
                         e-> assertThat(e.getCause())
                                 .isSameAs(exception));
 
-        verify(followRepository, times(1))
-                .findByFolloweeIdAndFollowerId(followeeId, followerId);
+        verify(followReader, times(1))
+                .findExistingFollow(command);
         verify(followSaver).save(any(Follow.class));
     }
 
@@ -284,7 +273,7 @@ class FollowServiceImplTest {
 
         given(userRepository.findById(followerId)).willReturn(Optional.of(follower));
         given(userRepository.findById(followeeId)).willReturn(Optional.of(followee));
-        given(followRepository.findByFolloweeIdAndFollowerId(followeeId, followerId))
+        given(followReader.findExistingFollow(command))
                 .willReturn(Optional.empty());
 
 
@@ -301,8 +290,8 @@ class FollowServiceImplTest {
                         e-> assertThat(e.getCause())
                                 .isSameAs(exception));
 
-        verify(followRepository, times(1))
-                .findByFolloweeIdAndFollowerId(followeeId, followerId);
+        verify(followReader, times(1))
+                .findExistingFollow(command);
 
         verify(followSaver).save(any(Follow.class));
     }

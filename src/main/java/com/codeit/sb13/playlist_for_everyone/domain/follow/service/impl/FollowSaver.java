@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.follow.service.impl;
 
+import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowDto;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.entity.Follow;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.repository.FollowRepository;
 import lombok.RequiredArgsConstructor;
@@ -16,7 +17,8 @@ public class FollowSaver {
     private final FollowRepository followRepository;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public Follow save(Follow follow){
-        return followRepository.save(follow);
+    public FollowDto save(Follow follow){
+        return FollowDto.from(followRepository.save(follow));
     }
+
 }
