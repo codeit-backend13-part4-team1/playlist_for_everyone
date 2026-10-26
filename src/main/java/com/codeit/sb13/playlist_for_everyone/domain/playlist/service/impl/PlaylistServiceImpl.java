@@ -12,7 +12,6 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserReposito
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -48,20 +47,16 @@ public class PlaylistServiceImpl implements PlaylistService {
   @Override
   public PlaylistResponse getPlaylist(UUID playlistId, UUID requesterId) {
 
-    Playlist playlist = playlistRepository.findById(playlistId)
+    Playlist playlist = playlistRepository.findWithOwnerById(playlistId)
         .orElseThrow(() -> new PlayListNotFoundException(
             Map.of("playlistId", playlistId)));
 
-    UUID ownerId = playlist.getOwnerId();
-
-    User owner = userRepository.findById(ownerId)
-        .orElseThrow(() -> new UserNotFoundException(
-            Map.of("userId", ownerId)));
+    User owner = playlist.getOwner();
 
     boolean subscribedByMe = subscriptionRepository
         .existsByPlaylistIdAndSubscriberId(playlistId, requesterId);
 
-    UserSummary userSummary = new UserSummary(ownerId, owner.getName(), null);
+    UserSummary userSummary = new UserSummary(owner.getId(), owner.getName(), null);
 
     return PlaylistResponse.from(playlist, userSummary, subscribedByMe);
   }
