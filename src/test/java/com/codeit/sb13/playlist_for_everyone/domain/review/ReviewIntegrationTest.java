@@ -23,6 +23,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest(properties = {
@@ -51,17 +52,14 @@ public class ReviewIntegrationTest {
     @PersistenceContext
     private EntityManager em;
 
-    private Content createAndPersistContent() {
+    private Content createAndPersistContent(String title) {
         Content content = BeanUtils.instantiateClass(Content.class);
 
-        // TODO: createAdminContent() 구현 후 ReflectionTestUtils 대신 정적 팩토리 메서드 사용
-
+        // TODO: createAdminContent() 구현 후 정적 팩토리 메서드 사용
         ReflectionTestUtils.setField(content, "type", ContentType.movie);
-        ReflectionTestUtils.setField(content, "title", "영화 1");
-        ReflectionTestUtils.setField(content, "description", "영화 1 입니다");
-        ReflectionTestUtils.setField(
-                content, "thumbnailUrl", "https://example.com/movie1.png"
-        );
+        ReflectionTestUtils.setField(content, "title", title);
+        ReflectionTestUtils.setField(content, "description", title + " 입니다");
+        ReflectionTestUtils.setField(content, "thumbnailUrl", "https://example.com/movie.png");
         ReflectionTestUtils.setField(content, "provider", ContentSource.ADMIN);
 
         em.persist(content);
@@ -70,10 +68,10 @@ public class ReviewIntegrationTest {
         return content;
     }
 
-    private User createAuthor() {
+    private User createAuthor(String email, String name) {
         User author = User.builder()
-                .email("test@example.com")
-                .name("테스트 사용자")
+                .email(email)
+                .name(name)
                 .password("encodedPassword")
                 .role(Role.USER)
                 .build();
@@ -89,8 +87,8 @@ public class ReviewIntegrationTest {
     @DisplayName("Flyway 적용 후 동일 콘텐츠와 작성자의 리뷰 중복 등록을 방지한다")
     void duplicateReview() {
         // given
-        Content content = createAndPersistContent();
-        User author = createAuthor();
+        Content content = createAndPersistContent("영화 1");
+        User author = createAuthor("mopl1@gmail.com", "사용자 1");
 
         Review review1 = Review.builder()
                 .content(content)
@@ -113,6 +111,64 @@ public class ReviewIntegrationTest {
         assertThatThrownBy(() ->
                 reviewRepository.saveAndFlush(review2)
         ).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("동일 콘텐츠에 서로 다른 작성자의 리뷰 등록을 허용한다")
+    void allowDifferentAuthorsForSameContent() {
+        Content content = createAndPersistContent("영화 1");
+
+        User author1 = createAuthor("mopl1@gmail.com", "사용자 1");
+        User author2 = createAuthor("mopl2@gmail.com", "사용자 2");
+
+        Review review1 = Review.builder()
+                .content(content)
+                .author(author1)
+                .text("재밌어요!")
+                .rating(4.5)
+                .build();
+
+        Review review2 = Review.builder()
+                .content(content)
+                .author(author2)
+                .text("좋아요!")
+                .rating(5.0)
+                .build();
+
+        reviewRepository.saveAndFlush(review1);
+        reviewRepository.saveAndFlush(review2);
+
+        assertThat(reviewRepository.count()).isEqualTo(2);
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("동일 작성자의 서로 다른 콘텐츠 리뷰 등록을 허용한다")
+    void allowSameAuthorForDifferentContents() {
+        Content content1 = createAndPersistContent("영화 1");
+        Content content2 = createAndPersistContent("영화 2");
+
+        User author = createAuthor("mopl1@gmail.com", "사용자 1");
+
+        Review review1 = Review.builder()
+                .content(content1)
+                .author(author)
+                .text("영화 1 리뷰")
+                .rating(4.5)
+                .build();
+
+        Review review2 = Review.builder()
+                .content(content2)
+                .author(author)
+                .text("영화 2 리뷰")
+                .rating(5.0)
+                .build();
+
+        reviewRepository.saveAndFlush(review1);
+        reviewRepository.saveAndFlush(review2);
+
+        assertThat(reviewRepository.count()).isEqualTo(2);
     }
 
 }
