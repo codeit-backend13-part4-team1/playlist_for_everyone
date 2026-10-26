@@ -58,7 +58,7 @@ class CustomUserDetailsServiceTest {
 
     @Test
     @DisplayName("존재하지 않는 이메일이면 인증용 사용자 미존재 예외가 발생한다")
-    void 존재하지_않는_이메일이이면_예외가_발생한다() {
+    void 존재하지_않는_이메일이면_예외가_발생한다() {
         given(userRepository.findByEmail("unknown@gmail.com"))
                 .willReturn(Optional.empty());
 
