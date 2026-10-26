@@ -146,7 +146,7 @@ class PlaylistControllerTest {
   }
 
   @Test
-  @DisplayName("정상적인 조회 요총시 플레이 리스트 객체를 반환한다.")
+  @DisplayName("정상적인 조회 요청시 플레이 리스트 객체를 반환한다.")
   void 정상적인_조회_청시_200으로_응답한다() throws Exception {
     // given
     UUID requesterId = UUID.randomUUID();
@@ -156,7 +156,7 @@ class PlaylistControllerTest {
 
     PlaylistResponse response = createResponse(playlistId, summary, true);
 
-    given(playlistService.getPlaylist(ownerId, playlistId))
+    given(playlistService.getPlaylist(playlistId, requesterId))
         .willReturn(response);
 
     // when & then
@@ -165,9 +165,9 @@ class PlaylistControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.id").value(playlistId.toString()))
         .andExpect(jsonPath("$.title").value("title"))
+        .andExpect(jsonPath("$.owner.name").value("tester"))
         .andExpect(jsonPath("$.description").value("description"))
         .andExpect(jsonPath("$.owner.userId").value(ownerId.toString()))
-        .andExpect(jsonPath("$.description").value("description"))
         .andExpect(jsonPath("$.subscriberCount").value(3))
         .andExpect(jsonPath("$.subscribedByMe").value(true));
   }
