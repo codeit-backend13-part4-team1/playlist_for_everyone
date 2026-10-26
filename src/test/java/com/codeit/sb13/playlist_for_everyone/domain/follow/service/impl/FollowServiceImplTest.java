@@ -10,6 +10,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.EveryOneException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.follow.FollowCreationFailedException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.follow.FollowNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.follow.SelfFollowNotAllowedException;
 import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.DisplayName;
@@ -349,6 +350,29 @@ class FollowServiceImplTest {
         verify(followReader).findExistingFollow(command);
 
         verifyNoInteractions(userRepository, followSaver);
+    }
+
+    @Test
+    @DisplayName("팔로우 관계가 없으면 대상 사용자 ID를 담은 조회 실패 예외가 발생한다.")
+    void findFollowDto_throwsWhenFollowNotFound(){
+        UUID followerId = UUID.randomUUID();
+        UUID followeeId = UUID.randomUUID();
+
+        FollowCommand command = new FollowCommand(followeeId, followerId);
+        given(followReader.findExistingFollow(command)).willReturn(Optional.empty());
+
+        assertThatThrownBy(()-> followService.findFollowDto(command))
+                .isInstanceOfSatisfying(FollowNotFoundException.class,
+                        e -> {
+                    assertThat(e.getApiErrorCode().getStatus())
+                            .isEqualTo(HttpStatus.NOT_FOUND);
+
+                    assertThat(e.getDetails())
+                                .containsEntry("followeeId", followeeId);
+                });
+
+        verify(followReader).findExistingFollow(command);
+        verifyNoInteractions(userRepository, followSaver, followRepository);
     }
 
 }
