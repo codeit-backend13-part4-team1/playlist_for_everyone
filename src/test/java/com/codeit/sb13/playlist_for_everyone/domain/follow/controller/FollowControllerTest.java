@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.follow.controller;
 
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.command.FollowCommand;
+import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.command.UnFollowCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowDto;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowResult;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.service.FollowService;
@@ -26,9 +27,9 @@ import java.util.UUID;
 
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(controllers = FollowController.class)
 @AutoConfigureMockMvc(addFilters = false)
@@ -169,6 +170,22 @@ class FollowControllerTest {
                 .andExpect(jsonPath("$.details.followeeId").value(followeeId.toString()));
 
         verify(followService).follow(command);
+    }
+
+    @Test
+    @DisplayName("팔로우 취소 요청을 서비스에 전달하고 본문 없이 204를 반환한다.")
+    void unfollow_returnsNoContent() throws Exception {
+        UUID followId = UUID.randomUUID();
+
+        // 인증 연동 전에는 서비스에 전달할 followerId를 null로 둔다.
+        UnFollowCommand command = new UnFollowCommand(followId, null);
+
+        mockMvc.perform(delete("/api/follows/{followId}", followId))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
+
+        verify(followService).unfollow(command);
+
     }
 
 
