@@ -74,7 +74,7 @@ public class FollowServiceImpl implements FollowService {
 
     @Override
     public Long countFollowers(UUID followeeId) {
-        return null;
+        return followReader.countFollowers(followeeId);
     }
 
     private FollowResult save(FollowCommand command){

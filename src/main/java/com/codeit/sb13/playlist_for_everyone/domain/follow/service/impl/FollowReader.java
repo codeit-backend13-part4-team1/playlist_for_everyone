@@ -27,6 +27,6 @@ public class FollowReader {
     }
 
     public Long countFollowers(UUID followeeId){
-        return null;
+        return followRepository.countByFolloweeId(followeeId);
     }
 }
