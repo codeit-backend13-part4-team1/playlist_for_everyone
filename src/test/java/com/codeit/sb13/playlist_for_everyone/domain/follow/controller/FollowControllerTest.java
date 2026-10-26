@@ -62,4 +62,32 @@ class FollowControllerTest {
 
         verify(followService).follow(command);
     }
+
+    @Test
+    @DisplayName("이미 팔로우 중이면 200과 기존 팔로우 정보를 반환한다.")
+    void follow_returnsOkWhenAlreadyFollowed() throws Exception {
+        UUID existingFollowId = UUID.randomUUID();
+        UUID followeeId = UUID.randomUUID();
+        UUID followerId = UUID.randomUUID();
+
+        FollowCommand command = new FollowCommand(followeeId, null);
+        FollowDto response = new FollowDto(existingFollowId, followeeId, followerId);
+
+        given(followService.follow(command)).willReturn(FollowResult.alreadyFollowed(response));
+        mockMvc.perform(post("/api/follows")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                            {
+                                "followeeId": "%s"
+                            }
+                        """.formatted(followeeId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(existingFollowId.toString()))
+                .andExpect(jsonPath("$.followeeId").value(followeeId.toString()))
+                .andExpect(jsonPath("$.followerId").value(followerId.toString()));
+
+        verify(followService).follow(command);
+    }
+
+
 }
