@@ -85,8 +85,8 @@ class SubscriptionRepositoryTest {
         new Subscription(playlistId, subscriberId1));
 
     // when
-    boolean subscriptionStatus = subscriptionRepository.existsByPlaylistIdAndSubscriberId(playlistId,
-        subscriberId2);
+    boolean subscriptionStatus = subscriptionRepository
+        .existsByPlaylistIdAndSubscriberId(playlistId, subscriberId2);
 
     // then
     assertThat(subscriptionStatus).isFalse();
