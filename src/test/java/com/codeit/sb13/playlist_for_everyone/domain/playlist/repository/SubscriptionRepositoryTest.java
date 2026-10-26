@@ -55,4 +55,41 @@ class SubscriptionRepositoryTest {
         subscriptionRepository.saveAndFlush(new Subscription(playlistId, UUID.randomUUID())))
         .doesNotThrowAnyException();
   }
+
+  @Test
+  @DisplayName("사용자가 이 플레이리스트를 구독하는 중이라면 true")
+  void 사용자가_이_플레이리스트를_구독하는_중이라면_true를_반환한다(){
+    // given
+    UUID playlistId = UUID.randomUUID();
+    UUID subscriberId = UUID.randomUUID();
+    subscriptionRepository.saveAndFlush(
+        new Subscription(playlistId, subscriberId));
+
+    // when
+    boolean subscriptionStatus = subscriptionRepository.existsByPlaylistIdAndSubscriberId(playlistId,
+        subscriberId);
+
+    // then
+    assertThat(subscriptionStatus).isTrue();
+
+  }
+
+  @Test
+  @DisplayName("사용자가 이 플레이리스트를 구독하지 않는 중이라면 false")
+  void 사용자가_이_플레이리스트를_구독하지_않는_중이라면_false를_반환한다(){
+    // given
+    UUID playlistId = UUID.randomUUID();
+    UUID subscriberId1 = UUID.randomUUID();
+    UUID subscriberId2 = UUID.randomUUID();
+     subscriptionRepository.saveAndFlush(
+        new Subscription(playlistId, subscriberId1));
+
+    // when
+    boolean subscriptionStatus = subscriptionRepository.existsByPlaylistIdAndSubscriberId(playlistId,
+        subscriberId2);
+
+    // then
+    assertThat(subscriptionStatus).isFalse();
+
+  }
 }
