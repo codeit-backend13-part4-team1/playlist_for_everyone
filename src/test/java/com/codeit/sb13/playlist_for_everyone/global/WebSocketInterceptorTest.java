@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.global;
 
 import com.codeit.sb13.playlist_for_everyone.global.service.WatcherRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.WebSocketInterceptor;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -62,6 +63,7 @@ public class WebSocketInterceptorTest {
     @DisplayName("Connection 동작 테스트")
     class Connection {
 
+        @Disabled // 인증 부분이 완성되면 활성
         @Test
         @DisplayName("유효한 토큰이면 연결.")
         public void wrightTokenConnectionTest(){

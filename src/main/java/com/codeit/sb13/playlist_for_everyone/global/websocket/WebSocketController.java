@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.simp.annotation.SubscribeMapping;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.stereotype.Controller;
@@ -30,8 +31,9 @@ public class WebSocketController {
             StompHeaderAccessor header,
             Principal principal
     ){
-        // 컨텐츠, 유저 서비스 이용해서 WatcherSessionDto 반환.
-        eventPublisher.publishEvent(new WebSocketContentWatchEvent(contentId, null));
+        // 추후 컨텐츠, 유저 서비스 이용해서 WatcherSessionDto 반환.
+        return;
+//        eventPublisher.publishEvent(new WebSocketContentWatchEvent(contentId, null));
     }
 
 

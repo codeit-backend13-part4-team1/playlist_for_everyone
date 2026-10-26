@@ -4,6 +4,7 @@ package com.codeit.sb13.playlist_for_everyone.watch;
 import com.codeit.sb13.playlist_for_everyone.global.config.WebSocketConfig;
 import com.codeit.sb13.playlist_for_everyone.global.service.WatcherRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.WebSocketController;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.WebSocketEventListener;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.WebSocketInterceptor;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.dto.event.WebSocketChatEvent;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.dto.event.WebSocketContentWatchEvent;
@@ -39,7 +40,9 @@ import static org.awaitility.Awaitility.await;
 @WebMvcTest(controllers = {WebSocketController.class})
 @Import({
         WebSocketConfig.class,
-        WebSocketInterceptor.class
+        WebSocketInterceptor.class,
+        WebSocketEventListener.class,
+        SimpMessagingTemplate.class
 })
 @RecordApplicationEvents
 public class WatchControllerTest {
@@ -53,9 +56,6 @@ public class WatchControllerTest {
 
     @Autowired
     private ApplicationEvents applicationEvents;
-
-    @MockitoSpyBean
-    private SimpMessagingTemplate simpMessagingTemplate;
 
     private final String PUB_PREFIX = "/pub/contents/";
     private final String SUB_PREFIX = "/sub/contents/";

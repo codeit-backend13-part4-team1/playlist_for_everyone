@@ -131,8 +131,8 @@ public class RedisLockProviderTest {
                             provider.lock("test");
                             unshareResourceAccessCount.incrementAndGet();
                             Thread.sleep(100);
-                        } catch (Exception e) {
-                            throw new RedisLockProvider.RedisLockException("");
+                        } catch (RedisLockProvider.RedisLockException e) {
+                            throw e;
                         }
                         success.incrementAndGet();
                     } catch (RedisLockProvider.RedisLockException e) {

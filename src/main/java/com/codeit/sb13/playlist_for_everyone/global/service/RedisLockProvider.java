@@ -19,6 +19,7 @@ import static com.codeit.sb13.playlist_for_everyone.global.config.RedisConfig.*;
 public class RedisLockProvider {
 
     static private final Duration LOCK_TIMEOUT = Duration.ofSeconds(3);
+    static private final Duration DEADLINE_T = Duration.ofMillis(100);
 
     private final StringRedisTemplate redisTemplate;
 
@@ -53,14 +54,20 @@ public class RedisLockProvider {
 
         Boolean locked = ops.setIfAbsent(lockKey, lockValue, LOCK_TIMEOUT);
 
-        if (Boolean.TRUE.equals(locked)) {
-            log.debug("[Redis] 분산 락 획득 - key: {}, value : {}", lockKey, lockValue);
-            return lockValue;
-        }
-        else {
-            log.error("[Redis] 분산 락 획득 실패 - key: {}, value : {}", lockKey, lockValue);
-            throw new RedisLockException("redis locking failure");
-        }
+        long deadline = System.nanoTime() + DEADLINE_T.toNanos();
+
+        do {
+            if (Boolean.TRUE.equals(locked)) {
+                log.debug("[Redis] 분산 락 획득 - key: {}, value : {}", lockKey, lockValue);
+                return lockValue;
+            }
+
+            try { Thread.sleep(20); }
+            catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
+
+        } while (System.nanoTime() < deadline);
+        log.error("[Redis] 분산 락 획득 실패 - key: {}, value : {}", lockKey, lockValue);
+        throw new RedisLockException("redis locking failure");
     }
 
     public void unlock(String key, String id){
