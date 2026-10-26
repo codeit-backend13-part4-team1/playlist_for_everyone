@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.follow.controller;
 
+import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.command.UnFollowCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.request.FollowRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowDto;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowResult;
@@ -28,8 +29,10 @@ public class FollowController {
 
     @DeleteMapping("/{followId}")
     public ResponseEntity<Void> unfollow(@PathVariable UUID followId){
-
-        return null;
+        // 인증 붙이기전에 임시 null적용
+        UUID followerId = null;
+        followService.unfollow(new UnFollowCommand(followId, followerId));
+        return ResponseEntity.noContent().build();
     }
 
     private ResponseEntity<FollowDto> handleFollowResult(FollowResult result) {
