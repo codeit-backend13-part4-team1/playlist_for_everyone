@@ -3,13 +3,12 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket;
 
 import com.codeit.sb13.playlist_for_everyone.global.websocket.dto.chat.ContentChatSendRequest;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.dto.event.WebSocketChatEvent;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.dto.event.WebSocketContentWatchEvent;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.dto.watcher.WatchingSessionDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.simp.annotation.SubscribeMapping;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.stereotype.Controller;
@@ -26,14 +25,13 @@ public class WebSocketController {
 
     // 초기 구독시 WatchingSessionDto 한번 반환.
     @SubscribeMapping("/contents/{contentId}/watch")
-    public void contentWatch(
+    public WatchingSessionDto contentWatch(
             @DestinationVariable UUID contentId,
             StompHeaderAccessor header,
             Principal principal
     ){
         // 추후 컨텐츠, 유저 서비스 이용해서 WatcherSessionDto 반환.
-        return;
-//        eventPublisher.publishEvent(new WebSocketContentWatchEvent(contentId, null));
+        return new WatchingSessionDto(null,null,null,null);
     }
 
 

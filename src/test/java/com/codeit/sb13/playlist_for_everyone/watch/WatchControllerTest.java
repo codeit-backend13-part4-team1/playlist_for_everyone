@@ -6,6 +6,7 @@ import com.codeit.sb13.playlist_for_everyone.global.service.WatcherRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.WebSocketController;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.WebSocketEventListener;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.WebSocketInterceptor;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.dto.chat.ContentChatDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.dto.event.WebSocketChatEvent;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.dto.event.WebSocketContentWatchEvent;
 import lombok.extern.slf4j.Slf4j;
@@ -17,9 +18,11 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
+import org.springframework.messaging.MessageHandler;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
+import org.springframework.messaging.support.AbstractSubscribableChannel;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
@@ -32,17 +35,20 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
+import static org.mockito.Mockito.*;
 
 @Slf4j
 @WebMvcTest(controllers = {WebSocketController.class})
 @Import({
         WebSocketConfig.class,
         WebSocketInterceptor.class,
-        WebSocketEventListener.class,
-        SimpMessagingTemplate.class
+        WebSocketEventListener.class
 })
 @RecordApplicationEvents
 public class WatchControllerTest {
@@ -51,11 +57,18 @@ public class WatchControllerTest {
     @Qualifier("clientInboundChannel")
     private MessageChannel inbound;
 
+    @Autowired
+    @Qualifier("clientOutboundChannel")
+    private AbstractSubscribableChannel outbound;
+
     @MockitoBean
     private WatcherRegistry watcherRegistry;
 
     @Autowired
     private ApplicationEvents applicationEvents;
+
+    @MockitoSpyBean
+    SimpMessagingTemplate simpMessagingTemplate;
 
     private final String PUB_PREFIX = "/pub/contents/";
     private final String SUB_PREFIX = "/sub/contents/";
@@ -83,31 +96,38 @@ public class WatchControllerTest {
 
     @Test
     @DisplayName("공통 채널 구독시 채널 정보 반환")
-    void contentSubscriptionTest(){
+    void contentSubscriptionTest() throws Exception {
         UUID contentId = UUID.randomUUID();
         StompHeaderAccessor accessor = stompHeader(
                 StompCommand.SUBSCRIBE,
                 pathResolver(SUB_PREFIX, contentId, WATCH_POSTFIX));
+
+        accessor.setSubscriptionId("test-1");
+
+
         Message<byte[]> message = MessageBuilder.createMessage(
                 "".getBytes(StandardCharsets.UTF_8),
                 accessor.toMessageHeaders()
         );
-        inbound.send(message);
 
-        await().atMost(Duration.ofSeconds(3))
-                .untilAsserted(() -> {
+        BlockingQueue<Message<?>> received =
+                new LinkedBlockingQueue<>();
 
-                    List<WebSocketContentWatchEvent> events =
-                            applicationEvents
-                                    .stream(WebSocketContentWatchEvent.class)
-                                    .toList();
+        MessageHandler handler = received::offer;
 
-                    assertThat(events).hasSize(1);
+        // 응답 채널 구독
+        outbound.subscribe(handler);
 
-                    WebSocketContentWatchEvent event = events.get(0);
-                    log.info("[WebSocketChatTest] 이벤트 발생 - event: {}", event);
-                    assertThat(event).isNotNull();
-                });
+        try {
+
+            inbound.send(message);
+            Message<?> response = received.poll(
+                    3, TimeUnit.SECONDS
+            );
+            assertThat(response).isNotNull();
+        } finally {
+            outbound.unsubscribe(handler);
+        }
     }
 
 
@@ -146,6 +166,11 @@ public class WatchControllerTest {
                     log.info("[WebSocketChatTest] 이벤트 발생 - event: {}", event);
                     assertThat(event).isNotNull();
                 });
+
+        verify(simpMessagingTemplate, times(1)).convertAndSend(
+                eq(pathResolver(SUB_PREFIX, contentId, CHAT_POSTFIX)),
+                any(ContentChatDto.class)
+        );
     }
 
 
