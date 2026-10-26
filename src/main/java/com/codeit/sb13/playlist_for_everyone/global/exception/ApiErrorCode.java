@@ -8,6 +8,7 @@ public enum ApiErrorCode {
 
     //USER U
     USER_NOT_FOUND("U_001", HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."),
+    USER_EMAIL_DUPLICATED("U_002", HttpStatus.BAD_REQUEST, "이미 사용중인 이메일입니다."),
 
     //CONTENT C
     CONTENT_NOT_FOUND("C_001", HttpStatus.NOT_FOUND, "콘텐츠를 찾을 수 없습니다."),
