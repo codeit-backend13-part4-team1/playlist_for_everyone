@@ -23,6 +23,7 @@ public class PlaylistServiceImpl implements PlaylistService {
 
   private final PlaylistRepository playlistRepository;
   private final UserRepository userRepository;
+  private final SubscriptionRepository subscriptionRepository;
 
   @Transactional
   @Override
@@ -40,5 +41,10 @@ public class PlaylistServiceImpl implements PlaylistService {
         //소유자 본인이 소유한 플레이 리스트는 구독할 수 없으므로 항상 false이다.
 
     return playlistResponse;
+  }
+
+  @Override
+  public PlaylistResponse getPlaylist(UUID playlistId, UUID ownerId) {
+    return null;
   }
 }
