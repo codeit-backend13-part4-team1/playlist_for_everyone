@@ -21,12 +21,14 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.Map;
 import java.util.UUID;
 
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -186,6 +188,17 @@ class FollowControllerTest {
 
         verify(followService).unfollow(command);
 
+    }
+
+    @Test
+    @DisplayName("팔로우 ID의 UUID 형식이 잘못되면 400을 반환하고 서비스를 호출하지 않는다.")
+    void unfollow_returnsBadRequestWhenFollowIdInvalid() throws Exception {
+        mockMvc.perform(delete("/api/follows/{followId}", "not-a-uuid"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.exceptionName")
+                        .value(MethodArgumentTypeMismatchException.class.getSimpleName()));
+
+        verifyNoInteractions(followService);
     }
 
 
