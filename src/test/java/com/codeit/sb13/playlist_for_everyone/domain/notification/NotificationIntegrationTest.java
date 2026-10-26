@@ -1,19 +1,12 @@
 package com.codeit.sb13.playlist_for_everyone.domain.notification;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.command.NotificationCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationCreateRequestedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.Notification;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.NotificationLevel;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.repository.NotificationRepository;
-import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationSaver;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationService;
 import jakarta.validation.ConstraintViolationException;
-import java.util.List;
-import java.util.UUID;
-import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -31,7 +24,6 @@ import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -39,6 +31,12 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+
+import java.util.List;
+import java.util.UUID;
+import java.util.stream.Stream;
+
+import static org.assertj.core.api.Assertions.*;
 
 @SpringBootTest(properties = {
         "spring.flyway.enabled=true",
@@ -73,7 +71,7 @@ class NotificationIntegrationTest {
     private NotificationRepository notificationRepository;
 
     @Autowired
-    private NotificationSaver notificationSaver;
+    private NotificationService service;
 
     @Autowired
     private PlatformTransactionManager transactionManager;
@@ -166,7 +164,7 @@ class NotificationIntegrationTest {
     @MethodSource("invalidCommands")
     @DisplayName("필수 값이 누락되거나 공백이면 저장 서비스의 Bean Validation이 거부한다")
     void rejectsInvalidCommandsAtTheServiceBoundary(String description, NotificationCommand command) {
-        assertThatThrownBy(() -> notificationSaver.save(command))
+        assertThatThrownBy(() -> service.save(command))
                 .isInstanceOf(ConstraintViolationException.class);
 
         assertThat(notificationRepository.count()).isZero();
