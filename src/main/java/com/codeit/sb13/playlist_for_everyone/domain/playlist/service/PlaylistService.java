@@ -7,5 +7,5 @@ import java.util.UUID;
 public interface PlaylistService {
 
   PlaylistResponse create(UUID ownerId, PlaylistCreateRequest request);
-  PlaylistResponse getPlaylist(UUID playlistId, UUID ownerId);
+  PlaylistResponse getPlaylist(UUID playlistId, UUID requesterId);
 }
