@@ -23,7 +23,6 @@ import static com.codeit.sb13.playlist_for_everyone.global.config.RedisConfig.*;
 
 
 @Slf4j
-@Testcontainers
 @DisplayName("동시 시청 세션 저장소 테스트")
 @Import({})
 @Disabled("자동 테스트에서는 서버 세팅때문에 제외")
@@ -120,7 +119,7 @@ public class WatcherRegistryTest {
         watcherRegistry.register(contentId, session3);
 
 
-
+        log.info("[WatcherRegistryTest] 세션 수 조회 - {}", watcherRegistry.getWatcherCount(contentId));
         assertThat(watcherRegistry.getWatcherCount(contentId)).isEqualTo(3L);
     }
 
