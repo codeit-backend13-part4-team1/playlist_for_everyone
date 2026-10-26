@@ -8,7 +8,6 @@ import org.springframework.stereotype.Component;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 
 import static com.codeit.sb13.playlist_for_everyone.global.service.RedisLockProvider.*;
 import static com.codeit.sb13.playlist_for_everyone.global.config.RedisConfig.*;
