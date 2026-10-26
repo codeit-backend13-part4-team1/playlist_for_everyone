@@ -74,7 +74,10 @@ class AuthenticationManagerTest {
         assertThat(result.getPrincipal()).isInstanceOf(SecurityUser.class);
         assertThat(result.getAuthorities())
                 .extracting(GrantedAuthority::getAuthority)
-                .containsExactly("ROLE_USER");
+                .containsExactlyInAnyOrder(
+                        "ROLE_USER",
+                        "FACTOR_PASSWORD"
+                );
 
         SecurityUser principal = (SecurityUser) result.getPrincipal();
 
