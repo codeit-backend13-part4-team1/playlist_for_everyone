@@ -6,6 +6,9 @@ import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowRe
 import com.codeit.sb13.playlist_for_everyone.domain.follow.service.FollowService;
 import com.codeit.sb13.playlist_for_everyone.global.config.MDCLoggingInterceptor;
 import com.codeit.sb13.playlist_for_everyone.global.config.WebMvcConfig;
+import com.codeit.sb13.playlist_for_everyone.global.exception.ApiErrorCode;
+import com.codeit.sb13.playlist_for_everyone.global.exception.follow.FollowTargetNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.follow.SelfFollowNotAllowedException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,11 +21,11 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 
+import java.util.Map;
 import java.util.UUID;
 
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -119,6 +122,53 @@ class FollowControllerTest {
                 .andExpect(jsonPath("$.exceptionName").value(HttpMessageNotReadableException.class.getSimpleName()));
 
         verifyNoInteractions(followService);
+    }
+
+    @Test
+    @DisplayName("자기 팔로우가 거부되면 400과 공통 오류 응답을 반환한다.")
+    void follow_returnsBadRequestWhenSelfFollowRejected() throws Exception {
+        UUID followeeId = UUID.randomUUID();
+        FollowCommand command = new FollowCommand(followeeId, null);
+
+        given(followService.follow(command)).willThrow(new SelfFollowNotAllowedException());
+
+        mockMvc.perform(post("/api/follows").contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                            "followeeId":"%s"
+                        }
+                        """.formatted(followeeId)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.exceptionName").value(SelfFollowNotAllowedException.class.getSimpleName()))
+                .andExpect(jsonPath("$.message").value(ApiErrorCode.SELF_FOLLOW_NOT_ALLOWED.getMessage()))
+                .andExpect(jsonPath("$.details").isMap())
+                .andExpect(jsonPath("$.details").isEmpty());
+
+        verify(followService).follow(command);
+    }
+
+    @Test
+    @DisplayName("팔로우 대상 사용자가 없으면 400과 대상 ID를 포함한 공통 오류 응답을 반환한다.")
+    void follow_returnsBadRequestWhenFolloweeNotFound() throws Exception {
+        UUID followeeId = UUID.randomUUID();
+        FollowCommand command = new FollowCommand(followeeId, null);
+
+        given(followService.follow(command))
+                .willThrow(new  FollowTargetNotFoundException(Map.of("followeeId", followeeId)));
+
+        mockMvc.perform(post("/api/follows")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                        "followeeId": "%s"
+                    }
+                    """.formatted(followeeId)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.exceptionName").value(FollowTargetNotFoundException.class.getSimpleName()))
+                .andExpect(jsonPath("$.message").value(ApiErrorCode.FOLLOW_TARGET_NOT_FOUND.getMessage()))
+                .andExpect(jsonPath("$.details.followeeId").value(followeeId.toString()));
+
+        verify(followService).follow(command);
     }
 
 
