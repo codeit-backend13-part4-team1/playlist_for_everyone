@@ -375,4 +375,18 @@ class FollowServiceImplTest {
         verifyNoInteractions(userRepository, followSaver, followRepository);
     }
 
+    @Test
+    @DisplayName("대상 사용자의 팔로워 수를 조회하면 조회된 개수를 반환한다.")
+    void countFollowers_returnFollowerCount(){
+        UUID followeeId = UUID.randomUUID();
+
+        given(followReader.countFollowers(followeeId)).willReturn(3L);
+
+        Long result = followService.countFollowers(followeeId);
+        assertThat(result).isEqualTo(3L);
+
+        verify(followReader).countFollowers(followeeId);
+        verifyNoInteractions(userRepository, followSaver, followRepository);
+    }
+
 }

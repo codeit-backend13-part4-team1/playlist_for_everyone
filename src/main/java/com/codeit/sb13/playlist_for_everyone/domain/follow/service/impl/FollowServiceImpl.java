@@ -72,6 +72,11 @@ public class FollowServiceImpl implements FollowService {
                 .orElseThrow(() -> new FollowNotFoundException(Map.of("followeeId", command.followeeId())));
     }
 
+    @Override
+    public Long countFollowers(UUID followeeId) {
+        return null;
+    }
+
     private FollowResult save(FollowCommand command){
         User follower = getUser(command.followerId());
         User followee = getFollowee(command);

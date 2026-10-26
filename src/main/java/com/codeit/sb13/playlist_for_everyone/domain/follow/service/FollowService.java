@@ -5,6 +5,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.command.UnFollowC
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowDto;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowResult;
 
+import java.util.UUID;
+
 public interface FollowService {
 
     FollowResult follow(FollowCommand command);
@@ -12,4 +14,6 @@ public interface FollowService {
     void unfollow(UnFollowCommand command);
 
     FollowDto findFollowDto(FollowCommand command);
+
+    Long countFollowers(UUID followeeId);
 }
