@@ -34,7 +34,6 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
-import static org.mockito.Mockito.*;
 
 @Slf4j
 @WebMvcTest(controllers = {WebSocketController.class})
@@ -43,7 +42,7 @@ import static org.mockito.Mockito.*;
         WebSocketInterceptor.class
 })
 @RecordApplicationEvents
-public class WatchChatTest {
+public class WatchControllerTest {
 
     @Autowired
     @Qualifier("clientInboundChannel")
