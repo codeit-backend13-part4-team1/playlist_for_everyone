@@ -14,6 +14,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.UUID;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -75,6 +77,16 @@ public class UserService {
             cause = cause.getCause();
         }
         return false;
+    }
+
+    /**
+     * 사용자 ID로 조회하는 공통 메서드
+     *
+     * 사용자가 없으면 UserNotFoundException이 발생합니다
+     */
+    @Transactional(readOnly = true)
+    public User getById(UUID userId) {
+        throw new UnsupportedOperationException("사용자 ID 조회 구현 전");
     }
 
 
