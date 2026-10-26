@@ -304,4 +304,69 @@ class FollowRepositoryTest {
                                         .isEqualTo("23502")));
     }
 
+    @Test
+    @DisplayName("대상 사용자의 팔로워 수를 조회하면 해당 사용자를 팔로우한 관계만 집계한다.")
+    void countByFolloweeId_countsOnlyTargetFollowers(){
+        User followee = User.builder()
+                .email("target@test.example")
+                .name("조회 대상")
+                .role(Role.USER)
+                .build();
+
+        User followerA = User.builder()
+                .email("follower-a@test.example")
+                .name("팔로워 A")
+                .role(Role.USER)
+                .build();
+
+
+        User followerB = User.builder()
+                .email("follower-b@test.example")
+                .name("팔로워 B")
+                .role(Role.USER)
+                .build();
+
+        entityManager.persist(followee);
+        entityManager.persist(followerA);
+        entityManager.persist(followerB);
+
+        followRepository.save(new Follow(followerA, followee));
+        followRepository.save(new Follow(followerB, followee));
+        followRepository.save(new Follow(followee, followerA));
+        followRepository.flush();
+
+        UUID followeeId = followee.getId();
+        entityManager.clear();
+
+        Long result = followRepository.countByFolloweeId(followeeId);
+        assertThat(result).isEqualTo(2L);
+    }
+
+    @Test
+    @DisplayName("사용자는 존재하지만 팔로워가 없으면 0을 반환한다.")
+    void countByFolloweeId_returnsZeroWhenNoFollowers(){
+        User followee = User.builder()
+                .email("no-followers@test.example")
+                .name("팔로워가 없는 사용자")
+                .role(Role.USER)
+                .build();
+
+        entityManager.persist(followee);
+        entityManager.flush();
+
+        UUID followeeId = followee.getId();
+        entityManager.clear();
+
+        Long result = followRepository.countByFolloweeId(followeeId);
+        assertThat(result).isEqualTo(0L);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 사용자 ID로 팔로워 수를 조회하면 0을 반환한다.")
+    void countByFolloweeId_returnsZeroForNonexistentFollowee(){
+        UUID followeeId = UUID.randomUUID();
+        Long result = followRepository.countByFolloweeId(followeeId);
+
+        assertThat(result).isEqualTo(0L);
+    }
 }
