@@ -10,6 +10,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.follow.service.FollowService
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.follow.FollowCreationFailedException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.follow.FollowNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.follow.FollowTargetNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.follow.SelfFollowNotAllowedException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
@@ -66,7 +67,9 @@ public class FollowServiceImpl implements FollowService {
 
     @Override
     public FollowDto findFollowDto(FollowCommand command) {
-        return null;
+        return followReader.findExistingFollow(command)
+                .map(FollowResult::followDto)
+                .orElseThrow(() -> new FollowNotFoundException(Map.of("followeeId", command.followeeId())));
     }
 
     private FollowResult save(FollowCommand command){
