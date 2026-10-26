@@ -331,4 +331,24 @@ class FollowServiceImplTest {
         verify(followRepository,never()).delete(any(Follow.class));
     }
 
+    @Test
+    @DisplayName("팔로우 관계가 있으면 관계 ID와 사용자 ID를 담은 DTO를 반환한다.")
+    void findFollowDto_returnsExistingFollow(){
+        UUID followerId = UUID.randomUUID();
+        UUID followeeId = UUID.randomUUID();
+        UUID followId = UUID.randomUUID();
+
+        FollowCommand command = new FollowCommand(followeeId, followerId);
+        FollowDto expected = new FollowDto(followId, followeeId, followerId);
+
+        given(followReader.findExistingFollow(command)).willReturn(Optional.of(FollowResult.alreadyFollowed(expected)));
+        FollowDto result = followService.findFollowDto(command);
+
+        assertThat(result).isEqualTo(expected);
+
+        verify(followReader).findExistingFollow(command);
+
+        verifyNoInteractions(userRepository, followSaver);
+    }
+
 }

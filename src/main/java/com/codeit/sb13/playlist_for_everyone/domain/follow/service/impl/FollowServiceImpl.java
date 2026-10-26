@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.follow.service.impl;
 
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.command.FollowCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.command.UnFollowCommand;
+import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowDto;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowResult;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.entity.Follow;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.repository.FollowRepository;
@@ -61,6 +62,11 @@ public class FollowServiceImpl implements FollowService {
                         },
                         () -> log.debug("팔로우를 찾을수 없습니다.: {}", command.followId())
                 );
+    }
+
+    @Override
+    public FollowDto findFollowDto(FollowCommand command) {
+        return null;
     }
 
     private FollowResult save(FollowCommand command){
