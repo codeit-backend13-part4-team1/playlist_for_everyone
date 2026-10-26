@@ -2,12 +2,12 @@ package com.codeit.sb13.playlist_for_everyone.global;
 
 import com.codeit.sb13.playlist_for_everyone.global.service.RedisLockProvider;
 import lombok.extern.slf4j.Slf4j;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.junit.jupiter.Container;
 
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.*;
 
 @Slf4j
 @DisplayName("Redis 분산락 획득을 위한 테스트")
+@Disabled("자동 테스트에서는 서버 세팅때문에 제외")
 public class RedisLockProviderTest {
 
     private String REDIS_URL = "localhost";

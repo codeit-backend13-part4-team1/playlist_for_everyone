@@ -3,14 +3,15 @@ package com.codeit.sb13.playlist_for_everyone.watch;
 import com.codeit.sb13.playlist_for_everyone.global.service.WatcherRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.service.RedisLockProvider;
 import lombok.extern.slf4j.Slf4j;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
 import org.mockito.Mock;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.Set;
 import java.util.UUID;
@@ -22,8 +23,10 @@ import static com.codeit.sb13.playlist_for_everyone.global.config.RedisConfig.*;
 
 
 @Slf4j
+@Testcontainers
 @DisplayName("동시 시청 세션 저장소 테스트")
 @Import({})
+@Disabled("자동 테스트에서는 서버 세팅때문에 제외")
 public class WatcherRegistryTest {
 
     private String REDIS_URL = "localhost";
