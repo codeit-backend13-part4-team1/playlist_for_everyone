@@ -14,12 +14,14 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import java.sql.SQLException;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -54,6 +56,9 @@ class FollowRepositoryTest {
 
     @Autowired
     private EntityManager entityManager;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Test
     @DisplayName("팔로우를 저장하고 재조회하면 UUID와 생성 시각 및 사용자 연결이 유지된다.")
@@ -189,4 +194,114 @@ class FollowRepositoryTest {
         assertThat(foundAToB.getId()).isNotEqualTo(foundBToA.getId());
 
     }
+
+    @Test
+    @DisplayName("존재하지 않는 사용자를 팔로우 하면 외래 키 제약조건 위반이 발생한다.")
+    void save_rejectsNonexistentFollowee(){
+        User follower = User.builder()
+                .email("follower@test.example")
+                .name("팔로우하는 사용자")
+                .role(Role.USER)
+                .build();
+
+        entityManager.persist(follower);
+        entityManager.flush();
+
+        UUID nonexistentFolloweeId = UUID.randomUUID();
+        User followee = entityManager.getReference(User.class, nonexistentFolloweeId);
+
+        assertThatThrownBy(()-> followRepository.saveAndFlush(new Follow(follower, followee)))
+                .isInstanceOfSatisfying(DataIntegrityViolationException.class,
+                        e-> assertThat(e.getCause())
+                                .isInstanceOfSatisfying(ConstraintViolationException.class,
+                                        cause ->{
+                                    assertThat(cause.getConstraintName())
+                                            .isEqualTo("FK_users_TO_follows_1");
+
+                                    assertThat(cause.getSQLState()).isEqualTo("23503");
+                        }));
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 팔로워로 팔로우를 저장하면 외래 키 제약조건 위반이 발생한다.")
+    void  save_rejectsNonexistentFollower(){
+        User followee = User.builder()
+                .email("followee@test.example")
+                .name("팔로우받는 사용자")
+                .role(Role.USER)
+                .build();
+
+        entityManager.persist(followee);
+        entityManager.flush();
+
+        UUID nonexistentFollowerId = UUID.randomUUID();
+        User follower = entityManager.getReference(User.class, nonexistentFollowerId);
+
+        assertThatThrownBy(()-> followRepository.saveAndFlush(new Follow(follower, followee)))
+                .isInstanceOfSatisfying(DataIntegrityViolationException.class,
+                        e-> assertThat(e.getCause())
+                                .isInstanceOfSatisfying(ConstraintViolationException.class,
+                                        cause ->{
+                                    assertThat(cause.getConstraintName())
+                                            .isEqualTo("FK_users_TO_follows_2");
+                                    assertThat(cause.getSQLState())
+                                            .isEqualTo("23503");
+                                        }
+                                )
+                );
+    }
+
+    @Test
+    @DisplayName("팔로우 대상 ID가 null이면 DB의 NOT NULL 제약조건 위반이 발생한다.")
+    void insert_rejectsNullFolloweeId(){
+        User follower = User.builder()
+                .email("follower@test.example")
+                .name("팔로우하는 사용자")
+                .role(Role.USER)
+                .build();
+
+        entityManager.persist(follower);
+        entityManager.flush();
+
+        assertThatThrownBy(()-> jdbcTemplate.update(
+                """
+                    INSERT INTO follows (id, follower_id, followee_id, created_at)
+                    VALUES (?, ?, NULL, CURRENT_TIMESTAMP)
+                    """,
+                UUID.randomUUID(),
+                follower.getId()
+        )).isInstanceOfSatisfying(DataIntegrityViolationException.class,
+                e -> assertThat(e.getCause())
+                        .isInstanceOfSatisfying(SQLException.class,
+                                cause -> assertThat(cause.getSQLState())
+                                        .isEqualTo("23502"))
+        );
+    }
+
+    @Test
+    @DisplayName("팔로워 ID가 null이면 DB의 NOT NULL 제약조건 위반이 발생한다.")
+    void insert_rejectsNullFollowerId(){
+        User followee = User.builder()
+                .email("followee@test.example")
+                .name("팔로우받는 사용자")
+                .role(Role.USER)
+                .build();
+
+        entityManager.persist(followee);
+        entityManager.flush();
+
+        assertThatThrownBy(()-> jdbcTemplate.update(
+                """
+                    INSERT INTO follows (id, follower_id, followee_id, created_at)
+                    VALUES (?, NULL, ?, CURRENT_TIMESTAMP)
+                    """,
+                UUID.randomUUID(),
+                followee.getId()
+        )).isInstanceOfSatisfying(DataIntegrityViolationException.class,
+                e -> assertThat(e.getCause())
+                        .isInstanceOfSatisfying(SQLException.class,
+                                cause -> assertThat(cause.getSQLState())
+                                        .isEqualTo("23502")));
+    }
+
 }
