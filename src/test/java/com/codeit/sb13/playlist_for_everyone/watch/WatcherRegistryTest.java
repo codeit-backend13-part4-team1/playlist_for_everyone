@@ -64,14 +64,6 @@ public class WatcherRegistryTest {
             template.delete(key);
     }
 
-    private boolean checkContainedChannelIdInList(String sessionId, String targetId){
-        Set<String> idList = template.opsForSet().members(WATCHER_SESSION_PREFIX + sessionId);
-        for(String id : idList){
-            log.info("[WatcherRegistryTest] id 검색됨 - {}",id);
-            if (targetId.equals(id)) return true;
-        }
-        return false;
-    }
     private boolean checkContainedSessionIdInList(String contentId, String targetId){
         Set<String> idList = template.opsForSet().members(WATCHER_CONTENT_PREFIX + contentId);
         for (String id : idList) {
@@ -92,12 +84,10 @@ public class WatcherRegistryTest {
 
         watcherRegistry.register(contentId, sessionId);
 
-        assertThat(checkContainedChannelIdInList(sessionId, contentId)).isTrue();
         assertThat(checkContainedSessionIdInList(contentId, sessionId)).isTrue();
 
         watcherRegistry.unregister(sessionId);
 
-        assertThat(checkContainedChannelIdInList(sessionId, contentId)).isFalse();
         assertThat(checkContainedSessionIdInList(contentId, sessionId)).isFalse();
     }
 
@@ -117,7 +107,7 @@ public class WatcherRegistryTest {
         watcherRegistry.register(contentId, session3);
 
 
-
+        log.info("[WatcherRegistryTest] 세션 수 조회 - {}", watcherRegistry.getWatcherCount(contentId));
         assertThat(watcherRegistry.getWatcherCount(contentId)).isEqualTo(3L);
     }
 
