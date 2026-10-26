@@ -5,6 +5,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.command.UnFollowC
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowResult;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.entity.Follow;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.repository.FollowRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.follow.service.impl.FollowSaver;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -20,13 +21,23 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import java.sql.Timestamp;
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.*;
 
 import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.verify;
 
 @SpringBootTest(properties = {
         "spring.flyway.enabled=true",
@@ -58,6 +69,12 @@ public class FollowServiceIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @MockitoSpyBean
+    private FollowSaver followSaver;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     private final UUID followerId = UUID.randomUUID();
     private final UUID followeeId = UUID.randomUUID();
@@ -165,6 +182,89 @@ public class FollowServiceIntegrationTest {
         assertThat(preserved.getFollowerId()).isEqualTo(followerId);
         assertThat(preserved.getFolloweeId()).isEqualTo(followeeId);
         assertThat(followRepository.count()).isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName("같은 대상을 동시에 팔로우하면 한 건만 생성하고 같은 관계를 반환한다.")
+    void follow_createsSingleRelationForConcurrentRequests() throws InterruptedException, ExecutionException, TimeoutException {
+        FollowCommand command = new FollowCommand(followeeId, followerId);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        Callable<FollowResult> request = () -> {
+            ready.countDown();
+            if (!start.await(10, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("동시 요청 시작 대기 시간 초과");
+            }
+            return followService.follow(command);
+        };
+
+        try {
+            Future<FollowResult> firstFuture = executor.submit(request);
+            Future<FollowResult> secondFuture = executor.submit(request);
+
+            assertThat(ready.await(10, TimeUnit.SECONDS))
+                    .as("두 요청이 실행 준비를 마쳐야 한다.").isTrue();
+
+            start.countDown();
+            FollowResult first = firstFuture.get(20, TimeUnit.SECONDS);
+            FollowResult second = secondFuture.get(20, TimeUnit.SECONDS);
+
+            assertThat(List.of(first.created(), second.created()))
+                    .containsExactlyInAnyOrder(true, false);
+            assertThat(second.followDto()).isEqualTo(first.followDto());
+            assertThat(followRepository.count()).isEqualTo(1L);
+            assertThat(followRepository.existsById(first.followDto().id())).isTrue();
+        } finally {
+            start.countDown();
+            executor.shutdownNow();
+
+            assertThat(executor.awaitTermination(10, TimeUnit.SECONDS))
+                    .as("테스트 작업 스레드가 종료되어야 한다.")
+                    .isTrue();
+        }
+
+
+    }
+
+    @Test
+    @DisplayName("실제 UNIQUE 충돌 후 실패한 저장 트랜잭션을 종료하고 기존 관계를 반환한다.")
+    void follow_recoversAfterActualUniqueViolation(){
+        UUID existingFollowId = UUID.randomUUID();
+        LocalDateTime existingCreatedAt = LocalDateTime.of(2026, 1, 1, 0, 0);
+
+        TransactionTemplate otherTransaction = new TransactionTemplate(transactionManager);
+        otherTransaction.setPropagationBehavior(TransactionTemplate.PROPAGATION_REQUIRES_NEW);
+
+        doAnswer(invocation -> {
+            otherTransaction.executeWithoutResult(status -> jdbcTemplate.update(
+                    """
+                        INSERT INTO follows (id, follower_id, followee_id, created_at)
+                        VALUES (?, ?, ?, ?)
+                        """,
+                        existingFollowId,
+                        followerId,
+                        followeeId,
+                    Timestamp.valueOf(existingCreatedAt)
+            ));
+
+            return invocation.callRealMethod();
+        }).when(followSaver).save(any(Follow.class));
+
+        FollowResult result = followService.follow(new FollowCommand(followeeId, followerId));
+
+        assertThat(result.created()).isFalse();
+        assertThat(result.followDto().id()).isEqualTo(existingFollowId);
+        assertThat(result.followDto().followeeId()).isEqualTo(followeeId);
+        assertThat(result.followDto().followerId()).isEqualTo(followerId);
+
+        Follow preserved = followRepository.findById(existingFollowId).orElseThrow();
+        assertThat(preserved.getCreatedAt()).isEqualTo(existingCreatedAt);
+        assertThat(followRepository.count()).isEqualTo(1L);
+
+        verify(followSaver).save(any(Follow.class));
+
+
     }
 
     private void insertUser(UUID userId, String name){
