@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.request.FollowReq
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowDto;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowResult;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.service.FollowService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -19,7 +20,7 @@ public class FollowController {
     private final FollowService followService;
 
     @PostMapping
-    public ResponseEntity<FollowDto> follow(@RequestBody FollowRequest request){
+    public ResponseEntity<FollowDto> follow(@Valid @RequestBody FollowRequest request){
         // 인증 붙이기전에 임시 null적용
         UUID followerId = null;
         return handleFollowResult(followService.follow(request.toFollowCommand(followerId)));
