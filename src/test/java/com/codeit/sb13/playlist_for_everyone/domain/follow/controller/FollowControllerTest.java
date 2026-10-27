@@ -215,5 +215,46 @@ class FollowControllerTest {
         verify(followService).countFollowers(followeeId);
     }
 
+    @Test
+    @DisplayName("팔로워 수가 0이면 200과 숫자 0을 반환한다.")
+    void getFollowCount_returnsZeroWhenNoFollowers() throws Exception {
+        UUID followeeId = UUID.randomUUID();
+
+        given(followService.countFollowers(followeeId)).willReturn(0L);
+
+        mockMvc.perform(get("/api/follows/count")
+                .param("followeeId", followeeId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(content().string("0"))
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON));
+
+        verify(followService).countFollowers(followeeId);
+    }
+
+    @Test
+    @DisplayName("팔로워 수 조회 시 대상 ID가 누락되면 400을 반환하고 서비스를 호출하지 않는다.")
+    void getFollowCount_returnsBadRequestWhenFolloweeIdMissing() throws Exception {
+        mockMvc.perform(get("/api/follows/count"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.exceptionName").value(MethodArgumentNotValidException.class.getSimpleName()))
+                .andExpect(jsonPath("$.message").value(ApiErrorCode.INVALID_REQUEST.getMessage()))
+                .andExpect(jsonPath("$.details.followeeId").isArray());
+
+        verifyNoInteractions(followService);
+    }
+
+    @Test
+    @DisplayName("팔로워 수 조회 시 대상 ID의 UUID 형식이 잘못되면 400을 반환하고 서비스를 호출하지 않는다.")
+    void getFollowCount_returnsBadRequestWhenFolloweeIdInvalid() throws Exception {
+        mockMvc.perform(get("/api/follows/count")
+                        .param("followeeId", "not-a-uuid"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.exceptionName").value(MethodArgumentNotValidException.class.getSimpleName()))
+                .andExpect(jsonPath("$.message").value(ApiErrorCode.INVALID_REQUEST.getMessage()))
+                .andExpect(jsonPath("$.details.followeeId").isArray());
+
+        verifyNoInteractions(followService);
+    }
+
 
 }
