@@ -27,4 +27,9 @@ public class ContentTag extends BaseEntity {
     @Column(nullable = false, length = 50)
     private String tag;
 
+    public ContentTag(Content content, String tag) {
+        this.content = content;
+        this.tag = tag;
+    }
+
 }

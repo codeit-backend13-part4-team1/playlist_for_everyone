@@ -50,4 +50,28 @@ public class Content extends UpdatedAtEntity {
     )
     private List<ContentTag> tags = new ArrayList<>();
 
+    public void addTag(String tag) {
+        ContentTag contentTag = new ContentTag(this, tag);
+        this.tags.add(contentTag);
+    }
+
+    public static Content createAdminContent(
+            ContentType type,
+            String title,
+            String description,
+            String thumbnailUrl
+    ) {
+        Content content = new Content();
+
+        content.type = type;
+        content.title = title;
+        content.description = description;
+        content.thumbnailUrl = thumbnailUrl;
+        content.provider = ContentSource.ADMIN;
+        content.providerItemId = null;
+        content.tags = new ArrayList<>();
+
+        return content;
+    }
+
 }
