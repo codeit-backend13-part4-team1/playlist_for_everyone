@@ -7,6 +7,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.follow.event.UserFollowedEve
 import com.codeit.sb13.playlist_for_everyone.domain.follow.repository.FollowRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
+import com.codeit.sb13.playlist_for_everyone.global.exception.follow.FollowTargetNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,6 +23,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -56,11 +59,20 @@ class FollowSaverTest {
         User followee = createUser(followeeId, "팔로우 대상");
 
         Follow follow = new Follow(follower, followee);
+        FollowCommand command = new FollowCommand(followeeId, followerId);
         ReflectionTestUtils.setField(follow, "id", UUID.randomUUID());
-        given(followRepository.save(follow)).willReturn(follow);
 
-        followSaver.save(follow);
-        verify(followRepository).save(follow);
+        given(followUserReader.getById(followerId)).willReturn(follower);
+        given(followUserReader.getById(followeeId)).willReturn(followee);
+        given(followRepository.save(any(Follow.class))).willReturn(follow);
+
+        followSaver.save(command);
+        ArgumentCaptor<Follow> followCaptor = ArgumentCaptor.forClass(Follow.class);
+        verify(followRepository).save(followCaptor.capture());
+
+        Follow requestedFollow = followCaptor.getValue();
+        assertThat(requestedFollow.getFollower()).isSameAs(follower);
+        assertThat(requestedFollow.getFollowee()).isSameAs(followee);
 
         ArgumentCaptor<UserFollowedEvent> captor = ArgumentCaptor.forClass(UserFollowedEvent.class);
         verify(eventPublisher).publishEvent(captor.capture());
@@ -72,15 +84,18 @@ class FollowSaverTest {
     void save_doesNotPublishEventWhenRepositoryThrows(){
         User follower = createUser(UUID.randomUUID(), "팔로워");
         User followee = createUser(UUID.randomUUID(), "팔로우 대상");
-        Follow follow = new Follow(follower, followee);
+
+        FollowCommand command = new FollowCommand(followee.getId(), follower.getId());
 
         DataIntegrityViolationException exception = new DataIntegrityViolationException("팔로우 저장 실패");
 
-        given(followRepository.save(follow)).willThrow(exception);
+        given(followUserReader.getById(follower.getId())).willReturn(follower);
+        given(followUserReader.getById(followee.getId())).willReturn(followee);
+        given(followRepository.save(any(Follow.class))).willThrow(exception);
 
-        assertThatThrownBy(()-> followSaver.save(follow)).isSameAs(exception);
+        assertThatThrownBy(()-> followSaver.save(command)).isSameAs(exception);
 
-        verify(followRepository).save(follow);
+        verify(followRepository).save(any(Follow.class));
         verifyNoInteractions(eventPublisher);
     }
 
@@ -90,12 +105,14 @@ class FollowSaverTest {
         User follower = createUser(UUID.randomUUID(), "변경 전 이름");
         User followee = createUser(UUID.randomUUID(), "팔로우 대상");
         Follow follow = new Follow(follower, followee);
+        FollowCommand command = new FollowCommand(followee.getId(), follower.getId());
 
         ReflectionTestUtils.setField(follow,"id", UUID.randomUUID());
 
-        given(followRepository.save(follow)).willReturn(follow);
-
-        followSaver.save(follow);
+        given(followUserReader.getById(follower.getId())).willReturn(follower);
+        given(followUserReader.getById(followee.getId())).willReturn(followee);
+        given(followRepository.save(any(Follow.class))).willReturn(follow);
+        followSaver.save(command);
 
         ArgumentCaptor<UserFollowedEvent> captor = ArgumentCaptor.forClass(UserFollowedEvent.class);
 
@@ -117,12 +134,15 @@ class FollowSaverTest {
         User follower = createUser(UUID.randomUUID(), followerName);
         User followee = createUser(UUID.randomUUID(), "팔로우 대상");
         Follow follow = new Follow(follower, followee);
+        FollowCommand command = new FollowCommand(followee.getId(), follower.getId());
 
         ReflectionTestUtils.setField(follow,"id", UUID.randomUUID());
 
-        given(followRepository.save(follow)).willReturn(follow);
+        given(followUserReader.getById(follower.getId())).willReturn(follower);
+        given(followUserReader.getById(followee.getId())).willReturn(followee);
+        given(followRepository.save(any(Follow.class))).willReturn(follow);
 
-        followSaver.save(follow);
+        followSaver.save(command);
 
         ArgumentCaptor<UserFollowedEvent> captor = ArgumentCaptor.forClass(UserFollowedEvent.class);
         verify(eventPublisher).publishEvent(captor.capture());
@@ -164,6 +184,47 @@ class FollowSaverTest {
 
     }
 
+    @Test
+    @DisplayName("팔로우 요청자가 없으면 사용자 없음 예외를 그대로 전달하고 저장과 이벤트 발행을 하지 않는다.")
+    void save_throwsWhenFollowerNotFound(){
+        UUID followerId = UUID.randomUUID();
+        UUID followeeId = UUID.randomUUID();
+
+        FollowCommand command = new FollowCommand(followeeId, followerId);
+        UserNotFoundException exception = new UserNotFoundException(Map.of("userId", followerId));
+
+        given(followUserReader.getById(followerId)).willThrow(exception);
+
+        assertThatThrownBy(()-> followSaver.save(command)).isSameAs(exception);
+
+        verify(followUserReader).getById(followerId);
+        verifyNoInteractions(followRepository, eventPublisher);
+    }
+
+    @Test
+    @DisplayName("팔로우 대상이 없으면 대상없음 예외로 변환하고 저장과 이벤트 발행을 하지 않는다.")
+    void save_throwsWhenFolloweeNotFound(){
+        UUID followerId = UUID.randomUUID();
+        UUID followeeId = UUID.randomUUID();
+
+        User follower = createUser(followerId, "팔로워");
+        FollowCommand command = new FollowCommand(followeeId, followerId);
+
+        given(followUserReader.getById(followerId)).willReturn(follower);
+
+        given(followUserReader.getById(followeeId))
+                .willThrow(new UserNotFoundException(Map.of("userId", followeeId)));
+
+        assertThatThrownBy(()-> followSaver.save(command))
+                .isInstanceOfSatisfying(FollowTargetNotFoundException.class,
+                        e -> assertThat(e.getDetails())
+                                .containsExactlyEntriesOf(Map.of("followeeId", followeeId)));
+
+        verify(followUserReader).getById(followerId);
+        verify(followUserReader).getById(followeeId);
+        verifyNoInteractions(followRepository, eventPublisher);
+    }
+
     private User createUser(UUID id, String name){
         User user = User.builder()
                 .email(id + "@test.com")
@@ -176,5 +237,4 @@ class FollowSaverTest {
 
         return user;
     }
-
 }

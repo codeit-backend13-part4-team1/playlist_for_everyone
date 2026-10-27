@@ -28,15 +28,14 @@ public class FollowSaver {
     private final ApplicationEventPublisher eventPublisher;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public FollowDto save(Follow follow){
-        Follow saved = followRepository.save(follow);
+    public FollowDto save(FollowCommand command){
+        Follow saved = followRepository.save(createFollow(command));
         eventPublisher.publishEvent(new UserFollowedEvent(saved.getFollowerId(), saved.getFollower().getName(), saved.getFolloweeId()));
         return FollowDto.from(saved);
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public FollowDto save(FollowCommand command){
-        return save(new Follow(getUser(command.followerId()), getFollowee(command.followeeId())));
+    private Follow createFollow(FollowCommand command) {
+        return new Follow(getUser(command.followerId()), getFollowee(command.followeeId()));
     }
 
     private User getFollowee(UUID userId) {

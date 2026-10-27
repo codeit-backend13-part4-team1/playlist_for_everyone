@@ -288,7 +288,7 @@ public class FollowServiceIntegrationTest {
             ));
 
             return invocation.callRealMethod();
-        }).when(followSaver).save(any(Follow.class));
+        }).when(followSaver).save(any(FollowCommand.class));
 
         FollowResult result = followService.follow(new FollowCommand(followeeId, followerId));
 
@@ -301,7 +301,7 @@ public class FollowServiceIntegrationTest {
         assertThat(preserved.getCreatedAt()).isEqualTo(existingCreatedAt);
         assertThat(followRepository.count()).isEqualTo(1L);
 
-        verify(followSaver).save(any(Follow.class));
+        verify(followSaver).save(any(FollowCommand.class));
 
         assertThat(applicationEvents.stream(UserFollowedEvent.class))
                 .containsExactly(new UserFollowedEvent(followerId, "팔로우하는 사용자", followeeId));
