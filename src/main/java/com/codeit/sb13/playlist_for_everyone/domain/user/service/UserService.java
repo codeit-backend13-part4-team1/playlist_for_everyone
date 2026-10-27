@@ -6,6 +6,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.DuplicateEmailException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.exception.ConstraintViolationException;
@@ -13,6 +14,9 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Map;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -76,6 +80,22 @@ public class UserService {
         }
         return false;
     }
+
+    /**
+     * 사용자 ID로 조회하는 공통 메서드
+     *
+     * 사용자가 없으면 UserNotFoundException이 발생합니다
+     */
+    @Transactional(readOnly = true)
+    public User getById(UUID ownerId) {
+        User owner = userRepository.findById(ownerId)
+                .orElseThrow(() -> new UserNotFoundException(
+                        Map.of("userId", ownerId)
+                ));
+
+        return owner;
+    }
+
 
 
 
