@@ -62,7 +62,7 @@ public class PlaylistServiceImplTest {
     ArgumentCaptor<Playlist> captor = ArgumentCaptor.forClass(Playlist.class);
     verify(playlistRepository).save(captor.capture());
     Playlist saved = captor.getValue();
-    assertThat(saved.getOwnerId()).isEqualTo(ownerId);
+    assertThat(saved.getOwner()).isEqualTo(owner);
     assertThat(saved.getTitle()).isEqualTo("제목");
     assertThat(saved.getDescription()).isEqualTo("설명");
   }
@@ -207,7 +207,7 @@ public class PlaylistServiceImplTest {
   }
 
   private Playlist createPlaylist(User owner, UUID playlistId) {
-    Playlist playlist = new Playlist(owner.getId(), "title", "description");
+    Playlist playlist = new Playlist(owner, "title", "description");
     ReflectionTestUtils.setField(playlist, "id", playlistId);
     ReflectionTestUtils.setField(playlist, "owner", owner);
     ReflectionTestUtils.setField(playlist, "subscriberCount", 3L);
