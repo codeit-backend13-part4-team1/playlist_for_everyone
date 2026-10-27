@@ -36,8 +36,8 @@ public class FollowController {
     }
 
     @GetMapping("/count")
-    public void getFollowCount(@Valid FollowRequest request){
-
+    public ResponseEntity<Long> getFollowCount(@Valid FollowRequest request){
+        return ResponseEntity.ok(followService.countFollowers(request.followeeId()));
     }
 
     private ResponseEntity<FollowDto> handleFollowResult(FollowResult result) {
