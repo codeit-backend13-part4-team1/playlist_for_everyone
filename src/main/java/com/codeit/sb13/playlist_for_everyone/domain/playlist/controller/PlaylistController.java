@@ -1,8 +1,10 @@
 package com.codeit.sb13.playlist_for_everyone.domain.playlist.controller;
 
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistCreateRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistSearchRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.PlaylistResponse;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.PlaylistService;
+import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import jakarta.validation.Valid;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -40,6 +42,14 @@ public class PlaylistController {
     PlaylistResponse response = playlistService.getPlaylist(playlistId, requesterId);
 
     return ResponseEntity.status(HttpStatus.OK).body(response);
+  }
+
+  @GetMapping
+  public ResponseEntity<CursorResponse<PlaylistResponse>> getPlaylists(
+      @Valid PlaylistSearchRequest request,
+      // TODO: 인증 구현이 올라오면 @AuthenticationPrincipal로 교체
+      @RequestHeader("X-User-Id") UUID requesterId) {
+    return null;
   }
 
 }
