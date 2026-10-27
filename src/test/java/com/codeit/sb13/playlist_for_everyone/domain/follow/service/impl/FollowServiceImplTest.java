@@ -24,6 +24,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 
 import java.sql.SQLException;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -386,6 +387,22 @@ class FollowServiceImplTest {
         assertThat(result).isEqualTo(3L);
 
         verify(followReader).countFollowers(followeeId);
+        verifyNoInteractions(userRepository, followSaver, followRepository);
+    }
+
+    @Test
+    @DisplayName("팔로워 ID 목록을 조회하면 해당 사용자의 팔로워 ID들을 반환한다.")
+    void findFollowerIds_returnsFollowerIds(){
+        UUID followeeId = UUID.randomUUID();
+        List<UUID> expected = List.of(UUID.randomUUID(), UUID.randomUUID());
+
+        given(followReader.findFollowerIds(followeeId)).willReturn(expected);
+
+        List<UUID> result = followService.findFollowerIds(followeeId);
+
+        assertThat(result).containsExactlyInAnyOrderElementsOf(expected);
+
+        verify(followReader).findFollowerIds(followeeId);
         verifyNoInteractions(userRepository, followSaver, followRepository);
     }
 

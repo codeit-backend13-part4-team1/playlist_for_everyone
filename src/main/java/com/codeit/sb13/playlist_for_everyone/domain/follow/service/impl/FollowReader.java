@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -28,5 +29,9 @@ public class FollowReader {
 
     public Long countFollowers(UUID followeeId){
         return followRepository.countByFolloweeId(followeeId);
+    }
+
+    public List<UUID> findFollowerIds(UUID followeeId){
+        return null;
     }
 }

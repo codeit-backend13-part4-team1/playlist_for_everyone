@@ -22,6 +22,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -75,6 +76,11 @@ public class FollowServiceImpl implements FollowService {
     @Override
     public Long countFollowers(UUID followeeId) {
         return followReader.countFollowers(followeeId);
+    }
+
+    @Override
+    public List<UUID> findFollowerIds(UUID followeeId) {
+        return null;
     }
 
     private FollowResult save(FollowCommand command){
