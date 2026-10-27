@@ -1,5 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.follow.service.impl;
 
+import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.command.FollowCommand;
+import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowDto;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.entity.Follow;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.event.UserFollowedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.repository.FollowRepository;
@@ -23,6 +25,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -33,6 +36,9 @@ class FollowSaverTest {
 
     @Mock
     private FollowRepository followRepository;
+
+    @Mock
+    private FollowUserReader followUserReader;
 
     @Mock
     private ApplicationEventPublisher eventPublisher;
@@ -122,6 +128,40 @@ class FollowSaverTest {
         verify(eventPublisher).publishEvent(captor.capture());
 
         assertThat(captor.getValue().followerName()).isEqualTo(followerName);
+    }
+
+    @Test
+    @DisplayName("사용자 ID로 조회한 사용자들로 팔로우를 저장하고 생성 이벤트를 발행한다.")
+    void save_loadsUsersAndPublishesEventFromCommand(){
+        UUID followerId = UUID.randomUUID();
+        UUID followeeId = UUID.randomUUID();
+        UUID followId = UUID.randomUUID();
+
+        User follower = createUser(followerId, "팔로워");
+        User followee = createUser(followeeId, "팔로우 대상");
+
+        FollowCommand command = new FollowCommand(followeeId, followerId);
+
+        Follow saved = new Follow(follower, followee);
+        ReflectionTestUtils.setField(saved, "id", followId);
+
+        given(followUserReader.getById(followerId)).willReturn(follower);
+        given(followUserReader.getById(followeeId)).willReturn(followee);
+        given(followRepository.save(any(Follow.class))).willReturn(saved);
+
+        FollowDto result = followSaver.save(command);
+
+        assertThat(result).isEqualTo(new FollowDto(followId, followeeId, followerId));
+
+        ArgumentCaptor<Follow> captor = ArgumentCaptor.forClass(Follow.class);
+        verify(followRepository).save(captor.capture());
+
+        assertThat(captor.getValue().getFollower()).isSameAs(follower);
+        assertThat(captor.getValue().getFollowee()).isSameAs(followee);
+
+        verify(eventPublisher).publishEvent(new UserFollowedEvent(followerId, "팔로워", followeeId));
+
+
     }
 
     private User createUser(UUID id, String name){

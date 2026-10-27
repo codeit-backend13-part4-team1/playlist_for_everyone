@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.follow.service.impl;
 
+import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.command.FollowCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowDto;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.entity.Follow;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.event.UserFollowedEvent;
@@ -17,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class FollowSaver {
 
     private final FollowRepository followRepository;
+    private final FollowUserReader followUserReader;
     private final ApplicationEventPublisher eventPublisher;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -24,6 +26,11 @@ public class FollowSaver {
         Follow saved = followRepository.save(follow);
         eventPublisher.publishEvent(new UserFollowedEvent(saved.getFollowerId(), saved.getFollower().getName(), saved.getFolloweeId()));
         return FollowDto.from(saved);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public FollowDto save(FollowCommand command){
+        return null;
     }
 
 }
