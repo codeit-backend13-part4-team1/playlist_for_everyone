@@ -97,11 +97,13 @@ public class FollowServiceIntegrationTest {
     }
 
     @Test
-    @DisplayName("같은 팔로우를 다시 요청하면 기존 ID와 생성 시각을 유지하고 한건만 저장한다.")
+    @DisplayName("같은 팔로우를 다시 요청해도 관계정보와 팔로워 수·ID 목록을 유지한다.")
     void follow_returnsExistingRelationForDuplicateRequest(){
         FollowCommand command = new FollowCommand(followeeId, followerId);
 
         FollowResult first = followService.follow(command);
+        assertThat(followService.countFollowers(followeeId)).isEqualTo(1L);
+        assertThat(followService.findFollowerIds(followeeId)).containsExactly(followerId);
 
         Follow before = followRepository.findById(first.followDto().id()).orElseThrow();
         FollowResult second = followService.follow(command);
@@ -115,6 +117,8 @@ public class FollowServiceIntegrationTest {
         assertThat(after.getCreatedAt()).isEqualTo(before.getCreatedAt());
 
         assertThat(followRepository.count()).isEqualTo(1L);
+        assertThat(followService.countFollowers(followeeId)).isEqualTo(1L);
+        assertThat(followService.findFollowerIds(followeeId)).containsExactly(followerId);
 
     }
 
@@ -356,6 +360,36 @@ public class FollowServiceIntegrationTest {
                 });
 
 
+    }
+
+    @Test
+    @DisplayName("팔로우를 등록하면 팔로어수와 ID 목록에 신규 관계가 반영된다.")
+    void follow_updatesFollowerCountAndIds(){
+        assertThat(followService.countFollowers(followeeId)).isZero();
+        assertThat(followService.findFollowerIds(followeeId)).isEmpty();
+
+        followService.follow(new FollowCommand(followeeId, followerId));
+        followService.follow(new FollowCommand(followeeId, otherFollowerId));
+
+        assertThat(followService.countFollowers(followeeId)).isEqualTo(2L);
+        assertThat(followService.findFollowerIds(followeeId)).containsExactlyInAnyOrder(followerId, otherFollowerId);
+
+    }
+
+    @Test
+    @WithMockUser
+    @DisplayName("팔로우를 취소하면 해당 팔로워만 ID 목록에서 제외되고 팔로워 수가 감소한다.")
+    void unfollow_updatesFollowerCountAndIds(){
+        FollowResult created = followService.follow(new FollowCommand(followeeId, followerId));
+        followService.follow(new FollowCommand(followeeId, otherFollowerId));
+
+        assertThat(followService.countFollowers(followeeId)).isEqualTo(2L);
+        assertThat(followService.findFollowerIds(followeeId)).containsExactlyInAnyOrder(followerId, otherFollowerId);
+
+        followService.unfollow(new UnFollowCommand(created.followDto().id(), followerId));
+
+        assertThat(followService.countFollowers(followeeId)).isEqualTo(1L);
+        assertThat(followService.findFollowerIds(followeeId)).containsExactly(otherFollowerId);
     }
 
     private void insertUser(UUID userId, String name){
