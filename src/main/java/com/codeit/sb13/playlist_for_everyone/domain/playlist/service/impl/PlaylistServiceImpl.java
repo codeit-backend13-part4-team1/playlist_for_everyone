@@ -5,7 +5,9 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.Playlis
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.PlaylistResponse;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Playlist;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistSortBy;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistSearchCondition;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.SubscriptionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.PlaylistService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
@@ -13,7 +15,10 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserReposito
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -64,8 +69,62 @@ public class PlaylistServiceImpl implements PlaylistService {
   }
 
   @Override
-  public CursorResponse<PlaylistResponse> getPlaylists(PlaylistSearchRequest request,
-      UUID requesterId) {
-    return null;
+  public CursorResponse<PlaylistResponse> getPlaylists(
+      PlaylistSearchRequest request, UUID requesterId) {
+
+    PlaylistSearchCondition condition = toCondition(request);
+
+    List<Playlist> fetched = playlistRepository.search(condition);
+    long totalCount = playlistRepository.count(condition);
+
+    boolean hasNext = fetched.size() > condition.limit();
+    List<Playlist> page = hasNext ? fetched.subList(0, condition.limit()) : fetched;
+
+    Set<UUID> subscribedIds = findSubscribedIds(page, requesterId);
+    List<PlaylistResponse> data = page.stream()
+        .map(playlist -> toResponse(playlist, subscribedIds.contains(playlist.getId())))
+        .toList();
+
+    String nextCursor = null;
+    UUID nextIdAfter = null;
+    if (hasNext) {
+      Playlist last = page.get(page.size() - 1);
+      nextCursor = toCursor(last, condition.sortBy());
+      nextIdAfter = last.getId();
+    }
+
+    return new CursorResponse<>(
+        data, nextCursor, nextIdAfter, hasNext, totalCount,
+        condition.sortBy().getSortKey(), condition.sortDirection());
+  }
+
+ //---------[헬퍼 메서드]
+  private PlaylistSearchCondition toCondition(PlaylistSearchRequest request) {
+    return new PlaylistSearchCondition(
+        request.keywordLike(), request.ownerIdEqual(), request.subscriberIdEqual(),
+        request.cursor(), request.idAfter(),
+        request.limit(), request.sortBy(), request.sortDirection());
+  }
+
+  private Set<UUID> findSubscribedIds(List<Playlist> playlists, UUID requesterId) {
+    if (playlists.isEmpty()) {
+      return Set.of();
+    }
+    List<UUID> playlistIds = playlists.stream().map(Playlist::getId).toList();
+    return new HashSet<>(
+        subscriptionRepository.findSubscribedPlaylistIds(requesterId, playlistIds));
+  }
+
+  private String toCursor(Playlist playlist, PlaylistSortBy sortBy) {
+    return switch (sortBy) {
+      case UPDATED_AT -> playlist.getUpdatedAt().toString();
+      case SUBSCRIBE_COUNT -> String.valueOf(playlist.getSubscriberCount());
+    };
+  }
+
+  private PlaylistResponse toResponse(Playlist playlist, boolean subscribedByMe) {
+    User owner = playlist.getOwner();
+    UserSummary userSummary = new UserSummary(owner.getId(), owner.getName(), null);
+    return PlaylistResponse.from(playlist, userSummary, subscribedByMe);
   }
 }
