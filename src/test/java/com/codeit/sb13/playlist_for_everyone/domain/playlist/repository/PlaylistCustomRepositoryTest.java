@@ -37,14 +37,17 @@ class PlaylistCustomRepositoryTest {
   @Autowired
   private EntityManager em;
 
+  @Autowired
+  private SubscriptionRepository subscriptionRepository;
+
   @Test
   @DisplayName("필터가 없으면 updatedAt 내림차순으로 조회한다")
   void 필터가_없으면_updatedAt_내림차순으로_조회한다() {
     // given
     User owner = saveUser("owner@test.com");
-    Playlist oldest = savePlaylist(owner, "oldest", LocalDateTime.of(2026, 10, 1, 0, 0));
-    Playlist middle = savePlaylist(owner, "middle", LocalDateTime.of(2026, 10, 2, 0, 0));
-    Playlist latest = savePlaylist(owner, "latest", LocalDateTime.of(2026, 10, 3, 0, 0));
+    savePlaylist(owner, "oldest", LocalDateTime.of(2026, 10, 1, 0, 0));
+    savePlaylist(owner, "middle", LocalDateTime.of(2026, 10, 2, 0, 0));
+    savePlaylist(owner, "latest", LocalDateTime.of(2026, 10, 3, 0, 0));
 
     PlaylistSearchCondition condition = new PlaylistSearchCondition(
         null, null, null,
@@ -152,8 +155,6 @@ class PlaylistCustomRepositoryTest {
         .containsExactlyInAnyOrder("mine1", "mine2");
   }
 
-  @Autowired
-  private SubscriptionRepository subscriptionRepository;
 
   @Test
   @DisplayName("subscriberIdEqual로 해당 사용자가 구독한 플레이리스트만 조회한다")
