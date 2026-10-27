@@ -27,11 +27,19 @@ public class WebSocketInterceptor implements ChannelInterceptor {
         if (accessor == null || accessor.getCommand() == null)
             return message;
 
+        if (accessor.isHeartbeat()) heartbeat(accessor);
+
         return switch (accessor.getCommand()) {
             case CONNECT -> connect(accessor,message);
             case SUBSCRIBE -> subscribe(accessor,message);
             default -> message;
         };
+    }
+
+    // STOMP 의 모든 하트비트인지 미정?
+    private void heartbeat(StompHeaderAccessor accessor) {
+        String session = accessor.getSessionId();
+        watcherRegistry.refresh(session);
     }
 
     private Message<?> connect(StompHeaderAccessor accessor, Message<?> message) {
@@ -79,7 +87,10 @@ public class WebSocketInterceptor implements ChannelInterceptor {
         if (destination != null && !destination.trim().isEmpty()){
             contentsIdParse(destination)
                     .ifPresent(contentId ->
-                            watcherRegistry.register(contentId, accessor.getSessionId()));
+                            watcherRegistry.register(
+                                    contentId,
+                                    accessor.getSessionId(),
+                                    accessor.getSubscriptionId()));
         }
     }
 

@@ -2,97 +2,150 @@ package com.codeit.sb13.playlist_for_everyone.global.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
 
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.BiConsumer;
+import java.time.Duration;
+import java.util.List;
+import java.util.Objects;
 
-import static com.codeit.sb13.playlist_for_everyone.global.service.RedisLockProvider.*;
 import static com.codeit.sb13.playlist_for_everyone.global.config.RedisConfig.*;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class WatcherRegistry {
 
+    static private final Duration TTL = Duration.ofSeconds(60);
     private final StringRedisTemplate redis;
-    private final RedisLockProvider lockProvider;
 
-    private final ConcurrentHashMap<String, Set<String>> contentIdListPerSession = new ConcurrentHashMap<>();
+    private final RedisScript<Long> registerScript;
+    private final RedisScript<Long> unregisterScript;
+    private final RedisScript<Long> refreshScript;
+    private final RedisScript<Long> deleteScript;
+    private final RedisScript<Long> countScript;
 
-    /**
-     * 방(컨텐츠) 를 구독(시청)하고있는 현재 사용자 수 반환.
-     * @param roomId - 시청하고있는 컨텐츠 id.
-     * @return 현재 시청하고있는 시청자의 수. 방이 없다면 0 명.
-     */
-    public long getWatcherCount(String roomId){
-        return redis.opsForSet().size(contentKey(roomId));
-    }
+    @RequiredArgsConstructor
+    static public class SetKey{
 
-    /**
-     * 세션 id 를 통해 고유한 시청자를 등록체에 주입한다.
-     * @param roomId 컨텐츠 id
-     * @param session 세션 id
-     */
-    public void register(String roomId, String session){
-        try {
-            lockProxy(
-                    roomId,
-                    session,
-                    (contentId,sessionId) -> redis.opsForSet().add(contentKey(contentId), sessionId));
-            contentIdListPerSession.computeIfAbsent(session,k -> ConcurrentHashMap.newKeySet()).add(roomId);
-        } catch (RuntimeException e) {
-            log.error("[WatcherRegistry] 시청 세션({}) 저장 에러 - contentId : {} ", session, roomId, e);
+        static private final String DELIMITER = "-";
+
+        private final String session;
+        private final String subscription;
+
+        @Override
+        public String toString(){
+            return session + DELIMITER + subscription;
         }
     }
 
-    /**
-     * 세션 id 를 통해 고유한 시청자를 등록에서 삭제한다.
-     * @param session 세션 id
-     */
-    public void unregister(String session){
-        Set<String> contents = contentIdListPerSession.get(session);
-
-        // 등록된 컨텐츠가 없다면 패스
-        if (contents == null || contents.isEmpty()) return;
-
-        // 순회시 인덱스 변경 방지를 위한 copy
-        for(String content : Set.copyOf(contents)){
-            try {
-                lockProxy(
-                        content,
-                        session,
-                        (c,s) -> redis.opsForSet().remove(contentKey(c), s)
-                );
-
-                contents.remove(content);
-            } catch (RuntimeException e) {
-                log.error("[WatcherRegistry] 시청 세션({}) 삭제 에러 - Content : {}", session, content, e);
-            }
-
-            // 비었으면 Set 삭제
-            if (contents.isEmpty()) contentIdListPerSession.remove(session);
-        }
-
+    public WatcherRegistry(
+            StringRedisTemplate redis,
+            @Qualifier("lua-script-register")
+            RedisScript<Long> registerScript,
+            @Qualifier("lua-script-unregister")
+            RedisScript<Long> unregisterScript,
+            @Qualifier("lua-script-refresh")
+            RedisScript<Long> refreshScript,
+            @Qualifier("lua-script-delete")
+            RedisScript<Long> deleteScript,
+            @Qualifier("lua-script-count")
+            RedisScript<Long> countScript
+    ){
+        this.redis = redis;
+        this.registerScript = registerScript;
+        this.unregisterScript = unregisterScript;
+        this.refreshScript = refreshScript;
+        this.deleteScript = deleteScript;
+        this.countScript = countScript;
     }
 
-    private void lockProxy(String roomId, String sessionId, BiConsumer<String,String> function){
-        String lockKey = roomId;  // contents 단위로 락이 걸려야 함
-        String lockId = null;
+    public void register(
+            String session,
+            String subscription,
+            String content
+    ){
+        // NPE 검사.
+        validate(session, subscription, content);
 
-        try {
-            lockId = lockProvider.lock(lockKey);
-            function.accept(roomId,sessionId);
-        } catch (RedisLockException e){
-            throw new RuntimeException(e);
-        }
-        finally {
-            if (lockId != null)
-                lockProvider.unlock(lockKey, lockId);
+        Long result = redis.execute(registerScript,
+                List.of(sessionKey(session), contentKey(content)),
+                subscription,
+                content,
+                new SetKey(session, subscription).toString(),
+                String.valueOf(TTL.toMillis())
+        );
+
+        if (!Long.valueOf(1).equals(result)) throw new IllegalStateException("Failed to register watcher.");
+    }
+
+    public void unregister(
+            String session,
+            String subscription
+    ){
+        validate(session, subscription);
+
+        Long res = redis.execute(unregisterScript,
+                List.of(sessionKey(session)),
+                subscription,
+                new SetKey(session, subscription).toString(),
+                WATCHER_CONTENT_PREFIX
+        );
+
+        if (!Long.valueOf(1).equals(res)) throw new IllegalStateException("Failed to unregister watcher.");
+    }
+
+    public void refresh(String session){
+        validate(session);
+
+        Long res = redis.execute(refreshScript,
+                List.of(sessionKey(session)),
+                session,
+                WATCHER_CONTENT_PREFIX,
+                String.valueOf(TTL.toMillis()),
+                "-"
+        );
+        log.info("[WatcherRegistry] Refreshed {}", res);
+
+        if (!Long.valueOf(1).equals(res)) throw new IllegalStateException("Failed to refresh watcher.");
+    }
+
+    public void delete(String session){
+        validate(session);
+
+        Long res = redis.execute(deleteScript,
+                List.of(sessionKey(session)),
+                session,
+                WATCHER_CONTENT_PREFIX,
+                "-"
+        );
+
+        if (!Long.valueOf(1).equals(res)) throw new IllegalStateException("Failed to delete watcher.");
+    }
+
+
+    public Long getWatcherCount(String content){
+        validate(content);
+
+        return redis.execute(countScript,
+                List.of(contentKey(content))
+        );
+    }
+
+
+    // 커스텀 예외를 작성한다면 여기에.
+    private void validate(String ...args){
+        for (String arg : args){
+            Objects.requireNonNull(arg);
         }
     }
 
-    private String contentKey(String contentId){ return WATCHER_CONTENT_PREFIX + contentId; }
+    private String sessionKey(String session){
+        return WEBSOCKET_SESSION_PREFIX + session;
+    }
+
+    private String contentKey(String content){
+        return WATCHER_CONTENT_PREFIX + content;
+    }
 }

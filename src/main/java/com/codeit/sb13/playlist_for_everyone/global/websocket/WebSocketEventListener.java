@@ -9,8 +9,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
+import org.springframework.messaging.simp.stomp.StompSessionHandlerAdapter;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.messaging.SessionDisconnectEvent;
+import org.springframework.web.socket.messaging.SessionUnsubscribeEvent;
 
 import java.util.UUID;
 
@@ -25,18 +28,30 @@ public class WebSocketEventListener {
     private final SimpMessagingTemplate messagingTemplate;
 
     static private final String SUB_PREFIX = "/sub/contents/";
-    static private final String PUB_PREFIX = "/sub/contents/";
     static private final String CHAT_POSTFIX = "/chat";
     static private final String WATCH_POSTFIX = "/watch";
 
+    // 세션단위 연결이 끊겼을 때.
     @EventListener
     public void onDisconnect(SessionDisconnectEvent event){
-        String sessionId = event.getSessionId();
+        StompHeaderAccessor accessor = StompHeaderAccessor.wrap(event.getMessage());
+        String sessionId = accessor.getSessionId();
+        String subscriptionId = accessor.getSubscriptionId();
 
-        log.debug("[WebSocketEvent] socket disconnect. - {}", sessionId);
-
-        watcherRegistry.unregister(sessionId);
+        watcherRegistry.unregister(sessionId, subscriptionId);
     }
+
+    // Stomp 구독단위 연결이 끊겼을 때.
+    @EventListener
+    public void onUnsubscribe(SessionUnsubscribeEvent event){
+        StompHeaderAccessor accessor = StompHeaderAccessor.wrap(event.getMessage());
+        String sessionId = accessor.getSessionId();
+        String subscriptionId = accessor.getSubscriptionId();
+
+        watcherRegistry.unregister(sessionId, subscriptionId);
+    }
+
+
 
     @EventListener
     public void onWatch(WebSocketContentWatchEvent event){

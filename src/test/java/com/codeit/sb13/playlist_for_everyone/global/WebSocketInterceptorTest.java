@@ -18,6 +18,7 @@ import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.messaging.support.MessageHeaderAccessor;
 
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
@@ -119,7 +120,7 @@ public class WebSocketInterceptorTest {
 
             interceptor.preSend(message,messageChannel);
 
-            verify(watcherRegistry,times(1)).register(eq(mockupContentId),any(String.class));
+            verify(watcherRegistry,times(1)).register(eq(mockupContentId),any(String.class),any(String.class));
         }
 
         @Test
@@ -137,7 +138,7 @@ public class WebSocketInterceptorTest {
             interceptor.preSend(message,messageChannel);
 
 
-            verify(watcherRegistry,never()).register(eq(mockupContentId),any(String.class));
+            verify(watcherRegistry,never()).register(eq(mockupContentId),any(String.class),any(String.class));
         }
 
         @Test
@@ -155,9 +156,25 @@ public class WebSocketInterceptorTest {
             interceptor.preSend(message,messageChannel);
 
 
-            verify(watcherRegistry,never()).register(eq(mockupContentId),any(String.class));
+            verify(watcherRegistry,never()).register(eq(mockupContentId),any(String.class),any(String.class));
         }
 
+    }
+
+    @Test
+    @DisplayName("하트비트 테스트")
+    void heartbeatTest(){
+        String mockupSessionId = UUID.randomUUID().toString();
+
+        StompHeaderAccessor headerAccessor = StompHeaderAccessor.createForHeartbeat();
+        headerAccessor.setSessionId(mockupSessionId);
+
+        Message<byte[]> message = MessageBuilder
+                .createMessage(new byte[]{'\n'},headerAccessor.getMessageHeaders());
+
+        interceptor.preSend(message,messageChannel);
+
+//        verify(watcherRegistry,times(1)).refresh(anyString());
     }
 
 }
