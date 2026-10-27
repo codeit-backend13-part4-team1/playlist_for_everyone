@@ -20,11 +20,26 @@ import org.springframework.web.bind.annotation.RequestBody;
 import java.util.UUID;
 
 
-@Tag(name = "팔로우", description = "팔로우 등록·취소 및 조회")
+@Tag(name = "팔로우", description = """
+        팔로우 등록·취소 및 조회 API입니다.\n
+        모든 팔로우 API는 최종적으로 JWT 인증을 요구합니다.\n
+        인증·인가·CSRF 적용 및 실제 보안 응답 검증은 #76 이슈에서 진행합니다.
+        """)
 @ApiResponses({
         @ApiResponse(
                 responseCode = "400",
                 description = "잘못된 요청",
+                content = @Content(
+                        mediaType = MediaType.APPLICATION_JSON_VALUE,
+                        schema = @Schema(implementation = ApiErrorResponse.class)
+                )
+        ),
+        @ApiResponse(
+                responseCode = "401",
+                description = """
+                        인증 정보가 없거나 JWT가 만료·변조된 요청\n
+                        (최종 계약, #76 이슈에서 적용·검증)
+                        """,
                 content = @Content(
                         mediaType = MediaType.APPLICATION_JSON_VALUE,
                         schema = @Schema(implementation = ApiErrorResponse.class)
@@ -65,6 +80,17 @@ public interface FollowApi {
                             mediaType = MediaType.APPLICATION_JSON_VALUE,
                             schema = @Schema(implementation = FollowDto.class)
                     )
+            ),
+            @ApiResponse(
+                    responseCode = "403",
+                    description = """
+                            CSRF 토큰이 없거나 일치하지 않는 요청\n
+                            (최종 계약, #76 이슈에서 적용·검증)
+                            """,
+                    content = @Content(
+                            mediaType = MediaType.APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ApiErrorResponse.class)
+                    )
             )
     })
     ResponseEntity<FollowDto> follow(@Valid @RequestBody FollowRequest request);
@@ -76,11 +102,24 @@ public interface FollowApi {
                     이미 취소되었거나 존재하지 않는 관계도 204로 반환합니다.
                     """
     )
-    @ApiResponse(
-            responseCode = "204",
-            description = "팔로우 취소 처리완료",
-            content = @Content
-    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "204",
+                    description = "팔로우 취소 처리완료",
+                    content = @Content
+            ),
+            @ApiResponse(
+                    responseCode = "403",
+                    description = """
+                            다른 사용자의 팔로우 관계를 취소하려는 요청 또는 CSRF 토큰이 없거나 일치하지 않는 요청\n
+                            (최종 계약, #76 이슈에서 적용·검증)
+                            """,
+                    content = @Content(
+                            mediaType = MediaType.APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ApiErrorResponse.class)
+                    )
+            )
+    })
     ResponseEntity<Void> unfollow(
             @Parameter(
                     description = "취소할 팔로우 관계 ID",
@@ -108,8 +147,9 @@ public interface FollowApi {
             @ApiResponse(
                     responseCode = "404",
                     description = "본인과 대상 사용자 사이의 팔로우 관계가 없음",
-                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
-                    schema = @Schema(implementation = ApiErrorResponse.class)
+                    content = @Content(
+                            mediaType = MediaType.APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ApiErrorResponse.class)
                     )
             )
     })
