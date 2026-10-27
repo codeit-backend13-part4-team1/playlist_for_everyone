@@ -12,6 +12,7 @@ class CoverageBadgeTest {
     @TempDir
     Path tempDir;
 
+    /** 커버리지 경계값에 따른 배지 수치와 색상을 검증합니다. */
     @ParameterizedTest
     @CsvSource({
             "80, 20, 80.00%, #4c1",

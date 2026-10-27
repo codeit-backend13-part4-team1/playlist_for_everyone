@@ -10,6 +10,7 @@ import java.nio.file.Path;
 
 public class CoverageBadge {
 
+    /** JaCoCo XML의 전체 라인 커버리지를 읽어 SVG 배지를 생성합니다. */
     public static void main(String[] args) throws Exception {
         if (args.length != 2) {
             throw new IllegalArgumentException(
