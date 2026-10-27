@@ -32,6 +32,6 @@ public class FollowReader {
     }
 
     public List<UUID> findFollowerIds(UUID followeeId){
-        return null;
+        return followRepository.findFollowerIdsByFolloweeId(followeeId);
     }
 }

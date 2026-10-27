@@ -80,7 +80,7 @@ public class FollowServiceImpl implements FollowService {
 
     @Override
     public List<UUID> findFollowerIds(UUID followeeId) {
-        return null;
+        return followReader.findFollowerIds(followeeId);
     }
 
     private FollowResult save(FollowCommand command){
