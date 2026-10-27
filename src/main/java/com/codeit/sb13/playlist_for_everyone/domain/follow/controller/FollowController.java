@@ -35,6 +35,11 @@ public class FollowController {
         return ResponseEntity.noContent().build();
     }
 
+    @GetMapping("/count")
+    public void getFollowCount(@Valid FollowRequest request){
+
+    }
+
     private ResponseEntity<FollowDto> handleFollowResult(FollowResult result) {
         if (result.created()){
             return ResponseEntity.status(HttpStatus.CREATED).body(result.followDto());

@@ -29,8 +29,7 @@ import java.util.UUID;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(controllers = FollowController.class)
@@ -199,6 +198,21 @@ class FollowControllerTest {
                         .value(MethodArgumentTypeMismatchException.class.getSimpleName()));
 
         verifyNoInteractions(followService);
+    }
+
+    @Test
+    @DisplayName("팔로워 수를 조회하면 200과 숫자 응답을 반환한다.")
+    void getFollowCount_returnsFollowerCount() throws Exception {
+        UUID followeeId = UUID.randomUUID();
+        given(followService.countFollowers(followeeId)).willReturn(3L);
+
+        mockMvc.perform(get("/api/follows/count")
+                .param("followeeId", followeeId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(content().string("3"))
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON));
+
+        verify(followService).countFollowers(followeeId);
     }
 
 
