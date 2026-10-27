@@ -44,7 +44,7 @@ public class PlaylistRepositoryTest {
         .role(Role.USER)
         .build());
     Playlist saved = playlistRepository.save(
-        new Playlist(owner.getId(), "제목", "설명"));
+        new Playlist(owner, "제목", "설명"));
     em.flush();
     em.clear();   // 영속성 컨텍스트를 비워서 실제 조회 쿼리가 나가게 한다
 
@@ -71,9 +71,16 @@ public class PlaylistRepositoryTest {
   @Test
   @DisplayName("저장하면 ID와 생성,수정 시각이 기록되고 구독자 수는 0이다.")
   void 저장하면_ID와_시각이_기록되고_구독자_수는_0이다() {
+    //given
+    User owner = userRepository.save(User.builder()
+        .email("saver@test.com")
+        .name("tester")
+        .role(Role.USER)
+        .build());
+
     // when
     Playlist saved = playlistRepository.saveAndFlush(
-        new Playlist(UUID.randomUUID(), "제목", "설명")
+        new Playlist(owner, "제목", "설명")
     );
 
     // then
