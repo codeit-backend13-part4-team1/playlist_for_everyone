@@ -35,6 +35,18 @@ public class FollowController {
         return ResponseEntity.noContent().build();
     }
 
+    @GetMapping("/followed-by-me")
+    public ResponseEntity<FollowDto> getFollowedByMe(@Valid FollowRequest request){
+        // 인증 붙이기전에 임시 null적용
+        UUID followerId = null;
+        return ResponseEntity.ok(followService.findFollowDto(request.toFollowCommand(followerId)));
+    }
+
+    @GetMapping("/count")
+    public ResponseEntity<Long> getFollowCount(@Valid FollowRequest request){
+        return ResponseEntity.ok(followService.countFollowers(request.followeeId()));
+    }
+
     private ResponseEntity<FollowDto> handleFollowResult(FollowResult result) {
         if (result.created()){
             return ResponseEntity.status(HttpStatus.CREATED).body(result.followDto());

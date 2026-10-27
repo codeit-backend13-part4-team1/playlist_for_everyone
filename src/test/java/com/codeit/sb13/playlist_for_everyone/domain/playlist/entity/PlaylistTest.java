@@ -2,7 +2,8 @@ package com.codeit.sb13.playlist_for_everyone.domain.playlist.entity;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.util.UUID;
+import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
+import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -13,13 +14,17 @@ public class PlaylistTest {
   @DisplayName("생성하면 구독자 수는 0이다.")
   void 생성시_구독자_수는_0이다() {
     // given
-    UUID ownerId = UUID.randomUUID();
+    User owner = User.builder()
+        .email("owner@owner.com")
+        .name("tester")
+        .role(Role.USER)
+        .build();
 
     // when
-    Playlist playlist = new Playlist(ownerId, "하반기 먼치킨", "2026년 하반기 먼치킨 모음");
+    Playlist playlist = new Playlist(owner, "하반기 먼치킨", "2026년 하반기 먼치킨 모음");
 
     // then
-    assertThat(playlist.getOwnerId()).isEqualTo(ownerId);
+    assertThat(playlist.getOwner()).isEqualTo(owner);
     assertThat(playlist.getTitle()).isEqualTo("하반기 먼치킨");
     assertThat(playlist.getDescription()).isEqualTo("2026년 하반기 먼치킨 모음");
     assertThat(playlist.getSubscriberCount()).isZero();

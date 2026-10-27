@@ -10,6 +10,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.EveryOneException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.follow.FollowCreationFailedException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.follow.FollowNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.follow.SelfFollowNotAllowedException;
 import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.DisplayName;
@@ -23,6 +24,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 
 import java.sql.SQLException;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -329,6 +331,79 @@ class FollowServiceImplTest {
 
         verify(followRepository).findById(followId);
         verify(followRepository,never()).delete(any(Follow.class));
+    }
+
+    @Test
+    @DisplayName("팔로우 관계가 있으면 관계 ID와 사용자 ID를 담은 DTO를 반환한다.")
+    void findFollowDto_returnsExistingFollow(){
+        UUID followerId = UUID.randomUUID();
+        UUID followeeId = UUID.randomUUID();
+        UUID followId = UUID.randomUUID();
+
+        FollowCommand command = new FollowCommand(followeeId, followerId);
+        FollowDto expected = new FollowDto(followId, followeeId, followerId);
+
+        given(followReader.findExistingFollow(command)).willReturn(Optional.of(FollowResult.alreadyFollowed(expected)));
+        FollowDto result = followService.findFollowDto(command);
+
+        assertThat(result).isEqualTo(expected);
+
+        verify(followReader).findExistingFollow(command);
+
+        verifyNoInteractions(userRepository, followSaver);
+    }
+
+    @Test
+    @DisplayName("팔로우 관계가 없으면 대상 사용자 ID를 담은 조회 실패 예외가 발생한다.")
+    void findFollowDto_throwsWhenFollowNotFound(){
+        UUID followerId = UUID.randomUUID();
+        UUID followeeId = UUID.randomUUID();
+
+        FollowCommand command = new FollowCommand(followeeId, followerId);
+        given(followReader.findExistingFollow(command)).willReturn(Optional.empty());
+
+        assertThatThrownBy(()-> followService.findFollowDto(command))
+                .isInstanceOfSatisfying(FollowNotFoundException.class,
+                        e -> {
+                    assertThat(e.getApiErrorCode().getStatus())
+                            .isEqualTo(HttpStatus.NOT_FOUND);
+
+                    assertThat(e.getDetails())
+                                .containsEntry("followeeId", followeeId);
+                });
+
+        verify(followReader).findExistingFollow(command);
+        verifyNoInteractions(userRepository, followSaver, followRepository);
+    }
+
+    @Test
+    @DisplayName("대상 사용자의 팔로워 수를 조회하면 조회된 개수를 반환한다.")
+    void countFollowers_returnFollowerCount(){
+        UUID followeeId = UUID.randomUUID();
+
+        given(followReader.countFollowers(followeeId)).willReturn(3L);
+
+        Long result = followService.countFollowers(followeeId);
+        assertThat(result).isEqualTo(3L);
+
+        verify(followReader).countFollowers(followeeId);
+        verifyNoInteractions(userRepository, followSaver, followRepository);
+    }
+
+    @Test
+    @DisplayName("팔로워 ID 목록을 조회하면 해당 사용자의 팔로워 ID들을 반환한다.")
+    void findFollowerIds_returnsFollowerIds(){
+        UUID followeeId = UUID.randomUUID();
+        List<UUID> expected = List.of(UUID.randomUUID(), UUID.randomUUID());
+
+        given(followReader.findFollowerIds(followeeId)).willReturn(expected);
+
+        List<UUID> result = followService.findFollowerIds(followeeId);
+
+        assertThat(result).containsExactlyInAnyOrderElementsOf(expected);
+
+        verify(followReader).findFollowerIds(followeeId);
+        verifyNoInteractions(userRepository, followSaver, followRepository);
     }
 
 }

@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.follow.service.impl;
 
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.command.FollowCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.command.UnFollowCommand;
+import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowDto;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowResult;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.entity.Follow;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.repository.FollowRepository;
@@ -9,6 +10,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.follow.service.FollowService
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.follow.FollowCreationFailedException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.follow.FollowNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.follow.FollowTargetNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.follow.SelfFollowNotAllowedException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
@@ -20,6 +22,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -61,6 +64,23 @@ public class FollowServiceImpl implements FollowService {
                         },
                         () -> log.debug("팔로우를 찾을수 없습니다.: {}", command.followId())
                 );
+    }
+
+    @Override
+    public FollowDto findFollowDto(FollowCommand command) {
+        return followReader.findExistingFollow(command)
+                .map(FollowResult::followDto)
+                .orElseThrow(() -> new FollowNotFoundException(Map.of("followeeId", command.followeeId())));
+    }
+
+    @Override
+    public Long countFollowers(UUID followeeId) {
+        return followReader.countFollowers(followeeId);
+    }
+
+    @Override
+    public List<UUID> findFollowerIds(UUID followeeId) {
+        return followReader.findFollowerIds(followeeId);
     }
 
     private FollowResult save(FollowCommand command){

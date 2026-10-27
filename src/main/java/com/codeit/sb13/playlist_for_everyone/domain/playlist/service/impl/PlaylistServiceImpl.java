@@ -34,13 +34,13 @@ public class PlaylistServiceImpl implements PlaylistService {
         .orElseThrow(() -> new UserNotFoundException(
             Map.of("userId", ownerId)));
 
-    Playlist playlist = new Playlist(ownerId, request.title(), request.description());
+    Playlist playlist = new Playlist(user, request.title(), request.description());
 
     Playlist saved = playlistRepository.save(playlist);
     UserSummary userSummary = new UserSummary(user.getId(), user.getName(), null);
 
     return PlaylistResponse.from(saved, userSummary, false );
-                          //소유자 본인이 소유한 플레이 리스트는 구독할 수 없으므로 항상 false이다.
+    // 방금 생성된 플레이리스트라 구독 정보가 없으므로 항상 false이다.
 
   }
 
