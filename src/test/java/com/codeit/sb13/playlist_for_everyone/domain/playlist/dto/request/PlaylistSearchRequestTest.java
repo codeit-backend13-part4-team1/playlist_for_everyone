@@ -9,6 +9,7 @@ import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -50,6 +51,32 @@ class PlaylistSearchRequestTest {
 
     // then
     assertThat(violations).isEmpty();
+  }
+
+  @Test
+  @DisplayName("limit이 상한과 같으면 검증을 통과한다")
+  void limitEqualToMaxIsValid() {
+    PlaylistSearchRequest request =
+        new PlaylistSearchRequest(
+            null, null, null, null, null, 100, PlaylistSortBy.UPDATED_AT, SortDirection.DESCENDING);
+
+    Set<ConstraintViolation<PlaylistSearchRequest>> violations = validator.validate(request);
+
+    assertThat(violations).isEmpty();
+  }
+
+  @Test
+  @DisplayName("limit이 상한을 넘으면 검증에 실패한다")
+  void limitOverMaxIsInvalid() {
+    PlaylistSearchRequest request =
+        new PlaylistSearchRequest(
+            null, null, null, null, null, 101, PlaylistSortBy.UPDATED_AT, SortDirection.DESCENDING);
+
+    Set<ConstraintViolation<PlaylistSearchRequest>> violations = validator.validate(request);
+
+    assertThat(violations)
+        .extracting(v -> v.getPropertyPath().toString())
+        .containsExactly("limit");
   }
 
   @ParameterizedTest
@@ -127,7 +154,7 @@ class PlaylistSearchRequestTest {
   void updatedAt_정렬에서_날짜_형식_cursor는_위반이_발생하지_않는다() {
     // given
     PlaylistSearchRequest request = new PlaylistSearchRequest(
-        null, null, null, "2026-10-26T12:00:00", null,
+        null, null, null, "2026-10-26T12:00:00", UUID.randomUUID(),
         1, PlaylistSortBy.UPDATED_AT, SortDirection.ASCENDING);
 
     // when
@@ -143,7 +170,7 @@ class PlaylistSearchRequestTest {
   void updatedAt_정렬에서_cursor가_날짜_형식이_아니면_위반이_발생한다(String cursor) {
     // given
     PlaylistSearchRequest request = new PlaylistSearchRequest(
-        null, null, null, cursor, null,
+        null, null, null, cursor, UUID.randomUUID(),
         1, PlaylistSortBy.UPDATED_AT, SortDirection.ASCENDING);
 
     // when
@@ -161,7 +188,7 @@ class PlaylistSearchRequestTest {
   void subscribeCount_정렬에서_숫자_cursor는_위반이_발생하지_않는다(String cursor) {
     // given
     PlaylistSearchRequest request = new PlaylistSearchRequest(
-        null, null, null, cursor, null,
+        null, null, null, cursor, UUID.randomUUID(),
         1, PlaylistSortBy.SUBSCRIBE_COUNT, SortDirection.ASCENDING);
 
     // when
@@ -177,7 +204,7 @@ class PlaylistSearchRequestTest {
   void subscribeCount_정렬에서_숫자가_아닌_cursor는_위반이_발생한다(String cursor) {
     // given
     PlaylistSearchRequest request = new PlaylistSearchRequest(
-        null, null, null, cursor, null,
+        null, null, null, cursor, UUID.randomUUID(),
         1, PlaylistSortBy.SUBSCRIBE_COUNT, SortDirection.ASCENDING);
 
     // when
@@ -187,6 +214,36 @@ class PlaylistSearchRequestTest {
     assertThat(violations)
         .extracting(ve -> ve.getPropertyPath().toString())
         .containsExactly("validCursor");
+  }
+
+  @Test
+  @DisplayName("cursor만 있고 idAfter가 없으면 검증에 실패한다")
+  void ID가_없는_커서는_유효하지_않다() {
+    PlaylistSearchRequest request =
+        new PlaylistSearchRequest(
+            null, null, null, "2026-10-27T10:00:00", null, 10,
+            PlaylistSortBy.UPDATED_AT, SortDirection.DESCENDING);
+
+    Set<ConstraintViolation<PlaylistSearchRequest>> violations = validator.validate(request);
+
+    assertThat(violations)
+        .extracting(v -> v.getPropertyPath().toString())
+        .containsExactly("cursorPairValid");
+  }
+
+  @Test
+  @DisplayName("idAfter만 있고 cursor가 없으면 검증에 실패한다")
+  void 커서_없이_ID를_입력하면_유효하지_않다() {
+    PlaylistSearchRequest request =
+        new PlaylistSearchRequest(
+            null, null, null, null, UUID.randomUUID(), 10,
+            PlaylistSortBy.UPDATED_AT, SortDirection.DESCENDING);
+
+    Set<ConstraintViolation<PlaylistSearchRequest>> violations = validator.validate(request);
+
+    assertThat(violations)
+        .extracting(v -> v.getPropertyPath().toString())
+        .containsExactly("cursorPairValid");
   }
 
 

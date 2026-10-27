@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistSortBy;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
 import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import java.time.LocalDateTime;
@@ -19,6 +20,7 @@ public record PlaylistSearchRequest(
 
     @NotNull
     @Positive
+    @Max(100)
     Integer limit,
     @NotNull
     PlaylistSortBy sortBy,
@@ -42,6 +44,11 @@ public record PlaylistSearchRequest(
     } catch (DateTimeParseException | NumberFormatException e) {
       return false;
     }
+  }
+
+  @AssertTrue(message = "cursor와 idAfter는 함께 제공해야 합니다")
+  public boolean isCursorPairValid() {
+    return StringUtils.hasText(cursor) == (idAfter != null);
   }
 
 }
