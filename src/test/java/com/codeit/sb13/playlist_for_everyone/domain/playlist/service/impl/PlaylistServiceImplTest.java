@@ -211,7 +211,11 @@ public class PlaylistServiceImplTest {
     ReflectionTestUtils.setField(playlist, "id", playlistId);
     ReflectionTestUtils.setField(playlist, "owner", owner);
     ReflectionTestUtils.setField(playlist, "subscriberCount", 3L);
-    ReflectionTestUtils.setField(playlist, "updatedAt", LocalDateTime.of(2026, 10, 26, 12, 0));
+    ReflectionTestUtils.setField(
+        playlist,
+        "updatedAt",
+        LocalDateTime.of(2026, 10, 26, 12, 0)
+    );
     return playlist;
   }
 }
