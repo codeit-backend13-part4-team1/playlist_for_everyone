@@ -36,8 +36,10 @@ public class FollowController {
     }
 
     @GetMapping("/followed-by-me")
-    public void getFollowedByMe(@Valid FollowRequest request){
-
+    public ResponseEntity<FollowDto> getFollowedByMe(@Valid FollowRequest request){
+        // 인증 붙이기전에 임시 null적용
+        UUID followerId = null;
+        return ResponseEntity.ok(followService.findFollowDto(request.toFollowCommand(followerId)));
     }
 
     @GetMapping("/count")
