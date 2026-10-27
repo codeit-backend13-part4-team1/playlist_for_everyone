@@ -6,6 +6,10 @@ on:
       - dev
       - main
 
+  push:
+    branches:
+      - main
+
 permissions:
   contents: read
 
@@ -37,7 +41,7 @@ jobs:
       - name: Allow Gradle wrapper execution
         run: chmod +x gradlew
 
-      - name: Build and test
+      - name: Build, test and verify line coverage
         run: ./gradlew build --no-daemon
 
       - name: Upload test reports
@@ -50,3 +54,16 @@ jobs:
             build/test-results/test/
             build/reports/jacoco/test/
           if-no-files-found: warn
+
+      - name: Generate line coverage badge
+        run: |
+          java .github/scripts/CoverageBadge.java \
+            build/reports/jacoco/test/jacocoTestReport.xml \
+            build/reports/jacoco/test/coverage.svg
+
+      - name: Upload coverage badge
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-badge
+          path: build/reports/jacoco/test/coverage.svg
+          if-no-files-found: error
