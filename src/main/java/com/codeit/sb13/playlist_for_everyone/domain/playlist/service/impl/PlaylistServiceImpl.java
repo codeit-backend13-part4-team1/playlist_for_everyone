@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.playlist.service.impl;
 
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistCreateRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistSearchRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.PlaylistResponse;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Playlist;
@@ -9,6 +10,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.Subscrip
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.PlaylistService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
+import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import java.util.Map;
@@ -59,5 +61,11 @@ public class PlaylistServiceImpl implements PlaylistService {
     UserSummary userSummary = new UserSummary(owner.getId(), owner.getName(), null);
 
     return PlaylistResponse.from(playlist, userSummary, subscribedByMe);
+  }
+
+  @Override
+  public CursorResponse<PlaylistResponse> getPlaylists(PlaylistSearchRequest request,
+      UUID requesterId) {
+    return null;
   }
 }
