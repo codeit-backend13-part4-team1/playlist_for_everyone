@@ -5,10 +5,12 @@ import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.command.UnFollowC
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowDto;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowResult;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.entity.Follow;
+import com.codeit.sb13.playlist_for_everyone.domain.follow.event.UserFollowedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.repository.FollowRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.service.impl.FollowSaver;
 import com.codeit.sb13.playlist_for_everyone.global.exception.ApiErrorCode;
 import com.codeit.sb13.playlist_for_everyone.global.exception.follow.FollowNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.follow.SelfFollowNotAllowedException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -16,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.AccessDeniedException;
@@ -25,7 +28,11 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.test.context.event.ApplicationEvents;
+import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -49,7 +56,11 @@ import static org.mockito.Mockito.verify;
 })
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@Import(FollowServiceIntegrationTest.MethodSecurityTestConfig.class)
+@Import({
+        FollowServiceIntegrationTest.MethodSecurityTestConfig.class,
+        FollowServiceIntegrationTest.FollowEventTestConfig.class
+})
+@RecordApplicationEvents
 @DisplayName("팔로우 서비스 통합 테스트")
 public class FollowServiceIntegrationTest {
 
@@ -79,12 +90,16 @@ public class FollowServiceIntegrationTest {
     @Autowired
     private PlatformTransactionManager transactionManager;
 
+    @Autowired
+    private CommittedFollowEventRecorder eventRecorder;
+
     private final UUID followerId = UUID.randomUUID();
     private final UUID followeeId = UUID.randomUUID();
     private final UUID otherFollowerId = UUID.randomUUID();
 
     @BeforeEach
     void setUp(){
+        eventRecorder.clear();
         insertUser(followerId, "팔로우하는 사용자");
         insertUser(followeeId, "팔로우받는 사용자");
         insertUser(otherFollowerId, "다른 요청자");
@@ -97,8 +112,8 @@ public class FollowServiceIntegrationTest {
     }
 
     @Test
-    @DisplayName("같은 팔로우를 다시 요청해도 관계정보와 팔로워 수·ID 목록을 유지한다.")
-    void follow_returnsExistingRelationForDuplicateRequest(){
+    @DisplayName("중복 팔로우 요청은 기존 관계와 팔로워 정보를 유지하고 생성 이벤트를 재발행하지 않는다.")
+    void follow_returnsExistingRelationForDuplicateRequest(ApplicationEvents applicationEvents){
         FollowCommand command = new FollowCommand(followeeId, followerId);
 
         FollowResult first = followService.follow(command);
@@ -106,6 +121,9 @@ public class FollowServiceIntegrationTest {
         assertThat(followService.findFollowerIds(followeeId)).containsExactly(followerId);
 
         Follow before = followRepository.findById(first.followDto().id()).orElseThrow();
+        applicationEvents.clear();
+        eventRecorder.clear();
+
         FollowResult second = followService.follow(command);
         Follow after = followRepository.findById(second.followDto().id()).orElseThrow();
 
@@ -120,20 +138,29 @@ public class FollowServiceIntegrationTest {
         assertThat(followService.countFollowers(followeeId)).isEqualTo(1L);
         assertThat(followService.findFollowerIds(followeeId)).containsExactly(followerId);
 
+        assertThat(applicationEvents.stream(UserFollowedEvent.class)).isEmpty();
+        assertThat(eventRecorder.events()).isEmpty();
     }
 
     @Test
     @WithMockUser
-    @DisplayName("본인의 팔로우를 취소하면 DB에서 해당 관계가 삭제된다.")
-    void unfollow_deletesOwnFollow(){
+    @DisplayName("본인의 팔로우를 취소하면 관계를 삭제하고 생성이벤트를 발행하지 않는다.")
+    void unfollow_deletesOwnFollow(ApplicationEvents applicationEvents){
         FollowResult result = followService.follow(new FollowCommand(followeeId, followerId));
 
         UUID followId = result.followDto().id();
         assertThat(followRepository.existsById(followId)).isTrue();
+        applicationEvents.clear();
+        eventRecorder.clear();
+
         followService.unfollow(new UnFollowCommand(followId, followerId));
 
         assertThat(followRepository.findById(followId)).isEmpty();
         assertThat(followRepository.count()).isZero();
+
+        assertThat(applicationEvents.stream(UserFollowedEvent.class)).isEmpty();
+        assertThat(eventRecorder.events()).isEmpty();
+
 
     }
 
@@ -194,7 +221,7 @@ public class FollowServiceIntegrationTest {
     }
 
     @Test
-    @DisplayName("같은 대상을 동시에 팔로우하면 한 건만 생성하고 같은 관계를 반환한다.")
+    @DisplayName("같은 대상을 동시에 팔로우하면 관계 한 건만 생성하고 커밋 후 이벤트는 한 번 처리한다.")
     void follow_createsSingleRelationForConcurrentRequests() throws InterruptedException, ExecutionException, TimeoutException {
         FollowCommand command = new FollowCommand(followeeId, followerId);
         ExecutorService executor = Executors.newFixedThreadPool(2);
@@ -224,6 +251,9 @@ public class FollowServiceIntegrationTest {
             assertThat(second.followDto()).isEqualTo(first.followDto());
             assertThat(followRepository.count()).isEqualTo(1L);
             assertThat(followRepository.existsById(first.followDto().id())).isTrue();
+
+            assertThat(eventRecorder.events())
+                    .containsExactly(new UserFollowedEvent(followerId, "팔로우하는 사용자", followeeId));
         } finally {
             start.countDown();
             executor.shutdownNow();
@@ -237,8 +267,8 @@ public class FollowServiceIntegrationTest {
     }
 
     @Test
-    @DisplayName("실제 UNIQUE 충돌 후 실패한 저장 트랜잭션을 종료하고 기존 관계를 반환한다.")
-    void follow_recoversAfterActualUniqueViolation(){
+    @DisplayName("UNIQUE 충돌로 저장 트랜잭션이 실패하면 기존 관계를 반환하고 커밋 후 이벤트는 처리하지 않는다.")
+    void follow_recoversAfterActualUniqueViolation(ApplicationEvents applicationEvents){
         UUID existingFollowId = UUID.randomUUID();
         LocalDateTime existingCreatedAt = LocalDateTime.of(2026, 1, 1, 0, 0);
 
@@ -273,6 +303,10 @@ public class FollowServiceIntegrationTest {
 
         verify(followSaver).save(any(Follow.class));
 
+        assertThat(applicationEvents.stream(UserFollowedEvent.class))
+                .containsExactly(new UserFollowedEvent(followerId, "팔로우하는 사용자", followeeId));
+
+        assertThat(eventRecorder.events()).isEmpty();
 
     }
 
@@ -392,6 +426,62 @@ public class FollowServiceIntegrationTest {
         assertThat(followService.findFollowerIds(followeeId)).containsExactly(otherFollowerId);
     }
 
+    @Test
+    @DisplayName("신규 팔로우 저장이 커밋되면 생성 이벤트를 한 번 처리한다.")
+    void follow_handlesEventAfterCommit(){
+        FollowCommand command = new FollowCommand(followeeId, followerId);
+        FollowResult result = followService.follow(command);
+
+        assertThat(result.created()).isTrue();
+        assertThat(followRepository.existsById(result.followDto().id())).isTrue();
+
+        assertThat(eventRecorder.events())
+                .containsExactly(new UserFollowedEvent(followerId, "팔로우하는 사용자", followeeId));
+    }
+
+    @Test
+    @WithMockUser
+    @DisplayName("팔로우 취소 후 다시 등록하면 새 관계를 생성하고 커밋 후 이벤트를 한 번 처리한다.")
+    void follow_createsNewRelationAndEventAfterUnfollow(ApplicationEvents applicationEvents){
+        FollowCommand command = new FollowCommand(followeeId, followerId);
+        FollowResult first = followService.follow(command);
+        UUID previousFollowId = first.followDto().id();
+
+        followService.unfollow(new UnFollowCommand(previousFollowId, followerId));
+
+        assertThat(followRepository.existsById(previousFollowId)).isFalse();
+
+        applicationEvents.clear();
+        eventRecorder.clear();
+
+        FollowResult refollowed = followService.follow(command);
+
+        assertThat(refollowed.created()).isTrue();
+        assertThat(refollowed.followDto().id()).isNotEqualTo(previousFollowId);
+        assertThat(followRepository.existsById(refollowed.followDto().id())).isTrue();
+        assertThat(followRepository.count()).isEqualTo(1L);
+
+        UserFollowedEvent expectedEvent = new UserFollowedEvent(followerId, "팔로우하는 사용자", followeeId);
+
+        assertThat(applicationEvents.stream(UserFollowedEvent.class)).containsExactly(expectedEvent);
+        assertThat(eventRecorder.events()).containsExactly(expectedEvent);
+    }
+
+    @Test
+    @DisplayName("자기 자신을 팔로우하면 예외가 발생하고 관계 저장과 생성 이벤트 발행을 하지 않는다.")
+    void follow_doesNotPublishEventForSelfFollow(ApplicationEvents applicationEvents){
+
+        FollowCommand command = new FollowCommand(followerId, followerId);
+
+        assertThatThrownBy(()-> followService.follow(command))
+                .isInstanceOf(SelfFollowNotAllowedException.class);
+
+        assertThat(followRepository.count()).isZero();
+        assertThat(applicationEvents.stream(UserFollowedEvent.class)).isEmpty();
+        assertThat(eventRecorder.events()).isEmpty();
+
+    }
+
     private void insertUser(UUID userId, String name){
         jdbcTemplate.update(
                 """
@@ -408,6 +498,31 @@ public class FollowServiceIntegrationTest {
     @EnableMethodSecurity
     static class MethodSecurityTestConfig{
 
+    }
+
+    @TestConfiguration(proxyBeanMethods = false)
+    static class FollowEventTestConfig{
+        @Bean
+        CommittedFollowEventRecorder commitedFollowEventRecorder(){
+            return new CommittedFollowEventRecorder();
+        }
+    }
+
+    static class CommittedFollowEventRecorder{
+        private final List<UserFollowedEvent> events = new CopyOnWriteArrayList<>();
+
+        @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+        public void record(UserFollowedEvent event){
+            events.add(event);
+        }
+
+        List<UserFollowedEvent> events(){
+            return List.copyOf(events);
+        }
+
+        void clear(){
+            events.clear();
+        }
     }
 
 }

@@ -8,18 +8,24 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("팔로우 저장")
@@ -53,6 +59,69 @@ class FollowSaverTest {
         ArgumentCaptor<UserFollowedEvent> captor = ArgumentCaptor.forClass(UserFollowedEvent.class);
         verify(eventPublisher).publishEvent(captor.capture());
         assertThat(captor.getValue()).isEqualTo(new UserFollowedEvent(followerId, "팔로워", followeeId));
+    }
+
+    @Test
+    @DisplayName("팔로우 저장 호출에서 예외가 발생하면 예외를 전달하고 생성 이벤트를 발행하지 않는다.")
+    void save_doesNotPublishEventWhenRepositoryThrows(){
+        User follower = createUser(UUID.randomUUID(), "팔로워");
+        User followee = createUser(UUID.randomUUID(), "팔로우 대상");
+        Follow follow = new Follow(follower, followee);
+
+        DataIntegrityViolationException exception = new DataIntegrityViolationException("팔로우 저장 실패");
+
+        given(followRepository.save(follow)).willThrow(exception);
+
+        assertThatThrownBy(()-> followSaver.save(follow)).isSameAs(exception);
+
+        verify(followRepository).save(follow);
+        verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
+    @DisplayName("이벤트 발행 후 사용자 이름이 변경되어도 이벤트는 발행 당시 이름을 유지한다.")
+    void save_preservesFollowerNameAtPublication(){
+        User follower = createUser(UUID.randomUUID(), "변경 전 이름");
+        User followee = createUser(UUID.randomUUID(), "팔로우 대상");
+        Follow follow = new Follow(follower, followee);
+
+        ReflectionTestUtils.setField(follow,"id", UUID.randomUUID());
+
+        given(followRepository.save(follow)).willReturn(follow);
+
+        followSaver.save(follow);
+
+        ArgumentCaptor<UserFollowedEvent> captor = ArgumentCaptor.forClass(UserFollowedEvent.class);
+
+        verify(eventPublisher).publishEvent(captor.capture());
+
+        UserFollowedEvent publishEvent = captor.getValue();
+
+        follower.updateName("변경 후 이름");
+        assertThat(follower.getName()).isEqualTo("변경 후 이름");
+        assertThat(publishEvent.followerName()).isEqualTo("변경 전 이름");
+
+    }
+
+    @ParameterizedTest(name = "[{index}] 이름=[{0}]")
+    @NullAndEmptySource
+    @ValueSource(strings = {"   ", "\t"})
+    @DisplayName("사용자 이름이 없거나 공백이어도 이벤트에 원본 그대로 전달한다.")
+    void save_preservesNullOrBlankFollowerName(String followerName){
+        User follower = createUser(UUID.randomUUID(), followerName);
+        User followee = createUser(UUID.randomUUID(), "팔로우 대상");
+        Follow follow = new Follow(follower, followee);
+
+        ReflectionTestUtils.setField(follow,"id", UUID.randomUUID());
+
+        given(followRepository.save(follow)).willReturn(follow);
+
+        followSaver.save(follow);
+
+        ArgumentCaptor<UserFollowedEvent> captor = ArgumentCaptor.forClass(UserFollowedEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+
+        assertThat(captor.getValue().followerName()).isEqualTo(followerName);
     }
 
     private User createUser(UUID id, String name){
