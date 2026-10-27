@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Subscription;
 import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -91,5 +92,28 @@ class SubscriptionRepositoryTest {
     // then
     assertThat(subscriptionStatus).isFalse();
 
+  }
+
+  @Test
+  @DisplayName("주어진 플레이리스트 중 해당 사용자가 구독한 플레이리스트 ID만 조회한다")
+  void 주어진_플레이리스트_중_사용자가_구독한_ID만_조회한다() {
+    // given
+    UUID subscriberId = UUID.randomUUID();
+    UUID otherSubscriberId = UUID.randomUUID();
+    UUID playlistA = UUID.randomUUID();
+    UUID playlistB = UUID.randomUUID();
+    UUID playlistC = UUID.randomUUID();
+    UUID playlistD = UUID.randomUUID();
+    subscriptionRepository.save(new Subscription(playlistA, subscriberId));
+    subscriptionRepository.save(new Subscription(playlistB, subscriberId));
+    subscriptionRepository.save(new Subscription(playlistC, subscriberId));
+    subscriptionRepository.saveAndFlush(new Subscription(playlistD, otherSubscriberId));
+
+    // when
+    List<UUID> result = subscriptionRepository.findSubscribedPlaylistIds(
+        subscriberId, List.of(playlistA, playlistB, playlistD));
+
+    // then
+    assertThat(result).containsExactlyInAnyOrder(playlistA, playlistB);
   }
 }
