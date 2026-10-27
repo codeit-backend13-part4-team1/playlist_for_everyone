@@ -22,6 +22,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.sql.SQLException;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -304,4 +305,135 @@ class FollowRepositoryTest {
                                         .isEqualTo("23502")));
     }
 
+    @Test
+    @DisplayName("대상 사용자의 팔로워 수를 조회하면 해당 사용자를 팔로우한 관계만 집계한다.")
+    void countByFolloweeId_countsOnlyTargetFollowers(){
+        User followee = User.builder()
+                .email("target@test.example")
+                .name("조회 대상")
+                .role(Role.USER)
+                .build();
+
+        User followerA = User.builder()
+                .email("follower-a@test.example")
+                .name("팔로워 A")
+                .role(Role.USER)
+                .build();
+
+
+        User followerB = User.builder()
+                .email("follower-b@test.example")
+                .name("팔로워 B")
+                .role(Role.USER)
+                .build();
+
+        entityManager.persist(followee);
+        entityManager.persist(followerA);
+        entityManager.persist(followerB);
+
+        followRepository.save(new Follow(followerA, followee));
+        followRepository.save(new Follow(followerB, followee));
+        followRepository.save(new Follow(followee, followerA));
+        followRepository.flush();
+
+        UUID followeeId = followee.getId();
+        entityManager.clear();
+
+        Long result = followRepository.countByFolloweeId(followeeId);
+        assertThat(result).isEqualTo(2L);
+    }
+
+    @Test
+    @DisplayName("사용자는 존재하지만 팔로워가 없으면 0을 반환한다.")
+    void countByFolloweeId_returnsZeroWhenNoFollowers(){
+        User followee = User.builder()
+                .email("no-followers@test.example")
+                .name("팔로워가 없는 사용자")
+                .role(Role.USER)
+                .build();
+
+        entityManager.persist(followee);
+        entityManager.flush();
+
+        UUID followeeId = followee.getId();
+        entityManager.clear();
+
+        Long result = followRepository.countByFolloweeId(followeeId);
+        assertThat(result).isEqualTo(0L);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 사용자 ID로 팔로워 수를 조회하면 0을 반환한다.")
+    void countByFolloweeId_returnsZeroForNonexistentFollowee(){
+        UUID followeeId = UUID.randomUUID();
+        Long result = followRepository.countByFolloweeId(followeeId);
+
+        assertThat(result).isEqualTo(0L);
+    }
+
+    @Test
+    @DisplayName("팔로워 ID 목록을 조회하면 대상 사용자를 팔로우한 사용자 ID만 반환한다.")
+    void findFollowerIdsByFolloweeId_returnsOnlyTargetFollowerIds(){
+        User followee = User.builder()
+                .email("target@test.example")
+                .name("조회 대상")
+                .role(Role.USER)
+                .build();
+
+        User followerA = User.builder()
+                .email("follower-a@test.example")
+                .name("팔로워 A")
+                .role(Role.USER)
+                .build();
+
+
+        User followerB = User.builder()
+                .email("follower-b@test.example")
+                .name("팔로워 B")
+                .role(Role.USER)
+                .build();
+
+        entityManager.persist(followee);
+        entityManager.persist(followerA);
+        entityManager.persist(followerB);
+
+        followRepository.save(new Follow(followerA, followee));
+        followRepository.save(new Follow(followerB, followee));
+        followRepository.save(new Follow(followee, followerA));
+        followRepository.flush();
+
+        UUID followeeId = followee.getId();
+        entityManager.clear();
+
+        List<UUID> result = followRepository.findFollowerIdsByFolloweeId(followeeId);
+        assertThat(result).containsExactlyInAnyOrder(followerA.getId(), followerB.getId());
+    }
+
+    @Test
+    @DisplayName("사용자는 존재하지만 팔로워가 없으면 빈 ID 목록을 반환한다.")
+    void findFollowerIdsByFolloweeId_returnsEmptyWhenNoFollowers(){
+        User followee = User.builder()
+                .email("no-follower@test.example")
+                .name("팔로우가 없는 사용자")
+                .role(Role.USER)
+                .build();
+
+        entityManager.persist(followee);
+        entityManager.flush();
+
+        UUID followeeId = followee.getId();
+        entityManager.clear();
+
+        List<UUID> result = followRepository.findFollowerIdsByFolloweeId(followeeId);
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 사용자 ID로 팔로워 ID 목록을 조회하면 빈 목록을 반환한다.")
+    void findFollowerIdsByFolloweeId_returnsEmptyForNonexistentFollowee(){
+        UUID followeeId = UUID.randomUUID();
+        List<UUID> result = followRepository.findFollowerIdsByFolloweeId(followeeId);
+        assertThat(result).isEmpty();
+    }
 }
