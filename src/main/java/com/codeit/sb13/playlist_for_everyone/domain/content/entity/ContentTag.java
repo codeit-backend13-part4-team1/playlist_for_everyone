@@ -20,15 +20,10 @@ import lombok.NoArgsConstructor;
 )
 public class ContentTag extends BaseEntity {
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "content_id", nullable = false)
-    private Content content;
-
     @Column(nullable = false, length = 50)
     private String tag;
 
-    public ContentTag(Content content, String tag) {
-        this.content = content;
+    public ContentTag(String tag) {
         this.tag = tag;
     }
 

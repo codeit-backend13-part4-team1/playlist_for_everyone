@@ -16,7 +16,6 @@ public record ContentCreateRequest(
         @NotBlank
         String description,
 
-        @NotNull
-        List<@NotBlank String> tags
+        List<String> tags
 ) {
 }

@@ -10,9 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -23,22 +21,25 @@ public class ContentService {
 
     @Transactional
     public ContentDto create(ContentCreateRequest request, MultipartFile file) {
-        Set<String> seen = new HashSet<>();
-
-        // 태그 앞뒤 공백 제거 및 중복 태그 제외
-        // 중간 공백을 제외한 문자열이 같으면 중복으로 판단하고, 먼저 입력된 태그만 저장
-        List<String> tags = request.tags().stream()
-                .map(String::strip)
-                .filter(tag -> !tag.isBlank())
-                .filter(tag -> seen.add(tag.replaceAll("\\s+", "")))
-                .toList();
-
         Content content = Content.createAdminContent(
                 request.type(),
                 request.title(),
                 request.description(),
                 "temporary-thumbnail-url"   // TODO: S3 파일 업로드 연동 후 실제 URL로 변경
         );
+
+        Set<String> seen = new HashSet<>();
+
+        // 태그가 없는 경우 빈 리스트로 처리
+        // 중간 공백을 제외한 문자열이 같으면 먼저 입력된 태그만 저장
+        List<String> tags = Optional.ofNullable(request.tags())
+                .orElseGet(List::of)
+                .stream()
+                .filter(Objects::nonNull)
+                .map(String::strip)
+                .filter(tag -> !tag.isBlank())
+                .filter(tag -> seen.add(tag.replaceAll("\\s+", "")))
+                .toList();
 
         for (String tag : tags) {
             content.addTag(tag);

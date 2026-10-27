@@ -44,15 +44,14 @@ public class Content extends UpdatedAtEntity {
     private String providerItemId;
 
     @OneToMany(
-            mappedBy = "content",
             cascade = CascadeType.ALL,
             orphanRemoval = true
     )
+    @JoinColumn(name = "content_id")
     private List<ContentTag> tags = new ArrayList<>();
 
     public void addTag(String tag) {
-        ContentTag contentTag = new ContentTag(this, tag);
-        this.tags.add(contentTag);
+        tags.add(new ContentTag(tag));
     }
 
     public static Content createAdminContent(
