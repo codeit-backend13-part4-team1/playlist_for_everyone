@@ -256,5 +256,27 @@ class FollowControllerTest {
         verifyNoInteractions(followService);
     }
 
+    @Test
+    @DisplayName("팔로우 관계를 조회하면 200과 기존 팔로우 정보를 반환한다.")
+    void getFollowedByMe_returnsExistingFollow() throws Exception {
+        UUID followId = UUID.randomUUID();
+        UUID followeeId = UUID.randomUUID();
+        UUID followerId = UUID.randomUUID();
+
+        // 인증 연동 전에는 서비스에 전달할 followerID를 null로 둔다.
+        FollowCommand command = new FollowCommand(followeeId, null);
+        FollowDto response = new FollowDto(followId, followeeId, followerId);
+
+        given(followService.findFollowDto(command)).willReturn(response);
+
+        mockMvc.perform(get("/api/follows/followed-by-me")
+                .param("followeeId", followeeId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(followId.toString()))
+                .andExpect(jsonPath("$.followeeId").value(followeeId.toString()))
+                .andExpect(jsonPath("$.followerId").value(followerId.toString()));
+
+        verify(followService).findFollowDto(command);
+    }
 
 }
