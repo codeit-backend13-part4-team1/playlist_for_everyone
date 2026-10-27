@@ -49,7 +49,9 @@ public class PlaylistController {
       @Valid PlaylistSearchRequest request,
       // TODO: 인증 구현이 올라오면 @AuthenticationPrincipal로 교체
       @RequestHeader("X-User-Id") UUID requesterId) {
-    return null;
+    CursorResponse<PlaylistResponse> response =
+        playlistService.getPlaylists(request, requesterId);
+    return ResponseEntity.ok(response);
   }
 
 }
