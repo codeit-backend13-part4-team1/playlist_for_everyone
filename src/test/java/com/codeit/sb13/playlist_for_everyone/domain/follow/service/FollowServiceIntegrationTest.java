@@ -2,10 +2,13 @@ package com.codeit.sb13.playlist_for_everyone.domain.follow.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.command.FollowCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.command.UnFollowCommand;
+import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowDto;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowResult;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.entity.Follow;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.repository.FollowRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.service.impl.FollowSaver;
+import com.codeit.sb13.playlist_for_everyone.global.exception.ApiErrorCode;
+import com.codeit.sb13.playlist_for_everyone.global.exception.follow.FollowNotFoundException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -78,17 +81,19 @@ public class FollowServiceIntegrationTest {
 
     private final UUID followerId = UUID.randomUUID();
     private final UUID followeeId = UUID.randomUUID();
+    private final UUID otherFollowerId = UUID.randomUUID();
 
     @BeforeEach
     void setUp(){
         insertUser(followerId, "팔로우하는 사용자");
         insertUser(followeeId, "팔로우받는 사용자");
+        insertUser(otherFollowerId, "다른 요청자");
     }
 
     @AfterEach
     void cleanUp(){
         followRepository.deleteAllInBatch();
-        jdbcTemplate.update("DELETE FROM users WHERE id IN (?, ?)", followerId, followeeId);
+        jdbcTemplate.update("DELETE FROM users WHERE id IN (?, ?, ?)", followerId, followeeId, otherFollowerId);
     }
 
     @Test
@@ -263,6 +268,92 @@ public class FollowServiceIntegrationTest {
         assertThat(followRepository.count()).isEqualTo(1L);
 
         verify(followSaver).save(any(Follow.class));
+
+
+    }
+
+    @Test
+    @DisplayName("저장된 팔로우 조회하면 관계 ID와 두 사용자 ID를 반환한다.")
+    void findFollowDto_returnsPersistedFollow(){
+        FollowCommand command = new FollowCommand(followeeId, followerId);
+        FollowResult created = followService.follow(command);
+
+        FollowDto result = followService.findFollowDto(command);
+
+        assertThat(result.id()).isEqualTo(created.followDto().id());
+        assertThat(result.followeeId()).isEqualTo(followeeId);
+        assertThat(result.followerId()).isEqualTo(followerId);
+
+
+    }
+
+    @Test
+    @DisplayName("사용자는 존재하지만 팔로우 관계가 없으면 대상 ID를 담은 조회 실패 예외가 발생한다.")
+    void findFollowDto_throwsWhenFollowMissing(){
+        FollowCommand command = new FollowCommand(followeeId, followerId);
+        assertThatThrownBy(()-> followService.findFollowDto(command))
+                .isInstanceOfSatisfying(FollowNotFoundException.class,
+                        e-> {
+                    assertThat(e.getApiErrorCode()).isEqualTo(ApiErrorCode.FOLLOW_NOT_FOUND);
+                    assertThat(e.getDetails()).containsEntry("followeeId", followeeId);
+                });
+
+
+    }
+
+    @Test
+    @WithMockUser
+    @DisplayName("팔로우를 취소한 뒤 조회하면 대상 ID를 담은 조회 실패 예외가 발생한다.")
+    void findFollowDto_throwsAfterUnfollow(){
+        FollowCommand command = new FollowCommand(followeeId, followerId);
+        FollowResult created = followService.follow(command);
+
+        assertThat(followService.findFollowDto(command).id())
+                .isEqualTo(created.followDto().id());
+
+        followService.unfollow(new UnFollowCommand(created.followDto().id(), followerId));
+
+        assertThatThrownBy(()-> followService.findFollowDto(command))
+                .isInstanceOfSatisfying(FollowNotFoundException.class
+                        , e -> {
+                    assertThat(e.getApiErrorCode()).isEqualTo(ApiErrorCode.FOLLOW_NOT_FOUND);
+                    assertThat(e.getDetails()).containsEntry("followeeId", followeeId);
+                });
+
+
+    }
+
+    @Test
+    @DisplayName("같은 대상을 조회해도 다른요청자의 팔로우 관계는 반환하지 않는다.")
+    void findFollowDto_doesNotReturnAnotherUsersFollow(){
+        FollowCommand ownerCommand = new FollowCommand(followeeId, followerId);
+        FollowResult created = followService.follow(ownerCommand);
+
+        assertThat(followService.findFollowDto(ownerCommand).id()).isEqualTo(created.followDto().id());
+
+        FollowCommand otherCommand = new FollowCommand(followeeId, otherFollowerId);
+        assertThatThrownBy(()-> followService.findFollowDto(otherCommand))
+                .isInstanceOfSatisfying(FollowNotFoundException.class,
+                        e-> {
+                    assertThat(e.getApiErrorCode()).isEqualTo(ApiErrorCode.FOLLOW_NOT_FOUND);
+                    assertThat(e.getDetails()).containsEntry("followeeId", followeeId);
+                });
+
+
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 대상 사용자 ID로 조회하면 해당 ID를 담은 조회 실패 예외가 발생한다.")
+    void findFollowDto_throwsForNonexistentFollowee(){
+        UUID missingFolloweeId = UUID.randomUUID();
+        FollowCommand command = new FollowCommand(missingFolloweeId, followerId);
+
+        assertThatThrownBy(()-> followService.findFollowDto(command))
+                .isInstanceOfSatisfying(FollowNotFoundException.class,
+                        e -> {
+                    assertThat(e.getApiErrorCode()).isEqualTo(ApiErrorCode.FOLLOW_NOT_FOUND);
+                    assertThat(e.getDetails()).containsEntry("followeeId", missingFolloweeId);
+                });
 
 
     }
