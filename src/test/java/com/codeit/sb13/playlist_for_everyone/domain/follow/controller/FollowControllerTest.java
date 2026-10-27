@@ -8,6 +8,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.follow.service.FollowService
 import com.codeit.sb13.playlist_for_everyone.global.config.MDCLoggingInterceptor;
 import com.codeit.sb13.playlist_for_everyone.global.config.WebMvcConfig;
 import com.codeit.sb13.playlist_for_everyone.global.exception.ApiErrorCode;
+import com.codeit.sb13.playlist_for_everyone.global.exception.follow.FollowNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.follow.FollowTargetNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.follow.SelfFollowNotAllowedException;
 import org.junit.jupiter.api.DisplayName;
@@ -277,6 +278,53 @@ class FollowControllerTest {
                 .andExpect(jsonPath("$.followerId").value(followerId.toString()));
 
         verify(followService).findFollowDto(command);
+    }
+
+    @Test
+    @DisplayName("팔로우 관계가 없으면 404와 대상 ID를 포함한 공통 오류 응답을 반환한다.")
+    void getFollowedByMe_returnsNotFoundWhenFollowMissing() throws Exception {
+        UUID followeeId = UUID.randomUUID();
+        FollowCommand command = new FollowCommand(followeeId, null);
+
+        given(followService.findFollowDto(command))
+                .willThrow(new FollowNotFoundException(Map.of("followeeId", followeeId)));
+
+        mockMvc.perform(get("/api/follows/followed-by-me")
+                .param("followeeId", followeeId.toString()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.exceptionName").value(FollowNotFoundException.class.getSimpleName()))
+                .andExpect(jsonPath("$.message").value(ApiErrorCode.FOLLOW_NOT_FOUND.getMessage()))
+                .andExpect(jsonPath("$.details.followeeId").value(followeeId.toString()));
+
+        verify(followService).findFollowDto(command);
+
+
+    }
+
+    @Test
+    @DisplayName("팔로우 관계 조회 시 대상ID가 누락되면 400을 반환하고 서비스를 호출하지 않는다.")
+    void getFollowedByMe_returnsBadRequestWhenFolloweeIdMissing() throws Exception {
+
+        mockMvc.perform(get("/api/follows/followed-by-me"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.exceptionName").value(MethodArgumentNotValidException.class.getSimpleName()))
+                .andExpect(jsonPath("$.message").value(ApiErrorCode.INVALID_REQUEST.getMessage()))
+                .andExpect(jsonPath("$.details.followeeId").isArray());
+
+        verifyNoInteractions(followService);
+    }
+
+    @Test
+    @DisplayName("팔로우 관계 조회 시 대상 ID의 UUID 형식이 잘못되면 400을 반환하고 서비스를 호출하지 않는다.")
+    void getFollowedByMe_returnsBadRequestWhenFolloweeIdInvalid() throws Exception {
+        mockMvc.perform(get("/api/follows/followed-by-me")
+                        .param("followeeId", "not-a-uuid"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.exceptionName").value(MethodArgumentNotValidException.class.getSimpleName()))
+                .andExpect(jsonPath("$.message").value(ApiErrorCode.INVALID_REQUEST.getMessage()))
+                .andExpect(jsonPath("$.details.followeeId").isArray());
+
+        verifyNoInteractions(followService);
     }
 
 }
