@@ -5,7 +5,9 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
+import com.codeit.sb13.playlist_for_everyone.global.exception.ApiErrorCode;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.DuplicateEmailException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -16,8 +18,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.sql.SQLException;
+import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.BDDMockito.*;
@@ -128,7 +133,7 @@ class UserServiceTest {
         given(userRepository.saveAndFlush(any(User.class)))
                 .willThrow(dbException);
 
-        assertThatThrownBy(()-> userService.create(command))
+        assertThatThrownBy(() -> userService.create(command))
                 .isInstanceOf(DuplicateEmailException.class)
                 .hasCause(dbException);
     }
@@ -158,9 +163,56 @@ class UserServiceTest {
         given(userRepository.saveAndFlush(any(User.class)))
                 .willThrow(dbException);
 
-        assertThatThrownBy(()-> userService.create(command))
+        assertThatThrownBy(() -> userService.create(command))
                 .isSameAs(dbException);
 
     }
 
+
+    @Test
+    @DisplayName("사용자가 존재하면 조회한 사용자를 반환한다")
+    void 사용자가_존재하면_반환한다() {
+        UUID userId = UUID.randomUUID();
+
+        User user = User.builder()
+                .email("test@gmai.com")
+                .name("테스트")
+                .password("encoded-password")
+                .role(Role.USER)
+                .build();
+
+        ReflectionTestUtils.setField(user, "id", userId);
+
+        given(userRepository.findById(userId))
+                .willReturn(Optional.of(user));
+
+        User result = userService.getById(userId);
+
+        assertThat(result).isSameAs(user);
+        assertThat(result.getId()).isEqualTo(userId);
+
+        verify(userRepository).findById(userId);
+    }
+
+    @Test
+    @DisplayName("사용자가 없으면 사용자ID를 포함한 공통 예외를 발생시킨다")
+    void 사용자가_없으면_예외가_발생한다() {
+        UUID userId = UUID.randomUUID();
+
+        given(userRepository.findById(userId))
+                .willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.getById(userId))
+                .isInstanceOfSatisfying(
+                        UserNotFoundException.class,
+                        exception -> {
+                            assertThat(exception.getApiErrorCode())
+                                    .isEqualTo(ApiErrorCode.USER_NOT_FOUND);
+                            assertThat(exception.getDetails())
+                                    .containsEntry("userId", userId);
+                        }
+                );
+
+        verify(userRepository).findById(userId);
+    }
 }
