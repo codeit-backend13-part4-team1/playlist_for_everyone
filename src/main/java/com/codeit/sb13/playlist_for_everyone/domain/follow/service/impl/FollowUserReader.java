@@ -16,6 +16,6 @@ public class FollowUserReader {
     private final UserService userService;
 
     public User getById(UUID userId){
-        return null;
+        return userService.getById(userId);
     }
 }
