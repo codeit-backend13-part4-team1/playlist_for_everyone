@@ -54,4 +54,47 @@ class SseConnectionServiceTest {
                 .isEqualTo(connectionTimeout.toMillis());
     }
 
+    @Test
+    @DisplayName("같은 사용자가 두 번 연결하면 서로 다른 에미터가 생성되고 두 연결이 모두 유지된다.")
+    void connectTwiceKeepsBothConnectionsForSameUser(){
+        SseEmitterRepository repository = new InMemorySseEmitterRepository();
+        SseProperties properties = new SseProperties(Duration.ofSeconds(15), Duration.ofMinutes(30));
+
+        SseConnectionService service = new SseConnectionService(repository, properties);
+
+        UUID userId = UUID.randomUUID();
+        SseEmitter firstEmitter = service.connect(userId);
+        SseEmitter secondEmitter = service.connect(userId);
+
+        assertThat(secondEmitter).isNotSameAs(firstEmitter);
+        assertThat(repository.findAllByUserId(userId))
+                .hasSize(2)
+                .containsValues(firstEmitter, secondEmitter);
+    }
+
+    @Test
+    @DisplayName("서로 다른 사용자가 연결하면 각 사용자에게 자신의 연결만 등록된다.")
+    void connectSeparatesConnectionsByUser(){
+        SseEmitterRepository repository = new InMemorySseEmitterRepository();
+        SseProperties properties = new SseProperties(Duration.ofSeconds(15), Duration.ofMinutes(30));
+
+        SseConnectionService service = new SseConnectionService(repository, properties);
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+
+
+        SseEmitter firstEmitter = service.connect(firstUserId);
+        SseEmitter secondEmitter = service.connect(secondUserId);
+
+        assertThat(repository.findAllByUserId(firstUserId))
+                .hasSize(1)
+                .containsValues(firstEmitter);
+
+        assertThat(repository.findAllByUserId(secondUserId))
+                .hasSize(1)
+                .containsValues(secondEmitter);
+
+
+    }
+
 }
