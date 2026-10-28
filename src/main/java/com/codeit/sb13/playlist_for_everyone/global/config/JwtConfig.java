@@ -4,6 +4,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtProperties;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
+import io.jsonwebtoken.security.WeakKeyException;
+import io.jsonwebtoken.io.DecodingException;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -29,12 +31,21 @@ public class JwtConfig {
             throw new IllegalArgumentException("JWT 서명 키 설정은 필수입니다.");
         }
 
-        // Base64 문자열을 원래의 키 바이트로 복원한다.
-        byte[] keyBytes = Decoders.BASE64.decode(secretKey);
+        SecretKey signingKey;
 
+        try {
+            // 외부 설정의 Base64 문자열을 실제 서명 키 바이트로 복원한다.
+            byte[] keyBytes = Decoders.BASE64.decode(secretKey);
 
-        // 키가 너무 짧으면 WeakKeyException이 발생한다.
-        SecretKey signingKey = Keys.hmacShaKeyFor(keyBytes);
+            //HS256에 필요한 최소 키 길이인 32바이트 이상인지 검증한다.
+            signingKey = Keys.hmacShaKeyFor(keyBytes);
+        } catch (DecodingException | WeakKeyException exception) {
+            throw new IllegalStateException(
+                    "everyone.jwt.secret-key는 Base64로 인코딩되어야 하며, "
+                            + "디코딩한 키 길이는 32바이트 이상이어야 합니다.",
+                    exception
+            );
+        }
 
         return new JwtTokenProvider(
                 signingKey,
