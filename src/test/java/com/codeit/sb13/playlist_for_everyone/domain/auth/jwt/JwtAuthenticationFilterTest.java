@@ -15,6 +15,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpHeaders;
@@ -26,6 +28,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.io.IOException;
 import java.util.Map;
 import java.util.UUID;
 
@@ -248,6 +251,51 @@ class JwtAuthenticationFilterTest {
         // 일반 서버 오류를 잘못된 인증 응답으로 바꾸면 안 된다.
         assertThat(response.getStatus())
                 .isNotEqualTo(HttpServletResponse.SC_UNAUTHORIZED);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/api/auth/sign-in",
+            "/api/users"
+    })
+    @DisplayName("로그인, 회원가입은 잘못된 Bearer 헤더가 있어도 다음 필터로 진행한다.")
+    void 공개_인증_요청은_JWT_검증을_생략한다(String path) throws Exception {
+        request.setMethod("POST");
+        request.setRequestURI(path);
+
+        // 기존 필터에서는 토큰 누락으로 401이 발생하는 헤더다.
+        // 공개 인증 요청에서는 헤더 해석하는 단계 자체를 생략해야 한다.
+        request.addHeader(HttpHeaders.AUTHORIZATION, "Bearer ");
+        filter.doFilter(request, response, filterChain);
+
+        // JWT 인증한 것이 아니라, 다음 처리로 넘긴다
+        assertThat(SecurityContextHolder.getContext().getAuthentication())
+                .isNull();
+
+        verify(filterChain).doFilter(request, response);
+        verifyNoInteractions(jwtTokenProvider, userService);
+    }
+
+    @Test
+    @DisplayName("사용자 목록 조회는 회원가입과 경로가 같아도 JWT 검증을 생략하지 않는다")
+    void 사용자_목록_조회는_JWT_검증을_수행한다() throws Exception {
+        request.setMethod("GET");
+        request.setRequestURI("/api/users");
+        request.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN);
+
+        given(jwtTokenProvider.parseAccessToken(TOKEN))
+                .willThrow(new ExpiredJwtException(
+                        null, null, "만료된 토큰"
+                ));
+
+        filter.doFilter(request, response, filterChain);
+
+        assertUnauthorized();
+
+        // POST /api/users만 제외해야 한다.
+        // GET /api/users는 토큰 검증을 수행하고 실패 시 요청을 중단한다.
+        verify(jwtTokenProvider).parseAccessToken(TOKEN);
+        verifyNoInteractions(userService, filterChain);
     }
 
 
