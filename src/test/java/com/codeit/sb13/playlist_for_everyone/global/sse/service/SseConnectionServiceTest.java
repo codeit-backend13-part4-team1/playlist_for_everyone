@@ -332,4 +332,36 @@ class SseConnectionServiceTest {
 
         }
     }
+    
+    @Test
+    @DisplayName("한 연결에서 오류가 발생해도 같은 사용자의 다른 연결은 유지되고 종료되지 않는다.")
+    void errorCallbackKeepsOtherConnectionsForSameUser(){
+        SseEmitterRepository repository = new InMemorySseEmitterRepository();
+        SseProperties properties = new SseProperties(Duration.ofSeconds(15), Duration.ofMinutes(30));
+
+        SseConnectionService service = new SseConnectionService(repository, properties);
+        UUID userId = UUID.randomUUID();
+
+        try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
+            SseEmitter firstEmitter = service.connect(userId);
+            SseEmitter secondEmitter = service.connect(userId);
+
+            assertThat(repository.findAllByUserId(userId))
+                    .hasSize(2)
+                    .containsValues(firstEmitter, secondEmitter);
+
+            ArgumentCaptor<Consumer<Throwable>> errorCaptor = ArgumentCaptor.captor();
+
+            verify(firstEmitter).onError(errorCaptor.capture());
+            errorCaptor.getValue().accept(new IOException("연결 오류"));
+
+            assertThat(repository.findAllByUserId(userId))
+                    .hasSize(1)
+                    .doesNotContainValue(firstEmitter)
+                    .containsValue(secondEmitter);
+
+            verify(secondEmitter, never()).complete();
+            verify(secondEmitter, never()).completeWithError(any());
+        }
+    }
 }
