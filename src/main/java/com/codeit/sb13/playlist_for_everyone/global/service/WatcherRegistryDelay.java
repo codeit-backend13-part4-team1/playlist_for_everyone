@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.global.service;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -19,12 +20,14 @@ public class WatcherRegistryDelay {
 
         if (session == null) return false;
 
-        // 체킹에 따른 리스트 갱신
-        refreshSessionList();
         // 없다면 초기 시도 시각 세팅
         sessionList.computeIfAbsent(session, k -> Instant.now());
 
         return allowRefresh(session);
+    }
+
+    public void updateRefreshTime(String session){
+        sessionList.put(session, Instant.now());
     }
 
     private boolean allowRefresh(String session){
@@ -37,13 +40,15 @@ public class WatcherRegistryDelay {
                 .compareTo(Duration.ofSeconds(TTL_TIMEOUT / 2)) > 0;
     }
 
+    // 1분마다 오개된 세션 갱신.
+    @Scheduled(fixedDelay = 60000)
     private void refreshSessionList(){
         Instant now = Instant.now();
         for (String key : sessionList.keySet()){
             Instant sessionRefreshTime = sessionList.get(key);
 
             // 현재 시간보다 TTL 이상 과거의 리프레시 삭제.
-            if (sessionRefreshTime.isBefore(now.minusSeconds(TTL_TIMEOUT))){
+            if (now.minusSeconds(TTL_TIMEOUT).isAfter(sessionRefreshTime)){
                 sessionList.remove(key);
             }
         }

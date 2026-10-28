@@ -50,6 +50,7 @@ public class WebSocketInterceptor implements ChannelInterceptor {
 
         try {
             watcherRegistry.refresh(session);
+            delay.updateRefreshTime(session);
         } catch (RuntimeException e) {
             log.error("[{}] 세션 갱신 실패 - sessionId : {}", "ChannelInterceptor", session, e);
         }
