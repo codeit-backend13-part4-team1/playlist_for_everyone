@@ -14,6 +14,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.PlaylistSer
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
+import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListForbiddenException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import java.util.HashSet;
@@ -104,7 +105,24 @@ public class PlaylistServiceImpl implements PlaylistService {
   @Transactional
   public PlaylistResponse updatePlaylist(
       UUID playlistId, PlaylistUpdateRequest request, UUID requesterId) {
-    return null;
+
+    Playlist playlist = playlistRepository.findWithOwnerById(playlistId)
+        .orElseThrow(() -> new PlayListNotFoundException(
+            Map.of("playlistId", playlistId)
+        ));
+
+    if(!playlist.isOwnedBy(requesterId)) {
+      throw new PlayListForbiddenException(
+          Map.of("playlistId", playlistId, "requesterId", requesterId));
+    }
+
+    playlist.update(request.title(), request.description());
+
+    boolean subscribedByMe = subscriptionRepository
+        .existsByPlaylistIdAndSubscriberId(playlistId, requesterId);
+
+    return toResponse(playlist,subscribedByMe);
+
   }
 
  //---------[헬퍼 메서드]
