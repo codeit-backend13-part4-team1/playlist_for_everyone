@@ -10,6 +10,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -40,6 +41,20 @@ public class SseDeliveryService {
     }
 
     public void sendHeartbeatToLocalConnections(){
+        sseEmitterRepository.findAll()
+                .forEach((userId, connections) ->
+                        connections.forEach((connection, emitter) ->
+                                sendHeartbeat(userId, connection, emitter)
+                        )
+                );
+    }
 
+    private void sendHeartbeat(UUID userId, Connection connection, SseEmitter emitter) {
+        try {
+            emitter.send(SseEmitter.event().comment("heartbeat"));
+        } catch (IOException | IllegalStateException e) {
+            sseEmitterRepository.delete(userId, connection);
+            log.warn("SSE 이벤트 전송 실패로 연결을 정리했습니다. userId={}, connectionId={}", userId, connection.id(), e);
+        }
     }
 }
