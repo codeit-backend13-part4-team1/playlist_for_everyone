@@ -5,6 +5,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
+import io.jsonwebtoken.io.DecodingException;
 import io.jsonwebtoken.io.Encoders;
 import io.jsonwebtoken.security.Keys;
 import io.jsonwebtoken.security.WeakKeyException;
@@ -127,6 +128,11 @@ class JwtConfigTest {
                             .hasRootCauseInstanceOf(
                                     WeakKeyException.class
                             );
+                    assertThat(context.getStartupFailure())
+                            .hasRootCauseInstanceOf(WeakKeyException.class)
+                            .hasStackTraceContaining(
+                                    "everyone.jwt.secret-key는 Base64로 인코딩되어야 하며, "
+                                    + "디코딩한 키 길이는 32바이트 이상이어야 합니다.");
                 });
     }
 
@@ -146,6 +152,31 @@ class JwtConfigTest {
                     assertThat(context.getStartupFailure())
                             .hasRootCauseInstanceOf(
                                     IllegalArgumentException.class
+                            );
+                });
+    }
+
+    @Test
+    @DisplayName("Base64 형식이 잘못되면 설정 이름을 포함한 오류를 시작에 실패한다.")
+    void 잘못된_Base64_키면_오류를_알린다() {
+        // 문자열 내부에 표준 Base64에서 허용하지 않는 '_'를 넣는다.
+        String invalidSecretKey = "MDEy_MzQ1Njc4OWFiY2RlZg==";
+
+        contextRunner
+                .withPropertyValues(
+                        "everyone.jwt.secret-key=" + invalidSecretKey,
+                        "everyone.jwt.access-token-validity=30m"
+                )
+                .run(context -> {
+                    assertThat(context).hasFailed();
+
+                    // 실제 디코딩 오류는 원인 예외로 보존한다.
+                    // 오류 체인에는 문제가 된 설정 이름과 필요한 조건이 있어야 한다.
+                    assertThat(context.getStartupFailure())
+                            .hasRootCauseInstanceOf(DecodingException.class)
+                            .hasStackTraceContaining(
+                                    "everyone.jwt.secret-key는 Base64로 인코딩되어야 하며, "
+                                            + "디코딩한 키 길이는 32바이트 이상이어야 합니다."
                             );
                 });
     }
