@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.ArgumentMatchers.anyCollection;
@@ -18,6 +19,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.Playlis
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.PlaylistResponse;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Playlist;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistSortBy;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistSearchCondition;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.SubscriptionRepository;
@@ -37,6 +39,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -52,6 +55,9 @@ public class PlaylistServiceImplTest {
   private UserRepository userRepository;
   @Mock
   private SubscriptionRepository subscriptionRepository;
+
+  @Mock
+  private PlaylistContentRepository playlistContentRepository;
 
   @InjectMocks
   private PlaylistServiceImpl playlistService;
@@ -520,6 +526,65 @@ public class PlaylistServiceImplTest {
     assertThat(playlist.getDescription()).isEqualTo("description");
   }
 
+  @Test
+  @DisplayName("소유자가 삭제하면 구독, 콘텐츠 연결, 플레이리스트 순서로 삭제한다")
+  void 소유자가_삭제하면_자식을_먼저_지우고_플레이리스트를_삭제한다() {
+    // given
+    UUID ownerId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
+
+    given(playlistRepository.findById(playlistId)).willReturn(Optional.of(playlist));
+
+    // when
+    playlistService.deletePlaylist(playlistId, ownerId);
+
+    // then
+    InOrder inOrder = inOrder(subscriptionRepository, playlistContentRepository, playlistRepository);
+    inOrder.verify(subscriptionRepository).deleteAllByPlaylistId(playlistId);
+    inOrder.verify(playlistContentRepository).deleteAllByPlaylistId(playlistId);
+    inOrder.verify(playlistRepository).delete(playlist);
+  }
+
+  @Test
+  @DisplayName("없는 플레이리스트를 삭제하면 PlayListNotFoundException을 던지고 아무것도 삭제하지 않는다")
+  void 없는_플레이리스트_삭제시_PlayListNotFoundException을_던진다() {
+    // given
+    UUID playlistId = UUID.randomUUID();
+    UUID requesterId = UUID.randomUUID();
+    given(playlistRepository.findById(playlistId)).willReturn(Optional.empty());
+
+    // when & then
+    assertThatExceptionOfType(PlayListNotFoundException.class)
+        .isThrownBy(() -> playlistService.deletePlaylist(playlistId, requesterId))
+        .satisfies(e -> assertThat(e.getDetails())
+            .containsEntry("playlistId", playlistId));
+
+    verifyNoInteractions(subscriptionRepository, playlistContentRepository);
+    verify(playlistRepository, never()).delete(any(Playlist.class));
+  }
+
+  @Test
+  @DisplayName("소유자가 아니면 PlayListForbiddenException을 던지고 아무것도 삭제하지 않는다")
+  void 소유자가_아니면_삭제할_수_없다() {
+    // given
+    UUID ownerId = UUID.randomUUID();
+    UUID requesterId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
+
+    given(playlistRepository.findById(playlistId)).willReturn(Optional.of(playlist));
+
+    // when & then
+    assertThatExceptionOfType(PlayListForbiddenException.class)
+        .isThrownBy(() -> playlistService.deletePlaylist(playlistId, requesterId))
+        .satisfies(e -> assertThat(e.getDetails())
+            .containsEntry("playlistId", playlistId)
+            .containsEntry("requesterId", requesterId));
+
+    verifyNoInteractions(subscriptionRepository, playlistContentRepository);
+    verify(playlistRepository, never()).delete(any(Playlist.class));
+  }
 
 
   //-----------[헬퍼 메서드]

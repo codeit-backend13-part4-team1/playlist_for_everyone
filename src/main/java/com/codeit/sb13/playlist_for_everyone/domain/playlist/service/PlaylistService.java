@@ -16,4 +16,7 @@ public interface PlaylistService {
   CursorResponse<PlaylistResponse> getPlaylists(PlaylistSearchRequest request, UUID requesterId);
 
   PlaylistResponse updatePlaylist(UUID playlistId, PlaylistUpdateRequest request, UUID requesterId);
+
+  void deletePlaylist(UUID playlistId, UUID requesterId);
+
 }
