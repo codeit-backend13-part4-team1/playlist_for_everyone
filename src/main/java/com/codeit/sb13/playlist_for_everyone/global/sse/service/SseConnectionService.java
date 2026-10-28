@@ -8,6 +8,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.UUID;
 
 @Service
@@ -32,6 +34,13 @@ public class SseConnectionService {
         });
 
         sseEmitterRepository.save(userId, connection, emitter);
+
+        try {
+            emitter.send(SseEmitter.event().comment("connected"));
+        } catch (IOException e) {
+            sseEmitterRepository.delete(userId, connection);
+            throw new UncheckedIOException("SSE 초기 주석 전송에 실패했습니다.",e);
+        }
         return emitter;
     }
 }
