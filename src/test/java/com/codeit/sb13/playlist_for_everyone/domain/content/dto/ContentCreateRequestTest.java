@@ -5,6 +5,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -14,11 +15,16 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 
 
-@DisplayName("콘텐츠 CreateRequest")
+@DisplayName("ContentCreateRequest 유효성 검사 테스트")
 public class ContentCreateRequestTest {
 
-    private final Validator validator =
-            Validation.buildDefaultValidatorFactory().getValidator();
+    private Validator validator;
+
+    @BeforeEach
+    void setUp() {
+        validator = Validation.buildDefaultValidatorFactory()
+                .getValidator();
+    }
 
     @Test
     @DisplayName("타입이 비어 있으면 유효성 검사에 실패한다.")
