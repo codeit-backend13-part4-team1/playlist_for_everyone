@@ -9,15 +9,18 @@ import org.springframework.boot.restclient.test.autoconfigure.RestClientTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.client.MockRestServiceServer;
+import org.springframework.web.client.RestClientResponseException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 @ActiveProfiles("test")
@@ -155,5 +158,45 @@ class TmdbClientTest {
         assertThatThrownBy(() -> tmdbClient.getPopularTvShows(page))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("페이지 번호는 1 이상이어야 합니다.");
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {401, 429, 500})
+    void 영화_조회_API_오류를_예외로_전달한다(int statusCode) {
+        // given
+        server.expect(requestTo(
+                        "https://tmdb.test/3/movie/popular?language=ko-KR&page=1"
+                ))
+                .andRespond(withStatus(HttpStatus.valueOf(statusCode)));
+
+        // when & then
+        assertThatThrownBy(() -> tmdbClient.getPopularMovies(1))
+                .isInstanceOfSatisfying(
+                        RestClientResponseException.class,
+                        exception -> assertThat(exception.getStatusCode().value())
+                                .isEqualTo(statusCode)
+                );
+
+        server.verify();
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {401, 429, 500})
+    void TV_조회_API_오류를_예외로_전달한다(int statusCode) {
+        // given
+        server.expect(requestTo(
+                        "https://tmdb.test/3/tv/popular?language=ko-KR&page=1"
+                ))
+                .andRespond(withStatus(HttpStatus.valueOf(statusCode)));
+
+        // when & then
+        assertThatThrownBy(() -> tmdbClient.getPopularTvShows(1))
+                .isInstanceOfSatisfying(
+                        RestClientResponseException.class,
+                        exception -> assertThat(exception.getStatusCode().value())
+                                .isEqualTo(statusCode)
+                );
+
+        server.verify();
     }
 }
