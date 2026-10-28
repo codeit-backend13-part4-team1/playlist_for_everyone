@@ -8,8 +8,10 @@ import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static com.codeit.sb13.playlist_for_everyone.global.config.RedisConfig.*;
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.WatcherScriptConfig.*;
@@ -26,6 +28,8 @@ public class WatcherRegistry {
     private final RedisScript<Long> refreshScript;
     private final RedisScript<Long> deleteScript;
     private final RedisScript<Long> countScript;
+
+    private final ConcurrentHashMap<String, Instant> sessionTtlList = new ConcurrentHashMap<>();
 
     @RequiredArgsConstructor
     static public class SetKey{
@@ -82,7 +86,11 @@ public class WatcherRegistry {
                 String.valueOf(TTL.toMillis())
         );
 
-        if (res == null) throw new IllegalStateException("Failed to register watcher.");
+        if (res == null || Long.valueOf(-1).equals(res))
+            throw new IllegalStateException("Failed to register watcher.");
+        else
+            // 세션 id 를 기준으로 저장시간 저장
+            sessionTtlList.put(session,Instant.now());
     }
 
     public void unregister(
@@ -105,15 +113,20 @@ public class WatcherRegistry {
     public void refresh(String session){
         validate(session);
 
-        Long res = redis.execute(refreshScript,
-                List.of(sessionKey(session)),
-                session,
-                WATCHER_CONTENT_PREFIX,
-                String.valueOf(TTL.toMillis()),
-                DELIMITER
-        );
+        if (allowRefresh(session)){
+            Long res = redis.execute(refreshScript,
+                    List.of(sessionKey(session)),
+                    session,
+                    WATCHER_CONTENT_PREFIX,
+                    String.valueOf(TTL.toMillis()),
+                    DELIMITER
+            );
 
-        if (res == null) throw new IllegalStateException("Failed to refresh watcher.");
+            if (res == null) throw new IllegalStateException("Failed to refresh watcher.");
+            else
+                // 현 세션 기준으로 ttl 개시 시점 덮어씀.
+                sessionTtlList.put(session,Instant.now());
+        }
     }
 
     public void delete(String session){
@@ -127,6 +140,9 @@ public class WatcherRegistry {
         );
 
         if (!Long.valueOf(1).equals(res)) throw new IllegalStateException("Failed to delete watcher.");
+        else
+            // 세션 기준 저장 시점 삭제.
+            sessionTtlList.remove(session);
     }
 
 
@@ -138,6 +154,16 @@ public class WatcherRegistry {
         );
     }
 
+
+    private boolean allowRefresh(String session){
+        Instant now = Instant.now();
+        Instant sessionSavedTime = sessionTtlList.get(session);
+
+        if (sessionSavedTime == null) return false;
+
+        return Duration.between(sessionSavedTime, now)
+                .compareTo(Duration.ofSeconds(TTL_TIMEOUT / 2)) > 0;
+    }
 
     // 커스텀 예외를 작성한다면 여기에.
     private void validate(String ...args){

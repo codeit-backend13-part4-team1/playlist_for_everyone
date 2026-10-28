@@ -42,7 +42,11 @@ public class WebSocketInterceptor implements ChannelInterceptor {
     // STOMP 의 모든 하트비트인지 미정?
     private void sessionRefresh(StompHeaderAccessor accessor) {
         String session = accessor.getSessionId();
-        watcherRegistry.refresh(session);
+        try {
+            watcherRegistry.refresh(session);
+        } catch (RuntimeException e) {
+            log.error("[{}] 세션 갱신 실패 - sessionId : {}", "ChannelInterceptor", session, e);
+        }
     }
 
     private Message<?> send(StompHeaderAccessor accessor, Message<?> message) {
