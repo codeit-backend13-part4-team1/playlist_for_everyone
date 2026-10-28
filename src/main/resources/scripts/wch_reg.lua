@@ -24,6 +24,8 @@ local expiresAt = now + ttl
 redis.call('HSET', KEYS[1], ARGV[1], ARGV[2])
 redis.call('PEXPIRE', KEYS[1], ttl)
 
+redis.call('ZREMRANGEBYSCORE', KEYS[2], '-inf', now)
 redis.call('ZADD', KEYS[2], expiresAt, ARGV[3])
+redis.call('PEXPIRE', KEYS[2], ttl)
 
 return 1

@@ -137,7 +137,7 @@ public class WebSocketInterceptorTest {
             interceptor.preSend(message,messageChannel);
 
 
-            verify(watcherRegistry,never()).register(eq(mockupContentId),any(String.class),any(String.class));
+            verify(watcherRegistry,never()).register(any(String.class),any(String.class),eq(mockupContentId));
         }
 
         @Test
@@ -148,14 +148,14 @@ public class WebSocketInterceptorTest {
             Message<byte[]> message = createMessage(
                     StompCommand.SUBSCRIBE,
                     null,
-                    "/sub/contents/" + mockupContentId + "/chat",
+                    "/sub/contents/" + mockupContentId + "/watch",
                     new byte[2]
             );
 
             interceptor.preSend(message,messageChannel);
 
 
-            verify(watcherRegistry,never()).register(eq(mockupContentId),any(String.class),any(String.class));
+            verify(watcherRegistry,never()).register(any(String.class),any(String.class),eq(mockupContentId));
         }
 
     }

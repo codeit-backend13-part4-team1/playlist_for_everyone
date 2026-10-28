@@ -35,9 +35,8 @@ public class WebSocketEventListener {
     public void onDisconnect(SessionDisconnectEvent event){
         StompHeaderAccessor accessor = StompHeaderAccessor.wrap(event.getMessage());
         String sessionId = accessor.getSessionId();
-        String subscriptionId = accessor.getSubscriptionId();
 
-        watcherRegistry.unregister(sessionId, subscriptionId);
+        watcherRegistry.delete(sessionId);
     }
 
     // Stomp 구독단위 연결이 끊겼을 때.

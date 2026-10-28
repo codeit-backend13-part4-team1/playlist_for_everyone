@@ -74,7 +74,7 @@ public class WatcherRegistry {
         // NPE 검사.
         validate(session, subscription, content);
 
-        Long result = redis.execute(registerScript,
+        Long res = redis.execute(registerScript,
                 List.of(sessionKey(session), contentKey(content)),
                 subscription,
                 content,
@@ -82,7 +82,7 @@ public class WatcherRegistry {
                 String.valueOf(TTL.toMillis())
         );
 
-        if (!Long.valueOf(1).equals(result)) throw new IllegalStateException("Failed to register watcher.");
+        if (res == null) throw new IllegalStateException("Failed to register watcher.");
     }
 
     public void unregister(
@@ -98,7 +98,8 @@ public class WatcherRegistry {
                 WATCHER_CONTENT_PREFIX
         );
 
-        if (!Long.valueOf(1).equals(res)) throw new IllegalStateException("Failed to unregister watcher.");
+
+        if (res == null) throw new IllegalStateException("Failed to unregister watcher.");
     }
 
     public void refresh(String session){
@@ -109,11 +110,10 @@ public class WatcherRegistry {
                 session,
                 WATCHER_CONTENT_PREFIX,
                 String.valueOf(TTL.toMillis()),
-                "-"
+                DELIMITER
         );
-        log.info("[WatcherRegistry] Refreshed {}", res);
 
-        if (!Long.valueOf(1).equals(res)) throw new IllegalStateException("Failed to refresh watcher.");
+        if (res == null) throw new IllegalStateException("Failed to refresh watcher.");
     }
 
     public void delete(String session){
@@ -123,7 +123,7 @@ public class WatcherRegistry {
                 List.of(sessionKey(session)),
                 session,
                 WATCHER_CONTENT_PREFIX,
-                "-"
+                DELIMITER
         );
 
         if (!Long.valueOf(1).equals(res)) throw new IllegalStateException("Failed to delete watcher.");

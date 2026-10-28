@@ -29,8 +29,8 @@ for i = 1, #subscriptions, 2 do
 
     local contentKey = ARGV[2] .. contentId
     local member = ARGV[1] .. ARGV[4] .. subscriptionId
-
     redis.call('ZADD', contentKey, expiresAt, member)
+    redis.call('PEXPIRE', contentKey, ttl)
 end
 
 return 1
