@@ -44,6 +44,27 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         this.authenticationEntryPoint = authenticationEntryPoint;
     }
 
+    /**
+     * 로그인, 회원가입은 기존 JWT 상태와 관계없이 처리한다.
+     *
+     * 로그인은 이메일, 비밀번호로 인증하고,
+     * 회원가입 요청 값 검증을 거쳐 사용자를 생성한다.
+     */
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        if (!"POST".equalsIgnoreCase(request.getMethod())) {
+            return false;
+        }
+
+        // /mopl 같은 context path가 지정된 실행 환경도 고려한다.
+        String contextPath = request.getContextPath();
+        String requestUri = request.getRequestURI();
+
+        return (contextPath + "/api/auth/sign-in").equals(requestUri)
+                || (contextPath + "/api/users").equals(requestUri);
+
+    }
+
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
         try {
