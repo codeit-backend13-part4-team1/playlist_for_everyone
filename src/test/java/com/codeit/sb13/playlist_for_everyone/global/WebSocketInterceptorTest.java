@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.global;
 
 
 import com.codeit.sb13.playlist_for_everyone.global.service.WatcherRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.service.WatcherRegistryDelay;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.WebSocketInterceptor;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
@@ -10,7 +11,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.annotation.Import;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.stomp.StompCommand;
@@ -29,6 +32,8 @@ public class WebSocketInterceptorTest {
     WatcherRegistry watcherRegistry;
     @Mock
     private MessageChannel messageChannel;
+    @Spy
+    WatcherRegistryDelay delay;
     @InjectMocks
     private WebSocketInterceptor interceptor;
 

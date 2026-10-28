@@ -20,10 +20,10 @@ public class WatcherRegistryDelay {
 
         if (session == null) return false;
 
-        // 없다면 초기 시도 시각 세팅
+        boolean res = allowRefresh(session);
+        // 세션 정보가 없다면 초기 시도시에 시간 체크
         sessionList.computeIfAbsent(session, k -> Instant.now());
-
-        return allowRefresh(session);
+        return res;
     }
 
     public void updateRefreshTime(String session){
