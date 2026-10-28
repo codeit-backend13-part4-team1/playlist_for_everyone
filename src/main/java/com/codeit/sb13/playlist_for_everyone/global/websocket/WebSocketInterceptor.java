@@ -26,7 +26,7 @@ public class WebSocketInterceptor implements ChannelInterceptor {
         StompHeaderAccessor accessor = StompHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
         if (accessor == null) return message;
 
-        if (accessor.isHeartbeat()) heartbeat(accessor);
+        if (accessor.getSessionId() != null) sessionRefresh(accessor);
 
         // java 17 버전 NPE 방지.
         if (accessor.getCommand() == null) return message;
@@ -40,7 +40,7 @@ public class WebSocketInterceptor implements ChannelInterceptor {
     }
 
     // STOMP 의 모든 하트비트인지 미정?
-    private void heartbeat(StompHeaderAccessor accessor) {
+    private void sessionRefresh(StompHeaderAccessor accessor) {
         String session = accessor.getSessionId();
         watcherRegistry.refresh(session);
     }
