@@ -47,3 +47,5 @@ everyone:
   tmdb:
     base-url: https://api.themoviedb.org/3
     access-token: ${EVERYONE_TMDB_ACCESS_TOKEN}
+    connect-timeout: 3s
+    read-timeout: 10s

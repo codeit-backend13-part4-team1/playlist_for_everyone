@@ -1,10 +1,13 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.collector;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.config.TmdbClientConfig;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.restclient.test.autoconfigure.AutoConfigureMockRestServiceServer;
 import org.springframework.boot.restclient.test.autoconfigure.RestClientTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
@@ -13,6 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.client.MockRestServiceServer;
+import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -32,13 +36,23 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
         }
 )
 @Import(TmdbClientConfig.class)
+@AutoConfigureMockRestServiceServer(enabled = false)
 class TmdbClientTest {
 
     @Autowired
-    private TmdbClient tmdbClient;
+    @Qualifier("tmdbRestClient")
+    private RestClient configuredRestClient;
 
-    @Autowired
+    private TmdbClient tmdbClient;
     private MockRestServiceServer server;
+
+    @BeforeEach
+    void setUp() {
+        var builder = configuredRestClient.mutate();
+
+        server = MockRestServiceServer.bindTo(builder).build();
+        tmdbClient = new TmdbClient(builder.build());
+    }
 
     @Test
     void 인기_영화_목록을_조회한다() {
