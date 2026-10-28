@@ -34,3 +34,7 @@ everyone:
     bucket: everyone-test-backup
     region: ap-northeast-2
     endpoint:
+
+  tmdb:
+    base-url: https://tmdb.test/3
+    access-token: test-token
