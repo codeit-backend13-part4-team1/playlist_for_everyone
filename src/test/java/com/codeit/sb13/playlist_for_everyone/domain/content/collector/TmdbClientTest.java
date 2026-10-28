@@ -85,4 +85,56 @@ class TmdbClientTest {
 
         server.verify();
     }
+
+    @Test
+    void 인기_TV_목록을_조회한다() {
+        // given
+        server.expect(requestTo(
+                        "https://tmdb.test/3/tv/popular?language=ko-KR&page=2"
+                ))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(header(
+                        HttpHeaders.AUTHORIZATION, "Bearer test-token"
+                ))
+                .andExpect(header(
+                        HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE
+                ))
+                .andRespond(withSuccess("""
+                    {
+                      "page": 2,
+                      "results": [
+                        {
+                          "id": 456,
+                          "name": "테스트 TV 프로그램",
+                          "overview": "테스트 프로그램 설명",
+                          "poster_path": "/tv-poster.jpg",
+                          "genre_ids": [18, 35],
+                          "vote_count": 200
+                        }
+                      ],
+                      "total_pages": 5,
+                      "total_results": 81
+                    }
+                    """, MediaType.APPLICATION_JSON));
+
+        // when
+        var response = tmdbClient.getPopularTvShows(2);
+
+        // then
+        assertThat(response).isNotNull();
+        assertThat(response.page()).isEqualTo(2);
+        assertThat(response.totalPages()).isEqualTo(5);
+        assertThat(response.totalResults()).isEqualTo(81);
+        assertThat(response.results()).hasSize(1);
+
+        var tv = response.results().get(0);
+
+        assertThat(tv.id()).isEqualTo(456L);
+        assertThat(tv.name()).isEqualTo("테스트 TV 프로그램");
+        assertThat(tv.overview()).isEqualTo("테스트 프로그램 설명");
+        assertThat(tv.posterPath()).isEqualTo("/tv-poster.jpg");
+        assertThat(tv.genreIds()).containsExactly(18, 35);
+
+        server.verify();
+    }
 }
