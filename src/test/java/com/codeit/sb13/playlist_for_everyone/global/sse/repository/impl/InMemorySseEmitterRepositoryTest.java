@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DisplayName("메모리 SSE 연결 저장소")
 class InMemorySseEmitterRepositoryTest {
@@ -203,5 +204,64 @@ class InMemorySseEmitterRepositoryTest {
                 .hasSize(2)
                 .containsEntry(firstUserId, Map.of(firstConnection, firstEmitter))
                 .containsEntry(secondUserId, Map.of(secondConnection, secondEmitter));
+    }
+
+    @Test
+    @DisplayName("전체 연결 조회 결과의 외부Map과 사용자별 연결 Map은 수정 할 수 없다.")
+    void findAllReturnsUnmodifiableMaps(){
+        SseEmitterRepository repository = new InMemorySseEmitterRepository();
+
+        UUID userId = UUID.randomUUID();
+        Connection connection = Connection.create();
+        SseEmitter emitter = new SseEmitter();
+
+        repository.save(userId, connection, emitter);
+
+        Map<UUID, Map<Connection, SseEmitter>> result = repository.findAll();
+
+        assertThatThrownBy(()-> result.remove(userId))
+                .isInstanceOf(UnsupportedOperationException.class);
+
+        assertThatThrownBy(()-> result.get(userId).remove(connection))
+                .isInstanceOf(UnsupportedOperationException.class);
+
+        assertThat(repository.findAllByUserId(userId))
+                .containsExactlyEntriesOf(Map.of(connection, emitter));
+    }
+
+    @Test
+    @DisplayName("전체 연결 조회 후 연결을 추가·삭제해도 기존 조회 결과는 유지된다.")
+    void findAllSnapshotIsUnaffectedByConnectionChanges(){
+        SseEmitterRepository repository = new InMemorySseEmitterRepository();
+
+        UUID userId = UUID.randomUUID();
+        Connection firstConnection = Connection.create();
+        Connection secondConnection = Connection.create();
+        SseEmitter firstEmitter = new SseEmitter();
+        SseEmitter secondEmitter = new SseEmitter();
+
+        repository.save(userId, firstConnection, firstEmitter);
+
+        Map<UUID, Map<Connection, SseEmitter>> snapshot = repository.findAll();
+
+        repository.save(userId, secondConnection, secondEmitter);
+        repository.delete(userId, firstConnection);
+
+        assertThat(snapshot.get(userId))
+                .containsExactlyEntriesOf(Map.of(firstConnection, firstEmitter));
+
+        assertThat(repository.findAllByUserId(userId))
+                .containsExactlyEntriesOf(Map.of(secondConnection, secondEmitter));
+
+
+    }
+
+    @Test
+    @DisplayName("등록된 연결이 없으면 전체 연결 조회 결과는 빈 Map이다.")
+    void findAllReturnsEmptyMapWhenNoConnectionsExist(){
+        SseEmitterRepository repository = new InMemorySseEmitterRepository();
+
+        Map<UUID, Map<Connection, SseEmitter>> result = repository.findAll();
+        assertThat(result).isEmpty();
     }
 }
