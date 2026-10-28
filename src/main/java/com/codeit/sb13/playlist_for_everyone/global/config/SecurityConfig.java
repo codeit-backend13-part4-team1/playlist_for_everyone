@@ -5,11 +5,13 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.JwtAuthenticationFailureHandler;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.JwtAuthenticationSuccessHandler;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
+import com.codeit.sb13.playlist_for_everyone.global.dto.response.ApiErrorResponse;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -17,8 +19,12 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import tools.jackson.databind.ObjectMapper;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
 @Configuration
 @EnableWebSecurity
@@ -33,11 +39,36 @@ public class SecurityConfig {
                                                    AuthenticationManager authenticationManager,
                                                    ObjectMapper objectMapper) throws Exception{
 
-        // 보호 API에 인증 없이 접근하거나 JWT 검증에 실패했을 때 사용한다.
-        // 로그인 실패 핸들러와는 호출되는 상황이 다르다.
+        // 인증 정보가 없거나 JWT 검증에 실패한 경우의 응답이다.
+        // 로그인 시 이메일·비밀번호 검증 실패는 기존 로그인 실패 핸들러가 담당한다.
         AuthenticationEntryPoint authenticationEntryPoint =
-                (request, response, exception)
-                        -> response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+                (request, response, exception) -> {
+                    ApiErrorResponse errorResponse = new ApiErrorResponse(
+                            "UnauthorizedException",
+                            "인증이 필요합니다.",
+                            Map.of()
+                    );
+                    // sendError 대신 응답을 직접 작성해 공통 json 형식을 유지한다.
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                    response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+
+                    objectMapper.writeValue(response.getWriter(), errorResponse);
+                };
+        AccessDeniedHandler accessDeniedHandler =
+                (request, response, exception) -> {
+                    ApiErrorResponse errorResponse = new ApiErrorResponse(
+                            "AccessDeniedException",
+                            "접근 권한이 없습니다.",
+                            Map.of()
+                    );
+
+                    response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                    response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+
+                    objectMapper.writeValue(response.getWriter(), errorResponse);
+                };
 
         // Servlet 필터로 자동 등록되지 않도록 여기에서 직접 생성한다.
         // 이 필터는 아래에서 Spring Security 체인에만 등록한다.
@@ -57,10 +88,13 @@ public class SecurityConfig {
                 .httpBasic(basic -> basic.disable())
                 // 토큰 무효화를 포함한 로그아웃은 이후 단계에서 구현한다.
                 .logout(logout -> logout.disable())
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .sessionManagement(session -> session
+                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                )
                 .requestCache(cache -> cache.disable())
                 .exceptionHandling(exception -> exception.authenticationEntryPoint(authenticationEntryPoint)
-                        .accessDeniedHandler((request, response, denied) -> response.sendError(HttpServletResponse.SC_FORBIDDEN)))
+                        .accessDeniedHandler(accessDeniedHandler)
+                )
                 .authorizeHttpRequests(auth -> auth.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         // 회원가입 로그인 요청은 인증 없이 접근할 수 있다.
                         .requestMatchers(HttpMethod.POST, "/api/users", "/api/auth/sign-in").permitAll()
