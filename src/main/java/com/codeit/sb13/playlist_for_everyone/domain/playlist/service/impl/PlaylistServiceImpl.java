@@ -128,6 +128,20 @@ public class PlaylistServiceImpl implements PlaylistService {
   @Override
   @Transactional
   public void deletePlaylist(UUID playlistId, UUID requesterId) {
+
+    Playlist playlist = playlistRepository.findById(playlistId)
+        .orElseThrow(() -> new PlayListNotFoundException(
+            Map.of("playlistId", playlistId)
+        ));
+
+    if (!playlist.isOwnedBy(requesterId)) {
+      throw new PlayListForbiddenException(
+          Map.of("playlistId", playlistId, "requesterId", requesterId));
+    }
+
+    subscriptionRepository.deleteAllByPlaylistId(playlistId);
+    playlistContentRepository.deleteAllByPlaylistId(playlistId);
+    playlistRepository.delete(playlist);
   }
 
  //---------[헬퍼 메서드]
