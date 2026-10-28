@@ -125,4 +125,94 @@ class SseConnectionServiceTest {
         }
     }
 
+    @Test
+    @DisplayName("한 연결의 완료 콜백이 실행돼도 같은 사용자의 다른 연결은 유지된다.")
+    void completionCallbackKeepsOtherConnectionsForSameUser(){
+        SseEmitterRepository repository = new InMemorySseEmitterRepository();
+        SseProperties properties = new SseProperties(Duration.ofSeconds(15), Duration.ofMinutes(30));
+
+        SseConnectionService service = new SseConnectionService(repository, properties);
+        UUID userId = UUID.randomUUID();
+
+        try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)){
+            SseEmitter firstEmitter = service.connect(userId);
+            SseEmitter secondEmitter = service.connect(userId);
+
+            assertThat(repository.findAllByUserId(userId))
+                    .hasSize(2)
+                    .containsValues(firstEmitter, secondEmitter);
+
+            ArgumentCaptor<Runnable> completionCaptor = ArgumentCaptor.forClass(Runnable.class);
+            verify(firstEmitter).onCompletion(completionCaptor.capture());
+
+            completionCaptor.getValue().run();
+
+            assertThat(repository.findAllByUserId(userId))
+                    .hasSize(1)
+                    .doesNotContainValue(firstEmitter)
+                    .containsValue(secondEmitter);
+        }
+    }
+
+    @Test
+    @DisplayName("한 사용자의 연결이 완료돼도 다른 사용자의 연결은 유지된다.")
+    void  completionCallbackKeepsOtherUsersConnections(){
+        SseEmitterRepository repository = new InMemorySseEmitterRepository();
+        SseProperties properties = new SseProperties(Duration.ofSeconds(15), Duration.ofMinutes(30));
+
+        SseConnectionService service = new SseConnectionService(repository, properties);
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+
+        try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)){
+            SseEmitter firstEmitter = service.connect(firstUserId);
+            SseEmitter secondEmitter = service.connect(secondUserId);
+
+            assertThat(repository.findAllByUserId(firstUserId)).containsValue(firstEmitter);
+
+            ArgumentCaptor<Runnable> completionCaptor = ArgumentCaptor.forClass(Runnable.class);
+
+            verify(firstEmitter).onCompletion(completionCaptor.capture());
+            completionCaptor.getValue().run();
+
+            assertThat(repository.findAllByUserId(firstUserId)).isEmpty();
+            assertThat(repository.findAllByUserId(secondUserId))
+                    .hasSize(1)
+                    .containsValue(secondEmitter);
+        }
+
+    }
+
+    @Test
+    @DisplayName("이전 연결의 완료 콜백이 다시 실행돼도 새 연결은 유지된다.")
+    void repeatedCompletionCallbackKeepsNewConnection(){
+        SseEmitterRepository repository = new InMemorySseEmitterRepository();
+        SseProperties properties = new SseProperties(Duration.ofSeconds(15), Duration.ofMinutes(30));
+
+        SseConnectionService service = new SseConnectionService(repository, properties);
+        UUID userId = UUID.randomUUID();
+
+        try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
+            SseEmitter oldEmitter = service.connect(userId);
+
+            assertThat(repository.findAllByUserId(userId)).containsValue(oldEmitter);
+
+            ArgumentCaptor<Runnable> completionCaptor = ArgumentCaptor.forClass(Runnable.class);
+            verify(oldEmitter).onCompletion(completionCaptor.capture());
+            Runnable oldCompletion = completionCaptor.getValue();
+            oldCompletion.run();
+
+            assertThat(repository.findAllByUserId(userId)).isEmpty();
+
+            SseEmitter newEmitter = service.connect(userId);
+            oldCompletion.run();
+
+            assertThat(repository.findAllByUserId(userId))
+                    .hasSize(1)
+                    .doesNotContainValue(oldEmitter)
+                    .containsValue(newEmitter);
+        }
+
+    }
+
 }
