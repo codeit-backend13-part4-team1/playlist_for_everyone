@@ -116,4 +116,35 @@ class SubscriptionRepositoryTest {
     // then
     assertThat(result).containsExactlyInAnyOrder(playlistA, playlistB);
   }
+
+  @Test
+  @DisplayName("플레이리스트 ID로 구독을 모두 삭제하고 다른 플레이리스트의 구독은 남긴다")
+  void 플레이리스트_ID로_구독을_모두_삭제한다() {
+    // given
+    UUID targetId = UUID.randomUUID();
+    UUID otherId = UUID.randomUUID();
+    subscriptionRepository.saveAndFlush(new Subscription(targetId, UUID.randomUUID()));
+    subscriptionRepository.saveAndFlush(new Subscription(targetId, UUID.randomUUID()));
+    Subscription other = subscriptionRepository.saveAndFlush(
+        new Subscription(otherId, UUID.randomUUID()));
+
+    // when
+    int deleted = subscriptionRepository.deleteAllByPlaylistId(targetId);
+
+    // then
+    assertThat(deleted).isEqualTo(2);
+    assertThat(subscriptionRepository.findAll())
+        .extracting(Subscription::getId)
+        .containsExactly(other.getId());
+  }
+
+  @Test
+  @DisplayName("삭제할 구독이 없으면 0을 반환한다")
+  void 삭제할_구독이_없으면_0을_반환한다() {
+    // when
+    int deleted = subscriptionRepository.deleteAllByPlaylistId(UUID.randomUUID());
+
+    // then
+    assertThat(deleted).isZero();
+  }
 }

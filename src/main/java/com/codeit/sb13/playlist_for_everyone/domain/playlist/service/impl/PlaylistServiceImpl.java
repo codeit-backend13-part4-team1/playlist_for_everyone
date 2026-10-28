@@ -34,7 +34,6 @@ public class PlaylistServiceImpl implements PlaylistService {
   private final PlaylistRepository playlistRepository;
   private final UserRepository userRepository;
   private final SubscriptionRepository subscriptionRepository;
-  private final PlaylistUpdateRequest playlistUpdateRequest;
 
 
   @Override
