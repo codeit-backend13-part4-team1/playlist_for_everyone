@@ -17,6 +17,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -64,6 +65,9 @@ class SecurityConfigTest {
 
     @MockitoBean
     private UserService userService;
+
+    @MockitoBean
+    private AuthenticationManager  authenticationManager;
 
 
     @Test
