@@ -5,6 +5,7 @@ import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRep
 import org.springframework.stereotype.Repository;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -41,7 +42,15 @@ public class InMemorySseEmitterRepository implements SseEmitterRepository {
 
     @Override
     public Map<UUID, Map<Connection, SseEmitter>> findAll() {
-        return  null;
+        Map<UUID, Map<Connection, SseEmitter>> result = new HashMap<>();
+        sseEmitters.keySet()
+                .forEach(userId -> sseEmitters.computeIfPresent(userId,
+                        (id, connections) -> {
+                    result.put(userId, Map.copyOf(connections));
+                    return connections;
+                }));
+
+        return Map.copyOf(result);
     }
 
     private Map<Connection, SseEmitter> removeEmptyConnections(Map<Connection, SseEmitter> connections) {
