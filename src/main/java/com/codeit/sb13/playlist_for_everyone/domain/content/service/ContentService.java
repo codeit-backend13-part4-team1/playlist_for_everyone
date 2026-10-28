@@ -28,11 +28,22 @@ public class ContentService {
                 "temporary-thumbnail-url"   // TODO: S3 파일 업로드 연동 후 실제 URL로 변경
         );
 
+        List<String> tags = normalizeTags(request.tags());
+
+        tags.forEach(content::addTag);
+
+        Content savedContent = contentRepository.save(content);
+
+        return contentMapper.toDto(savedContent, 0.0, 0, 0);
+    }
+
+    // 태그 중복 검사
+    // 태그가 없는 경우 빈 리스트로 처리
+    // 중간 공백을 제외한 문자열이 같으면 먼저 입력된 태그만 저장
+    private List<String> normalizeTags(List<String> tags) {
         Set<String> seen = new HashSet<>();
 
-        // 태그가 없는 경우 빈 리스트로 처리
-        // 중간 공백을 제외한 문자열이 같으면 먼저 입력된 태그만 저장
-        List<String> tags = Optional.ofNullable(request.tags())
+        return Optional.ofNullable(tags)
                 .orElseGet(List::of)
                 .stream()
                 .filter(Objects::nonNull)
@@ -40,14 +51,6 @@ public class ContentService {
                 .filter(tag -> !tag.isBlank())
                 .filter(tag -> seen.add(tag.replaceAll("\\s+", "")))
                 .toList();
-
-        for (String tag : tags) {
-            content.addTag(tag);
-        }
-
-        Content savedContent = contentRepository.save(content);
-
-        return contentMapper.toDto(savedContent, 0.0, 0, 0);
     }
 
 }
