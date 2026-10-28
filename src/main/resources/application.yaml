@@ -43,3 +43,7 @@ everyone:
   openapi:
     server-url: http://localhost:${server.port:8080}
     server-description: 로컬 개발 서버
+
+  jwt:
+    secret-key: ${JWT_SECRET_KEY}
+    access-token-validity: ${JWT_ACCESS_TOKEN_VALIDITY:15m}

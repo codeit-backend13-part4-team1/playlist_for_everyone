@@ -1,31 +1,117 @@
 package com.codeit.sb13.playlist_for_everyone.global.config;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtAuthenticationFilter;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.security.JwtAuthenticationFailureHandler;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.security.JwtAuthenticationSuccessHandler;
+import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
+import com.codeit.sb13.playlist_for_everyone.global.dto.response.ApiErrorResponse;
+import jakarta.servlet.DispatcherType;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Profile;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
+import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import tools.jackson.databind.ObjectMapper;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
-// 개발 초기 임시 보안 설정: dev 프로필에서만 적용
-// JWT 인증·인가와 쿠키 기반 CSRF 정책으로 전환한다.
-// 운영 보안 정책 적용을 완료한 뒤 @Profile("dev") 제한을 제거한다.
-@Profile("dev")
+
 public class SecurityConfig {
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http){
+    public SecurityFilterChain securityFilterChain(HttpSecurity http,
+                                                   JwtTokenProvider jwtTokenProvider,
+                                                   UserService userService,
+                                                   AuthenticationManager authenticationManager,
+                                                   ObjectMapper objectMapper) throws Exception{
+
+        // 인증 정보가 없거나 JWT 검증에 실패한 경우의 응답이다.
+        // 로그인 시 이메일·비밀번호 검증 실패는 기존 로그인 실패 핸들러가 담당한다.
+        AuthenticationEntryPoint authenticationEntryPoint =
+                (request, response, exception) -> {
+                    ApiErrorResponse errorResponse = new ApiErrorResponse(
+                            "UnauthorizedException",
+                            "인증이 필요합니다.",
+                            Map.of()
+                    );
+                    // sendError 대신 응답을 직접 작성해 공통 json 형식을 유지한다.
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                    response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+
+                    objectMapper.writeValue(response.getWriter(), errorResponse);
+                };
+        AccessDeniedHandler accessDeniedHandler =
+                (request, response, exception) -> {
+                    ApiErrorResponse errorResponse = new ApiErrorResponse(
+                            "AccessDeniedException",
+                            "접근 권한이 없습니다.",
+                            Map.of()
+                    );
+
+                    response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                    response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+
+                    objectMapper.writeValue(response.getWriter(), errorResponse);
+                };
+
+        // Servlet 필터로 자동 등록되지 않도록 여기에서 직접 생성한다.
+        // 이 필터는 아래에서 Spring Security 체인에만 등록한다.
+        JwtAuthenticationFilter jwtAuthenticationFilter =
+                new JwtAuthenticationFilter(jwtTokenProvider, userService, authenticationEntryPoint);
+
+        JwtAuthenticationSuccessHandler successHandler =
+                new JwtAuthenticationSuccessHandler(jwtTokenProvider, userService, objectMapper);
+
+        JwtAuthenticationFailureHandler failureHandler =
+                new JwtAuthenticationFailureHandler(objectMapper);
 
         return http
-                // 개발 초기 API 연동을 위한 임시 전체 허용 정책
+                .authenticationManager(authenticationManager)
+                // CSRF 정책은 추후 별도로 진행 합니다.
                 .csrf(csrf -> csrf.disable())
-                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .httpBasic(basic -> basic.disable())
+                // 토큰 무효화를 포함한 로그아웃은 이후 단계에서 구현한다.
+                .logout(logout -> logout.disable())
+                .sessionManagement(session -> session
+                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                )
+                .requestCache(cache -> cache.disable())
+                .exceptionHandling(exception -> exception.authenticationEntryPoint(authenticationEntryPoint)
+                        .accessDeniedHandler(accessDeniedHandler)
+                )
+                .authorizeHttpRequests(auth -> auth.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
+                        // 회원가입 로그인 요청은 인증 없이 접근할 수 있다.
+                        .requestMatchers(HttpMethod.POST, "/api/users", "/api/auth/sign-in").permitAll()
+                        // 사용자 목록 조회는 관리자만 접근할 수 있다. hasRole("ADMIN")은 ROLE_ADMIN 권한을 검사한다.
+                        .requestMatchers(HttpMethod.GET, "/api/users").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/", "/index.html", "/assets/**", "/favicon.svg").permitAll()
+                        .anyRequest().authenticated()
+                )
+                .formLogin(formLogin -> formLogin
+                        .loginProcessingUrl("/api/auth/sign-in")
+                        .usernameParameter("username")
+                        .passwordParameter("password")
+                        .successHandler(successHandler)
+                        .failureHandler(failureHandler)
+                )
+                // Bearer JWT 인증은 사용자명·비밀번호 로그인 필터보다 먼저 수행한다.
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
 
     }
