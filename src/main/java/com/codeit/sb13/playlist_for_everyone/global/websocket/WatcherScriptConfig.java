@@ -7,7 +7,10 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.script.RedisScript;
 
 @Configuration
-public class RedisScriptConfig {
+public class WatcherScriptConfig {
+
+    static public final String DELIMITER = "-";
+    static public final Integer TTL_TIMEOUT = 60;
 
     private RedisScript<Long> load(String path){
         return RedisScript.of(

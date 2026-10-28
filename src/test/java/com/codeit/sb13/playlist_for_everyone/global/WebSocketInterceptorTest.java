@@ -17,8 +17,6 @@ import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.messaging.support.MessageHeaderAccessor;
-
-import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
@@ -44,6 +42,7 @@ public class WebSocketInterceptorTest {
 
         accessor.setSessionId("test-session");
         accessor.setDestination(destination);
+        accessor.setSubscriptionId("test-subscription");
         if (authToken != null) {
             accessor.setHeader("Authorization", authToken);
         }
@@ -120,7 +119,7 @@ public class WebSocketInterceptorTest {
 
             interceptor.preSend(message,messageChannel);
 
-            verify(watcherRegistry,times(1)).register(eq(mockupContentId),any(String.class),any(String.class));
+            verify(watcherRegistry,times(1)).register(any(String.class),any(String.class),eq(mockupContentId));
         }
 
         @Test
@@ -174,7 +173,7 @@ public class WebSocketInterceptorTest {
 
         interceptor.preSend(message,messageChannel);
 
-//        verify(watcherRegistry,times(1)).refresh(anyString());
+        verify(watcherRegistry,times(1)).refresh(eq(mockupSessionId));
     }
 
 }

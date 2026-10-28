@@ -24,14 +24,17 @@ public class WebSocketInterceptor implements ChannelInterceptor {
     @Override
     public @Nullable Message<?> preSend(Message<?> message, MessageChannel channel) {
         StompHeaderAccessor accessor = StompHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
-        if (accessor == null || accessor.getCommand() == null)
-            return message;
+        if (accessor == null) return message;
 
         if (accessor.isHeartbeat()) heartbeat(accessor);
+
+        // java 17 버전 NPE 방지.
+        if (accessor.getCommand() == null) return message;
 
         return switch (accessor.getCommand()) {
             case CONNECT -> connect(accessor,message);
             case SUBSCRIBE -> subscribe(accessor,message);
+            case SEND -> send(accessor,message);
             default -> message;
         };
     }
@@ -42,6 +45,12 @@ public class WebSocketInterceptor implements ChannelInterceptor {
         watcherRegistry.refresh(session);
     }
 
+    private Message<?> send(StompHeaderAccessor accessor, Message<?> message) {
+        // /sub/... 에 해당하는 destination 은 메세지를 통과시키지 않음.
+
+        return message;
+    }
+
     private Message<?> connect(StompHeaderAccessor accessor, Message<?> message) {
         // connection 관련 로직
         authenticate(accessor);
@@ -50,6 +59,7 @@ public class WebSocketInterceptor implements ChannelInterceptor {
     }
 
     private Message<?> subscribe(StompHeaderAccessor accessor, Message<?> message) {
+        // subscription 관련 로직.
         registerContentId(accessor);
 
         return message;
@@ -88,14 +98,14 @@ public class WebSocketInterceptor implements ChannelInterceptor {
             contentsIdParse(destination)
                     .ifPresent(contentId ->
                             watcherRegistry.register(
-                                    contentId,
                                     accessor.getSessionId(),
-                                    accessor.getSubscriptionId()));
+                                    accessor.getSubscriptionId(),
+                                    contentId));
         }
     }
 
     private Optional<String> contentsIdParse(String url){
-        String uuidPattern = "([a-fA-f0-9-]{36})";
+        String uuidPattern = "([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})";
 
         Pattern pattern = Pattern.compile("^/sub/contents/" + uuidPattern + "/watch$");
 

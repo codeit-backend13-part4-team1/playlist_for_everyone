@@ -12,12 +12,13 @@ import java.util.List;
 import java.util.Objects;
 
 import static com.codeit.sb13.playlist_for_everyone.global.config.RedisConfig.*;
+import static com.codeit.sb13.playlist_for_everyone.global.websocket.WatcherScriptConfig.*;
 
 @Slf4j
 @Component
 public class WatcherRegistry {
 
-    static private final Duration TTL = Duration.ofSeconds(60);
+    private final Duration TTL = Duration.ofSeconds(TTL_TIMEOUT);
     private final StringRedisTemplate redis;
 
     private final RedisScript<Long> registerScript;
@@ -28,9 +29,6 @@ public class WatcherRegistry {
 
     @RequiredArgsConstructor
     static public class SetKey{
-
-        static private final String DELIMITER = "-";
-
         private final String session;
         private final String subscription;
 
@@ -60,6 +58,13 @@ public class WatcherRegistry {
         this.deleteScript = deleteScript;
         this.countScript = countScript;
     }
+
+    /*
+    새션 Id 가 겹치는 건, hostname 별로 분간하거나 커넥션 별로 분간 해야 하므로 일단
+    모든 세션 id 는 충돌되지 않는다는 가정하에 구현
+    분산 인스턴스 간의 충돌 역시 고려하지 않고 구현한다.
+     */
+
 
     public void register(
             String session,

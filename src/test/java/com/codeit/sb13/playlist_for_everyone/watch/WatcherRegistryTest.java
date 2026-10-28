@@ -1,44 +1,47 @@
 package com.codeit.sb13.playlist_for_everyone.watch;
 
 import com.codeit.sb13.playlist_for_everyone.global.service.WatcherRegistry;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.RedisScriptConfig;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.WatcherScriptConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.*;
-import org.mockito.Mock;
-import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
-import static org.mockito.Mockito.*;
-import static org.mockito.BDDMockito.*;
 import static com.codeit.sb13.playlist_for_everyone.global.config.RedisConfig.*;
 
 
 @Slf4j
 @DisplayName("동시 시청 세션 저장소 테스트")
-//@Disabled("자동 테스트에서는 서버 세팅때문에 제외")
+@Testcontainers
 public class WatcherRegistryTest {
 
-    private String REDIS_URL = "localhost";
-    private Integer REDIS_PORT = 6379;
+    @Container
+    static final GenericContainer<?> redis =
+            new GenericContainer<>(DockerImageName.parse("redis:7.4-alpine"))
+                    .withExposedPorts(6379);
+
     private LettuceConnectionFactory factory;
     private StringRedisTemplate template;
 
-    private RedisScriptConfig redisScriptConfig = new RedisScriptConfig();
+    private WatcherScriptConfig redisScriptConfig = new WatcherScriptConfig();
 
     private WatcherRegistry watcherRegistry;
 
     @BeforeEach
     void setup(){
-        factory = new LettuceConnectionFactory(REDIS_URL, REDIS_PORT);
+        factory = new LettuceConnectionFactory(redis.getHost(), redis.getMappedPort(6379));
         factory.afterPropertiesSet();
         template = new StringRedisTemplate(factory);
         watcherRegistry = new WatcherRegistry(
@@ -49,20 +52,28 @@ public class WatcherRegistryTest {
                 redisScriptConfig.watcherDeleteScript(),
                 redisScriptConfig.watcherCountScript()
         );
+
+        // 테스트용 타임아웃 세팅
+        ReflectionTestUtils.setField(watcherRegistry, "TTL", Duration.ofSeconds(3));
+
+        log.info("[WatcherRegistryTest] 테스트 세팅 완료");
     }
 
     @AfterEach
     void teardown(){
         clear();
         factory.destroy();
+        log.info("[WatcherRegistryTest] 테스트 종료");
     }
 
     private void clear(){
         Set<String> watchers = template.keys("watcher:*");
         Set<String> sessions = template.keys("watcher:*");
         watchers.addAll(sessions);
-        for(String key : watchers)
+        for(String key : watchers){
             template.delete(key);
+            log.info("[WatcherRegistryTest] key 삭제됨 - {}",key);
+        }
     }
 
     private boolean checkContainedChannelIdInList(String sessionId, String targetId){
@@ -94,10 +105,8 @@ public class WatcherRegistryTest {
     @DisplayName("컨텐츠와 현재세션번호를 기반으로 시청 등록 후 세션 id 기반 삭제 테스트")
     void registerWatcher(){
         String contentId = UUID.randomUUID().toString();
-        String sessionId = "a56s72D9eD";
+        String sessionId = "a56s72D43D";
         String subscriptionId = "sub-1";
-
-        log.info(contentId);
 
         watcherRegistry.register(sessionId, subscriptionId, contentId);
 
@@ -164,7 +173,7 @@ public class WatcherRegistryTest {
                 Thread.currentThread().interrupt();
                 log.info("[WatcherRegistryTest] 컨텐츠 갱신 중 인터럽트 발생");
             }
-        } while (duration.toSeconds() < 100);
+        } while (duration.toSeconds() < 5);
 
         assertThat(watcherRegistry.getWatcherCount(content1)).isEqualTo(1L);
         assertThat(watcherRegistry.getWatcherCount(content2)).isEqualTo(0L);
