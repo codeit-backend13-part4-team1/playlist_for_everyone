@@ -19,7 +19,7 @@ public class SseConnectionService {
     private final SseProperties sseProperties;
 
     public SseEmitter connect(UUID userId){
-        SseEmitter emitter = new SseEmitter();
+        SseEmitter emitter = new SseEmitter(sseProperties.connectionTimeout().toMillis());
         sseEmitterRepository.save(userId, Connection.create(), emitter);
         return emitter;
     }
