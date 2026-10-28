@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.scheduler;
 
+import com.codeit.sb13.playlist_for_everyone.global.config.SchedulerConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.SseConfig;
 import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseDeliveryService;
 import org.junit.jupiter.api.DisplayName;
@@ -20,7 +21,8 @@ import static org.mockito.Mockito.verify;
 
 @SpringJUnitConfig({
         SseConfig.class,
-        SseHeartbeatScheduler.class
+        SseHeartbeatScheduler.class,
+        SchedulerConfig.class
 })
 @TestPropertySource(properties = {
         "everyone.sse.heartbeat-interval=3s",
