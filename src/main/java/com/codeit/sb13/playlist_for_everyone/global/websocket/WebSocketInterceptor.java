@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket;
 
 import com.codeit.sb13.playlist_for_everyone.global.service.WatcherRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.service.WatcherRegistryDelay;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -20,18 +21,45 @@ import java.util.regex.Pattern;
 public class WebSocketInterceptor implements ChannelInterceptor {
 
     private final WatcherRegistry watcherRegistry;
+    private final WatcherRegistryDelay delay;
 
     @Override
     public @Nullable Message<?> preSend(Message<?> message, MessageChannel channel) {
         StompHeaderAccessor accessor = StompHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
-        if (accessor == null || accessor.getCommand() == null)
-            return message;
+        if (accessor == null) return message;
+
+        if (accessor.getSessionId() != null) sessionRefresh(accessor);
+
+        // java 17 버전 NPE 방지.
+        if (accessor.getCommand() == null) return message;
 
         return switch (accessor.getCommand()) {
             case CONNECT -> connect(accessor,message);
             case SUBSCRIBE -> subscribe(accessor,message);
+            case SEND -> send(accessor,message);
             default -> message;
         };
+    }
+
+    // STOMP 의 모든 하트비트인지 미정?
+    private void sessionRefresh(StompHeaderAccessor accessor) {
+        String session = accessor.getSessionId();
+
+        // 세션 별 리프레시 시도 딜레이 작성
+        if (!delay.checkRefresh(session)) return;
+
+        try {
+            watcherRegistry.refresh(session);
+            delay.updateRefreshTime(session);
+        } catch (RuntimeException e) {
+            log.error("[{}] 세션 갱신 실패 - sessionId : {}", "ChannelInterceptor", session, e);
+        }
+    }
+
+    private Message<?> send(StompHeaderAccessor accessor, Message<?> message) {
+        // /sub/... 에 해당하는 destination 은 메세지를 통과시키지 않음.
+
+        return message;
     }
 
     private Message<?> connect(StompHeaderAccessor accessor, Message<?> message) {
@@ -42,6 +70,7 @@ public class WebSocketInterceptor implements ChannelInterceptor {
     }
 
     private Message<?> subscribe(StompHeaderAccessor accessor, Message<?> message) {
+        // subscription 관련 로직.
         registerContentId(accessor);
 
         return message;
@@ -79,12 +108,15 @@ public class WebSocketInterceptor implements ChannelInterceptor {
         if (destination != null && !destination.trim().isEmpty()){
             contentsIdParse(destination)
                     .ifPresent(contentId ->
-                            watcherRegistry.register(contentId, accessor.getSessionId()));
+                            watcherRegistry.register(
+                                    accessor.getSessionId(),
+                                    accessor.getSubscriptionId(),
+                                    contentId));
         }
     }
 
     private Optional<String> contentsIdParse(String url){
-        String uuidPattern = "([a-fA-f0-9-]{36})";
+        String uuidPattern = "([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})";
 
         Pattern pattern = Pattern.compile("^/sub/contents/" + uuidPattern + "/watch$");
 
