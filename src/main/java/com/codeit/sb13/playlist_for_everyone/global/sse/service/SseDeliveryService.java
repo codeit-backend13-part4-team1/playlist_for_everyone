@@ -38,4 +38,8 @@ public class SseDeliveryService {
         });
 
     }
+
+    public void sendHeartbeatToLocalConnections(){
+
+    }
 }

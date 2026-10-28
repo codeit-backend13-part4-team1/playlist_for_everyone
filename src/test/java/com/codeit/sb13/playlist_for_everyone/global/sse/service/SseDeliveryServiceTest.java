@@ -217,4 +217,25 @@ class SseDeliveryServiceTest {
         verify(healthyEmitter).send(any(SseEmitter.SseEventBuilder.class));
     }
 
+    @Test
+    @DisplayName("등록된 연결에 이벤트 ID 없는 하트비트 주석을 전송한다.")
+    void sendHeartbeatCommentToLocalConnection() throws IOException {
+        UUID userId = UUID.randomUUID();
+        Connection connection = Connection.create();
+
+        SseEmitter emitter = mock(SseEmitter.class);
+        when(repository.findAll())
+                .thenReturn(Map.of(userId, Map.of(connection, emitter)));
+
+        service.sendHeartbeatToLocalConnections();
+
+        ArgumentCaptor<SseEmitter.SseEventBuilder> eventCaptor = ArgumentCaptor.forClass(SseEmitter.SseEventBuilder.class);
+        verify(emitter).send(eventCaptor.capture());
+
+        assertThat(eventCaptor.getValue().build())
+                .extracting(part -> part.getData())
+                .containsExactly(":heartbeat\n\n");
+
+    }
+
 }
