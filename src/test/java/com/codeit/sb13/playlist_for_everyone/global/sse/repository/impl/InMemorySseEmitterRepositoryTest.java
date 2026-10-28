@@ -6,6 +6,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -177,5 +178,30 @@ class InMemorySseEmitterRepositoryTest {
         assertThat(repository.findAllByUserId(connectedUserId))
                 .hasSize(1)
                 .containsEntry(connection, emitter);
+    }
+
+    @Test
+    @DisplayName("전체 연결을 조회하면 모든 사용자의 연결이 반환된다.")
+    void findAllReturnsConnectionsForAllUsers(){
+        SseEmitterRepository repository = new InMemorySseEmitterRepository();
+
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+
+        Connection firstConnection = Connection.create();
+        Connection secondConnection = Connection.create();
+
+        SseEmitter firstEmitter = new SseEmitter();
+        SseEmitter secondEmitter = new SseEmitter();
+
+        repository.save(firstUserId, firstConnection, firstEmitter);
+        repository.save(secondUserId, secondConnection, secondEmitter);
+
+        Map<UUID, Map<Connection, SseEmitter>> result = repository.findAll();
+
+        assertThat(result)
+                .hasSize(2)
+                .containsEntry(firstUserId, Map.of(firstConnection, firstEmitter))
+                .containsEntry(secondUserId, Map.of(secondConnection, secondEmitter));
     }
 }

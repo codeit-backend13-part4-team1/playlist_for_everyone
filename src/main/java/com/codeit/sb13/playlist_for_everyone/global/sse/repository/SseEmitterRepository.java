@@ -12,4 +12,6 @@ public interface SseEmitterRepository {
     Map<Connection, SseEmitter> findAllByUserId(UUID userId);
 
     void delete(UUID userId, Connection connection);
+
+    Map<UUID,  Map<Connection, SseEmitter>> findAll();
 }

@@ -39,6 +39,11 @@ public class InMemorySseEmitterRepository implements SseEmitterRepository {
         });
     }
 
+    @Override
+    public Map<UUID, Map<Connection, SseEmitter>> findAll() {
+        return  null;
+    }
+
     private Map<Connection, SseEmitter> removeEmptyConnections(Map<Connection, SseEmitter> connections) {
         if (connections == null || connections.isEmpty()){
             return null;
