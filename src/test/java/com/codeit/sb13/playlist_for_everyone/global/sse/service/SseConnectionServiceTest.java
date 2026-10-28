@@ -1,0 +1,41 @@
+package com.codeit.sb13.playlist_for_everyone.global.sse.service;
+
+import com.codeit.sb13.playlist_for_everyone.global.sse.config.SseProperties;
+import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
+import com.codeit.sb13.playlist_for_everyone.global.sse.repository.impl.InMemorySseEmitterRepository;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.time.Duration;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+@DisplayName("SSE 연결 서비스")
+class SseConnectionServiceTest {
+
+    @Test
+    @DisplayName("연결을 요청하면 반환된 에미터가 해당 사용자의 저장소에 등록된다.")
+    void connectRegisterReturnedEmitter(){
+        SseEmitterRepository repository = new InMemorySseEmitterRepository();
+        SseProperties properties = new SseProperties(
+                Duration.ofSeconds(15),
+                Duration.ofMinutes(30)
+        );
+
+        SseConnectionService service = new SseConnectionService(repository, properties);
+
+        UUID userId = UUID.randomUUID();
+
+        SseEmitter emitter = service.connect(userId);
+
+        assertThat(emitter).isNotNull();
+
+        assertThat(repository.findAllByUserId(userId))
+                .hasSize(1)
+                .containsValue(emitter);
+
+    }
+
+}

@@ -53,3 +53,7 @@ everyone:
     access-token: ${EVERYONE_TMDB_ACCESS_TOKEN}
     connect-timeout: 3s
     read-timeout: 10s
+
+  sse:
+    heartbeat-interval: ${EVERYONE_SSE_HEARTBEAT_INTERVAL:15s}
+    connection-timeout: ${EVERYONE_SSE_CONNECTION_TIMEOUT:30m}
