@@ -238,4 +238,125 @@ class SseDeliveryServiceTest {
 
     }
 
+    @Test
+    @DisplayName("여러 사용자의 모든 연결에 하트비트를 전송한다.")
+    void sendHeartbeatToAllLocalConnections() throws IOException {
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+
+        SseEmitter firstEmitter = mock(SseEmitter.class);
+        SseEmitter secondEmitter = mock(SseEmitter.class);
+        SseEmitter thirdEmitter = mock(SseEmitter.class);
+
+        when(repository.findAll())
+                .thenReturn(Map.of(
+                        firstUserId, Map.of(
+                                Connection.create(), firstEmitter,
+                                Connection.create(), secondEmitter
+                        ),
+                        secondUserId, Map.of(Connection.create(), thirdEmitter)
+                ));
+
+        service.sendHeartbeatToLocalConnections();
+
+        verify(firstEmitter).send(any(SseEmitter.SseEventBuilder.class));
+        verify(secondEmitter).send(any(SseEmitter.SseEventBuilder.class));
+        verify(thirdEmitter).send(any(SseEmitter.SseEventBuilder.class));
+
+        verify(repository, never()).delete(any(), any());
+    }
+
+    @Test
+    @DisplayName("등록된 연결이 없으면 하트비트 전송은 예외나 연결 삭제 요청 없이 종료한다.")
+    void sendHeartbeatWithoutConnectionsDoesNotFail(){
+        when(repository.findAll()).thenReturn(Map.of());
+
+        assertThatCode(()-> service.sendHeartbeatToLocalConnections())
+                .doesNotThrowAnyException();
+
+        verify(repository).findAll();
+        verify(repository, never()).delete(any(),any());
+    }
+
+    @Test
+    @DisplayName("하트비트 전송 중 IOException이 발생하면 실패한 연결만 삭제하고 다른 연결에도 계속 전송한다.")
+    void heartbeatIoFailureDeletesOnlyFailedConnectionAndContinuesSending() throws IOException {
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+
+        Connection failedConnection = Connection.create();
+        Connection healthyConnection = Connection.create();
+
+        SseEmitter failedEmitter = mock(SseEmitter.class);
+        SseEmitter healthyEmitter = mock(SseEmitter.class);
+        SseEmitter otherUserEmitter = mock(SseEmitter.class);
+
+        Map<Connection, SseEmitter> firstUserConnections = new LinkedHashMap<>();
+
+        firstUserConnections.put(failedConnection, failedEmitter);
+        firstUserConnections.put(healthyConnection, healthyEmitter);
+
+        Map<UUID, Map<Connection, SseEmitter>> connectionsByUser = new LinkedHashMap<>();
+
+        connectionsByUser.put(firstUserId, firstUserConnections);
+        connectionsByUser.put(secondUserId, Map.of(Connection.create(), otherUserEmitter));
+
+        when(repository.findAll()).thenReturn(connectionsByUser);
+
+        doThrow(new IOException("하트비트 전송 실패"))
+                .when(failedEmitter)
+                .send(any(SseEmitter.SseEventBuilder.class));
+
+        assertThatCode(()-> service.sendHeartbeatToLocalConnections())
+                .doesNotThrowAnyException();
+
+        verify(failedEmitter).send(any(SseEmitter.SseEventBuilder.class));
+        verify(repository).delete(firstUserId, failedConnection);
+        verify(repository, times(1)).delete(any(), any());
+
+        verify(healthyEmitter).send(any(SseEmitter.SseEventBuilder.class));
+        verify(otherUserEmitter).send(any(SseEmitter.SseEventBuilder.class));
+
+    }
+
+    @Test
+    @DisplayName("하트비트 전송 중 IllegalStateException이 발생하면 실패한 연결만 삭제하고 다른 연결에도 계속 전송한다.")
+    void heartbeatIllegalStateFailureDeletesOnlyFailedConnectionAndContinuesSending() throws IOException {
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+
+        Connection failedConnection = Connection.create();
+        Connection healthyConnection = Connection.create();
+
+        SseEmitter failedEmitter = mock(SseEmitter.class);
+        SseEmitter healthyEmitter = mock(SseEmitter.class);
+        SseEmitter otherUserEmitter = mock(SseEmitter.class);
+
+        Map<Connection, SseEmitter> firstUserConnections = new LinkedHashMap<>();
+
+        firstUserConnections.put(failedConnection, failedEmitter);
+        firstUserConnections.put(healthyConnection, healthyEmitter);
+
+        Map<UUID, Map<Connection, SseEmitter>> connectionsByUser = new LinkedHashMap<>();
+
+        connectionsByUser.put(firstUserId, firstUserConnections);
+        connectionsByUser.put(secondUserId, Map.of(Connection.create(), otherUserEmitter));
+
+        when(repository.findAll()).thenReturn(connectionsByUser);
+
+        doThrow(new IllegalStateException("이미 종료된 연결"))
+                .when(failedEmitter)
+                .send(any(SseEmitter.SseEventBuilder.class));
+
+        assertThatCode(()-> service.sendHeartbeatToLocalConnections())
+                .doesNotThrowAnyException();
+
+        verify(failedEmitter).send(any(SseEmitter.SseEventBuilder.class));
+        verify(repository).delete(firstUserId, failedConnection);
+        verify(repository, times(1)).delete(any(), any());
+
+        verify(healthyEmitter).send(any(SseEmitter.SseEventBuilder.class));
+        verify(otherUserEmitter).send(any(SseEmitter.SseEventBuilder.class));
+
+    }
 }
