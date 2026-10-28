@@ -23,19 +23,35 @@ class SseConnectionServiceTest {
                 Duration.ofSeconds(15),
                 Duration.ofMinutes(30)
         );
+        SseConnectionService service = new SseConnectionService(repository, properties);
+
+        UUID userId = UUID.randomUUID();
+        SseEmitter emitter = service.connect(userId);
+
+        assertThat(emitter).isNotNull();
+        assertThat(repository.findAllByUserId(userId))
+                .hasSize(1)
+                .containsValue(emitter);
+    }
+
+    @Test
+    @DisplayName("연결을 요청하면 설정한 연결 제한 시간이 에미터에 적용된다.")
+    void  connectAppliesConfiguredTimeout(){
+        SseEmitterRepository repository = new InMemorySseEmitterRepository();
+
+        Duration connectionTimeout = Duration.ofMinutes(5);
+        SseProperties properties = new SseProperties(
+                Duration.ofSeconds(15),
+                connectionTimeout
+        );
 
         SseConnectionService service = new SseConnectionService(repository, properties);
 
         UUID userId = UUID.randomUUID();
-
         SseEmitter emitter = service.connect(userId);
 
-        assertThat(emitter).isNotNull();
-
-        assertThat(repository.findAllByUserId(userId))
-                .hasSize(1)
-                .containsValue(emitter);
-
+        assertThat(emitter.getTimeout())
+                .isEqualTo(connectionTimeout.toMillis());
     }
 
 }
