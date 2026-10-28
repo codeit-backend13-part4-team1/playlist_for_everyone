@@ -116,4 +116,66 @@ class InMemorySseEmitterRepositoryTest {
                 .containsEntry(secondConnection, secondEmitter);
 
     }
+
+    @Test
+    @DisplayName("마지막 연결을 삭제하면 해당 사용자의 연결 조회 결과가 비어 있다.")
+    void deleteLastConnectionReturnsEmptyMap(){
+        SseEmitterRepository repository = new InMemorySseEmitterRepository();
+        UUID userId = UUID.randomUUID();
+
+        Connection connection = Connection.create();
+        SseEmitter emitter = new SseEmitter();
+
+        repository.save(userId, connection, emitter);
+
+        repository.delete(userId, connection);
+
+        assertThat(repository.findAllByUserId(userId)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("같은 연결을 두 번 삭제해도 다른 연결은 유지된다.")
+    void deleteSameConnectionTwiceKeepsOtherConnections(){
+        SseEmitterRepository repository = new InMemorySseEmitterRepository();
+        UUID userId = UUID.randomUUID();
+
+        Connection firstConnection = Connection.create();
+        Connection secondConnection = Connection.create();
+
+        SseEmitter firstEmitter = new SseEmitter();
+        SseEmitter secondEmitter = new SseEmitter();
+
+        repository.save(userId, firstConnection, firstEmitter);
+        repository.save(userId, secondConnection, secondEmitter);
+
+        repository.delete(userId, firstConnection);
+        repository.delete(userId, firstConnection);
+
+        assertThat(repository.findAllByUserId(userId))
+                .hasSize(1)
+                .doesNotContainKey(firstConnection)
+                .containsEntry(secondConnection, secondEmitter);
+
+    }
+
+    @Test
+    @DisplayName("연결이 없는 사용자의 삭제요청은 다른 사용자의 연결에 영향을 주지않는다.")
+    void deleteForUserWithoutConnectionsDoesNotAffectOtherUsers(){
+        SseEmitterRepository repository = new InMemorySseEmitterRepository();
+
+        UUID connectedUserId = UUID.randomUUID();
+        UUID unconnectedUserId = UUID.randomUUID();
+
+        Connection connection = Connection.create();
+        SseEmitter emitter = new SseEmitter();
+
+        repository.save(connectedUserId, connection, emitter);
+
+        repository.delete(unconnectedUserId, connection);
+
+        assertThat(repository.findAllByUserId(unconnectedUserId)).isEmpty();
+        assertThat(repository.findAllByUserId(connectedUserId))
+                .hasSize(1)
+                .containsEntry(connection, emitter);
+    }
 }
