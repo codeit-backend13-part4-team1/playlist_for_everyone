@@ -13,8 +13,7 @@ import java.time.Duration;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mockConstruction;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.*;
 
 @DisplayName("SSE 연결 서비스")
 class SseConnectionServiceTest {
@@ -235,6 +234,74 @@ class SseConnectionServiceTest {
 
             assertThat(repository.findAllByUserId(userId)).isEmpty();
             verify(emitter).complete();
+        }
+    }
+
+    @Test
+    @DisplayName("한 연결이 타임아웃돼도 같은 사용자의 다른 연결은 유지되고 종료되지 않는다.")
+    void timeoutCallbackKeepsOtherConnectionsForSameUser(){
+        SseEmitterRepository repository = new InMemorySseEmitterRepository();
+        SseProperties properties = new SseProperties(Duration.ofSeconds(15), Duration.ofMinutes(30));
+
+        SseConnectionService service = new SseConnectionService(repository, properties);
+        UUID userId = UUID.randomUUID();
+
+        try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
+            SseEmitter firstEmitter = service.connect(userId);
+            SseEmitter secondEmitter = service.connect(userId);
+
+            assertThat(repository.findAllByUserId(userId))
+                    .hasSize(2)
+                    .containsValues(firstEmitter, secondEmitter);
+
+            ArgumentCaptor<Runnable> timeoutCaptor = ArgumentCaptor.forClass(Runnable.class);
+            verify(firstEmitter).onTimeout(timeoutCaptor.capture());
+            timeoutCaptor.getValue().run();
+
+            assertThat(repository.findAllByUserId(userId))
+                    .hasSize(1)
+                    .doesNotContainValue(firstEmitter)
+                    .containsValue(secondEmitter);
+
+            verify(firstEmitter).complete();
+            verify(secondEmitter, never()).complete();
+
+        }
+    }
+
+    @Test
+    @DisplayName("타임아웃된 연결의 완료 콜백이 실행돼도 새 연결은 유지된다.")
+    void completionAfterTimeoutKeepsNewConnection(){
+        SseEmitterRepository repository = new InMemorySseEmitterRepository();
+        SseProperties properties = new SseProperties(Duration.ofSeconds(15), Duration.ofMinutes(30));
+
+        SseConnectionService service = new SseConnectionService(repository, properties);
+        UUID userId = UUID.randomUUID();
+
+        try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
+            SseEmitter oldEmitter = service.connect(userId);
+            assertThat(repository.findAllByUserId(userId)).containsValue(oldEmitter);
+
+            ArgumentCaptor<Runnable> timeoutCaptor = ArgumentCaptor.forClass(Runnable.class);
+            ArgumentCaptor<Runnable> completionCaptor = ArgumentCaptor.forClass(Runnable.class);
+
+            verify(oldEmitter).onTimeout(timeoutCaptor.capture());
+            verify(oldEmitter).onCompletion(completionCaptor.capture());
+
+            timeoutCaptor.getValue().run();
+            assertThat(repository.findAllByUserId(userId)).isEmpty();
+            verify(oldEmitter).complete();
+
+            SseEmitter newEmitter = service.connect(userId);
+            completionCaptor.getValue().run();
+
+            assertThat(repository.findAllByUserId(userId))
+                    .hasSize(1)
+                    .doesNotContainValue(oldEmitter)
+                    .containsValue(newEmitter);
+
+            verify(newEmitter, never()).complete();
+
         }
     }
 
