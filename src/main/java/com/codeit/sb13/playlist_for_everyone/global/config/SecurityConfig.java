@@ -66,6 +66,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/users", "/api/auth/sign-in").permitAll()
                         // 사용자 목록 조회는 관리자만 접근할 수 있다. hasRole("ADMIN")은 ROLE_ADMIN 권한을 검사한다.
                         .requestMatchers(HttpMethod.GET, "/api/users").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/", "/index.html", "/assets/**", "/favicon.svg").permitAll()
                         .anyRequest().authenticated()
                 )
                 .formLogin(formLogin -> formLogin
