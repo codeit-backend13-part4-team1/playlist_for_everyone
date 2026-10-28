@@ -3,12 +3,12 @@ package com.codeit.sb13.playlist_for_everyone.watch;
 
 import com.codeit.sb13.playlist_for_everyone.global.config.WebSocketConfig;
 import com.codeit.sb13.playlist_for_everyone.global.service.WatcherRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.service.WatcherRegistryDelay;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.WebSocketController;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.WebSocketEventListener;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.WebSocketInterceptor;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.dto.chat.ContentChatDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.dto.event.WebSocketChatEvent;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.dto.event.WebSocketContentWatchEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -48,7 +48,8 @@ import static org.mockito.Mockito.*;
 @Import({
         WebSocketConfig.class,
         WebSocketInterceptor.class,
-        WebSocketEventListener.class
+        WebSocketEventListener.class,
+        WatcherRegistryDelay.class
 })
 @RecordApplicationEvents
 public class WatchControllerTest {

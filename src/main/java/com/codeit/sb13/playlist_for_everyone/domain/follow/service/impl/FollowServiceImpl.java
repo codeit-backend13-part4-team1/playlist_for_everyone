@@ -4,16 +4,11 @@ import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.command.FollowCom
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.command.UnFollowCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowDto;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowResult;
-import com.codeit.sb13.playlist_for_everyone.domain.follow.entity.Follow;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.repository.FollowRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.service.FollowService;
-import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
-import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.follow.FollowCreationFailedException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.follow.FollowNotFoundException;
-import com.codeit.sb13.playlist_for_everyone.global.exception.follow.FollowTargetNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.follow.SelfFollowNotAllowedException;
-import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.exception.ConstraintViolationException;
@@ -37,7 +32,6 @@ public class FollowServiceImpl implements FollowService {
     private final FollowRepository followRepository;
     private final FollowSaver followSaver;
     private final FollowReader followReader;
-    private final UserRepository userRepository;
 
     @Override
     public FollowResult follow(FollowCommand command) {
@@ -84,11 +78,8 @@ public class FollowServiceImpl implements FollowService {
     }
 
     private FollowResult save(FollowCommand command){
-        User follower = getUser(command.followerId());
-        User followee = getFollowee(command);
-
         try {
-            return FollowResult.followCreated(followSaver.save(new Follow(follower, followee)));
+            return FollowResult.followCreated(followSaver.save(command));
         } catch (DataIntegrityViolationException e){
             if (!isFollowUniqueViolation(e)) {
                 throw new FollowCreationFailedException(e);
@@ -112,18 +103,5 @@ public class FollowServiceImpl implements FollowService {
         }
 
         return false;
-    }
-
-    private User getUser(UUID userId) {
-        return userRepository.findById(userId)
-                .orElseThrow(() -> new UserNotFoundException(Map.of("userId", userId)));
-    }
-
-    private User getFollowee(FollowCommand command) {
-        try {
-            return getUser(command.followeeId());
-        }catch (UserNotFoundException e){
-            throw new FollowTargetNotFoundException(Map.of("followeeId", command.followeeId()));
-        }
     }
 }
