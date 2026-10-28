@@ -5,6 +5,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -17,4 +18,8 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, UUID
   List<UUID> findSubscribedPlaylistIds(
       @Param("subscriberId") UUID subscriberId,
       @Param("playlistIds") Collection<UUID> playlistIds);
+
+  @Modifying(flushAutomatically = true, clearAutomatically = true)
+  @Query("delete from Subscription s where s.playlistId = :playlistId")
+  int deleteAllByPlaylistId(@Param("playlistId") UUID playlistId);
 }

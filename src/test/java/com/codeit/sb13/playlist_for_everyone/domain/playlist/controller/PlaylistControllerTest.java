@@ -4,15 +4,14 @@ import static org.mockito.BDDMockito.given;
 
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistSearchRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.PlaylistResponse;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.UserSummary;
-import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Playlist;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistSortBy;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.PlaylistService;
-import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
-import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
+import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListForbiddenException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import java.time.LocalDateTime;
@@ -29,22 +28,23 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
-import org.testcontainers.shaded.com.google.common.base.Verify;
 import tools.jackson.databind.ObjectMapper;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 
 import org.springframework.http.MediaType;
 
@@ -367,6 +367,248 @@ class PlaylistControllerTest {
     verify(playlistService, never()).getPlaylists(any(), any());
   }
 
+  @Test
+  @DisplayName("올바른 수정 요청에는 200과 수정된 플레이리스트를 반환한다")
+  void 플레이리스트_수정_요청이_올바르면_200을_반환한다() throws Exception {
+    // given
+    UUID requesterId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    UserSummary summary = new UserSummary(requesterId, "tester", null);
+    PlaylistResponse response = new PlaylistResponse(
+        playlistId, summary, "새 제목", "새 설명",
+        LocalDateTime.of(2026, 10, 28, 12, 0), 3L, false);
+
+    // when
+    Map<String, String> body = Map.of("title", "새 제목", "description", "새 설명");
+
+    given(playlistService.updatePlaylist(
+        eq(playlistId), any(PlaylistUpdateRequest.class), eq(requesterId)))
+        .willReturn(response);
+
+    // when & then
+    mockMvc.perform(patch("/api/playlists/{playlistId}", playlistId)
+            .header("X-User-Id", requesterId.toString())
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(body)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.id").value(playlistId.toString()))
+        .andExpect(jsonPath("$.title").value("새 제목"))
+        .andExpect(jsonPath("$.description").value("새 설명"))
+        .andExpect(jsonPath("$.owner.userId").value(requesterId.toString()))
+        .andExpect(jsonPath("$.owner.name").value("tester"));
+  }
+
+  @Test
+  @DisplayName("경로변수, 요청 본문, 헤더의 사용자 ID를 서비스에 전달한다")
+  void 수정_요청값을_서비스에_올바르게_전달한다() throws Exception {
+    // given
+    UUID requesterId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    UserSummary summary = new UserSummary(requesterId, "tester", null);
+    given(playlistService.updatePlaylist(
+        eq(playlistId), any(PlaylistUpdateRequest.class), eq(requesterId)))
+        .willReturn(createResponse(playlistId, summary, false));
+
+    // when
+    mockMvc.perform(patchRequest(playlistId, requesterId,
+        Map.of("title", "새 제목", "description", "새 설명")));
+
+    // then
+    verify(playlistService).updatePlaylist(
+        playlistId, new PlaylistUpdateRequest("새 제목", "새 설명"), requesterId);
+  }
+
+  @Test
+  @DisplayName("title과 description이 모두 없으면 400으로 응답한다")
+  void 수정_본문이_비어_있으면_400으로_응답한다() throws Exception {
+    // given
+    UUID requesterId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+
+    // when & then
+    mockMvc.perform(patchRequest(playlistId, requesterId, Map.of()))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.exceptionName").value("MethodArgumentNotValidException"))
+        .andExpect(jsonPath("$.details.updatable").exists());
+
+    verify(playlistService, never()).updatePlaylist(any(), any(), any());
+  }
+
+  @Test
+  @DisplayName("title이 공백이면 400으로 응답한다")
+  void 수정_title이_공백이면_400으로_응답한다() throws Exception {
+    // given
+    UUID requesterId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+
+    // when & then
+    mockMvc.perform(patchRequest(playlistId, requesterId, Map.of("title", " ")))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.details.titleNotBlank").exists());
+
+    verify(playlistService, never()).updatePlaylist(any(), any(), any());
+  }
+
+  @Test
+  @DisplayName("title이 100자를 넘으면 400으로 응답한다")
+  void 수정_title이_너무_길면_400으로_응답한다() throws Exception {
+    // given
+    UUID requesterId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+
+    // when & then
+    mockMvc.perform(patchRequest(playlistId, requesterId, Map.of("title", "a".repeat(101))))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.details.title").exists());
+
+    verify(playlistService, never()).updatePlaylist(any(), any(), any());
+  }
+
+  @Test
+  @DisplayName("playlistId가 UUID 형식이 아니면 400으로 응답한다")
+  void 수정_id형식이_잘못되면_400으로_응답한다() throws Exception {
+    // given
+    UUID requesterId = UUID.randomUUID();
+
+    // when & then
+    mockMvc.perform(patch("/api/playlists/{playlistId}", "not-a-uuid")
+            .header("X-User-Id", requesterId.toString())
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(Map.of("title", "새 제목"))))
+        .andExpect(status().isBadRequest());
+
+    verify(playlistService, never()).updatePlaylist(any(), any(), any());
+  }
+
+  @Test
+  @DisplayName("서비스에서 PlayListNotFoundException을 던지면 404로 응답한다")
+  void 없는_플레이리스트_수정시_404로_응답한다() throws Exception {
+    // given
+    UUID requesterId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    given(playlistService.updatePlaylist(
+        eq(playlistId), any(PlaylistUpdateRequest.class), eq(requesterId)))
+        .willThrow(new PlayListNotFoundException(Map.of("playlistId", playlistId)));
+
+    // when & then
+    mockMvc.perform(patchRequest(playlistId, requesterId, Map.of("title", "새 제목")))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.exceptionName").value("PlayListNotFoundException"))
+        .andExpect(jsonPath("$.details.playlistId").value(playlistId.toString()));
+  }
+
+  @Test
+  @DisplayName("서비스에서 PlayListForbiddenException을 던지면 403으로 응답한다")
+  void 소유자가_아닌_수정_요청은_403으로_응답한다() throws Exception {
+    // given
+    UUID requesterId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    given(playlistService.updatePlaylist(
+        eq(playlistId), any(PlaylistUpdateRequest.class), eq(requesterId)))
+        .willThrow(new PlayListForbiddenException(
+            Map.of("playlistId", playlistId, "requesterId", requesterId)));
+
+    // when & then
+    mockMvc.perform(patchRequest(playlistId, requesterId, Map.of("title", "새 제목")))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.exceptionName").value("PlayListForbiddenException"))
+        .andExpect(jsonPath("$.details.playlistId").value(playlistId.toString()))
+        .andExpect(jsonPath("$.details.requesterId").value(requesterId.toString()));
+  }
+
+  @Test
+  @DisplayName("X-User-Id 헤더가 없으면 400으로 응답한다")
+  void 수정_헤더에_UserId_누락시_400으로_응답한다() throws Exception {
+    // given
+    UUID playlistId = UUID.randomUUID();
+
+    // when & then
+    mockMvc.perform(patch("/api/playlists/{playlistId}", playlistId)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(Map.of("title", "새 제목"))))
+        .andExpect(status().isBadRequest());
+
+    verify(playlistService, never()).updatePlaylist(any(), any(), any());
+  }
+
+  @Test
+  @DisplayName("올바른 삭제 요청에는 200으로 응답하고 서비스에 경로변수와 헤더를 전달한다")
+  void 플레이리스트_삭제_요청이_올바르면_200을_반환한다() throws Exception {
+    // given
+    UUID requesterId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+
+    // when & then
+    mockMvc.perform(delete("/api/playlists/{playlistId}", playlistId)
+            .header("X-User-Id", requesterId.toString()))
+        .andExpect(status().isOk());
+
+    verify(playlistService).deletePlaylist(playlistId, requesterId);
+  }
+
+  @Test
+  @DisplayName("playlistId가 UUID 형식이 아니면 400으로 응답한다")
+  void 삭제_id형식이_잘못되면_400으로_응답한다() throws Exception {
+    // given
+    UUID requesterId = UUID.randomUUID();
+
+    // when & then
+    mockMvc.perform(delete("/api/playlists/{playlistId}", "not-a-uuid")
+            .header("X-User-Id", requesterId.toString()))
+        .andExpect(status().isBadRequest());
+
+    verify(playlistService, never()).deletePlaylist(any(), any());
+  }
+
+  @Test
+  @DisplayName("서비스에서 PlayListNotFoundException을 던지면 404로 응답한다")
+  void 없는_플레이리스트_삭제시_404로_응답한다() throws Exception {
+    // given
+    UUID requesterId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    willThrow(new PlayListNotFoundException(Map.of("playlistId", playlistId)))
+        .given(playlistService).deletePlaylist(playlistId, requesterId);
+
+    // when & then
+    mockMvc.perform(delete("/api/playlists/{playlistId}", playlistId)
+            .header("X-User-Id", requesterId.toString()))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.exceptionName").value("PlayListNotFoundException"))
+        .andExpect(jsonPath("$.details.playlistId").value(playlistId.toString()));
+  }
+
+  @Test
+  @DisplayName("서비스에서 PlayListForbiddenException을 던지면 403으로 응답한다")
+  void 소유자가_아닌_삭제_요청은_403으로_응답한다() throws Exception {
+    // given
+    UUID requesterId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    willThrow(new PlayListForbiddenException(
+        Map.of("playlistId", playlistId, "requesterId", requesterId)))
+        .given(playlistService).deletePlaylist(playlistId, requesterId);
+
+    // when & then
+    mockMvc.perform(delete("/api/playlists/{playlistId}", playlistId)
+            .header("X-User-Id", requesterId.toString()))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.exceptionName").value("PlayListForbiddenException"))
+        .andExpect(jsonPath("$.details.playlistId").value(playlistId.toString()))
+        .andExpect(jsonPath("$.details.requesterId").value(requesterId.toString()));
+  }
+
+  @Test
+  @DisplayName("X-User-Id 헤더가 없으면 400으로 응답한다")
+  void 삭제_헤더에_UserId_누락시_400으로_응답한다() throws Exception {
+    // given
+    UUID playlistId = UUID.randomUUID();
+
+    // when & then
+    mockMvc.perform(delete("/api/playlists/{playlistId}", playlistId))
+        .andExpect(status().isBadRequest());
+
+    verify(playlistService, never()).deletePlaylist(any(), any());
+  }
+
 
 
   //-------[헬퍼 메서드]-----
@@ -391,6 +633,14 @@ class PlaylistControllerTest {
         .header("X-User-Id", UUID.randomUUID().toString());
     params.forEach(builder::param);
     return builder;
+  }
+
+  private MockHttpServletRequestBuilder patchRequest(
+      UUID playlistId, UUID requesterId, Object body) throws Exception {
+    return patch("/api/playlists/{playlistId}", playlistId)
+        .header("X-User-Id", requesterId.toString())
+        .contentType(MediaType.APPLICATION_JSON)
+        .content(objectMapper.writeValueAsString(body));
   }
 
 }

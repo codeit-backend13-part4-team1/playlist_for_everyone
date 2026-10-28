@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.ArgumentMatchers.anyCollection;
@@ -14,9 +15,11 @@ import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistSearchRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.PlaylistResponse;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Playlist;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistSortBy;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistSearchCondition;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.SubscriptionRepository;
@@ -25,6 +28,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
+import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListForbiddenException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import java.time.LocalDateTime;
@@ -35,6 +39,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -50,6 +55,9 @@ public class PlaylistServiceImplTest {
   private UserRepository userRepository;
   @Mock
   private SubscriptionRepository subscriptionRepository;
+
+  @Mock
+  private PlaylistContentRepository playlistContentRepository;
 
   @InjectMocks
   private PlaylistServiceImpl playlistService;
@@ -414,9 +422,172 @@ public class PlaylistServiceImplTest {
     verify(playlistRepository).count(expected);
   }
 
+  @Test
+  @DisplayName("소유자가 title과 description을 모두 수정하면 응답에 둘 다 반영된다")
+  void 소유자가_제목과_설명을_수정하면_응답에_반영된다() {
+    // given
+    UUID ownerId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
+    PlaylistUpdateRequest request = new PlaylistUpdateRequest("새 제목", "새 설명");
+
+    given(playlistRepository.findWithOwnerById(playlistId))
+        .willReturn(Optional.of(playlist));
+
+    // when
+    PlaylistResponse response = playlistService.updatePlaylist(playlistId, request, ownerId);
+
+    // then
+    assertThat(response.id()).isEqualTo(playlistId);
+    assertThat(response.title()).isEqualTo("새 제목");
+    assertThat(response.description()).isEqualTo("새 설명");
+    assertThat(response.owner().userId()).isEqualTo(ownerId);
+  }
+
+  @Test
+  @DisplayName("title만 수정하면 description은 그대로이다")
+  void 제목만_수정하면_설명은_그대로이다() {
+    // given
+    UUID ownerId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
+    PlaylistUpdateRequest request = new PlaylistUpdateRequest("새 제목", null);
+
+    given(playlistRepository.findWithOwnerById(playlistId))
+        .willReturn(Optional.of(playlist));
+
+    // when
+    PlaylistResponse response = playlistService.updatePlaylist(playlistId, request, ownerId);
+
+    // then
+    assertThat(response.title()).isEqualTo("새 제목");
+    assertThat(response.description()).isEqualTo("description");
+  }
+
+  @Test
+  @DisplayName("description만 수정하면 title은 그대로이다")
+  void 설명만_수정하면_제목은_그대로이다() {
+    // given
+    UUID ownerId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
+    PlaylistUpdateRequest request = new PlaylistUpdateRequest(null, "새 설명");
+
+    given(playlistRepository.findWithOwnerById(playlistId))
+        .willReturn(Optional.of(playlist));
+
+    // when
+    PlaylistResponse response = playlistService.updatePlaylist(playlistId, request, ownerId);
+
+    // then
+    assertThat(response.title()).isEqualTo("title");
+    assertThat(response.description()).isEqualTo("새 설명");
+  }
+
+  @Test
+  @DisplayName("없는 플레이리스트를 수정하면 PlayListNotFoundException을 던진다")
+  void 없는_플레이리스트_수정시_PlayListNotFoundException을_던진다() {
+    // given
+    UUID playlistId = UUID.randomUUID();
+    UUID requesterId = UUID.randomUUID();
+    PlaylistUpdateRequest request = new PlaylistUpdateRequest("새 제목", "새 설명");
+
+    given(playlistRepository.findWithOwnerById(playlistId))
+        .willReturn(Optional.empty());
+
+    // when & then
+    assertThatExceptionOfType(PlayListNotFoundException.class)
+        .isThrownBy(() -> playlistService.updatePlaylist(playlistId, request, requesterId))
+        .satisfies(e -> assertThat(e.getDetails())
+            .containsEntry("playlistId", playlistId));
+  }
+
+  @Test
+  @DisplayName("소유자가 아니면 PlayListForbiddenException을 던지고 값은 바뀌지 않는다")
+  void 소유자가_아니면_PlayListForbiddenException을_던지고_값은_바뀌지_않는다() {
+    // given
+    UUID ownerId = UUID.randomUUID();
+    UUID requesterId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
+    PlaylistUpdateRequest request = new PlaylistUpdateRequest("새 제목", "새 설명");
+
+    given(playlistRepository.findWithOwnerById(playlistId))
+        .willReturn(Optional.of(playlist));
+
+    // when & then
+    assertThatExceptionOfType(PlayListForbiddenException.class)
+        .isThrownBy(() -> playlistService.updatePlaylist(playlistId, request, requesterId))
+        .satisfies(e -> assertThat(e.getDetails())
+            .containsEntry("playlistId", playlistId)
+            .containsEntry("requesterId", requesterId));
+
+    assertThat(playlist.getTitle()).isEqualTo("title");
+    assertThat(playlist.getDescription()).isEqualTo("description");
+  }
+
+  @Test
+  @DisplayName("소유자가 삭제하면 구독, 콘텐츠 연결, 플레이리스트 순서로 삭제한다")
+  void 소유자가_삭제하면_자식을_먼저_지우고_플레이리스트를_삭제한다() {
+    // given
+    UUID ownerId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
+
+    given(playlistRepository.findById(playlistId)).willReturn(Optional.of(playlist));
+
+    // when
+    playlistService.deletePlaylist(playlistId, ownerId);
+
+    // then
+    InOrder inOrder = inOrder(subscriptionRepository, playlistContentRepository, playlistRepository);
+    inOrder.verify(subscriptionRepository).deleteAllByPlaylistId(playlistId);
+    inOrder.verify(playlistContentRepository).deleteAllByPlaylistId(playlistId);
+    inOrder.verify(playlistRepository).delete(playlist);
+  }
+
+  @Test
+  @DisplayName("없는 플레이리스트를 삭제하면 PlayListNotFoundException을 던지고 아무것도 삭제하지 않는다")
+  void 없는_플레이리스트_삭제시_PlayListNotFoundException을_던진다() {
+    // given
+    UUID playlistId = UUID.randomUUID();
+    UUID requesterId = UUID.randomUUID();
+    given(playlistRepository.findById(playlistId)).willReturn(Optional.empty());
+
+    // when & then
+    assertThatExceptionOfType(PlayListNotFoundException.class)
+        .isThrownBy(() -> playlistService.deletePlaylist(playlistId, requesterId))
+        .satisfies(e -> assertThat(e.getDetails())
+            .containsEntry("playlistId", playlistId));
+
+    verifyNoInteractions(subscriptionRepository, playlistContentRepository);
+    verify(playlistRepository, never()).delete(any(Playlist.class));
+  }
+
+  @Test
+  @DisplayName("소유자가 아니면 PlayListForbiddenException을 던지고 아무것도 삭제하지 않는다")
+  void 소유자가_아니면_삭제할_수_없다() {
+    // given
+    UUID ownerId = UUID.randomUUID();
+    UUID requesterId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
+
+    given(playlistRepository.findById(playlistId)).willReturn(Optional.of(playlist));
+
+    // when & then
+    assertThatExceptionOfType(PlayListForbiddenException.class)
+        .isThrownBy(() -> playlistService.deletePlaylist(playlistId, requesterId))
+        .satisfies(e -> assertThat(e.getDetails())
+            .containsEntry("playlistId", playlistId)
+            .containsEntry("requesterId", requesterId));
+
+    verifyNoInteractions(subscriptionRepository, playlistContentRepository);
+    verify(playlistRepository, never()).delete(any(Playlist.class));
+  }
 
 
-  //헬퍼 메서드
+  //-----------[헬퍼 메서드]
   private User createUser(UUID ownerId) {
     User owner = User.builder()
         .email("test@test.com")
