@@ -9,8 +9,10 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.MockedConstruction;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
 import java.time.Duration;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
@@ -305,4 +307,29 @@ class SseConnectionServiceTest {
         }
     }
 
+
+    @Test
+    @DisplayName("연결 오류 콜백이 실행되면 해당 연결이 저장소에서 제거된다.")
+    void errorCallbackRemovesConnection(){
+        SseEmitterRepository repository = new InMemorySseEmitterRepository();
+        SseProperties properties = new SseProperties(Duration.ofSeconds(15), Duration.ofMinutes(30));
+
+        SseConnectionService service = new SseConnectionService(repository, properties);
+        UUID userId = UUID.randomUUID();
+
+        try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
+            SseEmitter emitter = service.connect(userId);
+
+            assertThat(repository.findAllByUserId(userId)).containsValue(emitter);
+
+            ArgumentCaptor<Consumer<Throwable>> errorCaptor = ArgumentCaptor.captor();
+            verify(emitter).onError(errorCaptor.capture());
+
+            errorCaptor.getValue().accept(new IOException("연결 오류"));
+
+            assertThat(repository.findAllByUserId(userId)).isEmpty();
+
+
+        }
+    }
 }
