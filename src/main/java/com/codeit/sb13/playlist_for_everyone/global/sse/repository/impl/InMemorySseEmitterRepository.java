@@ -30,7 +30,20 @@ public class InMemorySseEmitterRepository implements SseEmitterRepository {
 
     @Override
     public void delete(UUID userId, Connection connection) {
+        sseEmitters.compute(userId, (id, connections)->{
+            if (connections == null){
+                return null;
+            }
+            connections.remove(connection);
+            return removeEmptyConnections(connections);
+        });
+    }
 
+    private Map<Connection, SseEmitter> removeEmptyConnections(Map<Connection, SseEmitter> connections) {
+        if (connections == null || connections.isEmpty()){
+            return null;
+        }
+        return connections;
     }
 
     private Map<Connection, SseEmitter> initializeConnections(Map<Connection, SseEmitter> connections) {
