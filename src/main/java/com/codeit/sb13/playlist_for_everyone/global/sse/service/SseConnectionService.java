@@ -26,6 +26,10 @@ public class SseConnectionService {
             sseEmitterRepository.delete(userId, connection);
             emitter.complete();
         });
+        emitter.onError(e -> {
+            sseEmitterRepository.delete(userId, connection);
+            log.error("SSE 연결 오류로 연결을 정리했습니다. userId={}, connectionId={}", userId, connection.id(), e);
+        });
 
         sseEmitterRepository.save(userId, connection, emitter);
         return emitter;
