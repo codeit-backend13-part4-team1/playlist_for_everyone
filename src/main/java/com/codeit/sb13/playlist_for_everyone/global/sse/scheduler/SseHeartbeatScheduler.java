@@ -11,6 +11,6 @@ public class SseHeartbeatScheduler {
     private final SseDeliveryService sseDeliveryService;
 
     public void sendHeartbeat(){
-
+        sseDeliveryService.sendHeartbeatToLocalConnections();
     }
 }
