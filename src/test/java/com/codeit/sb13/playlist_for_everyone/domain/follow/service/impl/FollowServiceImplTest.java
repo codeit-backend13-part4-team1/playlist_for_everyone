@@ -6,17 +6,14 @@ import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowDt
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowResult;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.entity.Follow;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.repository.FollowRepository;
-import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
-import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
-import com.codeit.sb13.playlist_for_everyone.global.exception.EveryOneException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.follow.FollowCreationFailedException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.follow.FollowNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.follow.FollowTargetNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.follow.SelfFollowNotAllowedException;
 import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -25,6 +22,7 @@ import org.springframework.http.HttpStatus;
 
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -41,9 +39,6 @@ class FollowServiceImplTest {
     private FollowRepository followRepository;
 
     @Mock
-    private UserRepository userRepository;
-
-    @Mock
     private FollowSaver followSaver;
 
     @Mock
@@ -53,26 +48,17 @@ class FollowServiceImplTest {
     private FollowServiceImpl followService;
 
     @Test
-    @DisplayName("새로운 사용자를 팔로우하면 관계를 저장하고 생성 결과를 반환한다.")
+    @DisplayName("새로운 사용자를 팔로우하면 저장 컴포넌트에 명령을 전달하고 생성 결과를 반환한다.")
     void follow_createsNewFollow(){
         UUID followerId = UUID.randomUUID();
         UUID followeeId = UUID.randomUUID();
         UUID followId = UUID.randomUUID();
 
         FollowCommand command = new FollowCommand(followeeId, followerId);
-        given(followReader.findExistingFollow(command))
-                .willReturn(Optional.empty());
-
         FollowDto savedFollow = new FollowDto(followId, followeeId, followerId);
-        User follower = mock(User.class);
-        User followee = mock(User.class);
 
-        given(follower.getId()).willReturn(followerId);
-        given(followee.getId()).willReturn(followeeId);
-
-        given(userRepository.findById(followerId)).willReturn(Optional.of(follower));
-        given(userRepository.findById(followeeId)).willReturn(Optional.of(followee));
-        given(followSaver.save(any(Follow.class))).willReturn(savedFollow);
+        given(followReader.findExistingFollow(command)).willReturn(Optional.empty());
+        given(followSaver.save(command)).willReturn(savedFollow);
 
         FollowResult result = followService.follow(command);
 
@@ -80,14 +66,8 @@ class FollowServiceImplTest {
         assertThat(result.created()).isTrue();
         assertThat(result.followDto()).isEqualTo(new FollowDto(followId, followeeId, followerId));
 
-        ArgumentCaptor<Follow> captor = ArgumentCaptor.forClass(Follow.class);
-
-        verify(followSaver).save(captor.capture());
-
-        Follow requestedFollow = captor.getValue();
-        assertThat(requestedFollow.getFolloweeId()).isEqualTo(followeeId);
-        assertThat(requestedFollow.getFollowerId()).isEqualTo(followerId);
-
+        verify(followReader).findExistingFollow(command);
+        verify(followSaver).save(command);
     }
 
     @Test
@@ -100,8 +80,8 @@ class FollowServiceImplTest {
                 .isInstanceOf(SelfFollowNotAllowedException.class);
 
         verifyNoInteractions(
+                followReader,
                 followRepository,
-                userRepository,
                 followSaver
         );
     }
@@ -127,31 +107,28 @@ class FollowServiceImplTest {
         assertThat(result.followDto()).isEqualTo(new FollowDto(followId, followeeId, followerId));
         verify(followReader).findExistingFollow(command);
 
-        verifyNoInteractions(userRepository, followSaver);
+        verifyNoInteractions( followSaver);
 
     }
 
     @Test
-    @DisplayName("팔로우 대상 사용자가 없으면 잘못된 요청 예외가 발생하고 저장하지 않는다.")
+    @DisplayName("저장 컴포넌트에서 팔로우 대상 없음 예외가 발생하면 그대로 전달한다.")
     void follow_rejectMissingFollowee(){
         UUID followerId = UUID.randomUUID();
         UUID followeeId = UUID.randomUUID();
 
         FollowCommand command = new FollowCommand(followeeId, followerId);
+        FollowTargetNotFoundException exception = new FollowTargetNotFoundException(Map.of("followeeId", followeeId));
 
         given(followReader.findExistingFollow(command))
                 .willReturn(Optional.empty());
 
-        User follower = mock(User.class);
-        given(userRepository.findById(followerId)).willReturn(Optional.of(follower));
-        given(userRepository.findById(followeeId)).willReturn(Optional.empty());
+        given(followSaver.save(command)).willThrow(exception);
 
-        assertThatThrownBy(()-> followService.follow(command))
-                .isInstanceOfSatisfying(EveryOneException.class,
-                        e -> assertThat(e.getApiErrorCode().getStatus())
-                                .isEqualTo(HttpStatus.BAD_REQUEST));
+        assertThatThrownBy(()-> followService.follow(command)).isSameAs(exception);
 
-        verifyNoInteractions(followSaver);
+        verify(followReader).findExistingFollow(command);
+        verify(followSaver).save(command);
     }
 
     @Test
@@ -163,12 +140,7 @@ class FollowServiceImplTest {
 
         FollowCommand command = new FollowCommand(followeeId, followerId);
 
-        User follower = mock(User.class);
-        User followee = mock(User.class);
         FollowResult existingFollow = FollowResult.alreadyFollowed(new FollowDto(followId, followeeId, followerId));
-
-        given(userRepository.findById(followerId)).willReturn(Optional.of(follower));
-        given(userRepository.findById(followeeId)).willReturn(Optional.of(followee));
 
         given(followReader.findExistingFollow(command))
                 .willReturn(Optional.empty())
@@ -180,7 +152,7 @@ class FollowServiceImplTest {
 
         DataIntegrityViolationException exception = new DataIntegrityViolationException("팔로우 중복 저장", constraintException);
 
-        given(followSaver.save(any(Follow.class))).willThrow(exception);
+        given(followSaver.save(command)).willThrow(exception);
 
         FollowResult result = followService.follow(command);
         assertThat(result).isNotNull();
@@ -189,7 +161,7 @@ class FollowServiceImplTest {
 
         verify(followReader, times(2)).findExistingFollow(command);
 
-        verify(followSaver).save(any(Follow.class));
+        verify(followSaver).save(command);
 
     }
 
@@ -201,11 +173,6 @@ class FollowServiceImplTest {
 
         FollowCommand command = new FollowCommand(followeeId, followerId);
 
-        User follower = mock(User.class);
-        User followee = mock(User.class);
-
-        given(userRepository.findById(followerId)).willReturn(Optional.of(follower));
-        given(userRepository.findById(followeeId)).willReturn(Optional.of(followee));
         given(followReader.findExistingFollow(command))
                 .willReturn(Optional.empty());
 
@@ -215,7 +182,7 @@ class FollowServiceImplTest {
 
         DataIntegrityViolationException exception = new DataIntegrityViolationException("팔로우 중복 저장", constraintException);
 
-        given(followSaver.save(any(Follow.class))).willThrow(exception);
+        given(followSaver.save(command)).willThrow(exception);
 
         assertThatThrownBy(()-> followService.follow(command))
                 .isInstanceOfSatisfying(FollowCreationFailedException.class,
@@ -224,7 +191,7 @@ class FollowServiceImplTest {
 
         verify(followReader, times(2))
                 .findExistingFollow(command);
-        verify(followSaver).save(any(Follow.class));
+        verify(followSaver).save(command);
     }
 
     @Test
@@ -235,14 +202,8 @@ class FollowServiceImplTest {
 
         FollowCommand command = new FollowCommand(followeeId, followerId);
 
-        User follower = mock(User.class);
-        User followee = mock(User.class);
-
-        given(userRepository.findById(followerId)).willReturn(Optional.of(follower));
-        given(userRepository.findById(followeeId)).willReturn(Optional.of(followee));
         given(followReader.findExistingFollow(command))
                 .willReturn(Optional.empty());
-
 
         SQLException sqlException = new SQLException("other unique violation", "23505");
 
@@ -250,7 +211,7 @@ class FollowServiceImplTest {
 
         DataIntegrityViolationException exception = new DataIntegrityViolationException("다른 UNIQUE 제약조건 위반", constraintException);
 
-        given(followSaver.save(any(Follow.class))).willThrow(exception);
+        given(followSaver.save(command)).willThrow(exception);
 
         assertThatThrownBy(()-> followService.follow(command))
                 .isInstanceOfSatisfying(FollowCreationFailedException.class,
@@ -259,7 +220,7 @@ class FollowServiceImplTest {
 
         verify(followReader, times(1))
                 .findExistingFollow(command);
-        verify(followSaver).save(any(Follow.class));
+        verify(followSaver).save(command);
     }
 
     @Test
@@ -270,14 +231,8 @@ class FollowServiceImplTest {
 
         FollowCommand command = new FollowCommand(followeeId, followerId);
 
-        User follower = mock(User.class);
-        User followee = mock(User.class);
-
-        given(userRepository.findById(followerId)).willReturn(Optional.of(follower));
-        given(userRepository.findById(followeeId)).willReturn(Optional.of(followee));
         given(followReader.findExistingFollow(command))
                 .willReturn(Optional.empty());
-
 
         SQLException sqlException = new SQLException("none-unique constraint violation", "23503");
 
@@ -285,7 +240,7 @@ class FollowServiceImplTest {
 
         DataIntegrityViolationException exception = new DataIntegrityViolationException("UNIQUE 이외의 제약조건 위반", constraintException);
 
-        given(followSaver.save(any(Follow.class))).willThrow(exception);
+        given(followSaver.save(command)).willThrow(exception);
 
         assertThatThrownBy(()-> followService.follow(command))
                 .isInstanceOfSatisfying(FollowCreationFailedException.class,
@@ -295,7 +250,7 @@ class FollowServiceImplTest {
         verify(followReader, times(1))
                 .findExistingFollow(command);
 
-        verify(followSaver).save(any(Follow.class));
+        verify(followSaver).save(command);
     }
 
     @Test
@@ -350,7 +305,7 @@ class FollowServiceImplTest {
 
         verify(followReader).findExistingFollow(command);
 
-        verifyNoInteractions(userRepository, followSaver);
+        verifyNoInteractions(followSaver);
     }
 
     @Test
@@ -373,7 +328,7 @@ class FollowServiceImplTest {
                 });
 
         verify(followReader).findExistingFollow(command);
-        verifyNoInteractions(userRepository, followSaver, followRepository);
+        verifyNoInteractions( followSaver, followRepository);
     }
 
     @Test
@@ -387,7 +342,7 @@ class FollowServiceImplTest {
         assertThat(result).isEqualTo(3L);
 
         verify(followReader).countFollowers(followeeId);
-        verifyNoInteractions(userRepository, followSaver, followRepository);
+        verifyNoInteractions( followSaver, followRepository);
     }
 
     @Test
@@ -403,7 +358,7 @@ class FollowServiceImplTest {
         assertThat(result).containsExactlyInAnyOrderElementsOf(expected);
 
         verify(followReader).findFollowerIds(followeeId);
-        verifyNoInteractions(userRepository, followSaver, followRepository);
+        verifyNoInteractions(followSaver, followRepository);
     }
 
 }
