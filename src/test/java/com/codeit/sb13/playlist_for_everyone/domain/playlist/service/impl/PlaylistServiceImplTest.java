@@ -416,7 +416,9 @@ public class PlaylistServiceImplTest {
 
 
 
-  //헬퍼 메서드
+
+
+  //-----------[헬퍼 메서드]
   private User createUser(UUID ownerId) {
     User owner = User.builder()
         .email("test@test.com")

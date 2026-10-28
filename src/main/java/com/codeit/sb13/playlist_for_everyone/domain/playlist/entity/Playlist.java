@@ -40,4 +40,14 @@ public class Playlist extends UpdatedAtEntity {
     this.title = title;
     this.description = description;
   }
+
+  public void update(String title, String description) {
+    if(title!= null) { this.title = title; }
+    if(description!= null) { this.description = description; }
+  }
+
+  public boolean isOwnerBy(UUID userId) {
+    return this.owner.equals(userId);
+  }
+
 }
