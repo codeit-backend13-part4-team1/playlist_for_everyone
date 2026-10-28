@@ -43,3 +43,7 @@ everyone:
   openapi:
     server-url: http://localhost:${server.port:8080}
     server-description: 로컬 개발 서버
+
+  tmdb:
+    base-url: https://api.themoviedb.org/3
+    access-token: ${EVERYONE_TMDB_ACCESS_TOKEN}
