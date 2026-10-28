@@ -22,6 +22,10 @@ public class SseConnectionService {
         Connection connection = Connection.create();
         SseEmitter emitter = new SseEmitter(sseProperties.connectionTimeout().toMillis());
         emitter.onCompletion(()-> sseEmitterRepository.delete(userId, connection));
+        emitter.onTimeout(()-> {
+            sseEmitterRepository.delete(userId, connection);
+            emitter.complete();
+        });
 
         sseEmitterRepository.save(userId, connection, emitter);
         return emitter;
