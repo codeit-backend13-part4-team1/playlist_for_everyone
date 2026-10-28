@@ -1,6 +1,8 @@
 package com.codeit.sb13.playlist_for_everyone.domain.auth.jwt;
 
 import io.jsonwebtoken.*;
+import io.jsonwebtoken.io.Decoders;
+import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -25,6 +27,10 @@ class JwtTokenProviderTest {
     private static final UUID USER_ID =
             UUID.fromString("11111111-1111-1111-1111-111111111111");
 
+    // JWT 발급, 검증 테스트에만 사용하는 공개 테스트 키다.
+    private static final String TEST_SECRET_KEY =
+            "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
+
     // 실행 날짜에 영향을 받지 않도록 현재 시각을 고정한다.
     private static final Instant NOW =
             Instant.parse("2026-10-26T00:00:00Z");
@@ -38,8 +44,10 @@ class JwtTokenProviderTest {
 
     @BeforeEach
     void setUp() {
-        // 테스트용 서명 키다. 운영 키를 사용하거나 코드에 노출하지 않는다.
-        signingKey = Jwts.SIG.HS256.key().build();
+        // 설정에 사용하는 Base64 문자열을 실제 서명 키로 변환한다.
+        signingKey = Keys.hmacShaKeyFor(
+                Decoders.BASE64.decode(TEST_SECRET_KEY)
+        );
 
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
 

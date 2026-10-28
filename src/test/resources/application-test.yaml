@@ -36,5 +36,5 @@ everyone:
     endpoint:
 
   jwt:
-    secret-key: ${JWT_TEST_SECRET_KEY}
+    secret-key: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
     access-token-validity: 15m

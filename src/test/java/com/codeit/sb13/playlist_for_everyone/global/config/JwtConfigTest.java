@@ -24,10 +24,7 @@ class JwtConfigTest {
 
     // 테스트 전용키다. 운영 설정에 복사해서 사용하지 않는다.
     // HS256에 적합한 키를 생성한 뒤 외부 설정처럼 Base64 문자열로 전달한다.
-    private static final String TEST_SECRET_KEY =
-            Encoders.BASE64.encode(
-                    Jwts.SIG.HS256.key().build().getEncoded()
-            );
+    private static final String TEST_SECRET_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
 
     // 전체 서버 대신 JwtConfig에 필요한 작은 Spring 컨텍스트만 실행한다.
     private final ApplicationContextRunner contextRunner =
