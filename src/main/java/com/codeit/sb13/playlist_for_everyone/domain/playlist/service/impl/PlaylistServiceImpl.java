@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.playlist.service.impl;
 
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistSearchRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.PlaylistResponse;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Playlist;
@@ -32,6 +33,7 @@ public class PlaylistServiceImpl implements PlaylistService {
   private final PlaylistRepository playlistRepository;
   private final UserRepository userRepository;
   private final SubscriptionRepository subscriptionRepository;
+  private final PlaylistUpdateRequest playlistUpdateRequest;
 
 
   @Override
@@ -96,6 +98,13 @@ public class PlaylistServiceImpl implements PlaylistService {
     return new CursorResponse<>(
         data, nextCursor, nextIdAfter, hasNext, totalCount,
         condition.sortBy().getSortKey(), condition.sortDirection());
+  }
+
+  @Override
+  @Transactional
+  public PlaylistResponse updatePlaylist(
+      UUID playlistId, PlaylistUpdateRequest request, UUID requesterId) {
+    return null;
   }
 
  //---------[헬퍼 메서드]
