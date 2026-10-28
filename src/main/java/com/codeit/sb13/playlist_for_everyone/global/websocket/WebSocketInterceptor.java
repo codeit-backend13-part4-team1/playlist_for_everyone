@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket;
 
 import com.codeit.sb13.playlist_for_everyone.global.service.WatcherRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.service.WatcherRegistryDelay;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -20,6 +21,7 @@ import java.util.regex.Pattern;
 public class WebSocketInterceptor implements ChannelInterceptor {
 
     private final WatcherRegistry watcherRegistry;
+    private final WatcherRegistryDelay delay;
 
     @Override
     public @Nullable Message<?> preSend(Message<?> message, MessageChannel channel) {
@@ -42,6 +44,10 @@ public class WebSocketInterceptor implements ChannelInterceptor {
     // STOMP 의 모든 하트비트인지 미정?
     private void sessionRefresh(StompHeaderAccessor accessor) {
         String session = accessor.getSessionId();
+
+        // 세션 별 리프레시 시도 딜레이 작성
+        if (!delay.checkRefresh(session)) return;
+
         try {
             watcherRegistry.refresh(session);
         } catch (RuntimeException e) {

@@ -180,6 +180,8 @@ public class WatcherRegistryTest {
 
     }
 
+
+
     @Test
     @DisplayName("세션 구독 전부삭제 테스트")
     void deleteTest(){
