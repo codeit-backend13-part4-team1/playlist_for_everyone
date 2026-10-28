@@ -46,7 +46,7 @@ public class Playlist extends UpdatedAtEntity {
     if(description!= null) { this.description = description; }
   }
 
-  public boolean isOwnerBy(UUID userId) {
+  public boolean isOwnedBy(UUID userId) {
     return this.owner.equals(userId);
   }
 
