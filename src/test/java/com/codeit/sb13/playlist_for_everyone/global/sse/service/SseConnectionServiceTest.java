@@ -10,11 +10,13 @@ import org.mockito.MockedConstruction;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.time.Duration;
 import java.util.UUID;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
 @DisplayName("SSE 연결 서비스")
@@ -383,6 +385,33 @@ class SseConnectionServiceTest {
             assertThat(eventCaptor.getValue().build())
                     .extracting(data -> data.getData())
                     .containsExactly(":connected\n\n");
+        }
+    }
+
+    @Test
+    @DisplayName("초기 주석 전송에 실패하면 등록한 연결을 제거하고 원본 예외를 보존한다.")
+    void initialCommentFailureRemovesConnectionAndPreservesCause(){
+        SseEmitterRepository repository = new InMemorySseEmitterRepository();
+        SseProperties properties = new SseProperties(Duration.ofSeconds(15), Duration.ofMinutes(30));
+
+        SseConnectionService service = new SseConnectionService(repository, properties);
+        UUID userId = UUID.randomUUID();
+
+        IOException sendFailure = new IOException("초기 주석 전송 실패");
+
+        try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class,
+                (emitter, context)-> doAnswer(invocation -> {
+                    assertThat(repository.findAllByUserId(userId)).containsValues(emitter);
+                    throw sendFailure;
+                }).when(emitter).send(any(SseEmitter.SseEventBuilder.class)))
+        ){
+            assertThatThrownBy(()-> service.connect(userId))
+                    .isInstanceOf(UncheckedIOException.class)
+                    .cause()
+                    .isSameAs(sendFailure);
+
+            assertThat(repository.findAllByUserId(userId)).isEmpty();
+
         }
     }
 }
