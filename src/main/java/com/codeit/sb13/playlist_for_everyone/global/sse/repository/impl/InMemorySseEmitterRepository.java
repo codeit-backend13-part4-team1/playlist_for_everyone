@@ -16,11 +16,23 @@ public class InMemorySseEmitterRepository implements SseEmitterRepository {
 
     @Override
     public void save(UUID userId, Connection connection, SseEmitter sseEmitter) {
-
+      sseEmitters.compute(userId, (id, connections)->{
+          Map<Connection, SseEmitter> userConnections = initializeConnections(connections);
+          userConnections.put(connection, sseEmitter);
+          return userConnections;
+      });
     }
 
     @Override
     public Map<Connection, SseEmitter> findAllByUserId(UUID userId) {
-        return null;
+        return Map.copyOf(sseEmitters.getOrDefault(userId, Map.of()));
     }
+
+    private Map<Connection, SseEmitter> initializeConnections(Map<Connection, SseEmitter> connections) {
+        if (connections == null){
+            return new ConcurrentHashMap<>();
+        }
+        return connections;
+    }
+
 }
