@@ -215,4 +215,27 @@ class SseConnectionServiceTest {
 
     }
 
+    @Test
+    @DisplayName("연결 시간이 초과되면 해당연결을 제거하고 응답 종료를 요청한다.")
+    void timeoutCallbackRemovesConnectionAndCompletesEmitter(){
+        SseEmitterRepository repository = new InMemorySseEmitterRepository();
+        SseProperties properties = new SseProperties(Duration.ofSeconds(15), Duration.ofMinutes(30));
+
+        SseConnectionService service = new SseConnectionService(repository, properties);
+        UUID userId = UUID.randomUUID();
+
+        try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
+            SseEmitter emitter = service.connect(userId);
+
+            assertThat(repository.findAllByUserId(userId)).containsValue(emitter);
+
+            ArgumentCaptor<Runnable> timeoutCaptor = ArgumentCaptor.forClass(Runnable.class);
+            verify(emitter).onTimeout(timeoutCaptor.capture());
+            timeoutCaptor.getValue().run();
+
+            assertThat(repository.findAllByUserId(userId)).isEmpty();
+            verify(emitter).complete();
+        }
+    }
+
 }
