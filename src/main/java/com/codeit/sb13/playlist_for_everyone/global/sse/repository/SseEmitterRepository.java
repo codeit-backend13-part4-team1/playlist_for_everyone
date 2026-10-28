@@ -10,4 +10,6 @@ public interface SseEmitterRepository {
     void save(UUID userId, Connection connection, SseEmitter sseEmitter);
 
     Map<Connection, SseEmitter> findAllByUserId(UUID userId);
+
+    void delete(UUID userId, Connection connection);
 }

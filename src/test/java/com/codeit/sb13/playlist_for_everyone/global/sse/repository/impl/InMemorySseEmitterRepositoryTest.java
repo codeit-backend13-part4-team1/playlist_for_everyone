@@ -92,4 +92,28 @@ class InMemorySseEmitterRepositoryTest {
 
         assertThat(repository.findAllByUserId(unconnectedUserId)).isEmpty();
     }
+
+    @Test
+    @DisplayName("특정 연결을 삭제하면 같은 사용자의 다른 연결은 유지된다.")
+    void deleteKeepsOtherConnectionsForSameUser(){
+        SseEmitterRepository repository = new InMemorySseEmitterRepository();
+        UUID userId = UUID.randomUUID();
+
+        Connection firstConnection = Connection.create();
+        Connection secondConnection = Connection.create();
+
+        SseEmitter firstEmitter = new SseEmitter();
+        SseEmitter secondEmitter = new SseEmitter();
+
+        repository.save(userId, firstConnection, firstEmitter);
+        repository.save(userId,secondConnection, secondEmitter);
+
+        repository.delete(userId, firstConnection);
+
+        assertThat(repository.findAllByUserId(userId))
+                .hasSize(1)
+                .doesNotContainKey(firstConnection)
+                .containsEntry(secondConnection, secondEmitter);
+
+    }
 }

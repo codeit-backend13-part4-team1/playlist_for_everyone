@@ -28,6 +28,11 @@ public class InMemorySseEmitterRepository implements SseEmitterRepository {
         return Map.copyOf(sseEmitters.getOrDefault(userId, Map.of()));
     }
 
+    @Override
+    public void delete(UUID userId, Connection connection) {
+
+    }
+
     private Map<Connection, SseEmitter> initializeConnections(Map<Connection, SseEmitter> connections) {
         if (connections == null){
             return new ConcurrentHashMap<>();
