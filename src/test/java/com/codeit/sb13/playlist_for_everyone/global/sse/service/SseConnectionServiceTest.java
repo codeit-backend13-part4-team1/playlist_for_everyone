@@ -364,4 +364,25 @@ class SseConnectionServiceTest {
             verify(secondEmitter, never()).completeWithError(any());
         }
     }
+
+    @Test
+    @DisplayName("연결을 요청하면 이벤트 ID없는 초기 SSE 주석을 전송한다.")
+    void connectSendsInitialComment() throws IOException {
+        SseEmitterRepository repository = new InMemorySseEmitterRepository();
+        SseProperties properties = new SseProperties(Duration.ofSeconds(15), Duration.ofMinutes(30));
+
+        SseConnectionService service = new SseConnectionService(repository, properties);
+        UUID userId = UUID.randomUUID();
+
+        try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
+            SseEmitter emitter = service.connect(userId);
+
+            ArgumentCaptor<SseEmitter.SseEventBuilder> eventCaptor = ArgumentCaptor.forClass(SseEmitter.SseEventBuilder.class);
+
+            verify(emitter).send(eventCaptor.capture());
+            assertThat(eventCaptor.getValue().build())
+                    .extracting(data -> data.getData())
+                    .containsExactly(":connected\n\n");
+        }
+    }
 }
