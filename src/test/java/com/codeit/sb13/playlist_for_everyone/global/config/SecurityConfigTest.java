@@ -27,6 +27,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.UUID;
@@ -38,8 +39,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(UserController.class)
 @AutoConfigureMockMvc(addFilters = true)
@@ -108,7 +108,13 @@ class SecurityConfigTest {
     @DisplayName("보호된 API에 토큰 없이 접근하면 401을 반환한다.")
     void 보호된_API는_인증이_필요하다() throws Exception {
         mockMvc.perform(get(ME_URL))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(content().encoding(StandardCharsets.UTF_8.name()))
+                .andExpect(jsonPath("$.exceptionName").value("UnauthorizedException"))
+                .andExpect(jsonPath("$.message").value("인증이 필요합니다."))
+                .andExpect(jsonPath("$.details").isMap())
+                .andExpect(jsonPath("$.details").isEmpty());
 
         verifyNoInteractions(jwtTokenProvider, userService);
     }
@@ -129,23 +135,41 @@ class SecurityConfigTest {
     @DisplayName("유효하지 않은 JWT로 접근하면 401을 반환한다")
     void 잘못된_JWT는_거절한다() throws Exception {
         given(jwtTokenProvider.parseAccessToken(TOKEN))
-                .willThrow(new JwtException("유효하지 않은 토큰"));
+                .willThrow(new JwtException("내부 토큰 검증 오류"));
 
         mockMvc.perform(get(ME_URL)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.exceptionName")
+                        .value("UnauthorizedException"))
+                // 내부 예외 메시지를 그대로 노출하지 않는다.
+                .andExpect(jsonPath("$.message")
+                        .value("인증이 필요합니다."))
+                .andExpect(jsonPath("$.details").isMap())
+                .andExpect(jsonPath("$.details").isEmpty());
 
         verifyNoInteractions(userService);
     }
 
     @Test
-    @DisplayName("일반 사용잔느 관리자 사용자 목록 API에 접근할 수 없다.")
+    @DisplayName("일반 사용자는 관리자 사용자 목록 API에 접근할 수 없다.")
     void 일반_사용자의_관리자_API_접근을_거절한다() throws Exception {
         prepareAuthenticatedUser(Role.USER);
 
         mockMvc.perform(get("/api/users")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_JSON
+                ))
+                .andExpect(content().encoding(StandardCharsets.UTF_8.name()))
+                .andExpect(jsonPath("$.exceptionName")
+                        .value("AccessDeniedException"))
+                .andExpect(jsonPath("$.message")
+                        .value("접근 권한이 없습니다."))
+                .andExpect(jsonPath("$.details").isMap())
+                .andExpect(jsonPath("$.details").isEmpty());
     }
 
     @Test
