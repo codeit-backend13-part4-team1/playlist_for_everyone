@@ -2,6 +2,8 @@ package com.codeit.sb13.playlist_for_everyone.domain.content.collector;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.config.TmdbClientConfig;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.restclient.test.autoconfigure.RestClientTest;
 import org.springframework.context.annotation.Import;
@@ -12,6 +14,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.client.MockRestServiceServer;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
@@ -136,5 +139,21 @@ class TmdbClientTest {
         assertThat(tv.genreIds()).containsExactly(18, 35);
 
         server.verify();
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, -1})
+    void 영화_조회_페이지가_1보다_작으면_예외가_발생한다(int page) {
+        assertThatThrownBy(() -> tmdbClient.getPopularMovies(page))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("페이지 번호는 1 이상이어야 합니다.");
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, -1})
+    void TV_조회_페이지가_1보다_작으면_예외가_발생한다(int page) {
+        assertThatThrownBy(() -> tmdbClient.getPopularTvShows(page))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("페이지 번호는 1 이상이어야 합니다.");
     }
 }
