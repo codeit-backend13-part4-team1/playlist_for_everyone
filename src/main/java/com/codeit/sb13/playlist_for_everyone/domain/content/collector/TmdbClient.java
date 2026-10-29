@@ -19,6 +19,7 @@ public class TmdbClient {
         this.restClient = restClient;
     }
 
+    /** 인기 영화 목록을 페이지별로 조회합니다. */
     public TmdbPageResponse<TmdbMovieResponse> getPopularMovies(int page) {
         if (page < 1) {
             throw new IllegalArgumentException("페이지 번호는 1 이상이어야 합니다.");
@@ -35,6 +36,7 @@ public class TmdbClient {
                         TmdbPageResponse<TmdbMovieResponse>>() {});
     }
 
+    /** 인기 TV 프로그램 목록을 페이지별로 조회합니다. */
     public TmdbPageResponse<TmdbTvResponse> getPopularTvShows(int page) {
         if (page < 1) {
             throw new IllegalArgumentException("페이지 번호는 1 이상이어야 합니다.");
