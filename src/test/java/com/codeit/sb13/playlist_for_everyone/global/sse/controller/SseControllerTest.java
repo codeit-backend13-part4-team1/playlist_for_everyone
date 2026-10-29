@@ -3,12 +3,12 @@ package com.codeit.sb13.playlist_for_everyone.global.sse.controller;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
+import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.config.MDCLoggingInterceptor;
 import com.codeit.sb13.playlist_for_everyone.global.config.SecurityConfig;
 import com.codeit.sb13.playlist_for_everyone.global.exception.ApiErrorCode;
 import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseConnectionService;
-import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,16 +20,17 @@ import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.io.IOException;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -175,6 +176,44 @@ class SseControllerTest {
 
             verify(sseConnectionService).connect(userId);
             verify(sseConnectionService, never()).connect(otherUserId);
+        } finally {
+            emitter.complete();
+        }
+    }
+
+    @Test
+    @DisplayName("인증된 SSE 연결을 종료하면 비동기 재처리도 보안 예외 없이 완료된다.")
+    void completeStreamAllowsAsyncDispatchForAuthenticatedUser() throws Exception {
+        UUID userId = UUID.randomUUID();
+        String token = "sse-test-token";
+
+        User user = mock(User.class);
+
+        given(user.getId()).willReturn(userId);
+        given(user.getEmail()).willReturn("sse-test@example.com");
+        given(user.getRole()).willReturn(Role.USER);
+        given(user.isLocked()).willReturn(false);
+
+        given(jwtTokenProvider.parseAccessToken(token)).willReturn(userId);
+        given(userService.getById(userId)).willReturn(user);
+
+        SseEmitter emitter = new SseEmitter(30_000L);
+
+        emitter.send(SseEmitter.event().comment("connected"));
+        given(sseConnectionService.connect(userId)).willReturn(emitter);
+
+        try {
+            MvcResult result = mockMvc.perform(get("/api/sse")
+                            .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                            .accept(MediaType.TEXT_EVENT_STREAM))
+                    .andExpect(status().isOk())
+                    .andExpect(request().asyncStarted())
+                    .andReturn();
+            emitter.complete();
+            mockMvc.perform(asyncDispatch(result))
+                    .andExpect(status().isOk())
+                    .andExpect(request().asyncNotStarted());
+            verify(sseConnectionService).connect(userId);
         } finally {
             emitter.complete();
         }
