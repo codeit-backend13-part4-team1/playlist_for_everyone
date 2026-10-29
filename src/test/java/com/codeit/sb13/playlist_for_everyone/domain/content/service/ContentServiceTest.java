@@ -1,12 +1,15 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentCreateRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentSource;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentTag;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.review.repository.ReviewRepository;
+import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -17,8 +20,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -27,6 +33,9 @@ public class ContentServiceTest {
 
     @Mock
     private ContentRepository contentRepository;
+
+    @Mock
+    private ReviewRepository reviewRepository;
 
     @Mock
     private ContentMapper contentMapper;
@@ -160,6 +169,114 @@ public class ContentServiceTest {
         verify(contentRepository).save(captor.capture());
 
         assertThat(captor.getValue().getTags()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("콘텐츠 수정 시 제목, 설명, 태그가 정상적으로 변경된다.")
+    void update_success() {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        Content content = Content.createAdminContent(
+                ContentType.tvSeries,
+                "너말고다른연애",
+                "KBS 드라마 입니다.",
+                "thumbnail-url"
+        );
+
+        content.addTag("드라마");
+
+        ContentUpdateRequest request = new ContentUpdateRequest(
+                "너말고 다른 연애",
+                "서강준, 안은진 주연",
+                List.of("로맨스")
+        );
+
+        MultipartFile file = mock(MultipartFile.class);
+
+        when(contentRepository.findById(contentId))
+                .thenReturn(Optional.of(content));
+
+        // 수정 전 상태 확인
+        assertThat(content.getTitle()).isEqualTo("너말고다른연애");
+        assertThat(content.getDescription()).isEqualTo("KBS 드라마 입니다.");
+        assertThat(content.getTags())
+                .extracting(ContentTag::getTag)
+                .containsExactly("드라마");
+
+        // when
+        contentService.update(contentId, request, file);
+
+        // then
+        assertThat(content.getTitle()).isEqualTo("너말고 다른 연애");
+        assertThat(content.getDescription()).isEqualTo("서강준, 안은진 주연");
+        assertThat(content.getThumbnailUrl()).isEqualTo("thumbnail-url");
+
+        assertThat(content.getTags())
+                .extracting(ContentTag::getTag)
+                .containsExactly("로맨스");
+
+        verify(contentRepository).findById(contentId);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 콘텐츠 수정 시 예외가 발생한다.")
+    void update_notFound() {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        ContentUpdateRequest request = new ContentUpdateRequest(
+                "너말고 다른연애",
+                "서강준 주연",
+                List.of("드라마")
+        );
+
+        when(contentRepository.findById(contentId))
+                .thenReturn(Optional.empty());
+
+        MultipartFile file = mock(MultipartFile.class);
+
+        // when & then
+        assertThatThrownBy(() -> contentService.update(contentId, request, file))
+                .isInstanceOf(ContentNotFoundException.class);
+
+        verify(contentRepository).findById(contentId);
+        verifyNoInteractions(reviewRepository, contentMapper);
+    }
+
+    @Test
+    @DisplayName("태그가 null이면 기존 태그를 유지한 채 콘텐츠를 수정한다.")
+    void update_nullTags() {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        Content content = Content.createAdminContent(
+                ContentType.tvSeries,
+                "너말고다른연애",
+                "KBS 드라마 입니다.",
+                "thumbnail-url"
+        );
+        content.addTag("드라마");
+
+        ContentUpdateRequest request = new ContentUpdateRequest(
+                "너 말고 다른 연애",
+                "수정된 설명",
+                null
+        );
+
+        when(contentRepository.findById(contentId))
+                .thenReturn(Optional.of(content));
+
+        MultipartFile file = mock(MultipartFile.class);
+
+        // when
+        contentService.update(contentId, request, file);
+
+        // then
+        assertThat(content.getTitle()).isEqualTo("너 말고 다른 연애");
+        assertThat(content.getTags())
+                .extracting(ContentTag::getTag)
+                .containsExactly("드라마");
     }
 
 }
