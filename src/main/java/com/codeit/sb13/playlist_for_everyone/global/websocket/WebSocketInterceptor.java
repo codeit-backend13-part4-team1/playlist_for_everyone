@@ -136,7 +136,7 @@ public class WebSocketInterceptor implements ChannelInterceptor {
 
         if (dst == null) return true;
 
-        if (pattern.matcher(dst).matches() || dst.isBlank()) return false;
+        if (!pattern.matcher(dst).matches() || dst.isBlank()) return false;
         return true;
     }
 
