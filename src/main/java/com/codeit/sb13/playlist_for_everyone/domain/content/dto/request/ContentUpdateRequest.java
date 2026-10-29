@@ -5,8 +5,12 @@ import jakarta.validation.constraints.NotBlank;
 import java.util.List;
 
 public record ContentUpdateRequest(
+        @NotBlank
         String title,
+
+        @NotBlank
         String description,
+
         List<String> tags
 ) {
 }
