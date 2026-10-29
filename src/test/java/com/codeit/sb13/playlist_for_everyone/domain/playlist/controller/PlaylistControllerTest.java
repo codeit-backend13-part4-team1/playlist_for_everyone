@@ -33,6 +33,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.test.context.TestSecurityContextHolder;
@@ -642,21 +643,21 @@ class PlaylistControllerTest {
   }
 
   @Test
-  @DisplayName("소유자가 아니면 403으로 응답한다")
+  @DisplayName("서비스에서 AccessDeniedException을 던지면 403으로 응답한다")
   void 소유자가_아닌_콘텐츠_추가_요청은_403으로_응답한다() throws Exception {
     // given
     UUID requesterId = UUID.randomUUID();
     UUID playlistId = UUID.randomUUID();
     UUID contentId = UUID.randomUUID();
-    willThrow(new PlayListForbiddenException(
-        Map.of("playlistId", playlistId, "requesterId", requesterId)))
+    willThrow(new AccessDeniedException("denied"))
         .given(playlistService).addContent(playlistId, contentId, requesterId);
 
     // when & then
     mockMvc.perform(post("/api/playlists/{playlistId}/contents/{contentId}", playlistId, contentId)
             .with(loginAs(requesterId)))
         .andExpect(status().isForbidden())
-        .andExpect(jsonPath("$.exceptionName").value("PlayListForbiddenException"));
+        .andExpect(jsonPath("$.exceptionName").value("AccessDeniedException"))
+        .andExpect(jsonPath("$.message").value("접근 권한이 없습니다."));
   }
 
   @Test
@@ -726,21 +727,21 @@ class PlaylistControllerTest {
   }
 
   @Test
-  @DisplayName("소유자가 아니면 403으로 응답한다")
+  @DisplayName("서비스에서 AccessDeniedException을 던지면 403으로 응답한다")
   void 소유자가_아닌_콘텐츠_삭제_요청은_403으로_응답한다() throws Exception {
     // given
     UUID requesterId = UUID.randomUUID();
     UUID playlistId = UUID.randomUUID();
     UUID contentId = UUID.randomUUID();
-    willThrow(new PlayListForbiddenException(
-        Map.of("playlistId", playlistId, "requesterId", requesterId)))
+    willThrow(new AccessDeniedException("denied"))
         .given(playlistService).removeContent(playlistId, contentId, requesterId);
 
     // when & then
     mockMvc.perform(delete("/api/playlists/{playlistId}/contents/{contentId}", playlistId, contentId)
             .with(loginAs(requesterId)))
         .andExpect(status().isForbidden())
-        .andExpect(jsonPath("$.exceptionName").value("PlayListForbiddenException"));
+        .andExpect(jsonPath("$.exceptionName").value("AccessDeniedException"))
+        .andExpect(jsonPath("$.message").value("접근 권한이 없습니다."));
   }
 
   @Test
