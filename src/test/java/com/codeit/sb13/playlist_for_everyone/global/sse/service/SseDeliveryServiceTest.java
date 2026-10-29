@@ -12,9 +12,11 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -25,7 +27,8 @@ import static org.mockito.Mockito.*;
 
 /**
  * 전송 서비스가 수신자의 연결을 선택하고, 일부 실패에도 나머지 전송을 계속하는지 검증한다.
- * 저장소와 emitter를 Mock으로 대체하므로 실제 HTTP 연결이나 JSON 메시지 변환기는 실행하지 않는다.
+ * 저장소와 emitter는 Mock으로 대체하고, 서비스 내부 JSON 변환에는 실제 JsonMapper를 사용한다.
+ * 실제 HTTP 전송과 Spring MVC 메시지 변환기는 실행하지 않는다.
  *
  * <p>실패 후 계속 진행하는 테스트에서는 LinkedHashMap으로 실패 연결을 먼저 배치한다.
  * 하트비트 테스트도 같은 사용자와 다른 사용자까지 전송이 이어지는지를 확인한다.
@@ -41,7 +44,7 @@ class SseDeliveryServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new SseDeliveryService(repository);
+        service = new SseDeliveryService(repository, JsonMapper.builder().build());
     }
 
     @Test
@@ -87,13 +90,23 @@ class SseDeliveryServiceTest {
 
         verify(emitter).send(evetCaptor.capture());
 
-        // builder에는 텍스트 필드와 아직 직렬화되지 않은 payload 객체가 함께 담긴다.
-        // 여기서는 필드 매핑을 확인하고, 실제 JSON 이중 직렬화 여부는 HTTP 통합 테스트에서 확인한다.
-        assertThat(evetCaptor.getValue().build())
-                .extracting(part -> part.getData())
-                .containsExactly("id:" + eventId +
-                        "\nevent:" + eventName +
-                        "\ndata:",payload, "\n\n");
+        List<Object> parts = evetCaptor.getValue().build().stream()
+                .map(part -> part.getData())
+                .toList();
+
+        assertThat(parts).hasSize(3);
+
+        assertThat(parts.get(0))
+                .isEqualTo("id:" + eventId
+                + "\nevent:" +eventName
+                + "\ndata:");
+        assertThat(parts.get(2)).isEqualTo("\n\n");
+        assertThat(parts.get(1)).isInstanceOf(String.class);
+
+        JsonMapper jsonMapper = JsonMapper.builder().build();
+
+        assertThat(jsonMapper.readTree((String) parts.get(1)))
+                .isEqualTo(jsonMapper.valueToTree(payload));
 
     }
 

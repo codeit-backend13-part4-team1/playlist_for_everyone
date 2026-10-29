@@ -5,9 +5,12 @@ import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.springframework.web.util.DisconnectedClientHelper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.util.Map;
@@ -27,26 +30,44 @@ public class SseDeliveryService {
 
     private final SseEmitterRepository sseEmitterRepository;
 
+    private final ObjectMapper objectMapper;
+
     /**
      * 수신자의 모든 로컬 연결에 같은 논리적 이벤트를 전달한다.
-     * 연결이 없으면 별도 저장이나 재시도 없이 종료한다.
+     * 연결을 조회한 뒤 data만 JSON으로 한 번 변환하고, 각 연결에 같은 내용을 전송한다.
+     * 연결이 없으면 JSON 변환이나 별도 저장, 재시도 없이 종료한다.
+     *
+     * <p>JSON 변환 실패 시에는 아직 연결에 쓰지 않았으므로 연결을 유지하고 해당 이벤트 전송만 건너뛴다.
+     * 실제 전송 중 실패하면 해당 연결만 제거하고 나머지 연결에 계속 전송한다.
      *
      * @param sseEvent 수신자와 이벤트 ID, 이름 및 JSON으로 직렬화할 payload를 담은 이벤트
      */
     public void sendToLocalConnections(SseEvent<?> sseEvent){
         Map<Connection, SseEmitter> connections = sseEmitterRepository.findAllByUserId(sseEvent.receiverId());
 
+        if (connections.isEmpty()){
+            return;
+        }
+
+        final String jsonData;
+        try {
+            jsonData = objectMapper.writeValueAsString(sseEvent.data());
+        }catch (JacksonException e){
+            log.warn("SSE 데이터 JSON 변환 실패로 이벤트 전송을 건너뜁니다. eventId={}, receiverId={}",
+                    sseEvent.eventId(), sseEvent.receiverId(), e);
+            return;
+        }
+
         // 조회한 Map은 전송 대상을 순회하기 위한 사본이다. 조회 후 종료된 emitter도 있을 수 있다.
         connections.forEach((connection, emitter)->{
             try {
-                // SseEvent 전체가 아닌 data만 메시지 변환기로 직렬화한다. JSON 문자열을 미리 만들지 않는다.
+                // 전송 전에 JSON으로 변환한 data를 모든 연결에 재사용한다.
                 // 연결 ID와 이벤트 ID는 별개이며, 여러 탭에 보내도 동일 이벤트의 id는 유지한다.
                 emitter.send(
                         SseEmitter.event()
                         .id(sseEvent.eventId().toString())
                         .name(sseEvent.eventName())
-                        .data(sseEvent.data()
-                        )
+                        .data(jsonData, MediaType.APPLICATION_JSON)
                 );
             } catch (IOException | IllegalStateException e) {
                 // 실패한 연결만 전송 대상에서 제외하고 다음 연결을 계속 처리한다.
