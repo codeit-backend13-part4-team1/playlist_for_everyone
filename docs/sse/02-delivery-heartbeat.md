@@ -43,7 +43,23 @@ DTO를 미리 JSON 문자열로 바꾸면 이중 인코딩될 수 있으므로 �
 조회 당시 있던 연결도 실제 전송 시점에는 종료되었을 수 있어 전송 예외 처리가 필요합니다.
 현재 수신자 연결이 없으면 예외 없이 끝나며, 이벤트 이력 저장이나 재시도를 수행하지 않습니다.
 
-## 하트비트와 설정
+## 단절과 오류의 로그 기준
+
+`DisconnectedClientHelper`가 클라이언트 단절로 식별한 예외는 스택 없이 식별 정보와 정리 메시지를 `DEBUG`로 남깁니다.
+브라우저 종료 등으로 반복되는 단절 로그를 줄이되, 다른 오류의 원인은 추적할 수 있도록 구분합니다.
+모든 `IOException`을 클라이언트 단절로 취급하지 않습니다.
+
+| 발생 위치 | 식별된 클라이언트 단절 | 그 외 오류 |
+| --- | --- | --- |
+| 연결의 `onError` 콜백 | `DEBUG`, 스택 제외 | `ERROR`, 스택 포함 |
+| 업무 이벤트 전송 | `DEBUG`, 스택 제외 | `WARN`, 스택 포함 |
+| 하트비트 전송 | `DEBUG`, 스택 제외 | `WARN`, 스택 포함 |
+
+로그 수준에 관계없이 실패한 연결은 저장소에서 제거합니다.
+전송 서비스는 나머지 연결에 대한 전송을 계속하고, `onError`의 비동기 응답 종료는 MVC가 관리합니다.
+초기 연결 실패와 서버 종료 처리의 예외 흐름은 [연결 생성과 종료](01-connection-lifecycle.md#초기-실패와-서버-종료)를 참고합니다.
+
+## 하트비트 동작
 
 하트비트는 모든 로컬 연결에 아래 주석 프레임을 주기적으로 보냅니다.
 
@@ -55,20 +71,30 @@ DTO를 미리 JSON 문자열로 바꾸면 이중 인코딩될 수 있으므로 �
 `id`와 `event`를 넣지 않으므로 알림·DM 이벤트로 처리되지 않고 마지막 이벤트 ID도 바뀌지 않습니다.
 전송 실패가 확인되면 해당 연결을 정리합니다. 응답을 받는 ping/pong 방식이 아니므로 브라우저 종료를 즉시 확정하는 기능은 아닙니다.
 
-| 환경변수 | 기본값 | 의미 |
-| --- | --- | --- |
-| `EVERYONE_SSE_HEARTBEAT_INTERVAL` | `15s` | 하트비트 작업 완료 후 다음 실행까지 기다리는 시간 |
-| `EVERYONE_SSE_CONNECTION_TIMEOUT` | `30m` | 개별 SSE 비동기 요청의 제한 시간 |
-
-설정은 `everyone.sse` 아래에 바인딩됩니다. 개발에서는 `.env.dev`, 운영에서는 외부 환경변수로 지정합니다.
-`15s`, `30m`처럼 Duration 형식을 사용합니다. 기본값은 [application.yaml](../../src/main/resources/application.yaml)에 있습니다.
-
 `fixedDelay`이므로 전송에 2초가 걸리면 기본 설정에서 다음 시작은 이전 시작으로부터 약 17초 뒤입니다.
 하트비트가 연결 제한 시간을 갱신하는 것은 아닙니다. 제한 시간으로 연결이 끝나면 클라이언트가 재연결해야 합니다.
 
 스케줄러는 `sseHeartbeatTaskScheduler`라는 이름으로 지정하며 스레드 한 개를 사용합니다.
 `defaultCandidate=false`는 타입만으로 주입할 때 기본 후보에서 제외한다는 뜻입니다. 이름으로 지정한 하트비트 작업에는 사용됩니다.
 각 서버가 자기 연결에 하트비트를 보내고, 스케줄러 자원 정리는 Spring이 담당합니다.
+
+## 설정값과 허용 범위
+
+아래 설정 키의 공통 접두사는 `everyone.sse`입니다. 개발에서는 `.env.dev`, 운영에서는 외부 환경변수로 지정합니다.
+`15s`, `30m`처럼 단위를 포함한 Duration 형식을 사용합니다.
+
+| 설정 키 | 환경변수 | 기본값 | 허용 범위 |
+| --- | --- | --- | --- |
+| `heartbeat-interval` | `EVERYONE_SSE_HEARTBEAT_INTERVAL` | `15s` | 0보다 큰 값 |
+| `connection-timeout` | `EVERYONE_SSE_CONNECTION_TIMEOUT` | `30m` | 1ms 이상 |
+
+`heartbeat-interval`은 하트비트 작업 완료 후 다음 실행까지의 대기 시간입니다.
+`connection-timeout`은 개별 비동기 HTTP 요청의 제한 시간이며, emitter에 전달할 때 밀리초로 변환합니다.
+예를 들어 `500us`는 양수여도 `toMillis()` 결과가 0이 되므로 허용하지 않습니다.
+
+환경변수를 생략하면 [application.yaml](../../src/main/resources/application.yaml)의 기본값을 사용합니다.
+최종 바인딩 값이 `null`이거나 허용 범위를 벗어나면 `SseProperties` 생성자가 거부하여 컨텍스트 초기화, 즉 애플리케이션 시작에 실패합니다.
+기본 YAML을 읽지 않고 값을 직접 제공하는 테스트의 누락 사례는 [설정 바인딩 테스트](05-testing.md#설정-바인딩-테스트)를 참고합니다.
 
 ## 서버 간 전송과의 경계
 
@@ -83,6 +109,7 @@ DTO를 미리 JSON 문자열로 바꾸면 이중 인코딩될 수 있으므로 �
 
 - [SseDeliveryService](../../src/main/java/com/codeit/sb13/playlist_for_everyone/global/sse/service/SseDeliveryService.java), [SseEvent](../../src/main/java/com/codeit/sb13/playlist_for_everyone/global/sse/event/SseEvent.java), [SseEventPublisher](../../src/main/java/com/codeit/sb13/playlist_for_everyone/global/sse/event/SseEventPublisher.java): 전송 동작과 공통 계약입니다.
 - [SseHeartbeatScheduler](../../src/main/java/com/codeit/sb13/playlist_for_everyone/global/sse/scheduler/SseHeartbeatScheduler.java), [SchedulerConfig](../../src/main/java/com/codeit/sb13/playlist_for_everyone/global/config/SchedulerConfig.java): 실행 간격과 전용 실행기 설정입니다.
+- [SseProperties](../../src/main/java/com/codeit/sb13/playlist_for_everyone/global/sse/config/SseProperties.java), [SsePropertiesTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/config/SsePropertiesTest.java): 설정값의 허용 범위와 바인딩 성공·실패를 확인합니다.
 - [SseDeliveryServiceTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/service/SseDeliveryServiceTest.java): 메시지 필드, 다중 연결, 실패 후 계속 전송하는 동작을 검증합니다.
 
 ---

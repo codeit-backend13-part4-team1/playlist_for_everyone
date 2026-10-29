@@ -33,10 +33,13 @@ Spring MVC가 비동기 응답을 관리하고, 이후 전송 서비스가 같�
 | 순서 | 문서 | 답을 얻을 수 있는 질문 |
 | --- | --- | --- |
 | 1 | [연결 생성과 종료](01-connection-lifecycle.md) | 콜백은 언제 실행되고, 여러 탭은 어떻게 구분하나요? |
-| 2 | [이벤트 전송과 하트비트](02-delivery-heartbeat.md) | 어떤 데이터를 보내며, 전송 실패는 어떻게 처리하나요? |
+| 2 | [이벤트 전송과 하트비트](02-delivery-heartbeat.md) | 어떤 데이터를 보내며, 설정값과 오류 로그는 어떻게 확인하나요? |
 | 3 | [저장소와 동시성](03-repository-concurrency.md) | 왜 `compute`와 Map 복사가 필요한가요? |
 | 4 | [비동기 응답과 인증](04-async-security.md) | 연결을 종료할 때도 인증이 필요한 이유는 무엇인가요? |
-| 5 | [테스트 읽기와 실행](05-testing.md) | Mock 테스트와 실제 HTTP 테스트는 무엇을 보장하나요? |
+| 5 | [테스트 읽기와 실행](05-testing.md) | 설정 검증·Mock·실제 HTTP 테스트는 무엇을 보장하나요? |
+
+설정만 확인하려면 [기본값과 허용 범위](02-delivery-heartbeat.md#설정값과-허용-범위)를,
+오류 로그를 해석하려면 [단절과 오류의 로그 기준](02-delivery-heartbeat.md#단절과-오류의-로그-기준)을 참고합니다.
 
 ## 현재 구현과 후속 작업
 
@@ -45,6 +48,7 @@ Spring MVC가 비동기 응답을 관리하고, 이후 전송 서비스가 같�
 | 인증된 사용자의 다중 연결, 로컬 전송, 하트비트, 종료 정리 | Redis·Kafka를 통한 서버 간 이벤트 전달 |
 | `SseEventPublisher` 발행 인터페이스 | 발행 구현체와 알림·DM 업무 이벤트 연동 |
 | `lastEventId` 쿼리 입력 및 UUID 형식 검증 | 공유 이력 저장과 누락 이벤트 복구([#53](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/53)) |
+| 사용자별 여러 연결의 등록·조회·정리 | 동시 연결 수 제한과 연결 수 모니터링([#107](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/107)) |
 
 현재 전송 서비스만 호출하면 **해당 서버에 연결된 사용자 탭**에 전달됩니다.
 연결이 없는 경우 이벤트를 저장하거나 재시도하지 않습니다. 프레임 전송 테스트의 통과가 알림·DM 업무 연동 완료를 의미하지는 않습니다.

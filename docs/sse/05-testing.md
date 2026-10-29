@@ -1,12 +1,13 @@
 # 5. 테스트 읽기와 실행
 
-SSE 테스트는 저장소의 실제 동작, 서비스 간 협력, MVC 계약, 실제 HTTP 프레임을 나누어 검증합니다.
+SSE 테스트는 설정 바인딩, 저장소의 실제 동작, 서비스 간 협력, MVC 계약, 실제 HTTP 프레임을 검증합니다.
 **어떤 역할을 검증하고 어떤 의존성을 대체했는지**부터 읽으면 테스트를 이해하기 쉽습니다.
 
 ## 테스트별 책임
 
 | 테스트 | 검증하는 내용 |
 | --- | --- |
+| [SsePropertiesTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/config/SsePropertiesTest.java) | 설정 누락·허용 범위 위반 시 바인딩 실패, 정상값·경계값 바인딩 성공 |
 | [InMemorySseEmitterRepositoryTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/repository/impl/InMemorySseEmitterRepositoryTest.java) | 실제 메모리 저장소의 등록·삭제·조회 사본·동시 등록과 삭제 |
 | [SseConnectionServiceTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/service/SseConnectionServiceTest.java) | 연결 식별자, 콜백 등록, 초기 주석, 실패·종료 시 정리 요청 |
 | [SseDeliveryServiceTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/service/SseDeliveryServiceTest.java) | 이벤트 필드, 여러 연결 전송, 실패한 연결만 삭제하고 계속 전송 |
@@ -16,6 +17,22 @@ SSE 테스트는 저장소의 실제 동작, 서비스 간 협력, MVC 계약, �
 | [SchedulerConfigTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/config/SchedulerConfigTest.java) | 실제 전용 스레드 실행, 종료 후 작업 거부, 반복 작업 취소 |
 | [SseControllerTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/controller/SseControllerTest.java) | 인증 사용자, 쿼리 검증, 캐시 금지 응답, ASYNC 종료 시 인증 복원 |
 | [SseStreamingIntegrationTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/controller/SseStreamingIntegrationTest.java) | 실제 HTTP의 초기 주석과 알림·DM 프레임 이름·ID·JSON 데이터 |
+
+## 설정 바인딩 테스트
+
+`SsePropertiesTest`는 `ApplicationContextRunner`에 `SseConfig`만 등록합니다.
+`withPropertyValues`로 설정값을 제공하고, 해당 컨텍스트가 시작되는지와 바인딩된 `Duration` 값을 확인합니다.
+
+| 입력 사례 | 기대 결과 |
+| --- | --- |
+| 하트비트 간격 누락·0·음수 | 컨텍스트 시작 실패 |
+| 연결 제한 시간 누락·0·음수·`500us` | 컨텍스트 시작 실패 |
+| 하트비트 `15s`, 연결 제한 시간 `1ms` | 시작 성공, 연결 제한 시간의 최솟값 바인딩 확인 |
+| 하트비트 `15s`, 연결 제한 시간 `30m` | 시작 성공, 두 값의 바인딩 확인 |
+
+이 runner는 `application.yaml`이나 테스트 프로필 설정 파일을 자동으로 읽지 않습니다.
+따라서 여기서 **누락**은 최종 설정값 자체가 없는 경우입니다. 환경변수를 생략해 YAML 기본값을 사용하는 일반 실행과 구분합니다.
+Spring Boot 설정 파일을 읽는 통합 테스트와도 설정을 공급하는 방식이 다릅니다.
 
 ## Mock 테스트에서 읽어야 할 부분
 
@@ -32,6 +49,9 @@ SSE 테스트는 저장소의 실제 동작, 서비스 간 협력, MVC 계약, �
 Mock emitter의 `complete()`는 실제 MVC 완료 콜백을 자동 실행하지 않습니다.
 또한 `send()`에 전달된 builder를 검사하는 테스트만으로 실제 JSON 직렬화 결과까지 확인할 수는 없습니다.
 이를 보완하는 검증이 MVC·실제 HTTP 테스트입니다.
+
+현재 서비스 테스트는 실패한 연결의 삭제와 나머지 연결의 계속 전송을 확인합니다.
+로그 수준이나 출력 내용·스택 포함 여부를 검증하는 테스트는 없으므로, 해당 정책은 [로그 기준](02-delivery-heartbeat.md#단절과-오류의-로그-기준)과 구현을 함께 확인합니다.
 
 ## 실제 MVC·HTTP 테스트의 범위
 
@@ -64,7 +84,16 @@ Mock emitter의 종료 요청을 확인한 것과 실제 HTTP 종료 처리가 �
 
 ## 실행 방법
 
-프로젝트 루트에서 실행합니다. [테스트 기본 설정](../../src/test/resources/application.properties)이 `test` 프로필을 활성화합니다.
+프로젝트 루트에서 실행합니다. Spring Boot 설정 파일을 읽는 테스트는 [테스트 기본 설정](../../src/test/resources/application.properties)으로 `test` 프로필을 활성화합니다.
+Mock 단위 테스트와 위의 `ApplicationContextRunner` 테스트는 이 설정 파일의 로딩을 전제로 하지 않습니다.
+
+설정값 검증만 확인할 때:
+
+```bash
+./gradlew test \
+  --tests 'com.codeit.sb13.playlist_for_everyone.global.sse.config.SsePropertiesTest' \
+  --no-daemon --console=plain
+```
 
 SSE와 전용 스케줄러만 확인할 때:
 
