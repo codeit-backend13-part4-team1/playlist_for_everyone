@@ -345,7 +345,30 @@ Docker Desktop 또는 Docker 엔진을 실행한 뒤 프로젝트 루트에서 �
 | JaCoCo HTML | `build/reports/jacoco/test/html/index.html` |
 | JaCoCo XML | `build/reports/jacoco/test/jacocoTestReport.xml` |
 
-프로젝트의 테스트 커버리지 목표는 80% 이상입니다. 현재 JaCoCo 설정은 자동 생성된 Q 클래스를 제외하며, 직접 작성한 `QueryDslConfig` 등 공통코드는 측정 대상에 포함합니다. `test` 실행 후에도 보고서를 생성하도록 연결되어 있습니다. 커버리지 미달 시 빌드를 실패시키는 80% 검증 규칙과 CI 배지는 아직 구성 전입니다.
+프로젝트 전체의 **라인 커버리지(LINE / COVEREDRATIO)를 80% 이상** 유지합니다. 클래스별 기준이 아니라 전체 합산 기준이며, 정확히 80%인 경우 통과합니다. 자동 생성된 Q 클래스만 제외하며, 직접 작성한 `QueryDslConfig` 등 공통코드는 포함합니다. 보고서와 검증에 같은 측정 대상을 사용합니다.
+
+`test` 실행 후에는 보고서가 생성됩니다. `build` 또는 `check` 실행 시에는 `jacocoTestCoverageVerification`도 실행되어 80% 미만이면 실패합니다. 검사만 직접 실행하려면 다음 명령을 사용합니다.
+
+```bash
+./gradlew jacocoTestCoverageVerification
+```
+
+CI는 `dev`·`main` 대상 PR과 `main` push에서 빌드·테스트·커버리지를 검사합니다. 실패한 실행에서도 생성된 테스트 보고서는 Actions 아티팩트에서 확인할 수 있습니다.
+
+CI는 성공한 빌드의 JaCoCo XML에서 전체 LINE 수치로 SVG 배지를 생성하고 `coverage-badge` 아티팩트로 보관합니다. 표시값은 소수 둘째 자리까지 버림하며, 검증에는 원래 비율을 사용합니다. README 배지 자동 게시 연결은 후속 작업입니다. 현재 CI 권한은 `contents: read`를 유지합니다.
+
+배지 생성 코드는 Java로 작성되어 있으며, 관련 테스트는 전체 빌드에 포함됩니다.
+배지 테스트만 실행하려면 다음 명령어를 사용합니다.
+
+```bash
+./gradlew test --tests CoverageBadgeTest
+```
+
+일부 테스트만 실행한 뒤에는 전체 커버리지 확인을 위해 전체 빌드를 다시 실행합니다.
+
+```bash
+./gradlew build
+```
 
 ### 테스트 작성과 현재 검증 범위
 
@@ -370,4 +393,5 @@ Docker Desktop 또는 Docker 엔진을 실행한 뒤 프로젝트 루트에서 �
 - 목록 API의 커서 규칙 확정과 직렬화·페이징 테스트
 - Redis 기반 캐시·세션 기능 구현과 데이터 보관 정책 결정
 - 배치, S3, SSE·WebSocket 등 기능별 구현과 필요한 인프라 추가
-- GitHub Actions 테스트 자동화, 커버리지 80% 검증, README 커버리지 배지 및 배포 파이프라인
+- README 배지 자동 게시 방식 확정 및 연결
+- 배포 파이프라인 구성

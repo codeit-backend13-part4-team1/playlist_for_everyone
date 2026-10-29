@@ -34,3 +34,7 @@ everyone:
     bucket: everyone-test-backup
     region: ap-northeast-2
     endpoint:
+
+  jwt:
+    secret-key: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+    access-token-validity: 15m
