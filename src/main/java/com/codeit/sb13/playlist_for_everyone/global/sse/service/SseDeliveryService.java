@@ -81,6 +81,10 @@ public class SseDeliveryService {
         }
     }
 
+    /**
+     * 하트비트 전송 중 Spring이 식별한 클라이언트 단절은 DEBUG로만 남긴다.
+     * 모든 I/O 예외가 단절은 아니므로, 나머지 실패는 원인을 확인할 수 있게 WARN에 스택을 남긴다.
+     */
     private void logSseHeartbeatIssue(UUID userId, Connection connection, Exception e) {
         if (DisconnectedClientHelper.isClientDisconnectedException(e)){
             log.debug("SSE 하트비트 전송 중 클라이언트 단절로 연결을 정리했습니다. userId={}, connectionId={}", userId, connection.id());
@@ -89,6 +93,10 @@ public class SseDeliveryService {
         log.warn("SSE 하트비트 전송 실패로 연결을 정리했습니다. userId={}, connectionId={}", userId, connection.id(), e);
     }
 
+    /**
+     * 업무 이벤트 전송도 하트비트와 같은 단절 분류 및 DEBUG/WARN 기준을 사용한다.
+     * 로그 수준과 관계없이 호출부는 실패한 연결을 이미 제거했으며, 다음 연결의 전송을 계속한다.
+     */
     private void logSseEventDeliveryIssue(SseEvent<?> sseEvent, Connection connection, Exception e) {
         if (DisconnectedClientHelper.isClientDisconnectedException(e)){
             log.debug("SSE 클라이언트 단절로 연결을 정리했습니다. eventId={}, receiverId={}, connectionId={}"

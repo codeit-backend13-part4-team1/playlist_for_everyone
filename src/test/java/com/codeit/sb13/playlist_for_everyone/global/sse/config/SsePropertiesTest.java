@@ -9,6 +9,13 @@ import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * SseConfig만 등록한 컨텍스트에서 설정 바인딩과 생성자 검증을 확인한다.
+ *
+ * <p>이 ApplicationContextRunner는 application.yaml의 기본값을 자동으로 읽지 않는다.
+ * 각 테스트가 withPropertyValues로 값을 명시하므로, 누락 사례는 환경변수 미지정이 아닌
+ * 최종 설정값 자체의 누락을 검증한다.
+ */
 @DisplayName("SSE 설정값 검증")
 class SsePropertiesTest {
 

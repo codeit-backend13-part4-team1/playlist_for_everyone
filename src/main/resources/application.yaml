@@ -55,7 +55,9 @@ everyone:
     read-timeout: 10s
 
   sse:
-    # 하트비트 작업이 완료된 뒤 다음 실행까지 대기하는 시간. 주석 프레임에는 이벤트 ID를 넣지 않는다.
+    # 환경변수 미지정 시 아래 기본값을 사용한다. 최종 바인딩 값의 허용 범위는 SseProperties가 검증한다.
+    # 하트비트 작업 완료 후 다음 실행까지 대기하는 시간. 0보다 커야 한다.
     heartbeat-interval: ${EVERYONE_SSE_HEARTBEAT_INTERVAL:15s}
     # 개별 SSE 비동기 요청의 제한 시간. 하트비트 주기와 별개이며, 종료 후 클라이언트가 재연결한다.
+    # 밀리초 변환 시 0으로 잘리지 않도록 1ms 이상이어야 한다.
     connection-timeout: ${EVERYONE_SSE_CONNECTION_TIMEOUT:30m}
