@@ -198,6 +198,30 @@ public class ContentControllerTest {
         assertThat(capturedRequest.tags()).isNull();
     }
 
+    @Test
+    @DisplayName("수정 시 제목이 비어 있을 때 400을 응답한다.")
+    void update_invalidTitle() throws Exception {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        ContentUpdateRequest request = new ContentUpdateRequest(
+                "",
+                "서강준, 안은진 주연",
+                null
+        );
+
+        // when & then
+        mockMvc.perform(multipart("/api/contents/{contentId}", contentId)
+                        .file(createJsonRequestPart(request))
+                        .with(multipartRequest -> {
+                            multipartRequest.setMethod("PATCH");
+                            return multipartRequest;
+                        }))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(contentService);
+    }
+
     private MockMultipartFile createJsonRequestPart(Object request) {
         return new MockMultipartFile(
                 "request",
