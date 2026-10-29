@@ -10,7 +10,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import javax.crypto.SecretKey;
-import java.sql.Date;
+import java.util.Date;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -63,6 +63,7 @@ class JwtRefreshTokenProviderTest {
 
         assertThat(claims.getSubject()).isEqualTo(USER_ID.toString());
         assertThat(claims.getId()).isNotBlank();
+        assertThat(claims.get("tokenType", String.class)).isEqualTo("REFRESH");
         assertThat(claims.getIssuedAt().toInstant()).isEqualTo(NOW);
         assertThat(claims.getExpiration().toInstant()).isEqualTo(NOW.plus(REFRESH_TOKEN_VALIDITY));
     }

@@ -12,17 +12,20 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Jwt Access Token 발급과 검증을 담당한다.
+ * Jwt Access Token과 Refresh Token의 발급 검증을 담당한다.
  *
- * 사용자 조회, 로그인 처리, HTTP 응답 작성은 다른 클래스에서 담당한다.
+ * 사용자 조회, 토큰 저장, 로그인 처리와 HTTP 응답 작성은
+ * 다른 클래스에서 담당한다.
  */
 public class JwtTokenProvider {
 
     private static final String TOKEN_TYPE_CLAIM = "tokenType";
     private static final String ACCESS_TOKEN_TYPE = "ACCESS";
+    private static final String REFRESH_TOKEN_TYPE = "REFRESH";
 
     private final SecretKey signingKey;
     private final Duration accessTokenValidity;
+    private final Duration refreshTokenValidity;
     private final Clock clock;
     private final JwtParser jwtParser;
 
@@ -32,6 +35,9 @@ public class JwtTokenProvider {
                 Objects.requireNonNull(signingKey, "서명 키는 필수입니다.");
         this.accessTokenValidity =
                 Objects.requireNonNull(accessTokenValidity, "Access Token 유효 시간은 필수 입니다.");
+
+        this.refreshTokenValidity = null;
+
         this.clock =
                 Objects.requireNonNull(clock, "시간은 필수 입니다.");
 
@@ -109,35 +115,108 @@ public class JwtTokenProvider {
             return UUID.fromString(subject);
         } catch (IllegalArgumentException exception) {
             throw new JwtException(
-                    "토큰의 사용자 ID 형식이 올바르지 않습니다.",
-                    exception
+                    "토큰의 사용자 ID 형식이 올바르지 않습니다.", exception
             );
         }
     }
 
     /**
-     * Refresh Token 유효기간까지 전달받는 생성자
-     *
-     * RED 단계에서는 기존 초기화만 수행한다.
-     * GREEN 단계에서 Refresh Token 유효기간 저장과 검증을 구현한다.
+     * Access Token과 Refresh Token의 유효시간은 각각 전달받는다.
      */
 
     public JwtTokenProvider(SecretKey signingKey, Duration accessTokenValidity, Duration refreshTokenValidity, Clock clock) {
-        this(signingKey, accessTokenValidity, clock);
+        this.signingKey = Objects.requireNonNull(signingKey, "서명 키는 필수입니다.");
+        this.accessTokenValidity = Objects.requireNonNull(accessTokenValidity, "Access Token 유효 시간은 필수입니다.");
+        this.refreshTokenValidity = Objects.requireNonNull(refreshTokenValidity, "Refresh Token 유효 시간은 필수입니다.");
+        this.clock = Objects.requireNonNull(clock, "시간은 필수입니다.");
+
+        if (accessTokenValidity.isZero() || accessTokenValidity.isNegative()) {
+            throw new IllegalArgumentException("Access Token 유효시간은 0보다 커야 합니다.");
+        }
+
+        if (refreshTokenValidity.isZero() || refreshTokenValidity.isNegative()) {
+            throw new IllegalArgumentException("Refresh Token 유효시간은 0보다 커야 합니다.");
+        }
+
+        // 발급 검증에서 동일한 Clock을 사용한다.
+        // 테스트에서는 고정 시각, 서버에서는 현재 시각을 사용한다.
+        this.jwtParser = Jwts.parser()
+                .verifyWith(signingKey)
+                .clock(() -> Date.from(this.clock.instant()))
+                .build();
     }
 
     /**
      * 사용자 ID와 고유 jti를 포함하는 Refresh Token을 발급한다.
+     *
+     * Redis 저장과 쿠키 발급은 호출하는 쪽에서 처리한다.
      */
     public String createRefreshToken(UUID userId) {
-        throw new UnsupportedOperationException("Refresh Token 발급 미구현");
+        Objects.requireNonNull(userId, "사용자 ID는 필수입니다");
+
+        // 기존 3개 인자 생성자로 생성된 Provider의 잘못된 사용을 차단한다.
+        if (refreshTokenValidity == null) {
+            throw new IllegalStateException("Refresh Token 유효시간이 설정되지 않았습니다.");
+        }
+
+        Instant now = clock.instant();
+        Instant expiration = now.plus(refreshTokenValidity);
+
+        return Jwts.builder()
+                .subject(userId.toString())
+                .id(UUID.randomUUID().toString())
+                .claim(TOKEN_TYPE_CLAIM, REFRESH_TOKEN_TYPE)
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(expiration))
+                .signWith(signingKey, Jwts.SIG.HS256)
+                .compact();
     }
 
     /**
-     * Refresh Token을 검증한 후 사용자 ID를 반환한다.
+     * Refresh Token의 서명, 만료, 종류와 필수 정보를 검증한다.
+     *
+     * 성공하면 사용자 ID를 반환한다.
+     * Redis에 저장된 토큰인지, 이미 폐기되었는지는 서비스에서 검증한다.
      */
 
     public UUID parseRefreshToken(String token) {
-        throw new UnsupportedOperationException("Refresh Token 검증 미구현");
+        if (token == null || token.isBlank()) {
+            throw new JwtException("토큰이 비어 있습니다.");
+        }
+
+        // 서명 불일치, 만료, 잘못된 JWT 형식은 JJWT가 예외로 처리한다.
+        // ExpiredJwtException도 그대로 호출부에 전달한다.
+        Claims claims = jwtParser.parseSignedClaims(token).getPayload();
+
+        // 같은 키로 서명된 Access Token도 재발급 용도로 사용할 수 없다.
+        String tokenType = claims.get(TOKEN_TYPE_CLAIM, String.class);
+
+        if (!REFRESH_TOKEN_TYPE.equals(tokenType)) {
+            throw new JwtException("Refresh Token이 아닙니다.");
+        }
+
+        // JJWT는 exp가 있을 때 만료를 검사하므로, 존재 여부도 확인 한다.
+        if (claims.getExpiration() == null) {
+            throw new JwtException("토큰에 만료 시각이 없습니다.");
+        }
+
+        // 개별 Refresh Token을 식별할 수 있어야 한다.
+        String jti = claims.getId();
+
+        if (jti == null || jti.isBlank()) {
+            throw new JwtException("토큰에 식별자가 없습니다.");
+        }
+
+        String subject = claims.getSubject();
+
+        if (subject == null || subject.isBlank()) {
+            throw new JwtException("토큰에 사용자 ID가 없습니다.");
+        }
+
+        try {
+            return UUID.fromString(subject);
+        } catch (IllegalArgumentException exception) {
+            throw new JwtException("토큰의 사용자 ID 형식이 올바르지 않습니다.", exception);
+        }
     }
 }
