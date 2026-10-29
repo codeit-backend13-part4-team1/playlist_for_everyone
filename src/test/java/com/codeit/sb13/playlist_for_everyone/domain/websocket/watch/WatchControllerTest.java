@@ -1,4 +1,4 @@
-package com.codeit.sb13.playlist_for_everyone.watch;
+package com.codeit.sb13.playlist_for_everyone.domain.websocket.watch;
 
 
 import com.codeit.sb13.playlist_for_everyone.global.config.WebSocketConfig;
