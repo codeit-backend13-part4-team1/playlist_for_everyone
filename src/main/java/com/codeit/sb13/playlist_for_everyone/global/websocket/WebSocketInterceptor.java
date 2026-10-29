@@ -131,7 +131,7 @@ public class WebSocketInterceptor implements ChannelInterceptor {
 
     private boolean isBlockedPath(StompHeaderAccessor accessor){
         // content 구독 경로
-        Pattern pattern = Pattern.compile("/sub/content/*");
+        Pattern pattern = Pattern.compile("/sub/contents/*");
         String dst = accessor.getDestination();
 
         if (dst == null) return true;
