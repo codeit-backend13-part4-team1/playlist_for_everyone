@@ -47,3 +47,9 @@ everyone:
   jwt:
     secret-key: ${JWT_SECRET_KEY}
     access-token-validity: ${JWT_ACCESS_TOKEN_VALIDITY:15m}
+
+  tmdb:
+    base-url: https://api.themoviedb.org/3
+    access-token: ${EVERYONE_TMDB_ACCESS_TOKEN}
+    connect-timeout: 3s
+    read-timeout: 10s
