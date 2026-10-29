@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.global;
 
 
 import com.codeit.sb13.playlist_for_everyone.global.service.WatcherRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.service.WatcherRegistryDelay;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.WebSocketInterceptor;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
@@ -10,14 +11,15 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.annotation.Import;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.messaging.support.MessageHeaderAccessor;
-
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
@@ -30,6 +32,8 @@ public class WebSocketInterceptorTest {
     WatcherRegistry watcherRegistry;
     @Mock
     private MessageChannel messageChannel;
+    @Spy
+    WatcherRegistryDelay delay;
     @InjectMocks
     private WebSocketInterceptor interceptor;
 
@@ -43,6 +47,7 @@ public class WebSocketInterceptorTest {
 
         accessor.setSessionId("test-session");
         accessor.setDestination(destination);
+        accessor.setSubscriptionId("test-subscription");
         if (authToken != null) {
             accessor.setHeader("Authorization", authToken);
         }
@@ -119,7 +124,7 @@ public class WebSocketInterceptorTest {
 
             interceptor.preSend(message,messageChannel);
 
-            verify(watcherRegistry,times(1)).register(eq(mockupContentId),any(String.class));
+            verify(watcherRegistry,times(1)).register(any(String.class),any(String.class),eq(mockupContentId));
         }
 
         @Test
@@ -137,7 +142,7 @@ public class WebSocketInterceptorTest {
             interceptor.preSend(message,messageChannel);
 
 
-            verify(watcherRegistry,never()).register(eq(mockupContentId),any(String.class));
+            verify(watcherRegistry,never()).register(any(String.class),any(String.class),eq(mockupContentId));
         }
 
         @Test
@@ -148,16 +153,32 @@ public class WebSocketInterceptorTest {
             Message<byte[]> message = createMessage(
                     StompCommand.SUBSCRIBE,
                     null,
-                    "/sub/contents/" + mockupContentId + "/chat",
+                    "/sub/contents/" + mockupContentId + "/watch",
                     new byte[2]
             );
 
             interceptor.preSend(message,messageChannel);
 
 
-            verify(watcherRegistry,never()).register(eq(mockupContentId),any(String.class));
+            verify(watcherRegistry,never()).register(any(String.class),any(String.class),eq(mockupContentId));
         }
 
+    }
+
+    @Test
+    @DisplayName("하트비트 테스트")
+    void heartbeatTest(){
+        String mockupSessionId = UUID.randomUUID().toString();
+
+        StompHeaderAccessor headerAccessor = StompHeaderAccessor.createForHeartbeat();
+        headerAccessor.setSessionId(mockupSessionId);
+
+        Message<byte[]> message = MessageBuilder
+                .createMessage(new byte[]{'\n'},headerAccessor.getMessageHeaders());
+
+        interceptor.preSend(message,messageChannel);
+
+        verify(watcherRegistry,times(1)).refresh(eq(mockupSessionId));
     }
 
 }
