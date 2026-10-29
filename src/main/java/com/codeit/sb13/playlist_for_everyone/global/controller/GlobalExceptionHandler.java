@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
@@ -67,6 +68,7 @@ public class GlobalExceptionHandler {
                 e.getMessage());
 
         return ResponseEntity.status(apiErrorCode.getStatus())
+                .contentType(MediaType.APPLICATION_JSON)
                 .body(new ApiErrorResponse(e.getClass().getSimpleName(), apiErrorCode.getMessage(), Map.of()));
     }
 
