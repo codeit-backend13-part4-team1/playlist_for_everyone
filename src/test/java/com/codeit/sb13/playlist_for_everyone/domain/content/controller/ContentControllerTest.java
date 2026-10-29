@@ -24,6 +24,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -42,7 +43,7 @@ public class ContentControllerTest {
     private ContentService contentService;
 
     @Test
-    @DisplayName("정상 요청 시 콘텐츠가 생성된다.")
+    @DisplayName("정상 요청 시 201 Created와 ContentDto를 반환한다.")
     void create_success() throws Exception {
         // given
         ContentCreateRequest request = new ContentCreateRequest(
@@ -52,12 +53,36 @@ public class ContentControllerTest {
                 List.of("드라마", "로맨스")
         );
 
+        UUID contentId = UUID.randomUUID();
+
+        ContentDto response = new ContentDto(
+                contentId,
+                ContentType.tvSeries,
+                "너말고다른연애",
+                "KBS 드라마 입니다.",
+                "https://example.com/thumbnail.jpg",
+                List.of("드라마", "로맨스"),
+                0.0,
+                0,
+                0L
+        );
+
+        when(contentService.create(
+                any(ContentCreateRequest.class),
+                any(MultipartFile.class)
+        )).thenReturn(response);
+
         // when & then
         // 201 응답 확인
         mockMvc.perform(multipart("/api/contents")
                         .file(createJsonRequestPart(request))
                         .file(createThumbnail()))
-                .andExpect(status().isCreated());
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(contentId.toString()))
+                .andExpect(jsonPath("$.title").value("너말고다른연애"))
+                .andExpect(jsonPath("$.description").value("KBS 드라마 입니다."))
+                .andExpect(jsonPath("$.tags[0]").value("드라마"))
+                .andExpect(jsonPath("$.tags[1]").value("로맨스"));
 
         // 콘텐츠 생성 서비스 호출 확인
         // 서비스에 전달된 요청 데이터 확인
@@ -176,7 +201,7 @@ public class ContentControllerTest {
     }
 
     @Test
-    @DisplayName("콘텐츠 수정 요청 시 200 OK를 반환한다.")
+    @DisplayName("콘텐츠 수정 요청 시 200 OK와 ContentDto를 반환한다.")
     void update_success() throws Exception {
         // given
         UUID contentId = UUID.randomUUID();
@@ -184,24 +209,42 @@ public class ContentControllerTest {
         ContentUpdateRequest request = new ContentUpdateRequest(
                 "너 말고 다른 연애",
                 "서강준, 안은진 주연",
-                null
+                List.of("드라마", "로맨스")
+        );
+
+        ContentDto response = new ContentDto(
+                contentId,
+                ContentType.tvSeries,
+                "너 말고 다른 연애",
+                "서강준, 안은진 주연",
+                "https://example.com/thumbnail.jpg",
+                List.of("드라마", "로맨스"),
+                4.5,
+                10,
+                0L
         );
 
         when(contentService.update(
                 eq(contentId),
                 any(ContentUpdateRequest.class),
                 isNull()
-        )).thenReturn(mock(ContentDto.class));
+        )).thenReturn(response);
 
         // when & then
         mockMvc.perform(multipart("/api/contents/{contentId}", contentId)
                         .file(createJsonRequestPart(request))
-                        .with(multipartRequest -> {
-                            multipartRequest.setMethod("PATCH");
-                            return multipartRequest;
+                        .with(req -> {
+                            req.setMethod("PATCH");
+                            return req;
                         }))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(contentId.toString()))
+                .andExpect(jsonPath("$.title").value("너 말고 다른 연애"))
+                .andExpect(jsonPath("$.description").value("서강준, 안은진 주연"))
+                .andExpect(jsonPath("$.tags[0]").value("드라마"))
+                .andExpect(jsonPath("$.tags[1]").value("로맨스"));
 
+        // 서비스에 전달된 요청 데이터 확인
         ArgumentCaptor<ContentUpdateRequest> captor =
                 ArgumentCaptor.forClass(ContentUpdateRequest.class);
 
@@ -215,7 +258,7 @@ public class ContentControllerTest {
 
         assertThat(capturedRequest.title()).isEqualTo("너 말고 다른 연애");
         assertThat(capturedRequest.description()).isEqualTo("서강준, 안은진 주연");
-        assertThat(capturedRequest.tags()).isNull();
+        assertThat(capturedRequest.tags()).containsExactly("드라마", "로맨스");
     }
 
     @Test
