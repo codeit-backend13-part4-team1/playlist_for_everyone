@@ -141,3 +141,30 @@ tasks.named('jacocoTestReport') {
 		html.required = true
 	}
 }
+
+// 프로젝트 전체 라인 커버리지 80% 이상을 검증한다.
+tasks.named('jacocoTestCoverageVerification') {
+	violationRules {
+		rule {
+			element = 'BUNDLE'
+			limit {
+				counter = 'LINE'
+				value = 'COVEREDRATIO'
+				minimum = 0.80
+			}
+		}
+	}
+}
+
+// build → check → 커버리지 검사. 리포트와 같은 Q 클래스 제외 기준을 사용한다.
+tasks.named('check') {
+	dependsOn tasks.named('jacocoTestCoverageVerification')
+}
+
+sourceSets {
+	test {
+		java {
+			srcDir '.github/scripts'
+		}
+	}
+}

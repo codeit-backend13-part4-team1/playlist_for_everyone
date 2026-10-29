@@ -61,4 +61,36 @@ class PlaylistContentRepositoryTest {
         playlistContentRepository.saveAndFlush(new PlaylistContent(playlistId, UUID.randomUUID())))
         .doesNotThrowAnyException();
   }
+
+  @Test
+  @DisplayName("플레이리스트 ID로 콘텐츠 연결을 모두 삭제하고 다른 플레이리스트의 연결은 남긴다")
+  void 플레이리스트_ID로_콘텐츠_연결을_모두_삭제한다() {
+    // given
+    UUID targetId = UUID.randomUUID();
+    UUID otherId = UUID.randomUUID();
+    playlistContentRepository.saveAndFlush(new PlaylistContent(targetId, UUID.randomUUID()));
+    playlistContentRepository.saveAndFlush(new PlaylistContent(targetId, UUID.randomUUID()));
+    PlaylistContent other = playlistContentRepository.saveAndFlush(
+        new PlaylistContent(otherId, UUID.randomUUID()));
+
+    // when
+    int deleted = playlistContentRepository.deleteAllByPlaylistId(targetId);
+
+    // then
+    assertThat(deleted).isEqualTo(2);
+    assertThat(playlistContentRepository.findAll())
+        .extracting(PlaylistContent::getId)
+        .containsExactly(other.getId());
+  }
+
+  @Test
+  @DisplayName("삭제할 콘텐츠 연결이 없으면 0을 반환한다")
+  void 삭제할_콘텐츠_연결이_없으면_0을_반환한다() {
+    // when
+    int deleted = playlistContentRepository.deleteAllByPlaylistId(UUID.randomUUID());
+
+    // then
+    assertThat(deleted).isZero();
+  }
+
 }
