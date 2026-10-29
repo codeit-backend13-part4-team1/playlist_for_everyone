@@ -15,6 +15,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -25,6 +26,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
 import java.util.UUID;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
@@ -56,7 +58,7 @@ class SseControllerTest {
     private AuthenticationManager authenticationManager;
 
     @Test
-    @DisplayName("인증된 사용자가 최초연결을 요청하면 200과 SEE 스트림을 반환한다.")
+    @DisplayName("인증된 사용자가 최초 연결을 요청하면 캐시가 금지된 SEE 스트림을 반환한다.")
     void connectStartsStreamForAuthenticatedUser() throws Exception {
         UUID userId = UUID.randomUUID();
         SecurityUser principal = getPrincipal(userId, "sse-test@example.com");
@@ -75,7 +77,9 @@ class SseControllerTest {
                     )
                     .andExpect(status().isOk())
                     .andExpect(request().asyncStarted())
-                    .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM));
+                    .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
+                    .andExpect(header().string(HttpHeaders.CACHE_CONTROL, containsString("no-store")))
+            ;
 
             verify(sseConnectionService).connect(userId);
         }finally {
