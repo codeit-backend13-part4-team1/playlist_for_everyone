@@ -62,7 +62,6 @@ public class PlaylistController {
       @PathVariable UUID playlistId,
       @Valid @RequestBody PlaylistUpdateRequest request,
       @AuthenticationPrincipal SecurityUser principal) {
-    // TODO: 인증 구현이 올라오면 @AuthenticationPrincipal로 교체
     return ResponseEntity.ok(playlistService.updatePlaylist(
         playlistId, request, principal.getUserId()));
   }
