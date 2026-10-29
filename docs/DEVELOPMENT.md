@@ -69,6 +69,18 @@ Spring 설정의 파일 import는 `optional`이지만, Compose 실행에는 `--e
 
 ### 3. 애플리케이션 실행
 
+실행 전에 `.env.dev`의 `EVERYONE_TMDB_ACCESS_TOKEN` 값을 채웁니다.
+TMDB 조회 없이 다른 기능만 개발할 때는 `dummy`를 넣으면 됩니다.
+
+```dotenv
+EVERYONE_TMDB_ACCESS_TOKEN=dummy
+```
+
+실제 TMDB 조회가 필요하면 `dummy` 대신 발급받은 API Read Access Token을 입력합니다. `Bearer ` 접두사는 제외합니다.
+실제 토큰이 들어간 `.env.dev`는 커밋하지 않습니다.
+
+IntelliJ 실행 설정에 넣은 환경변수는 터미널 실행에 자동 적용되지 않습니다.
+
 ```bash
 ./gradlew bootRun
 ```
@@ -152,6 +164,7 @@ EVERYONE_REDIS_PORT=6379
 | `EVERYONE_AWS_REGION` | `ap-northeast-2` | 향후 S3 연동에 사용할 리전 설정 |
 | `EVERYONE_AWS_ENDPOINT` | 빈 값 | 향후 S3 연동에 사용할 엔드포인트 설정 |
 | `EVERYONE_S3_BUCKET` | 빈 값 | 향후 S3 연동에 사용할 버킷 설정 |
+| `EVERYONE_TMDB_ACCESS_TOKEN` | 빈 값 (실행 전 설정 필요) | TMDB 인증 토큰. 실제 조회에는 유효한 토큰 필요 |
 
 S3 관련 값은 현재 공통 설정에 선언되어 있지만 실제 S3 연동 기능은 구현 전입니다.
 
