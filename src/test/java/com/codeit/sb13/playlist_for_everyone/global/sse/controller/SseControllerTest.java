@@ -34,6 +34,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+/**
+ * MVC 요청 바인딩과 보안 필터, SSE 응답 시작·종료를 확인하는 컨트롤러 테스트다.
+ * 연결 서비스와 인증의 외부 의존은 Mock으로 대체하며, 실제 네트워크 소켓은 열지 않는다.
+ *
+ * <p>일반 API 계약은 user(principal)로 인증을 준비한다. 비동기 종료 회귀 테스트에서는
+ * Bearer 요청으로 실제 JWT 필터를 거쳐 요청 속성에 인증이 저장되는 경로까지 확인한다.
+ */
 @WebMvcTest(SseController.class)
 @AutoConfigureMockMvc
 @Import({
@@ -66,6 +73,7 @@ class SseControllerTest {
 
         SseEmitter emitter = new SseEmitter(30_000L);
 
+        // MVC 초기화 전 send는 버퍼에 보관된다. 컨트롤러가 반환한 뒤 최초 주석 응답이 시작된다.
         emitter.send(SseEmitter.event().comment("connected"));
 
         given(sseConnectionService.connect(userId)).willReturn(emitter);
@@ -125,6 +133,7 @@ class SseControllerTest {
     @Test
     @DisplayName("정상적인 lastEventId로 연결을 요청하면 200과 SSE 스트림을 반환한다.")
     void connectAcceptsValidLastEventId() throws Exception {
+        // 현재 계약은 UUID 수신과 새 연결 생성까지다. 이력을 조회하거나 누락 이벤트를 재전송하지 않는다.
         UUID userId = UUID.randomUUID();
         UUID lastEventId = UUID.randomUUID();
 
@@ -209,6 +218,8 @@ class SseControllerTest {
                     .andExpect(status().isOk())
                     .andExpect(request().asyncStarted())
                     .andReturn();
+            // complete로 비동기 결과를 만든 뒤 MockMvc에서 후속 ASYNC 디스패치를 명시적으로 실행한다.
+            // 이때 새 토큰 검증 없이 같은 요청의 저장된 인증을 복원해야 정상 종료할 수 있다.
             emitter.complete();
             mockMvc.perform(asyncDispatch(result))
                     .andExpect(status().isOk())

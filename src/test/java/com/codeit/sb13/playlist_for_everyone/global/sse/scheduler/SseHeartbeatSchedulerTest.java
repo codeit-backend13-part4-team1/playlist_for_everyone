@@ -10,6 +10,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.mockito.Mockito.verify;
 
+/**
+ * 스케줄 메서드가 전송 서비스에 일을 위임하는지만 확인한다.
+ * 실제 주기 등록은 SseHeartbeatSchedulingTest, 실제 실행기 동작은 SchedulerConfigTest에서 검증한다.
+ */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("SSE 하트비트 스케줄러")
 class SseHeartbeatSchedulerTest {

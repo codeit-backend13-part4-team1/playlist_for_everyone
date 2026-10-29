@@ -23,6 +23,13 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+/**
+ * 전송 서비스가 수신자의 연결을 선택하고, 일부 실패에도 나머지 전송을 계속하는지 검증한다.
+ * 저장소와 emitter를 Mock으로 대체하므로 실제 HTTP 연결이나 JSON 메시지 변환기는 실행하지 않는다.
+ *
+ * <p>실패 후 계속 진행하는 테스트에서는 LinkedHashMap으로 실패 연결을 먼저 배치한다.
+ * 하트비트 테스트도 같은 사용자와 다른 사용자까지 전송이 이어지는지를 확인한다.
+ */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("SSE 로컬 전송 서비스")
 class SseDeliveryServiceTest {
@@ -80,6 +87,8 @@ class SseDeliveryServiceTest {
 
         verify(emitter).send(evetCaptor.capture());
 
+        // builder에는 텍스트 필드와 아직 직렬화되지 않은 payload 객체가 함께 담긴다.
+        // 여기서는 필드 매핑을 확인하고, 실제 JSON 이중 직렬화 여부는 HTTP 통합 테스트에서 확인한다.
         assertThat(evetCaptor.getValue().build())
                 .extracting(part -> part.getData())
                 .containsExactly("id:" + eventId +
@@ -151,6 +160,7 @@ class SseDeliveryServiceTest {
         SseEmitter failedEmitter = mock(SseEmitter.class);
         SseEmitter healthyEmitter = mock(SseEmitter.class);
 
+        // 순서를 고정해야 정상 연결이 우연히 먼저 처리된 결과를 '실패 후 계속 전송'으로 오해하지 않는다.
         Map<Connection, SseEmitter> connections = new LinkedHashMap<>();
         connections.put(failedConnection, failedEmitter);
         connections.put(healthyConnection, healthyEmitter);
@@ -232,6 +242,7 @@ class SseDeliveryServiceTest {
         ArgumentCaptor<SseEmitter.SseEventBuilder> eventCaptor = ArgumentCaptor.forClass(SseEmitter.SseEventBuilder.class);
         verify(emitter).send(eventCaptor.capture());
 
+        // ID나 event 필드 없는 주석 하나만 전송하는지 확인하여 재연결 커서에 영향을 주지 않게 한다.
         assertThat(eventCaptor.getValue().build())
                 .extracting(part -> part.getData())
                 .containsExactly(":heartbeat\n\n");

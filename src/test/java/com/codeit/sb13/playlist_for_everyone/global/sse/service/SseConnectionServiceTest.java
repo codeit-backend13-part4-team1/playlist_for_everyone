@@ -24,6 +24,15 @@ import java.util.function.Consumer;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+/**
+ * 연결 서비스가 저장소와 emitter에 요청해야 하는 동작을 검증한다.
+ * 저장소는 인터페이스 Mock으로 대체하며, 실제 Map의 저장 결과는 저장소 테스트에서 확인한다.
+ *
+ * <p>MockedConstruction은 테스트 스레드에서 생성하는 SseEmitter를 해당 블록 안에서 Mock으로
+ * 대체한다. ArgumentCaptor로 등록된 콜백을 꺼내 직접 실행하므로 브라우저나 타임아웃을 기다리지 않는다.
+ * Mock emitter의 complete 호출만으로 실제 MVC 콜백이 실행되지는 않는다.
+ * 실제 HTTP 전송과 컨테이너의 비동기 처리는 별도의 컨트롤러·HTTP 통합 테스트가 담당한다.
+ */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("SSE 연결 서비스")
 class SseConnectionServiceTest {
@@ -128,6 +137,7 @@ class SseConnectionServiceTest {
             ArgumentCaptor<Runnable> completionCaptor = ArgumentCaptor.forClass(Runnable.class);
             verify(emitter).onCompletion(completionCaptor.capture());
 
+            // onCompletion은 등록 메서드다. 등록한 Runnable을 실행하여 완료 상황을 재현한다.
             completionCaptor.getValue().run();
 
             verify(repository).delete(userId, connectionCaptor.getValue());
@@ -205,6 +215,7 @@ class SseConnectionServiceTest {
             verify(repository).save(eq(userId), newConnectionCaptor.capture(), same(newEmitter));
             assertThat(newConnectionCaptor.getValue()).isNotEqualTo(oldConnectionCaptor.getValue());
 
+            // 이전 연결의 지연된 콜백이 다시 도착해도 새 연결 ID를 삭제 대상으로 사용하면 안 된다.
             oldCompletion.run();
 
             verify(repository, times(2)).delete(userId, oldConnectionCaptor.getValue());
@@ -351,6 +362,7 @@ class SseConnectionServiceTest {
 
             verify(emitter).send(eventCaptor.capture());
 
+            // 주석과 프레임 종료 구분자만 있는지 확인한다. id 필드가 생기면 이 검증이 실패한다.
             assertThat(eventCaptor.getValue().build())
                     .extracting(data -> data.getData())
                     .containsExactly(":connected\n\n");
@@ -364,6 +376,8 @@ class SseConnectionServiceTest {
         IOException sendFailure = new IOException("초기 주석 전송 실패");
         ArgumentCaptor<Connection> connectionCaptor = ArgumentCaptor.forClass(Connection.class);
 
+        // send가 호출되는 바로 그 시점에 save가 이미 실행됐는지 확인하고 예외를 발생시킨다.
+        // 실제 초기 send는 버퍼링될 수 있으므로, 여기서는 서비스가 직접 잡는 예외 처리 경로를 검증한다.
         try (MockedConstruction<SseEmitter> ignored = mockConstruction(
                 SseEmitter.class,
                 (emitter, context) -> doAnswer(invocation -> {
@@ -436,6 +450,7 @@ class SseConnectionServiceTest {
         SseEmitter sameUserEmitter = mock(SseEmitter.class);
         SseEmitter otherUserEmitter = mock(SseEmitter.class);
 
+        // 실패 연결을 먼저 순회하게 만들어 실패 이후에도 나머지 연결 정리가 계속되는지 확인한다.
         Map<Connection, SseEmitter> firstUserConnections = new LinkedHashMap<>();
 
         firstUserConnections.put(failedConnection, failedEmitter);

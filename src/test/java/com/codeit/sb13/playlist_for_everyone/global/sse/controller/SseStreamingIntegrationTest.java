@@ -47,6 +47,11 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
 
+/**
+ * 실제 내장 Tomcat에 HTTP 요청을 보내 클라이언트가 받는 SSE 프레임을 검증한다.
+ * MVC·보안 필터·연결/전송 서비스·메모리 저장소는 실제로 동작하고, JWT 검증·사용자 조회는 대체한다.
+ * DB, Redis, 주기적 하트비트는 이 컨텍스트에 포함하지 않아 프레임 전송 계약에 집중한다.
+ */
 @SpringBootTest(
         webEnvironment = WebEnvironment.RANDOM_PORT,
         classes = {
@@ -61,6 +66,8 @@ import static org.mockito.BDDMockito.given;
                 "everyone.sse.connection-timeout=30s"
         }
 )
+// 전체 애플리케이션 대신 명시한 구성만 띄우므로 웹 서버와 직렬화, 보안 필터 등록도 직접 가져온다.
+// SecurityConfig의 필터 체인이 실제 HTTP 요청에 적용되도록 SecurityFilterAutoConfiguration을 포함한다.
 @ImportAutoConfiguration({
         TomcatServletWebServerAutoConfiguration.class,
         DispatcherServletAutoConfiguration.class,
@@ -69,6 +76,7 @@ import static org.mockito.BDDMockito.given;
         HttpMessageConvertersAutoConfiguration.class,
         SecurityFilterAutoConfiguration.class
 })
+// 테스트 클래스가 끝나면 이 컨텍스트와 내장 서버를 정리한다. 각 요청의 연결은 finally에서 먼저 닫는다.
 @DirtiesContext(classMode = ClassMode.AFTER_CLASS)
 @DisplayName("SSE 실제 HTTP 스트리밍 통합 테스트")
 public class SseStreamingIntegrationTest {
@@ -111,11 +119,14 @@ public class SseStreamingIntegrationTest {
             assertThat(contentType.isCompatibleWith(MediaType.TEXT_EVENT_STREAM)).isTrue();
 
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))){
+                // SSE는 연결이 계속 열려 있으므로 EOF까지 읽지 않고 필요한 줄만 읽는다.
+                // ':'는 주석을 뜻하며 뒤의 빈 줄은 프레임의 끝이다. 최초 주석에는 id가 없다.
                 assertThat(reader.readLine()).isEqualTo(":connected");
                 assertThat(reader.readLine()).isEqualTo("");
             }
         } finally {
             try {
+                // 서버의 종료 처리도 실행하여 비동기 응답을 정리하고, 실패하더라도 클라이언트 연결은 해제한다.
                 sseConnectionService.closeAllLocalConnections();
             } finally {
                 connection.disconnect();
@@ -124,6 +135,7 @@ public class SseStreamingIntegrationTest {
     }
 
     @ParameterizedTest(name = "{0} 이벤트는 {1} 이름으로 전달된다.")
+    // 기대 이름은 enum에서 다시 계산하지 않고 명세 문자열로 적어 이름 매핑 오류도 검출한다.
     @CsvSource({
             "NOTIFICATIONS, notifications",
             "DIRECT_MESSAGES, direct-messages"
@@ -146,6 +158,8 @@ public class SseStreamingIntegrationTest {
                 assertThat(reader.readLine()).isEqualTo(":connected");
                 assertThat(reader.readLine()).isEqualTo("");
 
+                // 최초 프레임을 받은 뒤 전송하여 emitter가 실제 HTTP 응답에 연결된 상태에서 확인한다.
+                // 공통 전송 계약용 payload이며 실제 알림·DM 도메인 API 연동을 검증하는 데이터는 아니다.
                 UUID eventId = UUID.randomUUID();
                 SseEvent<Map<String, String>> event = new SseEvent<>(
                         eventId,
@@ -161,6 +175,7 @@ public class SseStreamingIntegrationTest {
 
                 String dataLine = reader.readLine();
                 assertThat(dataLine).startsWith("data:");
+                // 문자열 표기 순서가 아닌 JSON 구조를 비교한다. 객체가 JSON 문자열로 이중 인코딩되면 실패한다.
                 assertThat(objectMapper.readTree(dataLine.substring("data:".length())))
                         .isEqualTo(objectMapper.readTree("""
                                 {"message":"테스트 알림"}
@@ -176,6 +191,7 @@ public class SseStreamingIntegrationTest {
         }
     }
 
+    /** 실제 HTTP 요청의 인증·응답 형식과 대기 제한을 공통으로 준비한다. */
     private HttpURLConnection createSseConnection(String token) throws IOException {
         HttpURLConnection connection = (HttpURLConnection) URI.create("http://localhost:" + port + "/api/sse")
                 .toURL()
@@ -184,12 +200,18 @@ public class SseStreamingIntegrationTest {
         connection.setRequestMethod("GET");
         connection.setRequestProperty(HttpHeaders.AUTHORIZATION, "Bearer " + token);
         connection.setRequestProperty(HttpHeaders.ACCEPT, MediaType.TEXT_EVENT_STREAM_VALUE);
+        // 연결이나 프레임 수신이 잘못됐을 때 테스트가 열린 스트림을 무한정 기다리지 않게 한다.
         connection.setConnectTimeout(5_000);
         connection.setReadTimeout(5_000);
+        // 인증 실패가 로그인 페이지 리다이렉트로 바뀌어도 최종 200 응답에 가려지지 않게 한다.
         connection.setInstanceFollowRedirects(false);
         return connection;
     }
 
+    /**
+     * 토큰 해석 결과와 사용자 조회 결과를 준비한다. 실제 요청은 여전히 JWT 필터와 보안 체인을 통과한다.
+     * 이 테스트의 목적은 JWT 서명 검증이 아니라 인증된 HTTP 스트림의 전송 동작이다.
+     */
     private void prepareAuthenticatedUser(UUID userId, String token) {
         User user = Mockito.mock(User.class);
 

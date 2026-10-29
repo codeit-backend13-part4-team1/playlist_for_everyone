@@ -13,6 +13,11 @@ import java.util.concurrent.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+/**
+ * 저장소 인터페이스로 실제 메모리 구현체를 호출하여 등록·조회·삭제 결과를 검증한다.
+ * emitter는 연결을 구분하기 위한 실제 객체일 뿐, HTTP 응답에 연결하거나 메시지를 전송하지 않는다.
+ * 따라서 저장소의 사용자 격리와 조회 사본, 동시 변경을 웹 서버 없이 확인할 수 있다.
+ */
 @DisplayName("메모리 SSE 연결 저장소")
 class InMemorySseEmitterRepositoryTest {
 
@@ -220,6 +225,7 @@ class InMemorySseEmitterRepositoryTest {
 
         Map<UUID, Map<Connection, SseEmitter>> result = repository.findAll();
 
+        // 조회 계약은 바깥 Map과 사용자별 Map 모두 수정 불가이므로 두 단계를 각각 확인한다.
         assertThatThrownBy(()-> result.remove(userId))
                 .isInstanceOf(UnsupportedOperationException.class);
 
@@ -243,6 +249,8 @@ class InMemorySseEmitterRepositoryTest {
 
         repository.save(userId, firstConnection, firstEmitter);
 
+        // 조회 후 저장소를 바꿔도 이미 받은 Map 구조가 그대로인지 확인한다.
+        // emitter 내부 상태의 복제나 전체 사용자의 동일 시점 조회를 검증하는 테스트는 아니다.
         Map<UUID, Map<Connection, SseEmitter>> snapshot = repository.findAll();
 
         repository.save(userId, secondConnection, secondEmitter);
@@ -279,6 +287,8 @@ class InMemorySseEmitterRepositoryTest {
         repository.save(userId, oldConnection, new SseEmitter());
         ExecutorService executor = Executors.newFixedThreadPool(2);
 
+        // 두 작업이 모두 준비된 뒤 출발하도록 맞춘다. 어느 작업이 먼저 Map을 변경할지는 강제하지 않는다.
+        // 한 번의 동시 실행 시나리오를 확인하며, 가능한 모든 실행 순서를 열거하는 검증은 아니다.
         CyclicBarrier barrier = new CyclicBarrier(2);
 
         try {
@@ -294,12 +304,14 @@ class InMemorySseEmitterRepositoryTest {
                 return null;
             });
 
+            // 완료를 기다린 뒤 결과를 조회한다. 작업 스레드의 예외도 get을 통해 테스트 실패로 전달된다.
             deleteFuture.get(5, TimeUnit.SECONDS);
             saveFuture.get(5, TimeUnit.SECONDS);
 
             assertThat(repository.findAllByUserId(userId))
                     .containsExactlyEntriesOf(Map.of(newConnection, newEmitter));
         } finally {
+            // 실패나 대기 시간 초과로 빠져나와도 남은 작업에 인터럽트를 요청한다.
             executor.shutdownNow();
         }
     }
