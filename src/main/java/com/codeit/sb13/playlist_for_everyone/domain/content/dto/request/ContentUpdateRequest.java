@@ -7,11 +7,17 @@ import jakarta.validation.constraints.Size;
 import java.util.List;
 
 public record ContentUpdateRequest(
-        @Pattern(regexp = ".*\\S.*")
+        @Pattern(
+                regexp = "(?s).*\\S.*",
+                message = "제목은 공백만 입력할 수 없습니다."
+        )
         @Size(max = 100)
         String title,
 
-        @Pattern(regexp = ".*\\S.*")
+        @Pattern(
+                regexp = "(?s).*\\S.*",
+                message = "설명은 공백만 입력할 수 없습니다."
+        )
         String description,
 
         List<@Size(max = 50) String> tags

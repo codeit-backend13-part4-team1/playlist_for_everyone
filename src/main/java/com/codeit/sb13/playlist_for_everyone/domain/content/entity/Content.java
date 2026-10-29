@@ -74,8 +74,13 @@ public class Content extends UpdatedAtEntity {
             String thumbnailUrl,
             List<String> tags
     ) {
-        this.title = title;
-        this.description = description;
+        if (title != null) {
+            this.title = title;
+        }
+
+        if (description != null) {
+            this.description = description;
+        }
 
         if (thumbnailUrl != null) {
             this.thumbnailUrl = thumbnailUrl;
