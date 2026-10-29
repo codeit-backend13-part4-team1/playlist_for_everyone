@@ -16,6 +16,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.time.Duration;
+import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
 
@@ -378,5 +379,24 @@ class SseConnectionServiceTest {
             verify(repository).delete(userId, connectionCaptor.getValue());
             verify(repository, times(1)).delete(any(), any());
         }
+    }
+
+    @Test
+    @DisplayName("전체 연결 정리를 요청하면 등록된 에미터의 종료와 연결 삭제를 요청한다.")
+    void closeAllLocalConnectionsRequestsCompletionAndDeletion(){
+        UUID userId = UUID.randomUUID();
+        Connection connection = Connection.create();
+        SseEmitter emitter = mock(SseEmitter.class);
+
+        when(repository.findAll()).thenReturn(
+                Map.of(userId,
+                        Map.of(connection, emitter)
+                )
+        );
+
+        service.closeAllLocalConnections();
+
+        verify(emitter).complete();;
+        verify(repository).delete(userId, connection);
     }
 }

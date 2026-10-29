@@ -43,4 +43,8 @@ public class SseConnectionService {
         }
         return emitter;
     }
+
+    public void closeAllLocalConnections(){
+
+    }
 }
