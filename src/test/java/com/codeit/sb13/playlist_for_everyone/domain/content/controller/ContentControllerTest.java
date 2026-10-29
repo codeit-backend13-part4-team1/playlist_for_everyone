@@ -1,6 +1,8 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.controller;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentCreateRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentUpdateRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
 import org.mockito.ArgumentCaptor;
@@ -17,6 +19,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -52,7 +55,7 @@ public class ContentControllerTest {
         // when & then
         // 201 응답 확인
         mockMvc.perform(multipart("/api/contents")
-                        .file(createRequestPart(request))
+                        .file(createJsonRequestPart(request))
                         .file(createThumbnail()))
                 .andExpect(status().isCreated());
 
@@ -87,7 +90,7 @@ public class ContentControllerTest {
 
         // when & then
         mockMvc.perform(multipart("/api/contents")
-                        .file(createRequestPart(request))
+                        .file(createJsonRequestPart(request))
                         .file(createThumbnail()))
                 .andExpect(status().isBadRequest());
 
@@ -107,7 +110,7 @@ public class ContentControllerTest {
 
         // when & then
         mockMvc.perform(multipart("/api/contents")
-                        .file(createRequestPart(request))
+                        .file(createJsonRequestPart(request))
                         .file(createThumbnail()))
                 .andExpect(status().isBadRequest());
 
@@ -126,7 +129,7 @@ public class ContentControllerTest {
 
         // when & then
         mockMvc.perform(multipart("/api/contents")
-                        .file(createRequestPart(request))
+                        .file(createJsonRequestPart(request))
                         .file(createThumbnail()))
                 .andExpect(status().isBadRequest());
 
@@ -146,13 +149,56 @@ public class ContentControllerTest {
 
         // when & then
         mockMvc.perform(multipart("/api/contents")
-                        .file(createRequestPart(request)))
+                        .file(createJsonRequestPart(request)))
                 .andExpect(status().isBadRequest());
 
         verifyNoInteractions(contentService);
     }
 
-    private MockMultipartFile createRequestPart(ContentCreateRequest request) {
+    @Test
+    @DisplayName("콘텐츠 수정 요청 시 200 OK를 반환한다.")
+    void update_success() throws Exception {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        ContentUpdateRequest request = new ContentUpdateRequest(
+                "너 말고 다른 연애",
+                "서강준, 안은진 주연",
+                null
+        );
+
+        when(contentService.update(
+                eq(contentId),
+                any(ContentUpdateRequest.class),
+                isNull()
+        )).thenReturn(mock(ContentDto.class));
+
+        // when & then
+        mockMvc.perform(multipart("/api/contents/{contentId}", contentId)
+                        .file(createJsonRequestPart(request))
+                        .with(multipartRequest -> {
+                            multipartRequest.setMethod("PATCH");
+                            return multipartRequest;
+                        }))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<ContentUpdateRequest> captor =
+                ArgumentCaptor.forClass(ContentUpdateRequest.class);
+
+        verify(contentService).update(
+                eq(contentId),
+                captor.capture(),
+                isNull()
+        );
+
+        ContentUpdateRequest capturedRequest = captor.getValue();
+
+        assertThat(capturedRequest.title()).isEqualTo("너 말고 다른 연애");
+        assertThat(capturedRequest.description()).isEqualTo("서강준, 안은진 주연");
+        assertThat(capturedRequest.tags()).isNull();
+    }
+
+    private MockMultipartFile createJsonRequestPart(Object request) {
         return new MockMultipartFile(
                 "request",
                 "",
