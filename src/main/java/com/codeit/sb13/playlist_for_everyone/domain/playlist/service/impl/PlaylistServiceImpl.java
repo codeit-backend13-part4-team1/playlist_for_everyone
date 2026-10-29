@@ -178,6 +178,13 @@ public class PlaylistServiceImpl implements PlaylistService {
     playlistRepository.touchUpdatedAt(playlistId, LocalDateTime.now());
   }
 
+  @Override
+  @Transactional
+  public void removeContent(UUID playlistId, UUID contentId, UUID requesterId) {
+    throw new UnsupportedOperationException();
+  }
+
+
  //---------[헬퍼 메서드]
   private PlaylistSearchCondition toCondition(PlaylistSearchRequest request) {
     return new PlaylistSearchCondition(

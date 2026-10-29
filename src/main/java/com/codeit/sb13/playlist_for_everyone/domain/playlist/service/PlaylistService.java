@@ -21,4 +21,6 @@ public interface PlaylistService {
 
   void addContent(UUID playlistId, UUID contentId, UUID requesterId);
 
+  void removeContent(UUID playlistId, UUID contentId, UUID requesterId);
+
 }
