@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.springframework.web.util.DisconnectedClientHelper;
 
 import java.io.IOException;
 import java.util.Map;
@@ -51,8 +52,7 @@ public class SseDeliveryService {
                 // 실패한 연결만 전송 대상에서 제외하고 다음 연결을 계속 처리한다.
                 // 아직 열리지 않은 연결 요청의 실패를 호출자에게 전파하는 connect와 처리 목적이 다르다.
                 sseEmitterRepository.delete(sseEvent.receiverId(), connection);
-                log.warn("SSE 이벤트 전송 실패로 연결을 정리했습니다. eventId={}, receiverId={}, connectionId={}"
-                        , sseEvent.eventId(), sseEvent.receiverId(), connection.id(), e);
+                logSseEventDeliveryIssue(sseEvent, connection, e);
             }
         });
 
@@ -77,7 +77,25 @@ public class SseDeliveryService {
             emitter.send(SseEmitter.event().comment("heartbeat"));
         } catch (IOException | IllegalStateException e) {
             sseEmitterRepository.delete(userId, connection);
-            log.warn("SSE 이벤트 전송 실패로 연결을 정리했습니다. userId={}, connectionId={}", userId, connection.id(), e);
+            logSseHeartbeatIssue(userId, connection, e);
         }
+    }
+
+    private void logSseHeartbeatIssue(UUID userId, Connection connection, Exception e) {
+        if (DisconnectedClientHelper.isClientDisconnectedException(e)){
+            log.debug("SSE 하트비트 전송 중 클라이언트 단절로 연결을 정리했습니다. userId={}, connectionId={}", userId, connection.id());
+            return;
+        }
+        log.warn("SSE 하트비트 전송 실패로 연결을 정리했습니다. userId={}, connectionId={}", userId, connection.id(), e);
+    }
+
+    private void logSseEventDeliveryIssue(SseEvent<?> sseEvent, Connection connection, Exception e) {
+        if (DisconnectedClientHelper.isClientDisconnectedException(e)){
+            log.debug("SSE 클라이언트 단절로 연결을 정리했습니다. eventId={}, receiverId={}, connectionId={}"
+                    , sseEvent.eventId(), sseEvent.receiverId(), connection.id());
+            return;
+        }
+        log.warn("SSE 이벤트 전송 실패로 연결을 정리했습니다. eventId={}, receiverId={}, connectionId={}"
+                , sseEvent.eventId(), sseEvent.receiverId(), connection.id(), e);
     }
 }

@@ -9,6 +9,7 @@ import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.springframework.web.util.DisconnectedClientHelper;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -60,7 +61,7 @@ public class SseConnectionService {
         emitter.onError(e -> {
             // 오류가 발생한 연결의 참조를 제거한다. 오류에 따른 비동기 응답 종료는 MVC가 관리한다.
             sseEmitterRepository.delete(userId, connection);
-            log.error("SSE 연결 오류로 연결을 정리했습니다. userId={}, connectionId={}", userId, connection.id(), e);
+            logSseConnectionIssue(userId, e, connection);
         });
 
         // 전송을 시도하기 전에 저장하여 이후 콜백과 전송 실패 처리가 같은 연결을 정리하게 한다.
@@ -75,6 +76,14 @@ public class SseConnectionService {
             handleConnectionError(userId, e, connection);
         }
         return emitter;
+    }
+
+    private void logSseConnectionIssue(UUID userId, Throwable e, Connection connection) {
+        if (DisconnectedClientHelper.isClientDisconnectedException(e)){
+            log.debug("SSE 클라이언트 단절로 연결을 정리했습니다. userId={}, connectionId={}", userId, connection.id());
+            return;
+        }
+        log.error("SSE 연결 오류로 연결을 정리했습니다. userId={}, connectionId={}", userId, connection.id(), e);
     }
 
     /**
