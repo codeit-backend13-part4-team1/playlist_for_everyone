@@ -53,6 +53,7 @@ import static org.mockito.BDDMockito.given;
 
 /**
  * 실제 내장 Tomcat에 HTTP 요청을 보내 클라이언트가 받는 SSE 프레임을 검증한다.
+ * JSON 변환 실패 후 저장소에 기존 연결이 유지되는지도 확인한다.
  * MVC·보안 필터·연결/전송 서비스·메모리 저장소는 실제로 동작하고, JWT 검증·사용자 조회는 대체한다.
  * DB, Redis, 주기적 하트비트는 이 컨텍스트에 포함하지 않아 프레임 전송 계약에 집중한다.
  */
@@ -245,6 +246,7 @@ public class SseStreamingIntegrationTest {
             assertThat(connection.getResponseCode()).isEqualTo(200);
 
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))){
+                // 최초 프레임을 읽어 실제 HTTP 응답이 시작된 연결에서 변환 실패를 재현한다.
                 assertThat(reader.readLine()).isEqualTo(":connected");
                 assertThat(reader.readLine()).isEmpty();
 
@@ -262,6 +264,7 @@ public class SseStreamingIntegrationTest {
                 assertThatCode(()-> sseDeliveryService.sendToLocalConnections(event))
                         .doesNotThrowAnyException();
 
+                // 동일한 연결의 저장소 유지를 검증한다. 이후 정상 이벤트의 실제 수신은 별도 검증 대상이다.
                 assertThat(sseEmitterRepository.findAllByUserId(userId).values())
                         .containsExactly(registeredEmitter);
             }

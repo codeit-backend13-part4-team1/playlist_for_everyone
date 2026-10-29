@@ -10,13 +10,13 @@ SSE 테스트는 설정 바인딩, 저장소의 실제 동작, 서비스 간 협
 | [SsePropertiesTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/config/SsePropertiesTest.java) | 설정 누락·허용 범위 위반 시 바인딩 실패, 정상값·경계값 바인딩 성공 |
 | [InMemorySseEmitterRepositoryTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/repository/impl/InMemorySseEmitterRepositoryTest.java) | 실제 메모리 저장소의 등록·삭제·조회 사본·동시 등록과 삭제 |
 | [SseConnectionServiceTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/service/SseConnectionServiceTest.java) | 연결 식별자, 콜백 등록, 초기 주석, 실패·종료 시 정리 요청 |
-| [SseDeliveryServiceTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/service/SseDeliveryServiceTest.java) | 이벤트 필드, 여러 연결 전송, 실패한 연결만 삭제하고 계속 전송 |
+| [SseDeliveryServiceTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/service/SseDeliveryServiceTest.java) | 이벤트 ID·이름과 JSON 구조, 여러 연결 전송, 실패한 연결만 삭제하고 계속 전송 |
 | [SseConnectionLifecycleTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/service/SseConnectionLifecycleTest.java) | 실제 컨텍스트 종료 이벤트가 연결 정리 메서드를 호출하는지 |
 | [SseHeartbeatSchedulerTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/scheduler/SseHeartbeatSchedulerTest.java) | 스케줄러 메서드가 전송 서비스에 하트비트를 요청하는지 |
 | [SseHeartbeatSchedulingTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/scheduler/SseHeartbeatSchedulingTest.java) | 설정 간격과 지정한 실행기로 작업이 등록되고, 등록된 작업이 서비스를 호출하는지 |
 | [SchedulerConfigTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/config/SchedulerConfigTest.java) | 실제 전용 스레드 실행, 종료 후 작업 거부, 반복 작업 취소 |
 | [SseControllerTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/controller/SseControllerTest.java) | 인증 사용자, 쿼리 검증, 캐시 금지 응답, ASYNC 종료 시 인증 복원 |
-| [SseStreamingIntegrationTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/controller/SseStreamingIntegrationTest.java) | 실제 HTTP의 초기 주석과 알림·DM 프레임 이름·ID·JSON 데이터 |
+| [SseStreamingIntegrationTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/controller/SseStreamingIntegrationTest.java) | 실제 HTTP의 초기 주석과 알림·DM 프레임, JSON 변환 실패 시 기존 연결 유지 |
 
 ## 설정 바인딩 테스트
 
@@ -47,8 +47,8 @@ Spring Boot 설정 파일을 읽는 통합 테스트와도 설정을 공급하�
 | 실패 연결이 먼저인 `LinkedHashMap` | 첫 전송이 실패해도 다음 연결에 실제로 전송을 시도했는지 확인합니다. |
 
 Mock emitter의 `complete()`는 실제 MVC 완료 콜백을 자동 실행하지 않습니다.
-또한 `send()`에 전달된 builder를 검사하는 테스트만으로 실제 JSON 직렬화 결과까지 확인할 수는 없습니다.
-이를 보완하는 검증이 MVC·실제 HTTP 테스트입니다.
+전송 서비스 테스트는 실제 `JsonMapper`를 사용하고, builder에 담긴 JSON 문자열을 파싱하여 원본 데이터와 구조·값을 비교합니다.
+emitter는 Mock이므로 실제 HTTP 전송과 MVC 메시지 변환기는 실행하지 않습니다. 최종 응답의 이중 인코딩 여부는 HTTP 통합 테스트에서 확인합니다.
 
 현재 서비스 테스트는 실패한 연결의 삭제와 나머지 연결의 계속 전송을 확인합니다.
 로그 수준이나 출력 내용·스택 포함 여부를 검증하는 테스트는 없으므로, 해당 정책은 [로그 기준](02-delivery-heartbeat.md#단절과-오류의-로그-기준)과 구현을 함께 확인합니다.
@@ -67,9 +67,17 @@ DB·Redis·주기적 하트비트 스케줄러는 이 테스트 컨텍스트에 
 2. 알림 또는 DM 이벤트를 로컬 전송 서비스에 전달합니다.
 3. `id`, 명세 문자열 `event`, JSON 구조 `data`, 프레임 끝의 빈 줄을 확인합니다.
 
+별도의 `serializationFailureKeepsConnection()`은 최초 프레임을 받은 뒤 JSON 변환 실패를 재현합니다.
+전송 호출에서 예외가 전파되지 않고, 저장소에 기존 emitter가 그대로 남는지 확인합니다.
+
 SSE는 계속 열리는 응답이므로 EOF까지 읽지 않고 필요한 줄만 읽습니다.
 연결·읽기에 제한 시간을 두고, `finally`에서 서버의 연결 정리와 클라이언트 연결 해제를 수행합니다.
 이 테스트는 공통 payload로 프레임을 검증하며 실제 알림·DM 업무 이벤트 생성까지 검증하지는 않습니다.
+
+현재 별도 테스트가 없는 항목은 다음과 같습니다.
+
+- `SseEvent` 생성자의 필수값 null 거부와 `data`의 null 허용
+- JSON 변환 실패 후 같은 연결로 다음 정상 이벤트를 실제 수신하는 동작
 
 ## 동시성과 종료 테스트의 해석
 

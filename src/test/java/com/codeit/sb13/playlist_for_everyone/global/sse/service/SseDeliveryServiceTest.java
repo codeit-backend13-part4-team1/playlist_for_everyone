@@ -105,6 +105,7 @@ class SseDeliveryServiceTest {
 
         JsonMapper jsonMapper = JsonMapper.builder().build();
 
+        // 서비스가 준비한 JSON의 구조와 값을 비교한다. 실제 HTTP 응답은 통합 테스트에서 확인한다.
         assertThat(jsonMapper.readTree((String) parts.get(1)))
                 .isEqualTo(jsonMapper.valueToTree(payload));
 
