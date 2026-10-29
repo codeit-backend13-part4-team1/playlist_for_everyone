@@ -53,7 +53,7 @@ import static org.mockito.BDDMockito.given;
 
 /**
  * 실제 내장 Tomcat에 HTTP 요청을 보내 클라이언트가 받는 SSE 프레임을 검증한다.
- * JSON 변환 실패 후 저장소에 기존 연결이 유지되는지도 확인한다.
+ * JSON 변환 실패 후 기존 연결을 유지하고 같은 HTTP 스트림에서 다음 정상 이벤트를 수신하는지도 확인한다.
  * MVC·보안 필터·연결/전송 서비스·메모리 저장소는 실제로 동작하고, JWT 검증·사용자 조회는 대체한다.
  * DB, Redis, 주기적 하트비트는 이 컨텍스트에 포함하지 않아 프레임 전송 계약에 집중한다.
  */
@@ -233,7 +233,7 @@ public class SseStreamingIntegrationTest {
     }
 
     @Test
-    @DisplayName("이벤트의 JSON 변환에 실패해도 기존 SSE 연결을 유지한다.")
+    @DisplayName("이벤트의 JSON 변환에 실패해도 같은 SSE 연결로 다음 정상 이벤트를 수신한다.")
     void serializationFailureKeepsConnection() throws IOException {
         UUID userId = UUID.randomUUID();
         String token = "sse-test-token";
@@ -264,9 +264,31 @@ public class SseStreamingIntegrationTest {
                 assertThatCode(()-> sseDeliveryService.sendToLocalConnections(event))
                         .doesNotThrowAnyException();
 
-                // 동일한 연결의 저장소 유지를 검증한다. 이후 정상 이벤트의 실제 수신은 별도 검증 대상이다.
+                // 실패한 이벤트를 건너뛰어도 저장소에는 동일한 연결이 유지되어야 한다.
                 assertThat(sseEmitterRepository.findAllByUserId(userId).values())
                         .containsExactly(registeredEmitter);
+
+                UUID nextEventId = UUID.randomUUID();
+                SseEvent<Map<String, String>> nextEvent = new SseEvent<>(
+                        nextEventId,
+                        userId,
+                        Event.NOTIFICATIONS.getName(),
+                        Map.of("message", "정상 알림")
+                );
+
+                sseDeliveryService.sendToLocalConnections(nextEvent);
+
+                // 기존 reader에서 다음 프레임을 바로 읽어 실패한 이벤트의 불완전한 프레임이 남지 않았는지도 확인한다.
+                assertThat(reader.readLine()).isEqualTo("id:" + nextEventId);
+                assertThat(reader.readLine()).isEqualTo("event:notifications");
+
+                String dataLine = reader.readLine();
+                assertThat(dataLine).startsWith("data:");
+                assertThat(objectMapper.readTree(dataLine.substring("data:".length())))
+                        .isEqualTo(objectMapper.readTree("""
+                                {"message":"정상 알림"}
+                                """));
+                assertThat(reader.readLine()).isEmpty();
             }
         } finally {
             try {

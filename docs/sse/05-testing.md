@@ -16,7 +16,7 @@ SSE 테스트는 설정 바인딩, 저장소의 실제 동작, 서비스 간 협
 | [SseHeartbeatSchedulingTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/scheduler/SseHeartbeatSchedulingTest.java) | 설정 간격과 지정한 실행기로 작업이 등록되고, 등록된 작업이 서비스를 호출하는지 |
 | [SchedulerConfigTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/config/SchedulerConfigTest.java) | 실제 전용 스레드 실행, 종료 후 작업 거부, 반복 작업 취소 |
 | [SseControllerTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/controller/SseControllerTest.java) | 인증 사용자, 쿼리 검증, 캐시 금지 응답, ASYNC 종료 시 인증 복원 |
-| [SseStreamingIntegrationTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/controller/SseStreamingIntegrationTest.java) | 실제 HTTP의 초기 주석과 알림·DM 프레임, JSON 변환 실패 시 기존 연결 유지 |
+| [SseStreamingIntegrationTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/controller/SseStreamingIntegrationTest.java) | 실제 HTTP의 초기 주석과 알림·DM 프레임, JSON 변환 실패 후 동일 연결로 다음 정상 이벤트 수신 |
 
 ## 설정 바인딩 테스트
 
@@ -69,15 +69,14 @@ DB·Redis·주기적 하트비트 스케줄러는 이 테스트 컨텍스트에 
 
 별도의 `serializationFailureKeepsConnection()`은 최초 프레임을 받은 뒤 JSON 변환 실패를 재현합니다.
 전송 호출에서 예외가 전파되지 않고, 저장소에 기존 emitter가 그대로 남는지 확인합니다.
+이어서 정상 이벤트를 보내고 재연결 없이 같은 reader에서 ID·이름·JSON 데이터·끝의 빈 줄을 읽습니다.
+중간 줄을 건너뛰지 않아 실패한 이벤트의 불완전한 프레임이 남는 경우도 검출합니다.
 
 SSE는 계속 열리는 응답이므로 EOF까지 읽지 않고 필요한 줄만 읽습니다.
 연결·읽기에 제한 시간을 두고, `finally`에서 서버의 연결 정리와 클라이언트 연결 해제를 수행합니다.
 이 테스트는 공통 payload로 프레임을 검증하며 실제 알림·DM 업무 이벤트 생성까지 검증하지는 않습니다.
 
-현재 별도 테스트가 없는 항목은 다음과 같습니다.
-
-- `SseEvent` 생성자의 필수값 null 거부와 `data`의 null 허용
-- JSON 변환 실패 후 같은 연결로 다음 정상 이벤트를 실제 수신하는 동작
+`SseEvent` 생성자의 필수값 null 거부와 `data`의 null 허용은 별도 테스트가 없습니다.
 
 ## 동시성과 종료 테스트의 해석
 
