@@ -1,10 +1,13 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentCreateRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.review.repository.ReviewRepository;
+import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,6 +20,7 @@ import java.util.*;
 public class ContentService {
 
     private final ContentRepository contentRepository;
+    private final ReviewRepository reviewRepository;
     private final ContentMapper contentMapper;
 
     @Transactional
@@ -34,7 +38,37 @@ public class ContentService {
 
         Content savedContent = contentRepository.save(content);
 
-        return contentMapper.toDto(savedContent, 0.0, 0, 0);
+        return contentMapper.toDto(savedContent, 0.0, 0, 0L);
+    }
+
+    @Transactional
+    public ContentDto update(UUID id, ContentUpdateRequest request, MultipartFile file) {
+        Content content = contentRepository.findById(id)
+                .orElseThrow(() -> new ContentNotFoundException(Map.of("contentId", id)));
+
+        List<String> tags = request.tags() == null
+                ? null
+                : normalizeTags(request.tags());
+
+        // TODO: 이미지 업로드 구현 후 새 URL 적용
+        String thumbnailUrl = null;
+
+        content.update(
+                request.title(),
+                request.description(),
+                thumbnailUrl,
+                tags
+        );
+
+        double averageRating = reviewRepository.findAverageRatingByContentId(id);
+        int reviewCount = Math.toIntExact(reviewRepository.countByContentId(id));
+        long watcherCount = 0L; // TODO: 시청 세션 기능 연동
+
+        return contentMapper.toDto(
+                content,
+                averageRating,
+                reviewCount,
+                watcherCount);
     }
 
     // 태그 중복 검사
