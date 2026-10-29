@@ -1,11 +1,13 @@
 package com.codeit.sb13.playlist_for_everyone.domain.playlist.service.impl;
 
+import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistSearchRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.PlaylistResponse;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Playlist;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistContent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistSortBy;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistRepository;
@@ -15,9 +17,12 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.PlaylistSer
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
+import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListContentDuplicatedException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListForbiddenException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
+import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +41,7 @@ public class PlaylistServiceImpl implements PlaylistService {
   private final UserRepository userRepository;
   private final SubscriptionRepository subscriptionRepository;
   private final PlaylistContentRepository playlistContentRepository;
+  private final ContentRepository contentRepository;
 
   @Override
   @Transactional
@@ -147,7 +153,29 @@ public class PlaylistServiceImpl implements PlaylistService {
   @Override
   @Transactional
   public void addContent(UUID playlistId, UUID contentId, UUID requesterId) {
-    throw new UnsupportedOperationException();
+
+    Playlist playlist = playlistRepository.findById(playlistId)
+        .orElseThrow(() -> new PlayListNotFoundException(
+            Map.of("playlistId", playlistId)
+        ));
+
+    if(!playlist.isOwnedBy(requesterId)) {
+      throw  new PlayListForbiddenException(
+          Map.of("playlistId", playlistId, "requesterId", requesterId)
+      );
+    }
+
+    if(!contentRepository.existsById(contentId)) {
+      throw  new ContentNotFoundException(Map.of("contentId", contentId));
+    }
+
+    if (playlistContentRepository.existsByPlaylistIdAndContentId(playlistId, contentId)) {
+      throw new PlayListContentDuplicatedException(
+          Map.of("playlistId", playlistId, "contentId", contentId));
+    }
+
+    playlistContentRepository.save(new PlaylistContent(playlistId, contentId));
+    playlistRepository.touchUpdatedAt(playlistId, LocalDateTime.now());
   }
 
  //---------[헬퍼 메서드]
