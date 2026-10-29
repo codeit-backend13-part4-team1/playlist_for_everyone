@@ -8,6 +8,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -263,5 +264,43 @@ class InMemorySseEmitterRepositoryTest {
 
         Map<UUID, Map<Connection, SseEmitter>> result = repository.findAll();
         assertThat(result).isEmpty();
+    }
+
+    @Test
+    @DisplayName("이전 연결 삭제와 새 연결등록을 동시에 실행해도 새 연결은 유지된다.")
+    void concurrentDeleteAndSaveKeepsNewConnection() throws ExecutionException, InterruptedException, TimeoutException {
+        SseEmitterRepository repository = new InMemorySseEmitterRepository();
+        UUID userId = UUID.randomUUID();
+
+        Connection oldConnection = Connection.create();
+        Connection newConnection = Connection.create();
+        SseEmitter newEmitter = new SseEmitter();
+
+        repository.save(userId, oldConnection, new SseEmitter());
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        CyclicBarrier barrier = new CyclicBarrier(2);
+
+        try {
+            Future<Object> deleteFuture = executor.submit(() -> {
+                barrier.await(5, TimeUnit.SECONDS);
+                repository.delete(userId, oldConnection);
+                return null;
+            });
+
+            Future<?> saveFuture = executor.submit(() -> {
+                barrier.await(5, TimeUnit.SECONDS);
+                repository.save(userId, newConnection, newEmitter);
+                return null;
+            });
+
+            deleteFuture.get(5, TimeUnit.SECONDS);
+            saveFuture.get(5, TimeUnit.SECONDS);
+
+            assertThat(repository.findAllByUserId(userId))
+                    .containsExactlyEntriesOf(Map.of(newConnection, newEmitter));
+        } finally {
+            executor.shutdownNow();
+        }
     }
 }
