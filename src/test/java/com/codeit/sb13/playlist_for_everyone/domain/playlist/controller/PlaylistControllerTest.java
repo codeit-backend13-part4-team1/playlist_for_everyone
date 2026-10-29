@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.playlist.controller;
 
 import static org.mockito.BDDMockito.given;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistSearchRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistUpdateRequest;
@@ -9,6 +10,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.Playli
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistSortBy;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.PlaylistService;
+import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListForbiddenException;
@@ -27,9 +29,12 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import tools.jackson.databind.ObjectMapper;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -79,7 +84,7 @@ class PlaylistControllerTest {
 
     // when & then
     mockMvc.perform(post("/api/playlists")
-            .header("X-User-Id", ownerId.toString())
+            .with(loginAs(ownerId))
             .contentType(MediaType.APPLICATION_JSON)
             .content(objectMapper.writeValueAsString(request)))
         .andExpect(status().isCreated())
@@ -102,7 +107,7 @@ class PlaylistControllerTest {
 
     // when & then
     mockMvc.perform(post("/api/playlists")
-            .header("X-User-Id", ownerId.toString())
+            .with(loginAs(ownerId))
             .contentType(MediaType.APPLICATION_JSON)
             .content(objectMapper.writeValueAsString(request)))
         .andExpect(status().isBadRequest())
@@ -121,7 +126,7 @@ class PlaylistControllerTest {
 
     // when & then
     mockMvc.perform(post("/api/playlists")
-            .header("X-User-Id", ownerId.toString())
+            .with(loginAs(ownerId))
             .contentType(MediaType.APPLICATION_JSON)
             .content(objectMapper.writeValueAsString(request)))
         .andDo(print())
@@ -147,7 +152,7 @@ class PlaylistControllerTest {
 
     // when
     mockMvc.perform(post("/api/playlists")
-        .header("X-User-Id", ownerId.toString())
+        .with(loginAs(ownerId))
         .contentType(MediaType.APPLICATION_JSON)
         .content(objectMapper.writeValueAsString(request)));
 
@@ -171,7 +176,7 @@ class PlaylistControllerTest {
 
     // when & then
     mockMvc.perform(get("/api/playlists/{playlistId}", playlistId)
-            .header("X-User-Id", requesterId))
+        .with(loginAs(requesterId)))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.id").value(playlistId.toString()))
         .andExpect(jsonPath("$.title").value("title"))
@@ -198,7 +203,7 @@ class PlaylistControllerTest {
 
     // when & then
     mockMvc.perform(get("/api/playlists/{playlistId}", playlistId)
-        .header("X-User-Id", requesterId));
+        .with(loginAs(requesterId)));
     verify(playlistService).getPlaylist(playlistId, requesterId);
   }
 
@@ -213,7 +218,7 @@ class PlaylistControllerTest {
 
     // when & then
     mockMvc.perform(get("/api/playlists/{playlistId}", playlistId)
-        .header("X-User-Id", requesterId))
+            .with(loginAs(requesterId)))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.exceptionName").value("PlayListNotFoundException"))
         .andExpect(jsonPath("$.details.playlistId").value(playlistId.toString()));
@@ -227,23 +232,11 @@ class PlaylistControllerTest {
 
     // when & then
     mockMvc.perform(get("/api/playlists/{playlistId}", "not-a-uuid")
-        .header("X-User-Id", requesterId))
+            .with(loginAs(requesterId)))
         .andExpect(status().isBadRequest());
     verify(playlistService, never()).getPlaylist(any(), any());
   }
 
-  @Test
-  @DisplayName("요청 헤더에 요청한 User Id 누락")
-  void 헤더에_UserId_누락시_400으로_응답한다() throws Exception {
-    // given
-    UUID playlistId = UUID.randomUUID();
-
-    // when & then
-    mockMvc.perform(get("/api/playlists/{playlistId}", playlistId))
-        .andExpect(status().isBadRequest());
-    verify(playlistService, never()).getPlaylist(any(), any());
-
-  }
 
   @Test
   @DisplayName("올바른 요청에는 200과 커서 페이지 응답을 반환한다")
@@ -265,7 +258,7 @@ class PlaylistControllerTest {
 
     // when & then
     mockMvc.perform(get("/api/playlists")
-            .header("X-User-Id", requesterId.toString())
+            .with(loginAs(requesterId))
             .param("limit", "10")
             .param("sortBy", "updatedAt")
             .param("sortDirection", "DESCENDING"))
@@ -300,7 +293,7 @@ class PlaylistControllerTest {
 
     // when
     mockMvc.perform(get("/api/playlists")
-            .header("X-User-Id", requesterId.toString())
+            .with(loginAs(requesterId))
             .param("keywordLike", "rock")
             .param("ownerIdEqual", ownerId.toString())
             .param("subscriberIdEqual", subscriberId.toString())
@@ -315,18 +308,6 @@ class PlaylistControllerTest {
     verify(playlistService).getPlaylists(eq(expected), eq(requesterId));
   }
 
-  @Test
-  @DisplayName("X-User-Id 헤더가 없으면 400으로 응답한다")
-  void 목록_조회시_헤더가_없으면_400을_반환한다() throws Exception {
-    // when & then
-    mockMvc.perform(get("/api/playlists")
-            .param("limit", "10")
-            .param("sortBy", "updatedAt")
-            .param("sortDirection", "DESCENDING"))
-        .andExpect(status().isBadRequest());
-
-    verify(playlistService, never()).getPlaylists(any(), any());
-  }
 
   @ParameterizedTest
   @ValueSource(strings = {"limit", "sortBy", "sortDirection"})
@@ -387,7 +368,7 @@ class PlaylistControllerTest {
 
     // when & then
     mockMvc.perform(patch("/api/playlists/{playlistId}", playlistId)
-            .header("X-User-Id", requesterId.toString())
+            .with(loginAs(requesterId))
             .contentType(MediaType.APPLICATION_JSON)
             .content(objectMapper.writeValueAsString(body)))
         .andExpect(status().isOk())
@@ -472,7 +453,7 @@ class PlaylistControllerTest {
 
     // when & then
     mockMvc.perform(patch("/api/playlists/{playlistId}", "not-a-uuid")
-            .header("X-User-Id", requesterId.toString())
+            .with(loginAs(requesterId))
             .contentType(MediaType.APPLICATION_JSON)
             .content(objectMapper.writeValueAsString(Map.of("title", "새 제목"))))
         .andExpect(status().isBadRequest());
@@ -516,20 +497,6 @@ class PlaylistControllerTest {
         .andExpect(jsonPath("$.details.requesterId").value(requesterId.toString()));
   }
 
-  @Test
-  @DisplayName("X-User-Id 헤더가 없으면 400으로 응답한다")
-  void 수정_헤더에_UserId_누락시_400으로_응답한다() throws Exception {
-    // given
-    UUID playlistId = UUID.randomUUID();
-
-    // when & then
-    mockMvc.perform(patch("/api/playlists/{playlistId}", playlistId)
-            .contentType(MediaType.APPLICATION_JSON)
-            .content(objectMapper.writeValueAsString(Map.of("title", "새 제목"))))
-        .andExpect(status().isBadRequest());
-
-    verify(playlistService, never()).updatePlaylist(any(), any(), any());
-  }
 
   @Test
   @DisplayName("올바른 삭제 요청에는 200으로 응답하고 서비스에 경로변수와 헤더를 전달한다")
@@ -540,7 +507,7 @@ class PlaylistControllerTest {
 
     // when & then
     mockMvc.perform(delete("/api/playlists/{playlistId}", playlistId)
-            .header("X-User-Id", requesterId.toString()))
+            .with(loginAs(requesterId)))
         .andExpect(status().isOk());
 
     verify(playlistService).deletePlaylist(playlistId, requesterId);
@@ -554,7 +521,7 @@ class PlaylistControllerTest {
 
     // when & then
     mockMvc.perform(delete("/api/playlists/{playlistId}", "not-a-uuid")
-            .header("X-User-Id", requesterId.toString()))
+            .with(loginAs(requesterId)))
         .andExpect(status().isBadRequest());
 
     verify(playlistService, never()).deletePlaylist(any(), any());
@@ -571,7 +538,7 @@ class PlaylistControllerTest {
 
     // when & then
     mockMvc.perform(delete("/api/playlists/{playlistId}", playlistId)
-            .header("X-User-Id", requesterId.toString()))
+            .with(loginAs(requesterId)))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.exceptionName").value("PlayListNotFoundException"))
         .andExpect(jsonPath("$.details.playlistId").value(playlistId.toString()));
@@ -589,25 +556,13 @@ class PlaylistControllerTest {
 
     // when & then
     mockMvc.perform(delete("/api/playlists/{playlistId}", playlistId)
-            .header("X-User-Id", requesterId.toString()))
+            .with(loginAs(requesterId)))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.exceptionName").value("PlayListForbiddenException"))
         .andExpect(jsonPath("$.details.playlistId").value(playlistId.toString()))
         .andExpect(jsonPath("$.details.requesterId").value(requesterId.toString()));
   }
 
-  @Test
-  @DisplayName("X-User-Id 헤더가 없으면 400으로 응답한다")
-  void 삭제_헤더에_UserId_누락시_400으로_응답한다() throws Exception {
-    // given
-    UUID playlistId = UUID.randomUUID();
-
-    // when & then
-    mockMvc.perform(delete("/api/playlists/{playlistId}", playlistId))
-        .andExpect(status().isBadRequest());
-
-    verify(playlistService, never()).deletePlaylist(any(), any());
-  }
 
 
 
@@ -630,7 +585,7 @@ class PlaylistControllerTest {
 
   private MockHttpServletRequestBuilder requestWith(Map<String, String> params) {
     MockHttpServletRequestBuilder builder = get("/api/playlists")
-        .header("X-User-Id", UUID.randomUUID().toString());
+        .with(loginAs(UUID.randomUUID()));
     params.forEach(builder::param);
     return builder;
   }
@@ -638,9 +593,15 @@ class PlaylistControllerTest {
   private MockHttpServletRequestBuilder patchRequest(
       UUID playlistId, UUID requesterId, Object body) throws Exception {
     return patch("/api/playlists/{playlistId}", playlistId)
-        .header("X-User-Id", requesterId.toString())
+        .with(loginAs(requesterId))
         .contentType(MediaType.APPLICATION_JSON)
         .content(objectMapper.writeValueAsString(body));
+  }
+
+  private RequestPostProcessor loginAs(UUID userId) {
+    SecurityUser principal = new SecurityUser(userId, "tester@example.com", "", Role.USER, false);
+    return SecurityMockMvcRequestPostProcessors.authentication(
+        UsernamePasswordAuthenticationToken.authenticated(principal, null, principal.getAuthorities()));
   }
 
 }
