@@ -30,28 +30,31 @@ public class JwtTokenProvider {
     private final JwtParser jwtParser;
 
 
-    public JwtTokenProvider(SecretKey signingKey, Duration accessTokenValidity, Clock clock) {
-        this.signingKey =
-                Objects.requireNonNull(signingKey, "서명 키는 필수입니다.");
-        this.accessTokenValidity =
-                Objects.requireNonNull(accessTokenValidity, "Access Token 유효 시간은 필수 입니다.");
+    /**
+     * Access Token과 Refresh Token의 유효시간은 각각 전달받는다.
+     */
 
-        this.refreshTokenValidity = null;
-
-        this.clock =
-                Objects.requireNonNull(clock, "시간은 필수 입니다.");
+    public JwtTokenProvider(SecretKey signingKey, Duration accessTokenValidity, Duration refreshTokenValidity, Clock clock) {
+        this.signingKey = Objects.requireNonNull(signingKey, "서명 키는 필수입니다.");
+        this.accessTokenValidity = Objects.requireNonNull(accessTokenValidity, "Access Token 유효 시간은 필수입니다.");
+        this.refreshTokenValidity = Objects.requireNonNull(refreshTokenValidity, "Refresh Token 유효 시간은 필수입니다.");
+        this.clock = Objects.requireNonNull(clock, "시간은 필수입니다.");
 
         if (accessTokenValidity.isZero() || accessTokenValidity.isNegative()) {
-            throw new IllegalArgumentException(
-                    "Access Token 유효시간은 0보다 커야 합니다."
-            );
+            throw new IllegalArgumentException("Access Token 유효시간은 0보다 커야 합니다.");
         }
+
+        if (refreshTokenValidity.isZero() || refreshTokenValidity.isNegative()) {
+            throw new IllegalArgumentException("Refresh Token 유효시간은 0보다 커야 합니다.");
+        }
+
+        // 발급 검증에서 동일한 Clock을 사용한다.
+        // 테스트에서는 고정 시각, 서버에서는 현재 시각을 사용한다.
         this.jwtParser = Jwts.parser()
                 .verifyWith(signingKey)
                 .clock(() -> Date.from(this.clock.instant()))
                 .build();
     }
-
 
     /**
      * 사용자 ID와 고유 토큰 ID를 담은 Access Token을 발급한다.
@@ -121,43 +124,12 @@ public class JwtTokenProvider {
     }
 
     /**
-     * Access Token과 Refresh Token의 유효시간은 각각 전달받는다.
-     */
-
-    public JwtTokenProvider(SecretKey signingKey, Duration accessTokenValidity, Duration refreshTokenValidity, Clock clock) {
-        this.signingKey = Objects.requireNonNull(signingKey, "서명 키는 필수입니다.");
-        this.accessTokenValidity = Objects.requireNonNull(accessTokenValidity, "Access Token 유효 시간은 필수입니다.");
-        this.refreshTokenValidity = Objects.requireNonNull(refreshTokenValidity, "Refresh Token 유효 시간은 필수입니다.");
-        this.clock = Objects.requireNonNull(clock, "시간은 필수입니다.");
-
-        if (accessTokenValidity.isZero() || accessTokenValidity.isNegative()) {
-            throw new IllegalArgumentException("Access Token 유효시간은 0보다 커야 합니다.");
-        }
-
-        if (refreshTokenValidity.isZero() || refreshTokenValidity.isNegative()) {
-            throw new IllegalArgumentException("Refresh Token 유효시간은 0보다 커야 합니다.");
-        }
-
-        // 발급 검증에서 동일한 Clock을 사용한다.
-        // 테스트에서는 고정 시각, 서버에서는 현재 시각을 사용한다.
-        this.jwtParser = Jwts.parser()
-                .verifyWith(signingKey)
-                .clock(() -> Date.from(this.clock.instant()))
-                .build();
-    }
-
-    /**
      * 사용자 ID와 고유 jti를 포함하는 Refresh Token을 발급한다.
      *
      * Redis 저장과 쿠키 발급은 호출하는 쪽에서 처리한다.
      */
     public String createRefreshToken(UUID userId) {
         Objects.requireNonNull(userId, "사용자 ID는 필수입니다");
-
-        // 기존 3개 인자 생성자로 생성된 Provider의 잘못된 사용을 차단한다.
-        if (refreshTokenValidity == null) {
-            throw new IllegalStateException("Refresh Token 유효시간이 설정되지 않았습니다.");
-        }
 
         Instant now = clock.instant();
         Instant expiration = now.plus(refreshTokenValidity);

@@ -47,3 +47,5 @@ everyone:
   jwt:
     secret-key: ${JWT_SECRET_KEY}
     access-token-validity: ${JWT_ACCESS_TOKEN_VALIDITY:15m}
+    # 기본값은 7일이며 환경 변수로 변경할 수 있다.
+    refresh-token-validity: ${JWT_REFRESH_TOKEN_VALIDITY:7d}
