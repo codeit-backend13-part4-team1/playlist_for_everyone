@@ -39,6 +39,24 @@ public class ContentUpdateRequestTest {
     }
 
     @Test
+    @DisplayName("제목과 설명이 null이면 검증에 성공한다.")
+    void validNullFields() {
+        // given
+        ContentUpdateRequest request = new ContentUpdateRequest(
+                null,
+                null,
+                List.of("드라마", "로맨스")
+        );
+
+        // when
+        Set<ConstraintViolation<ContentUpdateRequest>> violations =
+                validator.validate(request);
+
+        // then
+        assertThat(violations).isEmpty();
+    }
+
+    @Test
     @DisplayName("제목이 비어 있으면 검증에 실패한다.")
     void invalidTitle() {
         // given
