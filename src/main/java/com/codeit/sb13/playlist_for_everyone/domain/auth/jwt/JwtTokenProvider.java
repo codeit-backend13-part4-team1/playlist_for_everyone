@@ -27,8 +27,6 @@ public class JwtTokenProvider {
     private final JwtParser jwtParser;
 
 
-
-
     public JwtTokenProvider(SecretKey signingKey, Duration accessTokenValidity, Clock clock) {
         this.signingKey =
                 Objects.requireNonNull(signingKey, "서명 키는 필수입니다.");
@@ -47,7 +45,6 @@ public class JwtTokenProvider {
                 .clock(() -> Date.from(this.clock.instant()))
                 .build();
     }
-
 
 
     /**
@@ -72,7 +69,6 @@ public class JwtTokenProvider {
                 .signWith(signingKey, Jwts.SIG.HS256)
                 .compact();
     }
-
 
     /**
      * 서명, 만료 시각, 토큰 종류와 사용자 ID를 검증한다.
@@ -117,5 +113,31 @@ public class JwtTokenProvider {
                     exception
             );
         }
+    }
+
+    /**
+     * Refresh Token 유효기간까지 전달받는 생성자
+     *
+     * RED 단계에서는 기존 초기화만 수행한다.
+     * GREEN 단계에서 Refresh Token 유효기간 저장과 검증을 구현한다.
+     */
+
+    public JwtTokenProvider(SecretKey signingKey, Duration accessTokenValidity, Duration refreshTokenValidity, Clock clock) {
+        this(signingKey, accessTokenValidity, clock);
+    }
+
+    /**
+     * 사용자 ID와 고유 jti를 포함하는 Refresh Token을 발급한다.
+     */
+    public String createRefreshToken(UUID userId) {
+        throw new UnsupportedOperationException("Refresh Token 발급 미구현");
+    }
+
+    /**
+     * Refresh Token을 검증한 후 사용자 ID를 반환한다.
+     */
+
+    public UUID parseRefreshToken(String token) {
+        throw new UnsupportedOperationException("Refresh Token 검증 미구현");
     }
 }
