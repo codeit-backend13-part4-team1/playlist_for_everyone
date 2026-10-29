@@ -380,6 +380,38 @@ CI는 성공한 빌드의 JaCoCo XML에서 전체 LINE 수치로 SVG 배지를 �
 
 알림 통합 테스트는 PostgreSQL에서 테스트 프로필의 애플리케이션 컨텍스트 기동과 Flyway 마이그레이션을 확인합니다. 실제 Redis 연결과 캐시·세션 동작, Swagger 접속 및 커서 목록 API의 응답은 해당 결과에 포함되지 않습니다. 최신 결과와 수치는 각자의 코드에서 명령을 실행해 보고서로 확인합니다.
 
+### TMDB API 연동
+
+TMDB API 설정에서 발급받은 API Read Access Token을 사용합니다.
+
+IntelliJ의 애플리케이션 실행 설정 → 환경 변수에 다음 값을 추가합니다.
+
+- 이름: `EVERYONE_TMDB_ACCESS_TOKEN`
+- 값: 발급받은 토큰
+
+실제 토큰과 토큰이 포함된 실행 설정 파일은 커밋하지 않습니다.
+
+현재 영화·TV 인기 목록을 페이지별로 조회할 수 있습니다.
+연결 제한 시간은 기본 3초, 읽기 제한 시간은 기본 10초입니다.
+
+#### 자동 테스트
+
+실제 토큰 없이 실행할 수 있습니다.
+
+```bash
+./gradlew test --tests '*TmdbClientTest' --tests '*TmdbClientTimeoutTest'
+```
+
+#### 실제 API 연결 확인
+
+IntelliJ에서 `TmdbClientLiveTest`의 실행 설정에
+`EVERYONE_TMDB_ACCESS_TOKEN`을 추가한 뒤 실행합니다.
+
+실제 TMDB에 접속하므로 인터넷 연결과 유효한 토큰이 필요합니다.
+해당 환경 변수가 없으면 이 테스트는 건너뜁니다.
+토큰은 수동 확인용 테스트 실행 설정에만 추가하고,
+일반 자동 테스트와 CI에는 설정하지 않습니다.
+
 ## 협업과 후속 작업
 
 기능 작업에는 [이슈 템플릿](../.github/ISSUE_TEMPLATE/feature.md)을, 변경 공유에는 [PR 템플릿](../.github/PULL_REQUEST_TEMPLATE.md)을 사용합니다. PR에는 변경 이유, 실행한 테스트와 결과, 후속 작업을 기록합니다. 공통 응답이나 설정을 변경하면 관련 테스트와 이 문서도 함께 확인합니다.
