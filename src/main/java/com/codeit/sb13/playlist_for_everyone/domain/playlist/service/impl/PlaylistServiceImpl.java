@@ -19,6 +19,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserReposito
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListContentDuplicatedException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListContentNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListForbiddenException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
@@ -181,7 +182,22 @@ public class PlaylistServiceImpl implements PlaylistService {
   @Override
   @Transactional
   public void removeContent(UUID playlistId, UUID contentId, UUID requesterId) {
-    throw new UnsupportedOperationException();
+    Playlist playlist = playlistRepository.findById(playlistId)
+        .orElseThrow(() -> new PlayListNotFoundException(
+            Map.of("playlistId", playlistId)));
+
+    if (!playlist.isOwnedBy(requesterId)) {
+      throw new PlayListForbiddenException(
+          Map.of("playlistId", playlistId, "requesterId", requesterId));
+    }
+
+    int deleted = playlistContentRepository.deleteByPlaylistIdAndContentId(playlistId, contentId);
+    if (deleted == 0) {
+      throw new PlayListContentNotFoundException(
+          Map.of("playlistId", playlistId, "contentId", contentId));
+    }
+
+    playlistRepository.touchUpdatedAt(playlistId, LocalDateTime.now());
   }
 
 
