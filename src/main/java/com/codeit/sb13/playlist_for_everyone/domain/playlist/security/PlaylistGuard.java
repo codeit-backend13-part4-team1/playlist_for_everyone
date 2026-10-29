@@ -12,6 +12,8 @@ public class PlaylistGuard {
   private final PlaylistRepository playlistRepository;
 
   public boolean canModify(UUID playlistId, UUID requesterId) {
-    return false;
+    return playlistRepository.findById(playlistId)
+        .map(playlist -> playlist.isOwnedBy(requesterId))
+        .orElse(true);
   }
 }
