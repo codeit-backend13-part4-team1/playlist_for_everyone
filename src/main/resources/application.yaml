@@ -55,5 +55,7 @@ everyone:
     read-timeout: 10s
 
   sse:
+    # 하트비트 작업이 완료된 뒤 다음 실행까지 대기하는 시간. 주석 프레임에는 이벤트 ID를 넣지 않는다.
     heartbeat-interval: ${EVERYONE_SSE_HEARTBEAT_INTERVAL:15s}
+    # 개별 SSE 비동기 요청의 제한 시간. 하트비트 주기와 별개이며, 종료 후 클라이언트가 재연결한다.
     connection-timeout: ${EVERYONE_SSE_CONNECTION_TIMEOUT:30m}

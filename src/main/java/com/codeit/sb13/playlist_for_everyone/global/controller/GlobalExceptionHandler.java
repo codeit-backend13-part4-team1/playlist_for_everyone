@@ -67,6 +67,8 @@ public class GlobalExceptionHandler {
                 e.getClass().getSimpleName(),
                 e.getMessage());
 
+        // SSE 요청은 Accept가 text/event-stream이어도, 스트림 시작 전 입력 오류는 공통 JSON으로 응답한다.
+        // 예: lastEventId의 UUID 변환 실패. 이 설정이 이미 열린 스트림을 JSON 응답으로 바꾸는 것은 아니다.
         return ResponseEntity.status(apiErrorCode.getStatus())
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(new ApiErrorResponse(e.getClass().getSimpleName(), apiErrorCode.getMessage(), Map.of()));

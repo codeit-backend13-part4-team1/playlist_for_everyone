@@ -39,6 +39,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtTokenProvider jwtTokenProvider;
     private final UserService userService;
     private final AuthenticationEntryPoint authenticationEntryPoint;
+    // 인증 정보를 이 객체 내부가 아닌 HttpServletRequest의 속성에 저장한다.
+    // 기본 속성 이름을 사용하므로 보안 필터 체인의 요청 속성 저장소도 같은 값을 읽을 수 있다.
+    // 저장 범위는 동일 HTTP 요청이며, HTTP 세션이나 Redis에 사용자 인증을 보관하는 설정이 아니다.
     private final SecurityContextRepository securityContextRepository = new RequestAttributeSecurityContextRepository();
 
     public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider, UserService userService, AuthenticationEntryPoint authenticationEntryPoint) {
@@ -80,7 +83,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
                 context.setAuthentication(authentication);
                 SecurityContextHolder.setContext(context);
-                // 같은 HTTP 요청의 비동기 재처리에서 인증 정보를 복원하도록 저장한다.
+                // SecurityContextHolder는 현재 실행 스레드의 인증을 제공한다.
+                // SSE complete 등의 종료 과정에서는 같은 HTTP 요청이 다른 스레드에서 ASYNC 재처리될 수 있다.
+                // 이 필터는 기본적으로 ASYNC에서 토큰을 다시 검사하지 않으므로, 보안 필터가 요청 속성에서
+                // 인증을 복원할 수 있도록 명시적으로 저장한다. 별도 @Async 작업에 인증을 전달하는 기능은 아니다.
+                // 재연결은 새 HTTP 요청이므로 JWT를 다시 검증하며, 다른 인스턴스로 이 상태를 공유하지 않는다.
                 securityContextRepository.saveContext(context, request, response);
             }
         } catch (JwtException | UserNotFoundException exception) {
