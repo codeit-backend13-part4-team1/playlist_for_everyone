@@ -10,6 +10,8 @@ import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -37,7 +39,8 @@ public class SecurityConfig {
                                                    JwtTokenProvider jwtTokenProvider,
                                                    UserService userService,
                                                    AuthenticationManager authenticationManager,
-                                                   ObjectMapper objectMapper) throws Exception{
+                                                   ObjectMapper objectMapper,
+                                                   Environment environment) throws Exception{
 
         // 인증 정보가 없거나 JWT 검증에 실패한 경우의 응답이다.
         // 로그인 시 이메일·비밀번호 검증 실패는 기존 로그인 실패 핸들러가 담당한다.
@@ -80,6 +83,10 @@ public class SecurityConfig {
 
         JwtAuthenticationFailureHandler failureHandler =
                 new JwtAuthenticationFailureHandler(objectMapper);
+        // 개발 환경에서만 Swagger 문서를 인증 없이 허용한다.
+        // prod가 함께 활성화된 겨우에는 공개하지 않는다.
+        boolean allowSwagger =
+                environment.acceptsProfiles(Profiles.of("dev & !prod"));
 
         return http
                 .authenticationManager(authenticationManager)
@@ -95,14 +102,42 @@ public class SecurityConfig {
                 .exceptionHandling(exception -> exception.authenticationEntryPoint(authenticationEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler)
                 )
-                .authorizeHttpRequests(auth -> auth.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
-                        // 회원가입 로그인 요청은 인증 없이 접근할 수 있다.
-                        .requestMatchers(HttpMethod.POST, "/api/users", "/api/auth/sign-in").permitAll()
-                        // 사용자 목록 조회는 관리자만 접근할 수 있다. hasRole("ADMIN")은 ROLE_ADMIN 권한을 검사한다.
-                        .requestMatchers(HttpMethod.GET, "/api/users").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.GET, "/", "/index.html", "/assets/**", "/favicon.svg").permitAll()
-                        .anyRequest().authenticated()
-                )
+                .authorizeHttpRequests(auth -> {
+                    auth.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll();
+                    if (allowSwagger) {
+                        // 문서 조회 경로만 허용한다.
+                        // Swagger에서 실제 API를 호출할 때는 기존 JWT 인증이 필요하다.
+                        auth.requestMatchers(
+                                HttpMethod.GET,
+                                "/swagger-ui.html",
+                                "/swagger-ui/**",
+                                "/v3/api-docs",
+                                "/v3/api-docs/**"
+                        ).permitAll();
+                    }
+                    auth
+                            // 회원가입과 로그인은 인증 없이 접근할 수 있다.
+                            .requestMatchers(
+                                    HttpMethod.POST,
+                                    "/api/users",
+                                    "/api/auth/sign-in"
+                            ).permitAll()
+
+                            // 사용자 목록 조회는 관리자 권한이 필요하다.
+                            .requestMatchers(HttpMethod.GET, "/api/users")
+                            .hasRole("ADMIN")
+
+                            // 로그인 전 프론트 페이지를 표시하기 위한 경로다.
+                            .requestMatchers(
+                                    HttpMethod.GET,
+                                    "/",
+                                    "/index.html",
+                                    "/assets/**",
+                                    "/favicon.svg"
+                            ).permitAll()
+
+                            .anyRequest().authenticated();
+                })
                 .formLogin(formLogin -> formLogin
                         .loginProcessingUrl("/api/auth/sign-in")
                         .usernameParameter("username")

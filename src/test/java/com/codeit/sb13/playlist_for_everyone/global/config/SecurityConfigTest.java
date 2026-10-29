@@ -11,6 +11,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import io.jsonwebtoken.JwtException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -20,6 +22,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
@@ -49,6 +52,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         SecurityConfigTest.SecurityTestController.class
 })
 @DisplayName("SecurityFilterChain 연결")
+@ActiveProfiles("test")
 class SecurityConfigTest {
 
     private static final UUID USER_ID =
@@ -230,6 +234,22 @@ class SecurityConfigTest {
         given(userService.getById(USER_ID))
                 .willReturn(user);
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/swagger-ui.html",
+            "/swagger-ui/index.html",
+            "/v3/api-docs",
+            "/v3/api-docs/swagger-config"
+    })
+    @DisplayName("dev가 아닌 환경에서 문서 경로를 비로그인 사용자에게 공개하지 않는다.")
+    void 개발_환경_외에서는_문서_접근에_인증이_필요하다(String path) throws Exception {
+        mockMvc.perform(get(path))
+                .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(jwtTokenProvider, userService);
+    }
+
 
     /**
      *  보안 설정을 검증하기 위한 테스트 전용 Controller.
