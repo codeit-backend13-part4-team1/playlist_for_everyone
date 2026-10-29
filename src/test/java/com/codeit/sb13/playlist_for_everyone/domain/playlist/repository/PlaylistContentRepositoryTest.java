@@ -14,6 +14,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
 
 @DataJpaTest
 @Import({JpaAuditingConfig.class, QueryDslConfig.class})
@@ -93,4 +95,80 @@ class PlaylistContentRepositoryTest {
     assertThat(deleted).isZero();
   }
 
+  @Test
+  @DisplayName("플레이 리스트에 담긴 콘텐츠면 true를 반환한다.")
+  void 담긴_콘텐츠면_true를_반환한다() {
+    // given
+    UUID playlistId = UUID.randomUUID();
+    UUID contentId = UUID.randomUUID();
+    playlistContentRepository.saveAndFlush(new PlaylistContent(playlistId, contentId));
+
+    // when
+    boolean exists = playlistContentRepository.existsByPlaylistIdAndContentId(
+        playlistId, contentId);
+
+    // then
+    assertThat(exists).isTrue();
+
+  }
+
+  @Test
+  @DisplayName("다른 콘텐츠거나, 다른 플레이리스면 false를 반환한다.")
+  void 담기지_않은_콘텐츠면_false를_반환한다() {
+    // given
+    UUID playlistId = UUID.randomUUID();
+    UUID contentId = UUID.randomUUID();
+    playlistContentRepository.saveAndFlush(new PlaylistContent(playlistId, contentId));
+
+    // when & then
+   assertThat(playlistContentRepository.existsByPlaylistIdAndContentId(
+       playlistId, UUID.randomUUID())).isFalse();
+    assertThat(playlistContentRepository.existsByPlaylistIdAndContentId(
+        UUID.randomUUID(), contentId)).isFalse();
+  }
+
+  @Test
+  @DisplayName("플레이리스트와 콘텐츠로 연결 하나만 삭제하고 1을 반환한다")
+  void 플레이리스트와_콘텐츠로_연결_하나만_삭제한다() {
+    // given
+    UUID playlistId = UUID.randomUUID();
+    UUID otherPlaylistId = UUID.randomUUID();
+    UUID contentId = UUID.randomUUID();
+    UUID otherContentId = UUID.randomUUID();
+    playlistContentRepository.saveAndFlush(new PlaylistContent(playlistId, contentId));
+    PlaylistContent sameListOtherContent = playlistContentRepository.saveAndFlush(
+        new PlaylistContent(playlistId, otherContentId));
+    PlaylistContent otherListSameContent = playlistContentRepository.saveAndFlush(
+        new PlaylistContent(otherPlaylistId, contentId));
+
+    // when
+    int deleted = playlistContentRepository.deleteByPlaylistIdAndContentId(
+        playlistId, contentId);
+
+    // then
+    assertThat(deleted).isEqualTo(1);
+    assertThat(playlistContentRepository.findAll())
+        .extracting(PlaylistContent::getId)
+        .containsExactlyInAnyOrder(
+            sameListOtherContent.getId(), otherListSameContent.getId());
+  }
+
+  @Test
+  @DisplayName("삭제할 연결이 없으면 0을 반환하고 기존 연결은 그대로 둔다")
+  void 삭제할_연결이_없으면_0을_반환하고_그대로_둔다() {
+    // given
+    UUID playlistId = UUID.randomUUID();
+    PlaylistContent existing = playlistContentRepository.saveAndFlush(
+        new PlaylistContent(playlistId, UUID.randomUUID()));
+
+    // when
+    int deleted = playlistContentRepository.deleteByPlaylistIdAndContentId(
+        playlistId, UUID.randomUUID());
+
+    // then
+    assertThat(deleted).isZero();
+    assertThat(playlistContentRepository.findAll())
+        .extracting(PlaylistContent::getId)
+        .containsExactly(existing.getId());
+  }
 }

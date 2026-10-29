@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;
 import org.springframework.validation.ObjectError;
@@ -67,6 +68,14 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity.status(apiErrorCode.getStatus())
                 .body(new ApiErrorResponse(e.getClass().getSimpleName(), apiErrorCode.getMessage(), Map.of()));
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ApiErrorResponse> handleAccessDenied(AccessDeniedException e) {
+        log.warn("접근 권한이 없습니다. message={}", e.getMessage());
+
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+            .body(new ApiErrorResponse(e.getClass().getSimpleName(), "접근 권한이 없습니다.", Map.of()));
     }
 
     @ExceptionHandler(Exception.class)

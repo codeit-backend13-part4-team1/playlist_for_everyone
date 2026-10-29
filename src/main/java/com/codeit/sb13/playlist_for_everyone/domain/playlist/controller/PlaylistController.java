@@ -74,4 +74,22 @@ public class PlaylistController {
     return ResponseEntity.ok().build();
   }
 
+  @PostMapping("/{playlistId}/contents/{contentId}")
+  public ResponseEntity<Void> addContent(
+      @PathVariable UUID playlistId,
+      @PathVariable UUID contentId,
+      @AuthenticationPrincipal SecurityUser principal) {
+    playlistService.addContent(playlistId, contentId, principal.getUserId());
+    return ResponseEntity.ok().build();
+  }
+
+  @DeleteMapping("/{playlistId}/contents/{contentId}")
+  public ResponseEntity<Void> removeContent(
+      @PathVariable UUID playlistId,
+      @PathVariable UUID contentId,
+      @AuthenticationPrincipal SecurityUser principal) {
+    playlistService.removeContent(playlistId, contentId, principal.getUserId());
+    return ResponseEntity.ok().build();
+  }
+
 }
