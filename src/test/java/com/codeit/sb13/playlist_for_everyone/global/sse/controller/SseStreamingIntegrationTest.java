@@ -6,8 +6,10 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.config.SecurityConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.SseConfig;
+import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Event;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
+import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.impl.InMemorySseEmitterRepository;
 import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseConnectionService;
 import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseDeliveryService;
@@ -33,6 +35,7 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.annotation.DirtiesContext.ClassMode;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.BufferedReader;
@@ -45,6 +48,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.BDDMockito.given;
 
 /**
@@ -92,6 +96,9 @@ public class SseStreamingIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private SseEmitterRepository sseEmitterRepository;
 
     @MockitoBean
     private JwtTokenProvider jwtTokenProvider;
@@ -224,4 +231,55 @@ public class SseStreamingIntegrationTest {
         given(userService.getById(userId)).willReturn(user);
     }
 
+    @Test
+    @DisplayName("이벤트의 JSON 변환에 실패해도 기존 SSE 연결을 유지한다.")
+    void serializationFailureKeepsConnection() throws IOException {
+        UUID userId = UUID.randomUUID();
+        String token = "sse-test-token";
+
+        prepareAuthenticatedUser(userId, token);
+        HttpURLConnection connection = createSseConnection(token);
+        SseEmitter registeredEmitter = null;
+
+        try {
+            assertThat(connection.getResponseCode()).isEqualTo(200);
+
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))){
+                assertThat(reader.readLine()).isEqualTo(":connected");
+                assertThat(reader.readLine()).isEmpty();
+
+                Map<Connection, SseEmitter> connections = sseEmitterRepository.findAllByUserId(userId);
+                assertThat(connections).hasSize(1);
+                registeredEmitter = connections.values().iterator().next();
+
+                SseEvent<SerializationFailingPayload> event = new SseEvent<>(
+                        UUID.randomUUID(),
+                        userId,
+                        Event.NOTIFICATIONS.getName(),
+                        new SerializationFailingPayload()
+                );
+
+                assertThatCode(()-> sseDeliveryService.sendToLocalConnections(event))
+                        .doesNotThrowAnyException();
+
+                assertThat(sseEmitterRepository.findAllByUserId(userId).values())
+                        .containsExactly(registeredEmitter);
+            }
+        } finally {
+            try {
+                if (registeredEmitter != null){
+                    registeredEmitter.complete();
+                }
+            }finally {
+                connection.disconnect();
+            }
+        }
+    }
+
+
+    public static class SerializationFailingPayload{
+        public String getMessage(){
+            throw new IllegalStateException("테스트용 JSON 변환 실패");
+        }
+    }
 }
