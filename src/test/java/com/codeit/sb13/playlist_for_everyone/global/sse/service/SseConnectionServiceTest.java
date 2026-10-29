@@ -16,12 +16,12 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -398,5 +398,46 @@ class SseConnectionServiceTest {
 
         verify(emitter).complete();;
         verify(repository).delete(userId, connection);
+    }
+
+    @Test
+    @DisplayName("한 연결의 종료가 실패해도 해당 연결을 삭제하고 나머지 사용자 연결의 정리를 계속한다.")
+    void closeAllContinuesCleanupWhenCompletionFails(){
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+
+        Connection failedConnection = Connection.create();
+        Connection sameUserConnection = Connection.create();
+        Connection otherUserConnection = Connection.create();
+
+        SseEmitter failedEmitter = mock(SseEmitter.class);
+        SseEmitter sameUserEmitter = mock(SseEmitter.class);
+        SseEmitter otherUserEmitter = mock(SseEmitter.class);
+
+        Map<Connection, SseEmitter> firstUserConnections = new LinkedHashMap<>();
+
+        firstUserConnections.put(failedConnection, failedEmitter);
+        firstUserConnections.put(sameUserConnection, sameUserEmitter);
+
+        Map<UUID, Map<Connection, SseEmitter>> connections = new LinkedHashMap<>();
+        connections.put(firstUserId, firstUserConnections);
+        connections.put(secondUserId, Map.of(otherUserConnection, otherUserEmitter));
+
+        when(repository.findAll()).thenReturn(connections);
+        doThrow(new IllegalStateException("연결 종료 실패"))
+                .when(failedEmitter).complete();
+
+        assertThatCode(()-> service.closeAllLocalConnections())
+                .doesNotThrowAnyException();
+
+        verify(failedEmitter).complete();
+        verify(sameUserEmitter).complete();
+        verify(otherUserEmitter).complete();
+
+        verify(repository).delete(firstUserId, failedConnection);
+        verify(repository).delete(firstUserId, sameUserConnection);
+        verify(repository).delete(secondUserId, otherUserConnection);
+        verify(repository, times(3)).delete(any(), any());
+
     }
 }

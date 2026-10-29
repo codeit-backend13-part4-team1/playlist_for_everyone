@@ -45,6 +45,17 @@ public class SseConnectionService {
     }
 
     public void closeAllLocalConnections(){
-
+        sseEmitterRepository.findAll()
+                .forEach((userId , connections )->{
+                    connections.forEach((connection, emitter)->{
+                        try {
+                            emitter.complete();
+                        }catch (RuntimeException e){
+                            log.warn("SSE 연결 종료에 실패했습니다. userId={}, connectionId={}", userId, connection.id(),e);
+                        }finally {
+                            sseEmitterRepository.delete(userId, connection);
+                        }
+                    });
+                });
     }
 }
