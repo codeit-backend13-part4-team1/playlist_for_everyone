@@ -16,4 +16,21 @@ public record SseProperties(
         Duration heartbeatInterval,
         Duration connectionTimeout
 ) {
+    public SseProperties {
+        if (isInvalidDuration(heartbeatInterval)){
+            throw new IllegalArgumentException("everyone.sse.heartbeat-interval은 0보다 커야 합니다.");
+        }
+        if (isInvalidDuration(connectionTimeout, 1)){
+            throw new IllegalArgumentException("everyone.sse.connection-timeout은 1ms 이상이어야 합니다.");
+        }
+    }
+
+    private boolean isInvalidDuration(Duration value){
+        return value == null || value.isZero() || value.isNegative();
+    }
+
+    private boolean isInvalidDuration(Duration value, int millis){
+        return value == null  || value.compareTo(Duration.ofMillis(millis)) < 0 ;
+    }
+
 }
