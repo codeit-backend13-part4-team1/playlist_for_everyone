@@ -19,6 +19,8 @@ import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
+import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
@@ -37,6 +39,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtTokenProvider jwtTokenProvider;
     private final UserService userService;
     private final AuthenticationEntryPoint authenticationEntryPoint;
+    private final SecurityContextRepository securityContextRepository = new RequestAttributeSecurityContextRepository();
 
     public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider, UserService userService, AuthenticationEntryPoint authenticationEntryPoint) {
         this.jwtTokenProvider = jwtTokenProvider;
@@ -77,6 +80,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
                 context.setAuthentication(authentication);
                 SecurityContextHolder.setContext(context);
+                // 같은 HTTP 요청의 비동기 재처리에서 인증 정보를 복원하도록 저장한다.
+                securityContextRepository.saveContext(context, request, response);
             }
         } catch (JwtException | UserNotFoundException exception) {
             // 토큰 오류와 토큰에 해당하는 사용자의 미존재는 인증 실패로 처리한다.
