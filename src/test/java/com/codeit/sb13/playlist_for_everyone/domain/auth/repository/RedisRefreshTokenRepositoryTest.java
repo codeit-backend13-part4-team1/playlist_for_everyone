@@ -1,7 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.auth.repository;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.impl.RedisRefreshTokenRepository;
-import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -52,6 +51,8 @@ class RedisRefreshTokenRepositoryTest {
         );
         connectionFactory.afterPropertiesSet();
 
+        redisTemplate = new StringRedisTemplate(connectionFactory);
+
         // 검증 대상은 실제 Redis 구현체다.
         repository = new RedisRefreshTokenRepository(redisTemplate);
 
@@ -89,8 +90,7 @@ class RedisRefreshTokenRepositoryTest {
     void 같은_사용자의_토큰을_각각_구분한다() {
         String anotherToken = "test-another-token-" + UUID.randomUUID();
 
-        repository.save(userId, anotherToken, Duration.ofMinutes(10));
-
+        repository.save(userId, refreshToken, Duration.ofMinutes(10));
         repository.save(userId, anotherToken, Duration.ofMinutes(10));
 
         // 한 토큰의 삭제가 다른 토큰까지 삭제하면 안된다.
@@ -133,8 +133,7 @@ class RedisRefreshTokenRepositoryTest {
                 .isEqualTo(userId.toString());
 
         Long remainingMillis =
-                redisTemplate.getExpire(key, TimeUnit.MICROSECONDS);
-
+                redisTemplate.getExpire(key, TimeUnit.MILLISECONDS);
         // 만료 설정이 없다면 -1, 키가 없으면 -2가 반환된다.
         // 저장 후 시간이 흐르므로 최조 TTL과 정확히 같을 필요는 없다.
         assertThat(remainingMillis).isNotNull();
