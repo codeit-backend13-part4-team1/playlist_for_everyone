@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.controller;
 
+import com.codeit.sb13.playlist_for_everyone.domain.content.controller.swagger.ContentApi;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
@@ -19,10 +20,11 @@ import java.util.UUID;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/contents")
-public class ContentController {
+public class ContentController implements ContentApi {
 
     private final ContentService contentService;
 
+    @Override
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     // TODO: JWT 인증 연동 후 관리자 권한 검증 적용
     // @PreAuthorize("hasRole('ADMIN')")
@@ -34,6 +36,7 @@ public class ContentController {
                 .body(contentService.create(request, file));
     }
 
+    @Override
     @PatchMapping(
             value = "/{contentId}",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE
