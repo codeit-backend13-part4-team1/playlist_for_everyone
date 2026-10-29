@@ -101,26 +101,9 @@ public class SseStreamingIntegrationTest {
         UUID userId = UUID.randomUUID();
         String token = "sse-test-token";
 
-        User user = Mockito.mock(User.class);
+        prepareAuthenticatedUser(userId, token);
 
-        given(user.getId()).willReturn(userId);
-        given(user.getEmail()).willReturn("sse-test@example.com");
-        given(user.getRole()).willReturn(Role.USER);
-        given(user.isLocked()).willReturn(false);
-
-        given(jwtTokenProvider.parseAccessToken(token)).willReturn(userId);
-        given(userService.getById(userId)).willReturn(user);
-
-        HttpURLConnection connection = (HttpURLConnection) URI.create("http://localhost:" + port + "/api/sse")
-                .toURL()
-                .openConnection();
-
-        connection.setRequestMethod("GET");
-        connection.setRequestProperty(HttpHeaders.AUTHORIZATION, "Bearer " + token);
-        connection.setRequestProperty(HttpHeaders.ACCEPT, MediaType.TEXT_EVENT_STREAM_VALUE);
-        connection.setConnectTimeout(5_000);
-        connection.setReadTimeout(5_000);
-        connection.setInstanceFollowRedirects(false);
+        HttpURLConnection connection = createSseConnection(token);
 
         try {
             assertThat(connection.getResponseCode()).isEqualTo(200);
@@ -140,7 +123,6 @@ public class SseStreamingIntegrationTest {
         }
     }
 
-
     @ParameterizedTest(name = "{0} 이벤트는 {1} 이름으로 전달된다.")
     @CsvSource({
             "NOTIFICATIONS, notifications",
@@ -151,26 +133,9 @@ public class SseStreamingIntegrationTest {
         UUID userId = UUID.randomUUID();
         String token = "sse-test-token";
 
-        User user = Mockito.mock(User.class);
+        prepareAuthenticatedUser(userId, token);
 
-        given(user.getId()).willReturn(userId);
-        given(user.getEmail()).willReturn("sse-test@example.com");
-        given(user.getRole()).willReturn(Role.USER);
-        given(user.isLocked()).willReturn(false);
-
-        given(jwtTokenProvider.parseAccessToken(token)).willReturn(userId);
-        given(userService.getById(userId)).willReturn(user);
-
-        HttpURLConnection connection = (HttpURLConnection) URI.create("http://localhost:" + port + "/api/sse")
-                .toURL()
-                .openConnection();
-
-        connection.setRequestMethod("GET");
-        connection.setRequestProperty(HttpHeaders.AUTHORIZATION, "Bearer " + token);
-        connection.setRequestProperty(HttpHeaders.ACCEPT, MediaType.TEXT_EVENT_STREAM_VALUE);
-        connection.setConnectTimeout(5_000);
-        connection.setReadTimeout(5_000);
-        connection.setInstanceFollowRedirects(false);
+        HttpURLConnection connection = createSseConnection(token);
 
         try {
             assertThat(connection.getResponseCode()).isEqualTo(200);
@@ -209,6 +174,32 @@ public class SseStreamingIntegrationTest {
                 connection.disconnect();
             }
         }
+    }
+
+    private HttpURLConnection createSseConnection(String token) throws IOException {
+        HttpURLConnection connection = (HttpURLConnection) URI.create("http://localhost:" + port + "/api/sse")
+                .toURL()
+                .openConnection();
+
+        connection.setRequestMethod("GET");
+        connection.setRequestProperty(HttpHeaders.AUTHORIZATION, "Bearer " + token);
+        connection.setRequestProperty(HttpHeaders.ACCEPT, MediaType.TEXT_EVENT_STREAM_VALUE);
+        connection.setConnectTimeout(5_000);
+        connection.setReadTimeout(5_000);
+        connection.setInstanceFollowRedirects(false);
+        return connection;
+    }
+
+    private void prepareAuthenticatedUser(UUID userId, String token) {
+        User user = Mockito.mock(User.class);
+
+        given(user.getId()).willReturn(userId);
+        given(user.getEmail()).willReturn("sse-test@example.com");
+        given(user.getRole()).willReturn(Role.USER);
+        given(user.isLocked()).willReturn(false);
+
+        given(jwtTokenProvider.parseAccessToken(token)).willReturn(userId);
+        given(userService.getById(userId)).willReturn(user);
     }
 
 }
