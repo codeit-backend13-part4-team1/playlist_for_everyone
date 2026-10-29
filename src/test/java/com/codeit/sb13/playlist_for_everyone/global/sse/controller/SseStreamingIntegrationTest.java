@@ -13,6 +13,8 @@ import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseConnectionSer
 import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseDeliveryService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
@@ -139,9 +141,13 @@ public class SseStreamingIntegrationTest {
     }
 
 
-    @Test
-    @DisplayName("이벤트를 전송하면 HTTP 스트림에서 이벤트 ID와 이름 및 JSON 데이터를 받는다.")
-    void sendEventProducesSseFrameOverHttp() throws IOException {
+    @ParameterizedTest(name = "{0} 이벤트는 {1} 이름으로 전달된다.")
+    @CsvSource({
+            "NOTIFICATIONS, notifications",
+            "DIRECT_MESSAGES, direct-messages"
+    })
+    @DisplayName("알림 과 DM 이벤트의 ID와 이름 및 JSON 데이터를 HTTP로 받는다.")
+    void sendEventProducesSseFrameOverHttp(Event eventType, String expectedEventName) throws IOException {
         UUID userId = UUID.randomUUID();
         String token = "sse-test-token";
 
@@ -179,14 +185,14 @@ public class SseStreamingIntegrationTest {
                 SseEvent<Map<String, String>> event = new SseEvent<>(
                         eventId,
                         userId,
-                        Event.NOTIFICATIONS.getName(),
+                        eventType.getName(),
                         Map.of("message", "테스트 알림")
                 );
 
                 sseDeliveryService.sendToLocalConnections(event);
 
                 assertThat(reader.readLine()).isEqualTo("id:" + eventId);
-                assertThat(reader.readLine()).isEqualTo("event:notifications");
+                assertThat(reader.readLine()).isEqualTo("event:"+expectedEventName);
 
                 String dataLine = reader.readLine();
                 assertThat(dataLine).startsWith("data:");
