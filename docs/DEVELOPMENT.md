@@ -69,6 +69,18 @@ Spring 설정의 파일 import는 `optional`이지만, Compose 실행에는 `--e
 
 ### 3. 애플리케이션 실행
 
+실행 전에 `.env.dev`의 `EVERYONE_TMDB_ACCESS_TOKEN` 값을 채웁니다.
+TMDB 조회 없이 다른 기능만 개발할 때는 `dummy`를 넣으면 됩니다.
+
+```dotenv
+EVERYONE_TMDB_ACCESS_TOKEN=dummy
+```
+
+실제 TMDB 조회가 필요하면 `dummy` 대신 발급받은 API Read Access Token을 입력합니다. `Bearer ` 접두사는 제외합니다.
+실제 토큰이 들어간 `.env.dev`는 커밋하지 않습니다.
+
+IntelliJ 실행 설정에 넣은 환경변수는 터미널 실행에 자동 적용되지 않습니다.
+
 ```bash
 ./gradlew bootRun
 ```
@@ -152,6 +164,7 @@ EVERYONE_REDIS_PORT=6379
 | `EVERYONE_AWS_REGION` | `ap-northeast-2` | 향후 S3 연동에 사용할 리전 설정 |
 | `EVERYONE_AWS_ENDPOINT` | 빈 값 | 향후 S3 연동에 사용할 엔드포인트 설정 |
 | `EVERYONE_S3_BUCKET` | 빈 값 | 향후 S3 연동에 사용할 버킷 설정 |
+| `EVERYONE_TMDB_ACCESS_TOKEN` | 빈 값 (실행 전 설정 필요) | TMDB 인증 토큰. 실제 조회에는 유효한 토큰 필요 |
 
 S3 관련 값은 현재 공통 설정에 선언되어 있지만 실제 S3 연동 기능은 구현 전입니다.
 
@@ -379,6 +392,38 @@ CI는 성공한 빌드의 JaCoCo XML에서 전체 LINE 수치로 SVG 배지를 �
 - MVC 테스트는 Security 필터를 제외해 핸들러와 인터셉터를 검증합니다. 이 테스트의 통과는 인증·인가 동작 검증을 의미하지 않습니다.
 
 알림 통합 테스트는 PostgreSQL에서 테스트 프로필의 애플리케이션 컨텍스트 기동과 Flyway 마이그레이션을 확인합니다. 실제 Redis 연결과 캐시·세션 동작, Swagger 접속 및 커서 목록 API의 응답은 해당 결과에 포함되지 않습니다. 최신 결과와 수치는 각자의 코드에서 명령을 실행해 보고서로 확인합니다.
+
+### TMDB API 연동
+
+TMDB API 설정에서 발급받은 API Read Access Token을 사용합니다.
+
+IntelliJ의 애플리케이션 실행 설정 → 환경 변수에 다음 값을 추가합니다.
+
+- 이름: `EVERYONE_TMDB_ACCESS_TOKEN`
+- 값: 발급받은 토큰
+
+실제 토큰과 토큰이 포함된 실행 설정 파일은 커밋하지 않습니다.
+
+현재 영화·TV 인기 목록을 페이지별로 조회할 수 있습니다.
+연결 제한 시간은 기본 3초, 읽기 제한 시간은 기본 10초입니다.
+
+#### 자동 테스트
+
+실제 토큰 없이 실행할 수 있습니다.
+
+```bash
+./gradlew test --tests '*TmdbClientTest' --tests '*TmdbClientTimeoutTest'
+```
+
+#### 실제 API 연결 확인
+
+IntelliJ에서 `TmdbClientLiveTest`의 실행 설정에
+`EVERYONE_TMDB_ACCESS_TOKEN`을 추가한 뒤 실행합니다.
+
+실제 TMDB에 접속하므로 인터넷 연결과 유효한 토큰이 필요합니다.
+해당 환경 변수가 없으면 이 테스트는 건너뜁니다.
+토큰은 수동 확인용 테스트 실행 설정에만 추가하고,
+일반 자동 테스트와 CI에는 설정하지 않습니다.
 
 ## 협업과 후속 작업
 
