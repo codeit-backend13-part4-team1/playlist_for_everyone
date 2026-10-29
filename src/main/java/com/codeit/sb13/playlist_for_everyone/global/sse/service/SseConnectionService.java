@@ -5,6 +5,8 @@ import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.event.ContextClosedEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -43,6 +45,7 @@ public class SseConnectionService {
         return emitter;
     }
 
+    @EventListener(ContextClosedEvent.class)
     public void closeAllLocalConnections(){
         sseEmitterRepository.findAll()
                 .forEach((userId , connections )->{
