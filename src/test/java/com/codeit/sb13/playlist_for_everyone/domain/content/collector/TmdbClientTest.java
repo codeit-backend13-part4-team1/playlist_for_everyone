@@ -213,4 +213,72 @@ class TmdbClientTest {
 
         server.verify();
     }
+
+    @Test
+    void 영화_응답의_일부_필드가_없어도_조회할_수_있다() {
+        server.expect(requestTo(
+                        "https://tmdb.test/3/movie/popular?language=ko-KR&page=1"
+                ))
+                .andRespond(withSuccess("""
+                    {
+                      "page": 1,
+                      "results": [
+                        {
+                          "id": 123,
+                          "title": "정보가 부족한 영화"
+                        }
+                      ],
+                      "total_pages": 1,
+                      "total_results": 1
+                    }
+                    """, MediaType.APPLICATION_JSON));
+
+        var response = tmdbClient.getPopularMovies(1);
+
+        assertThat(response).isNotNull();
+        assertThat(response.results()).hasSize(1);
+
+        var movie = response.results().get(0);
+        assertThat(movie.id()).isEqualTo(123L);
+        assertThat(movie.title()).isEqualTo("정보가 부족한 영화");
+        assertThat(movie.overview()).isNull();
+        assertThat(movie.posterPath()).isNull();
+        assertThat(movie.genreIds()).isNull();
+
+        server.verify();
+    }
+
+    @Test
+    void TV_응답의_일부_필드가_없어도_조회할_수_있다() {
+        server.expect(requestTo(
+                        "https://tmdb.test/3/tv/popular?language=ko-KR&page=1"
+                ))
+                .andRespond(withSuccess("""
+                    {
+                      "page": 1,
+                      "results": [
+                        {
+                          "id": 456,
+                          "name": "정보가 부족한 TV 프로그램"
+                        }
+                      ],
+                      "total_pages": 1,
+                      "total_results": 1
+                    }
+                    """, MediaType.APPLICATION_JSON));
+
+        var response = tmdbClient.getPopularTvShows(1);
+
+        assertThat(response).isNotNull();
+        assertThat(response.results()).hasSize(1);
+
+        var tvShow = response.results().get(0);
+        assertThat(tvShow.id()).isEqualTo(456L);
+        assertThat(tvShow.name()).isEqualTo("정보가 부족한 TV 프로그램");
+        assertThat(tvShow.overview()).isNull();
+        assertThat(tvShow.posterPath()).isNull();
+        assertThat(tvShow.genreIds()).isNull();
+
+        server.verify();
+    }
 }
