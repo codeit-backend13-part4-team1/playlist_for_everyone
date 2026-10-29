@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -56,7 +57,7 @@ public class PlaylistServiceImpl implements PlaylistService {
     Playlist saved = playlistRepository.save(playlist);
     UserSummary userSummary = new UserSummary(user.getId(), user.getName(), null);
 
-    return PlaylistResponse.from(saved, userSummary, false );
+    return PlaylistResponse.from(saved, userSummary, false);
     // 방금 생성된 플레이리스트라 구독 정보가 없으므로 항상 false이다.
 
   }
@@ -118,7 +119,7 @@ public class PlaylistServiceImpl implements PlaylistService {
             Map.of("playlistId", playlistId)
         ));
 
-    if(!playlist.isOwnedBy(requesterId)) {
+    if (!playlist.isOwnedBy(requesterId)) {
       throw new PlayListForbiddenException(
           Map.of("playlistId", playlistId, "requesterId", requesterId));
     }
@@ -128,7 +129,7 @@ public class PlaylistServiceImpl implements PlaylistService {
     boolean subscribedByMe = subscriptionRepository
         .existsByPlaylistIdAndSubscriberId(playlistId, requesterId);
 
-    return toResponse(playlist,subscribedByMe);
+    return toResponse(playlist, subscribedByMe);
 
   }
 
@@ -152,22 +153,17 @@ public class PlaylistServiceImpl implements PlaylistService {
   }
 
   @Override
+  @PreAuthorize("isAuthenticated() and @playlistGuard.canModify(#playlistId, #requesterId)")
   @Transactional
   public void addContent(UUID playlistId, UUID contentId, UUID requesterId) {
 
-    Playlist playlist = playlistRepository.findById(playlistId)
+    playlistRepository.findById(playlistId)
         .orElseThrow(() -> new PlayListNotFoundException(
             Map.of("playlistId", playlistId)
         ));
 
-    if(!playlist.isOwnedBy(requesterId)) {
-      throw  new PlayListForbiddenException(
-          Map.of("playlistId", playlistId, "requesterId", requesterId)
-      );
-    }
-
-    if(!contentRepository.existsById(contentId)) {
-      throw  new ContentNotFoundException(Map.of("contentId", contentId));
+    if (!contentRepository.existsById(contentId)) {
+      throw new ContentNotFoundException(Map.of("contentId", contentId));
     }
 
     if (playlistContentRepository.existsByPlaylistIdAndContentId(playlistId, contentId)) {
@@ -180,16 +176,12 @@ public class PlaylistServiceImpl implements PlaylistService {
   }
 
   @Override
+  @PreAuthorize("isAuthenticated() and @playlistGuard.canModify(#playlistId, #requesterId)")
   @Transactional
   public void removeContent(UUID playlistId, UUID contentId, UUID requesterId) {
-    Playlist playlist = playlistRepository.findById(playlistId)
+    playlistRepository.findById(playlistId)
         .orElseThrow(() -> new PlayListNotFoundException(
             Map.of("playlistId", playlistId)));
-
-    if (!playlist.isOwnedBy(requesterId)) {
-      throw new PlayListForbiddenException(
-          Map.of("playlistId", playlistId, "requesterId", requesterId));
-    }
 
     int deleted = playlistContentRepository.deleteByPlaylistIdAndContentId(playlistId, contentId);
     if (deleted == 0) {
@@ -201,7 +193,7 @@ public class PlaylistServiceImpl implements PlaylistService {
   }
 
 
- //---------[헬퍼 메서드]
+  //---------[헬퍼 메서드]
   private PlaylistSearchCondition toCondition(PlaylistSearchRequest request) {
     return new PlaylistSearchCondition(
         request.keywordLike(), request.ownerIdEqual(), request.subscriberIdEqual(),

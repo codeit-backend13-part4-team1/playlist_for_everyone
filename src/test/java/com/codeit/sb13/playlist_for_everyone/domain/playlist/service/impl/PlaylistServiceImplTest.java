@@ -641,27 +641,6 @@ public class PlaylistServiceImplTest {
     verify(playlistRepository, never()).touchUpdatedAt(any(), any());
   }
 
-  @Test
-  @DisplayName("소유자가 아니면 콘텐츠를 추가할 때 PlayListForbiddenException을 던지고 아무것도 저장하지 않는다")
-  void 소유자가_아니면_콘텐츠를_추가할_수_없다() {
-    // given
-    UUID ownerId = UUID.randomUUID();
-    UUID requesterId = UUID.randomUUID();
-    UUID playlistId = UUID.randomUUID();
-    UUID contentId = UUID.randomUUID();
-    Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
-    given(playlistRepository.findById(playlistId)).willReturn(Optional.of(playlist));
-
-    // when & then
-    assertThatExceptionOfType(PlayListForbiddenException.class)
-        .isThrownBy(() -> playlistService.addContent(playlistId, contentId, requesterId))
-        .satisfies(e -> assertThat(e.getDetails())
-            .containsEntry("playlistId", playlistId)
-            .containsEntry("requesterId", requesterId));
-
-    verifyNoInteractions(contentRepository, playlistContentRepository);
-    verify(playlistRepository, never()).touchUpdatedAt(any(), any());
-  }
 
   @Test
   @DisplayName("없는 콘텐츠를 추가하면 ContentNotFoundException을 던지고 아무것도 저장하지 않는다")
@@ -747,27 +726,6 @@ public class PlaylistServiceImplTest {
     verify(playlistRepository, never()).touchUpdatedAt(any(), any());
   }
 
-  @Test
-  @DisplayName("소유자가 아니면 콘텐츠를 삭제할 때 PlayListForbiddenException을 던지고 아무것도 삭제하지 않는다")
-  void 소유자가_아니면_콘텐츠를_삭제할_수_없다() {
-    // given
-    UUID ownerId = UUID.randomUUID();
-    UUID requesterId = UUID.randomUUID();
-    UUID playlistId = UUID.randomUUID();
-    UUID contentId = UUID.randomUUID();
-    Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
-    given(playlistRepository.findById(playlistId)).willReturn(Optional.of(playlist));
-
-    // when & then
-    assertThatExceptionOfType(PlayListForbiddenException.class)
-        .isThrownBy(() -> playlistService.removeContent(playlistId, contentId, requesterId))
-        .satisfies(e -> assertThat(e.getDetails())
-            .containsEntry("playlistId", playlistId)
-            .containsEntry("requesterId", requesterId));
-
-    verifyNoInteractions(playlistContentRepository);
-    verify(playlistRepository, never()).touchUpdatedAt(any(), any());
-  }
 
   @Test
   @DisplayName("담기지 않은 콘텐츠를 삭제하면 PlayListContentNotFoundException을 던지고 수정일을 갱신하지 않는다")
