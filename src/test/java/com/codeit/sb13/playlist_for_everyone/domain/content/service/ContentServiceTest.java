@@ -172,7 +172,7 @@ public class ContentServiceTest {
     }
 
     @Test
-    @DisplayName("콘텐츠 수정 시 제목, 설명, 태그가 정상적으로 변경된다.")
+    @DisplayName("콘텐츠 수정 시 제목, 설명, 태그가 변경되고 리뷰 집계가 전달된다.")
     void update_success() {
         // given
         UUID contentId = UUID.randomUUID();
@@ -197,6 +197,13 @@ public class ContentServiceTest {
         when(contentRepository.findById(contentId))
                 .thenReturn(Optional.of(content));
 
+        // 리뷰 평균 평점과 리뷰 개수 설정
+        when(reviewRepository.findAverageRatingByContentId(contentId))
+                .thenReturn(4.5);
+
+        when(reviewRepository.countByContentId(contentId))
+                .thenReturn(3L);
+
         // 수정 전 상태 확인
         assertThat(content.getTitle()).isEqualTo("너말고다른연애");
         assertThat(content.getDescription()).isEqualTo("KBS 드라마 입니다.");
@@ -217,6 +224,8 @@ public class ContentServiceTest {
                 .containsExactly("로맨스");
 
         verify(contentRepository).findById(contentId);
+
+        verify(contentMapper).toDto(content, 4.5, 3, 0L);
     }
 
     @Test
