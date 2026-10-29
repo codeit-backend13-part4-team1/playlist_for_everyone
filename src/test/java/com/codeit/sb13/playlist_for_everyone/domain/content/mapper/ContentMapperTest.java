@@ -31,7 +31,7 @@ public class ContentMapperTest {
                 content,
                 4.5,
                 10,
-                20
+                20L
         );
 
         // then
@@ -45,7 +45,7 @@ public class ContentMapperTest {
 
         assertThat(dto.averageRating()).isEqualTo(4.5);
         assertThat(dto.reviewCount()).isEqualTo(10);
-        assertThat(dto.watcherCount()).isEqualTo(20);
+        assertThat(dto.watcherCount()).isEqualTo(20L);
     }
 
     @Test
@@ -64,7 +64,7 @@ public class ContentMapperTest {
                 content,
                 4.5,
                 10,
-                20
+                20L
         );
 
         // then

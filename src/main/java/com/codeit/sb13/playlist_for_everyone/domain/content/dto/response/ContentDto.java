@@ -14,6 +14,6 @@ public record ContentDto(
         List<String> tags,
         double averageRating,
         int reviewCount,
-        int watcherCount
+        long watcherCount
 ) {
 }

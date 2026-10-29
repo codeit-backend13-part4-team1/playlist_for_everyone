@@ -12,7 +12,7 @@ public class ContentMapper {
             Content content,
             double averageRating,
             int reviewCount,
-            int watcherCount
+            long watcherCount
     ) {
         return new ContentDto(
                 content.getId(),
