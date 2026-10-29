@@ -288,4 +288,39 @@ public class ContentServiceTest {
                 .containsExactly("드라마");
     }
 
+    @Test
+    @DisplayName("제목과 설명이 null이면 기존 값을 유지하고 태그만 수정한다.")
+    void update_nullTitleAndDescription() {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        Content content = Content.createAdminContent(
+                ContentType.tvSeries,
+                "너말고다른연애",
+                "KBS 드라마 입니다.",
+                "thumbnail-url"
+        );
+        content.addTag("드라마");
+
+        ContentUpdateRequest request = new ContentUpdateRequest(
+                null,
+                null,
+                List.of("로맨스")
+        );
+
+        when(contentRepository.findById(contentId))
+                .thenReturn(Optional.of(content));
+
+        // when
+        contentService.update(contentId, request, null);
+
+        // then
+        assertThat(content.getTitle()).isEqualTo("너말고다른연애");
+        assertThat(content.getDescription()).isEqualTo("KBS 드라마 입니다.");
+
+        assertThat(content.getTags())
+                .extracting(ContentTag::getTag)
+                .containsExactly("로맨스");
+    }
+
 }
