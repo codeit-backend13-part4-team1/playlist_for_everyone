@@ -21,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -30,6 +31,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.test.context.TestSecurityContextHolder;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -63,6 +66,11 @@ class PlaylistControllerTest {
   private ObjectMapper objectMapper;
   @MockitoBean
   private PlaylistService playlistService;
+
+  @AfterEach
+  void clearSecurityContext() {
+    TestSecurityContextHolder.clearContext();
+  }
 
   @Test
   @DisplayName("올바른 요청에는 201응답과 생성된 플레이리스트를 반환한다")
@@ -600,8 +608,14 @@ class PlaylistControllerTest {
 
   private RequestPostProcessor loginAs(UUID userId) {
     SecurityUser principal = new SecurityUser(userId, "tester@example.com", "", Role.USER, false);
-    return SecurityMockMvcRequestPostProcessors.authentication(
-        UsernamePasswordAuthenticationToken.authenticated(principal, null, principal.getAuthorities()));
+    Authentication authentication = UsernamePasswordAuthenticationToken.authenticated(
+        principal, null, principal.getAuthorities());
+    return request -> {
+      TestSecurityContextHolder.setAuthentication(authentication);
+      return request;
+    };
   }
+
+
 
 }
