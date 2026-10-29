@@ -59,6 +59,7 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-batch'
 	implementation platform("software.amazon.awssdk:bom:${dependencyVersions.awsSdk}")
 	implementation 'software.amazon.awssdk:s3'
+	implementation 'org.springframework.boot:spring-boot-starter-restclient'
 
 	// 모니터링, AOP 및 재시도
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
@@ -83,6 +84,7 @@ dependencies {
 	testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-websocket-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-restclient-test'
 
 	// PostgreSQL 및 S3 통합 테스트 지원. 컨테이너 실행에는 Docker가 필요합니다.
 	testImplementation 'org.springframework.boot:spring-boot-testcontainers'

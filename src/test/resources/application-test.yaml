@@ -40,3 +40,8 @@ everyone:
     access-token-validity: 15m
     # 로컬 환경변수와 관계없이 테스트에서는 고정된 기간을 사용한다.
     refresh-token-validity: 7d
+
+
+  tmdb:
+    base-url: https://tmdb.test/3
+    access-token: test-token

@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.playlist.controller;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistSearchRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistUpdateRequest;
@@ -11,6 +12,7 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -30,19 +32,18 @@ public class PlaylistController {
 
   @PostMapping
   public ResponseEntity<PlaylistResponse> create(
-      // TODO: 인증 구현이 올라오면 @AuthenticationPrincipal로 교체
-      @RequestHeader("X-User-Id") UUID ownerId,
+      @AuthenticationPrincipal SecurityUser principal,
       @RequestBody @Valid PlaylistCreateRequest request) {
-    PlaylistResponse playlistResponse = playlistService.create(ownerId, request);
+    PlaylistResponse playlistResponse = playlistService.create(principal.getUserId(), request);
     return ResponseEntity.status(HttpStatus.CREATED).body(playlistResponse);
   }
 
   @GetMapping("/{playlistId}")
   public ResponseEntity<PlaylistResponse> getPlaylist(
       @PathVariable UUID playlistId,
-      // TODO: 인증 구현이 올라오면 @AuthenticationPrincipal로 교체
-      @RequestHeader("X-User-Id") UUID requesterId ){
-    PlaylistResponse response = playlistService.getPlaylist(playlistId, requesterId);
+      @AuthenticationPrincipal SecurityUser principal ){
+    PlaylistResponse response = playlistService.getPlaylist(
+        playlistId, principal.getUserId());
 
     return ResponseEntity.status(HttpStatus.OK).body(response);
   }
@@ -50,10 +51,9 @@ public class PlaylistController {
   @GetMapping
   public ResponseEntity<CursorResponse<PlaylistResponse>> getPlaylists(
       @Valid PlaylistSearchRequest request,
-      // TODO: 인증 구현이 올라오면 @AuthenticationPrincipal로 교체
-      @RequestHeader("X-User-Id") UUID requesterId) {
+      @AuthenticationPrincipal SecurityUser principal) {
     CursorResponse<PlaylistResponse> response =
-        playlistService.getPlaylists(request, requesterId);
+        playlistService.getPlaylists(request, principal.getUserId());
     return ResponseEntity.ok(response);
   }
 
@@ -61,17 +61,34 @@ public class PlaylistController {
   public ResponseEntity<PlaylistResponse> updatePlaylist(
       @PathVariable UUID playlistId,
       @Valid @RequestBody PlaylistUpdateRequest request,
-      @RequestHeader("X-User-Id") UUID requesterId) {
-    // TODO: 인증 구현이 올라오면 @AuthenticationPrincipal로 교체
-    return ResponseEntity.ok(playlistService.updatePlaylist(playlistId, request, requesterId));
+      @AuthenticationPrincipal SecurityUser principal) {
+    return ResponseEntity.ok(playlistService.updatePlaylist(
+        playlistId, request, principal.getUserId()));
   }
 
   @DeleteMapping("/{playlistId}")
   public ResponseEntity<Void> deletePlaylist(
       @PathVariable UUID playlistId,
-      @RequestHeader("X-User-Id") UUID requesterId) {
-    // TODO: 인증 구현이 올라오면 @AuthenticationPrincipal로 교체
-    playlistService.deletePlaylist(playlistId, requesterId);
+      @AuthenticationPrincipal SecurityUser principal) {
+    playlistService.deletePlaylist(playlistId, principal.getUserId());
+    return ResponseEntity.ok().build();
+  }
+
+  @PostMapping("/{playlistId}/contents/{contentId}")
+  public ResponseEntity<Void> addContent(
+      @PathVariable UUID playlistId,
+      @PathVariable UUID contentId,
+      @AuthenticationPrincipal SecurityUser principal) {
+    playlistService.addContent(playlistId, contentId, principal.getUserId());
+    return ResponseEntity.ok().build();
+  }
+
+  @DeleteMapping("/{playlistId}/contents/{contentId}")
+  public ResponseEntity<Void> removeContent(
+      @PathVariable UUID playlistId,
+      @PathVariable UUID contentId,
+      @AuthenticationPrincipal SecurityUser principal) {
+    playlistService.removeContent(playlistId, contentId, principal.getUserId());
     return ResponseEntity.ok().build();
   }
 

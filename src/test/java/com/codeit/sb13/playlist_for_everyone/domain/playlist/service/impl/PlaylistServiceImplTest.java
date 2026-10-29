@@ -13,11 +13,13 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verifyNoInteractions;
 
+import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistSearchRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.PlaylistResponse;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Playlist;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistContent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistSortBy;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistRepository;
@@ -28,6 +30,9 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
+import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListContentDuplicatedException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListContentNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListForbiddenException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
@@ -58,6 +63,9 @@ public class PlaylistServiceImplTest {
 
   @Mock
   private PlaylistContentRepository playlistContentRepository;
+
+  @Mock
+  private ContentRepository contentRepository;
 
   @InjectMocks
   private PlaylistServiceImpl playlistService;
@@ -585,6 +593,162 @@ public class PlaylistServiceImplTest {
     verifyNoInteractions(subscriptionRepository, playlistContentRepository);
     verify(playlistRepository, never()).delete(any(Playlist.class));
   }
+
+  @Test
+  @DisplayName("소유자가 존재하는 콘텐츠를 추가하면 연결을 저장하고 플레이리스트 수정일을 갱신한다")
+  void 소유자는_플레이리스트에_콘텐츠를_추가할_수_있다() {
+    // given
+    UUID ownerId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    UUID contentId = UUID.randomUUID();
+    Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
+
+    given(playlistRepository.findById(playlistId))
+        .willReturn(Optional.of(playlist));
+    given(contentRepository.existsById(contentId))
+        .willReturn(true);
+    given(playlistContentRepository
+        .existsByPlaylistIdAndContentId(playlistId, contentId)).willReturn(false);
+
+    // when
+    playlistService.addContent(playlistId, contentId, ownerId);
+
+    // then
+    ArgumentCaptor<PlaylistContent> captor = ArgumentCaptor.forClass(PlaylistContent.class);
+    verify(playlistContentRepository).save(captor.capture());
+    assertThat(captor.getValue().getPlaylistId()).isEqualTo(playlistId);
+    assertThat(captor.getValue().getContentId()).isEqualTo(contentId);
+    verify(playlistRepository)
+        .touchUpdatedAt(eq(playlistId), any(LocalDateTime.class));
+  }
+
+  @Test
+  @DisplayName("없는 플레이리스트에 콘텐츠를 추가하면 PlayListNotFoundException을 던지고 아무것도 저장하지 않는다")
+  void 없는_플레이리스트에_콘텐츠_추가시_PlayListNotFoundException을_던진다() {
+    // given
+    UUID playlistId = UUID.randomUUID();
+    UUID contentId = UUID.randomUUID();
+    UUID requesterId = UUID.randomUUID();
+    given(playlistRepository.findById(playlistId)).willReturn(Optional.empty());
+
+    // when & then
+    assertThatExceptionOfType(PlayListNotFoundException.class)
+        .isThrownBy(() -> playlistService.addContent(playlistId, contentId, requesterId))
+        .satisfies(e -> assertThat(e.getDetails())
+            .containsEntry("playlistId", playlistId));
+
+    verifyNoInteractions(contentRepository, playlistContentRepository);
+    verify(playlistRepository, never()).touchUpdatedAt(any(), any());
+  }
+
+
+  @Test
+  @DisplayName("없는 콘텐츠를 추가하면 ContentNotFoundException을 던지고 아무것도 저장하지 않는다")
+  void 없는_콘텐츠를_추가하면_ContentNotFoundException을_던진다() {
+    // given
+    UUID ownerId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    UUID contentId = UUID.randomUUID();
+    Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
+    given(playlistRepository.findById(playlistId)).willReturn(Optional.of(playlist));
+    given(contentRepository.existsById(contentId)).willReturn(false);
+
+    // when & then
+    assertThatExceptionOfType(ContentNotFoundException.class)
+        .isThrownBy(() -> playlistService.addContent(playlistId, contentId, ownerId))
+        .satisfies(e -> assertThat(e.getDetails())
+            .containsEntry("contentId", contentId));
+
+    verifyNoInteractions(playlistContentRepository);
+    verify(playlistRepository, never()).touchUpdatedAt(any(), any());
+  }
+
+  @Test
+  @DisplayName("이미 담긴 콘텐츠를 추가하면 PlayListContentDuplicatedException을 던지고 저장하지 않는다")
+  void 이미_담긴_콘텐츠를_추가하면_PlayListContentDuplicatedException을_던진다() {
+    // given
+    UUID ownerId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    UUID contentId = UUID.randomUUID();
+    Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
+    given(playlistRepository.findById(playlistId)).willReturn(Optional.of(playlist));
+    given(contentRepository.existsById(contentId)).willReturn(true);
+    given(playlistContentRepository.existsByPlaylistIdAndContentId(playlistId, contentId))
+        .willReturn(true);
+
+    // when & then
+    assertThatExceptionOfType(PlayListContentDuplicatedException.class)
+        .isThrownBy(() -> playlistService.addContent(playlistId, contentId, ownerId))
+        .satisfies(e -> assertThat(e.getDetails())
+            .containsEntry("playlistId", playlistId)
+            .containsEntry("contentId", contentId));
+
+    verify(playlistContentRepository, never()).save(any(PlaylistContent.class));
+    verify(playlistRepository, never()).touchUpdatedAt(any(), any());
+  }
+
+  @Test
+  @DisplayName("소유자가 담긴 콘텐츠를 삭제하면 연결을 삭제하고 플레이리스트 수정일을 갱신한다")
+  void 소유자는_플레이리스트에서_콘텐츠를_삭제할_수_있다() {
+    // given
+    UUID ownerId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    UUID contentId = UUID.randomUUID();
+    Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
+    given(playlistRepository.findById(playlistId)).willReturn(Optional.of(playlist));
+    given(playlistContentRepository.deleteByPlaylistIdAndContentId(playlistId, contentId))
+        .willReturn(1);
+
+    // when
+    playlistService.removeContent(playlistId, contentId, ownerId);
+
+    // then
+    verify(playlistContentRepository).deleteByPlaylistIdAndContentId(playlistId, contentId);
+    verify(playlistRepository).touchUpdatedAt(eq(playlistId), any(LocalDateTime.class));
+  }
+
+  @Test
+  @DisplayName("없는 플레이리스트에서 콘텐츠를 삭제하면 PlayListNotFoundException을 던지고 아무것도 삭제하지 않는다")
+  void 없는_플레이리스트에서_콘텐츠_삭제시_PlayListNotFoundException을_던진다() {
+    // given
+    UUID playlistId = UUID.randomUUID();
+    UUID contentId = UUID.randomUUID();
+    UUID requesterId = UUID.randomUUID();
+    given(playlistRepository.findById(playlistId)).willReturn(Optional.empty());
+
+    // when & then
+    assertThatExceptionOfType(PlayListNotFoundException.class)
+        .isThrownBy(() -> playlistService.removeContent(playlistId, contentId, requesterId))
+        .satisfies(e -> assertThat(e.getDetails())
+            .containsEntry("playlistId", playlistId));
+
+    verifyNoInteractions(playlistContentRepository);
+    verify(playlistRepository, never()).touchUpdatedAt(any(), any());
+  }
+
+
+  @Test
+  @DisplayName("담기지 않은 콘텐츠를 삭제하면 PlayListContentNotFoundException을 던지고 수정일을 갱신하지 않는다")
+  void 담기지_않은_콘텐츠를_삭제하면_PlayListContentNotFoundException을_던진다() {
+    // given
+    UUID ownerId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    UUID contentId = UUID.randomUUID();
+    Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
+    given(playlistRepository.findById(playlistId)).willReturn(Optional.of(playlist));
+    given(playlistContentRepository.deleteByPlaylistIdAndContentId(playlistId, contentId))
+        .willReturn(0);
+
+    // when & then
+    assertThatExceptionOfType(PlayListContentNotFoundException.class)
+        .isThrownBy(() -> playlistService.removeContent(playlistId, contentId, ownerId))
+        .satisfies(e -> assertThat(e.getDetails())
+            .containsEntry("playlistId", playlistId)
+            .containsEntry("contentId", contentId));
+
+    verify(playlistRepository, never()).touchUpdatedAt(any(), any());
+  }
+
 
 
   //-----------[헬퍼 메서드]

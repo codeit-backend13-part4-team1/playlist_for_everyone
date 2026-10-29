@@ -1,12 +1,14 @@
-package com.codeit.sb13.playlist_for_everyone.watch;
+package com.codeit.sb13.playlist_for_everyone.domain.websocket.watch;
 
 
+import com.codeit.sb13.playlist_for_everyone.global.config.RedisConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.WebSocketConfig;
 import com.codeit.sb13.playlist_for_everyone.global.service.WatcherRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.service.WatcherRegistryDelay;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.WebSocketController;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.WebSocketEventListener;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.WebSocketInterceptor;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.chat.ChatMessagePublisher;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.dto.chat.ContentChatDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.dto.event.WebSocketChatEvent;
 import lombok.extern.slf4j.Slf4j;
@@ -64,6 +66,9 @@ public class WatchControllerTest {
 
     @MockitoBean
     private WatcherRegistry watcherRegistry;
+
+    @MockitoBean
+    private ChatMessagePublisher chatMessagePublisher;
 
     @Autowired
     private ApplicationEvents applicationEvents;
@@ -168,10 +173,11 @@ public class WatchControllerTest {
                     assertThat(event).isNotNull();
                 });
 
-        verify(simpMessagingTemplate, times(1)).convertAndSend(
-                eq(pathResolver(SUB_PREFIX, contentId, CHAT_POSTFIX)),
-                any(ContentChatDto.class)
-        );
+        verify(chatMessagePublisher, times(1))
+                .publish(
+                        eq(contentId.toString()),
+                        any(ContentChatDto.class)
+                );
     }
 
 

@@ -1,11 +1,13 @@
 package com.codeit.sb13.playlist_for_everyone.domain.playlist.service.impl;
 
+import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistSearchRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.PlaylistResponse;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Playlist;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistContent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistSortBy;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistRepository;
@@ -15,15 +17,20 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.PlaylistSer
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
+import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListContentDuplicatedException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListContentNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListForbiddenException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
+import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,6 +43,7 @@ public class PlaylistServiceImpl implements PlaylistService {
   private final UserRepository userRepository;
   private final SubscriptionRepository subscriptionRepository;
   private final PlaylistContentRepository playlistContentRepository;
+  private final ContentRepository contentRepository;
 
   @Override
   @Transactional
@@ -49,7 +57,7 @@ public class PlaylistServiceImpl implements PlaylistService {
     Playlist saved = playlistRepository.save(playlist);
     UserSummary userSummary = new UserSummary(user.getId(), user.getName(), null);
 
-    return PlaylistResponse.from(saved, userSummary, false );
+    return PlaylistResponse.from(saved, userSummary, false);
     // 방금 생성된 플레이리스트라 구독 정보가 없으므로 항상 false이다.
 
   }
@@ -111,7 +119,7 @@ public class PlaylistServiceImpl implements PlaylistService {
             Map.of("playlistId", playlistId)
         ));
 
-    if(!playlist.isOwnedBy(requesterId)) {
+    if (!playlist.isOwnedBy(requesterId)) {
       throw new PlayListForbiddenException(
           Map.of("playlistId", playlistId, "requesterId", requesterId));
     }
@@ -121,7 +129,7 @@ public class PlaylistServiceImpl implements PlaylistService {
     boolean subscribedByMe = subscriptionRepository
         .existsByPlaylistIdAndSubscriberId(playlistId, requesterId);
 
-    return toResponse(playlist,subscribedByMe);
+    return toResponse(playlist, subscribedByMe);
 
   }
 
@@ -144,7 +152,48 @@ public class PlaylistServiceImpl implements PlaylistService {
     playlistRepository.delete(playlist);
   }
 
- //---------[헬퍼 메서드]
+  @Override
+  @PreAuthorize("isAuthenticated() and @playlistGuard.canModify(#playlistId, #requesterId)")
+  @Transactional
+  public void addContent(UUID playlistId, UUID contentId, UUID requesterId) {
+
+    playlistRepository.findById(playlistId)
+        .orElseThrow(() -> new PlayListNotFoundException(
+            Map.of("playlistId", playlistId)
+        ));
+
+    if (!contentRepository.existsById(contentId)) {
+      throw new ContentNotFoundException(Map.of("contentId", contentId));
+    }
+
+    if (playlistContentRepository.existsByPlaylistIdAndContentId(playlistId, contentId)) {
+      throw new PlayListContentDuplicatedException(
+          Map.of("playlistId", playlistId, "contentId", contentId));
+    }
+
+    playlistContentRepository.save(new PlaylistContent(playlistId, contentId));
+    playlistRepository.touchUpdatedAt(playlistId, LocalDateTime.now());
+  }
+
+  @Override
+  @PreAuthorize("isAuthenticated() and @playlistGuard.canModify(#playlistId, #requesterId)")
+  @Transactional
+  public void removeContent(UUID playlistId, UUID contentId, UUID requesterId) {
+    playlistRepository.findById(playlistId)
+        .orElseThrow(() -> new PlayListNotFoundException(
+            Map.of("playlistId", playlistId)));
+
+    int deleted = playlistContentRepository.deleteByPlaylistIdAndContentId(playlistId, contentId);
+    if (deleted == 0) {
+      throw new PlayListContentNotFoundException(
+          Map.of("playlistId", playlistId, "contentId", contentId));
+    }
+
+    playlistRepository.touchUpdatedAt(playlistId, LocalDateTime.now());
+  }
+
+
+  //---------[헬퍼 메서드]
   private PlaylistSearchCondition toCondition(PlaylistSearchRequest request) {
     return new PlaylistSearchCondition(
         request.keywordLike(), request.ownerIdEqual(), request.subscriberIdEqual(),
