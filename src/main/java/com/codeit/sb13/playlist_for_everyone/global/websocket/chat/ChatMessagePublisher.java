@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.chat;
 
 import com.codeit.sb13.playlist_for_everyone.global.websocket.dto.chat.ContentChatDto;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.dto.chat.RedisMessageChatDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -16,7 +17,9 @@ public class ChatMessagePublisher {
     private final RedisTemplate<String, Object> template;
 
     public void publish(String contentId, ContentChatDto dto){
-        template.convertAndSend(topic(contentId), dto);
+        template.convertAndSend(
+                topic(contentId),
+                new RedisMessageChatDto(contentId, dto));
     }
 
     // 토픽으로 메세지 전송

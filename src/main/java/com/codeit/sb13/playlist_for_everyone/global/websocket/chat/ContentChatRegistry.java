@@ -100,9 +100,10 @@ public class ContentChatRegistry {
             try {
                 registerListener(contentId);
             } catch (RuntimeException e) {
-                log.debug("[{}] 레디스 리스너 등록 실패 - contentId: {}",
+                log.error("[{}] 레디스 리스너 등록 실패 - contentId: {}",
                         this.getClass().getSimpleName(),
-                        contentId);
+                        contentId,
+                        e);
                 // 등록 실패시 키 삭제.
                 registerMap.get(contentId).remove(key);
                 registerIndex.remove(key);
@@ -202,7 +203,7 @@ public class ContentChatRegistry {
         if (contentId == null || contentId.isEmpty()) return;
         // 구독 갯수가 0 이라면 리스너 해제
         Set<KeyPair> keyList = registerMap.get(contentId);
-        if (keyList.isEmpty())
+        if (keyList == null || keyList.isEmpty())
             redisBroker.unregister(listener,topicResolver(contentId));
     }
 
