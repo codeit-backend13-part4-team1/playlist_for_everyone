@@ -6,11 +6,9 @@ import org.springframework.context.annotation.AnnotationConfigApplicationContext
 import org.springframework.core.task.TaskRejectedException;
 import org.springframework.scheduling.TaskScheduler;
 
+import java.time.Duration;
 import java.time.Instant;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.concurrent.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -45,6 +43,23 @@ class SchedulerConfigTest {
         }
         assertThatThrownBy(()-> scheduler.schedule(() ->{}, Instant.now()))
                 .isInstanceOf(TaskRejectedException.class);
+    }
+
+    @Test
+    @DisplayName("컨텍스트가 종료되면 SSE 전용 스케줄러에 등록된 반복 작업이 취소된다.")
+    void sseHeartbeatSchedulerCancelsPeriodicTaskWhenContextClosed(){
+        ScheduledFuture<?> periodicTask;
+
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext(SchedulerConfig.class)){
+            TaskScheduler scheduler = context.getBean("sseHeartbeatTaskScheduler", TaskScheduler.class);
+
+            periodicTask = scheduler.scheduleWithFixedDelay(()->{},
+                    Instant.now().plusSeconds(60), Duration.ofSeconds(15));
+
+            assertThat(periodicTask.isCancelled()).isFalse();
+        }
+
+        assertThat(periodicTask.isCancelled()).isTrue();
     }
 
 }
