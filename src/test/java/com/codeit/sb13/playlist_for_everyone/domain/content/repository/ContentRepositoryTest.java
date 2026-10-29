@@ -19,6 +19,8 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest(properties = {
@@ -60,7 +62,7 @@ public class ContentRepositoryTest {
     }
 
     @Test
-    @DisplayName("콘텐츠 저장 시 필드가 정상 저장된다.")
+    @DisplayName("콘텐츠 저장 후 조회 시 필드가 정상적으로 반환된다.")
     void save_content_success() {
         // given
         Content content = createContent(
@@ -91,7 +93,7 @@ public class ContentRepositoryTest {
     }
 
     @Test
-    @DisplayName("콘텐츠 저장 시 태그도 함께 저장된다.")
+    @DisplayName("콘텐츠 저장 후 조회 시 태그도 함께 반환된다.")
     void save_withTags() {
         // given
         Content content = createContent(
@@ -120,7 +122,7 @@ public class ContentRepositoryTest {
     }
 
     @Test
-    @DisplayName("")
+    @DisplayName("태그 없이 저장한 콘텐츠는 조회 시 태그 목록이 비어 있다.")
     void save_withoutTags() {
         // given
         Content content = createContent(
@@ -141,6 +143,52 @@ public class ContentRepositoryTest {
                 .orElseThrow();
 
         assertThat(found.getTags()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("콘텐츠 수정 시 변경된 필드와 태그가 DB에 반영된다.")
+    void update_content_success() {
+        // given
+        Content content = createContent(
+                ContentType.tvSeries,
+                "너말고다른연애",
+                "KBS 드라마 입니다.",
+                "thumbnail-url"
+        );
+
+        content.addTag("드라마");
+        content.addTag("로맨스");
+
+        Content savedContent = contentRepository.save(content);
+
+        em.flush();
+        em.clear();
+
+        // when
+        Content found = contentRepository.findById(savedContent.getId())
+                .orElseThrow();
+
+        found.update(
+                "수정된 제목",
+                "수정된 설명",
+                null,
+                List.of("드라마", "액션")
+        );
+
+        em.flush();
+        em.clear();
+
+        // then
+        Content updated = contentRepository.findById(savedContent.getId())
+                .orElseThrow();
+
+        assertThat(updated.getTitle()).isEqualTo("수정된 제목");
+        assertThat(updated.getDescription()).isEqualTo("수정된 설명");
+        assertThat(updated.getThumbnailUrl()).isEqualTo("thumbnail-url");
+
+        assertThat(updated.getTags())
+                .extracting(ContentTag::getTag)
+                .containsExactlyInAnyOrder("드라마", "액션");
     }
 
 }
