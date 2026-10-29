@@ -5,6 +5,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentU
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
+import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
 import org.mockito.ArgumentCaptor;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import tools.jackson.databind.ObjectMapper;
@@ -19,6 +20,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -305,6 +307,46 @@ public class ContentControllerTest {
                 .andExpect(status().isBadRequest());
 
         verifyNoInteractions(contentService);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 콘텐츠 수정 시 404를 반환한다.")
+    void update_notFound() throws Exception {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        ContentUpdateRequest request = new ContentUpdateRequest(
+                "너말고 다른연애",
+                "서강준 주연",
+                List.of("드라마")
+        );
+
+        when(contentService.update(eq(contentId), any(ContentUpdateRequest.class), isNull()))
+                .thenThrow(new ContentNotFoundException(
+                        Map.of("contentId", contentId)
+                ));
+
+        MockMultipartFile requestPart = new MockMultipartFile(
+                "request",
+                "",
+                MediaType.APPLICATION_JSON_VALUE,
+                objectMapper.writeValueAsBytes(request)
+        );
+
+        // when & then
+        mockMvc.perform(multipart("/api/contents/{contentId}", contentId)
+                        .file(requestPart)
+                        .with(httpRequest -> {
+                            httpRequest.setMethod("PATCH");
+                            return httpRequest;
+                        }))
+                .andExpect(status().isNotFound());
+
+        verify(contentService).update(
+                eq(contentId),
+                any(ContentUpdateRequest.class),
+                isNull()
+        );
     }
 
     private MockMultipartFile createJsonRequestPart(Object request) {
