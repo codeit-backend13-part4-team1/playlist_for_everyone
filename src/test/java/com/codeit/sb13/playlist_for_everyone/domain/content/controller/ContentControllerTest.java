@@ -137,6 +137,26 @@ public class ContentControllerTest {
     }
 
     @Test
+    @DisplayName("콘텐츠 생성 시 제목이 100자를 초과하면 400을 응답한다.")
+    void create_titleTooLong() throws Exception {
+        // given
+        ContentCreateRequest request = new ContentCreateRequest(
+                ContentType.tvSeries,
+                "가".repeat(101),
+                "서강준, 안은진 주연",
+                List.of("드라마", "로맨스")
+        );
+
+        // when & then
+        mockMvc.perform(multipart("/api/contents")
+                        .file(createJsonRequestPart(request))
+                        .file(createThumbnail()))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(contentService);
+    }
+
+    @Test
     @DisplayName("썸네일이 없을 때 400을 응답한다.")
     void create_withoutThumbnail() throws Exception {
         // given
@@ -199,23 +219,45 @@ public class ContentControllerTest {
     }
 
     @Test
-    @DisplayName("수정 시 제목이 비어 있을 때 400을 응답한다.")
-    void update_invalidTitle() throws Exception {
+    @DisplayName("수정 시 제목과 설명이 없어도 정상적으로 수정된다.")
+    void update_withoutTitleAndDescription() throws Exception {
         // given
         UUID contentId = UUID.randomUUID();
 
         ContentUpdateRequest request = new ContentUpdateRequest(
-                "",
-                "서강준, 안은진 주연",
+                null,
+                null,
+                List.of("로맨스")
+        );
+
+        // when & then
+        mockMvc.perform(multipart("/api/contents/{contentId}", contentId)
+                        .file(createJsonRequestPart(request))
+                        .with(req -> {
+                            req.setMethod("PATCH");
+                            return req;
+                        }))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("콘텐츠 수정 시 태그가 50자를 초과하면 400을 응답한다.")
+    void update_titleTooLong() throws Exception {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        ContentUpdateRequest request = new ContentUpdateRequest(
+                "가".repeat(101),
+                null,
                 null
         );
 
         // when & then
         mockMvc.perform(multipart("/api/contents/{contentId}", contentId)
                         .file(createJsonRequestPart(request))
-                        .with(multipartRequest -> {
-                            multipartRequest.setMethod("PATCH");
-                            return multipartRequest;
+                        .with(req -> {
+                            req.setMethod("PATCH");
+                            return req;
                         }))
                 .andExpect(status().isBadRequest());
 
