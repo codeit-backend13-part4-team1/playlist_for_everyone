@@ -10,6 +10,7 @@ import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import java.time.LocalDateTime;
 import java.util.UUID;
 import org.hibernate.Hibernate;
 import org.junit.jupiter.api.DisplayName;
@@ -88,8 +89,38 @@ public class PlaylistRepositoryTest {
     assertThat(saved.getCreatedAt()).isNotNull();
     assertThat(saved.getUpdatedAt()).isNotNull();
     assertThat(saved.getSubscriberCount()).isZero();
+  }
 
+  @Test
+  @DisplayName("수정일 갱신 쿼리는 해당 플레이리스트의 수정일을 주어진 시각으로 바꾼다")
+  void 수정일_갱신_쿼리는_수정일을_주어진_시각으로_바꾼다() {
+    // given
+    User owner = userRepository.save(User.builder()
+        .email("touch@test.com")
+        .name("tester")
+        .role(Role.USER)
+        .build());
+    Playlist saved = playlistRepository.saveAndFlush(new Playlist(owner, "제목", "설명"));
+    em.clear();
+    LocalDateTime newTime = LocalDateTime.of(2030, 1, 1, 12, 0);
 
+    // when
+    int updated = playlistRepository.touchUpdatedAt(saved.getId(), newTime);
+
+    // then
+    assertThat(updated).isEqualTo(1);
+    Playlist found = playlistRepository.findById(saved.getId()).orElseThrow();
+    assertThat(found.getUpdatedAt()).isEqualTo(newTime);
+  }
+
+  @Test
+  @DisplayName("없는 플레이리스트면 0을 반환한다")
+  void 없는_플레이리스트면_수정일_갱신은_0을_반환한다() {
+    // when
+    int updated = playlistRepository.touchUpdatedAt(UUID.randomUUID(), LocalDateTime.now());
+
+    // then
+    assertThat(updated).isZero();
   }
 
 }
