@@ -401,6 +401,28 @@ class SseConnectionServiceTest {
     }
 
     @Test
+    @DisplayName("초기 주석 전송 중 상태 예외가 발생하면 해당 연결을 삭제하고 원본예외를 전달한다.")
+    void initialCommentIllegalStateRequestDeletionAndRethrowsOriginalException(){
+        UUID userId = UUID.randomUUID();
+        IllegalStateException sendFailure = new IllegalStateException("이미 종료된 연결입니다.");
+
+        ArgumentCaptor<Connection> connectionCaptor = ArgumentCaptor.forClass(Connection.class);
+
+        try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class,
+                (emitter, context)-> doAnswer(invocation -> {
+                    verify(repository).save(eq(userId), connectionCaptor.capture(), same(emitter));
+                    throw sendFailure;
+                }).when(emitter).send(any(SseEmitter.SseEventBuilder.class))
+        )){
+            assertThatThrownBy(()-> service.connect(userId))
+                    .isSameAs(sendFailure);
+
+            verify(repository).delete(userId, connectionCaptor.getValue());
+            verify(repository, times(1)).delete(any(), any());
+        }
+    }
+
+    @Test
     @DisplayName("한 연결의 종료가 실패해도 해당 연결을 삭제하고 나머지 사용자 연결의 정리를 계속한다.")
     void closeAllContinuesCleanupWhenCompletionFails(){
         UUID firstUserId = UUID.randomUUID();

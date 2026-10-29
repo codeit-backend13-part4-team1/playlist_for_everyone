@@ -37,9 +37,8 @@ public class SseConnectionService {
 
         try {
             emitter.send(SseEmitter.event().comment("connected"));
-        } catch (IOException e) {
-            sseEmitterRepository.delete(userId, connection);
-            throw new UncheckedIOException("SSE 초기 주석 전송에 실패했습니다.",e);
+        } catch (IOException | IllegalStateException e) {
+            handleConnectionError(userId, e, connection);
         }
         return emitter;
     }
@@ -57,5 +56,15 @@ public class SseConnectionService {
                         }
                     });
                 });
+    }
+
+    private void handleConnectionError(UUID userId, Exception e, Connection connection) {
+        sseEmitterRepository.delete(userId, connection);
+        if (e instanceof IOException io){
+            throw new UncheckedIOException("SSE 초기 주석 전송에 실패했습니다.", io);
+        }
+        if (e instanceof IllegalStateException illegalState){
+            throw illegalState;
+        }
     }
 }
