@@ -194,4 +194,50 @@ class RedisSseEventSubscriberTest {
         verifyNoInteractions(sseDeliveryService);
     }
 
+    @Test
+    @DisplayName("eventId가 UUID 형식이 아니면 예외를 전파하지 않고 로컬 전송 없이 건너뛴다.")
+    void skipsMessageWithInvalidEventId(){
+        UUID receiverId = UUID.randomUUID();
+
+        String json = """
+                {
+                 "eventId": "not-a-uuid",
+                 "receiverId": "%s",
+                 "eventName": "notifications",
+                 "data": {"message": "다음 정상 알림"}
+                }
+                """.formatted(receiverId);
+
+        Message message = new DefaultMessage("test:sse:events".getBytes(StandardCharsets.UTF_8),
+                json.getBytes(StandardCharsets.UTF_8));
+
+        assertThatCode(()-> subscriber.onMessage(message, null))
+                .doesNotThrowAnyException();
+
+        verifyNoInteractions(sseDeliveryService);
+    }
+
+    @Test
+    @DisplayName("receiverId가 UUID 형식이 아니면 예외를 전파하지 않고 로컬 전송 없이 건너뛴다.")
+    void skipsMessageWithInvalidReceiverId(){
+        UUID eventId = UUID.randomUUID();
+
+        String json = """
+                {
+                 "eventId": "%s",
+                 "receiverId": "not-a-uuid",
+                 "eventName": "notifications",
+                 "data": {"message": "다음 정상 알림"}
+                }
+                """.formatted(eventId);
+
+        Message message = new DefaultMessage("test:sse:events".getBytes(StandardCharsets.UTF_8),
+                json.getBytes(StandardCharsets.UTF_8));
+
+        assertThatCode(()-> subscriber.onMessage(message, null))
+                .doesNotThrowAnyException();
+
+        verifyNoInteractions(sseDeliveryService);
+    }
+
 }
