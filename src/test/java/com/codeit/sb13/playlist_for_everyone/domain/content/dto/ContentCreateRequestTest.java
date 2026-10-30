@@ -108,4 +108,46 @@ public class ContentCreateRequestTest {
         assertThat(violations).isEmpty();
     }
 
+    @Test
+    @DisplayName("제목이 유니코드 공백만 포함하면 유효성 검사에 실패한다.")
+    void validate_unicodeBlankTitle() {
+        // given
+        ContentCreateRequest request = new ContentCreateRequest(
+                ContentType.tvSeries,
+                "\u00A0",
+                "KBS 드라마입니다.",
+                List.of("드라마", "KBS")
+        );
+
+        // when
+        Set<ConstraintViolation<ContentCreateRequest>> violations =
+                validator.validate(request);
+
+        // then
+        assertThat(violations)
+                .extracting(v -> v.getPropertyPath().toString())
+                .contains("title");
+    }
+
+    @Test
+    @DisplayName("설명이 유니코드 공백만 포함하면 유효성 검사에 실패한다.")
+    void validate_unicodeBlankDescription() {
+        // given
+        ContentCreateRequest request = new ContentCreateRequest(
+                ContentType.tvSeries,
+                "너말고다른연애",
+                "\u00A0",
+                List.of("드라마", "KBS")
+        );
+
+        // when
+        Set<ConstraintViolation<ContentCreateRequest>> violations =
+                validator.validate(request);
+
+        // then
+        assertThat(violations)
+                .extracting(v -> v.getPropertyPath().toString())
+                .contains("description");
+    }
+
 }
