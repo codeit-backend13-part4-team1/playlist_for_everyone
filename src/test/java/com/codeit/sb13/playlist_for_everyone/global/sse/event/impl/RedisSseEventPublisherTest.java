@@ -22,8 +22,7 @@ import tools.jackson.databind.json.JsonMapper;
 import java.util.Map;
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
@@ -118,6 +117,25 @@ class RedisSseEventPublisherTest {
                 .hasCause(redisFailure);
 
         verify(redisTemplate).convertAndSend(eq("test:sse:events"), anyString());
+    }
+
+    @Test
+    @DisplayName("Redis 구독자가 없어 반환값이 0이어도 예외 없이 한 번 발행한다.")
+    void publishesWithoutFailureWhenNoRedisSubscribers(){
+        SseEvent<Map<String, String>> event = new SseEvent<>(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                Event.NOTIFICATIONS.getName(),
+                Map.of("message", "테스트 알림")
+        );
+
+        when(redisTemplate.convertAndSend(eq("test:sse:events"), anyString()))
+                .thenReturn(0L);
+        assertThatCode(()-> publisher.publish(event))
+                .doesNotThrowAnyException();
+
+        verify(redisTemplate)
+                .convertAndSend(eq("test:sse:events"), anyString());
     }
 
     public static class SerializationFailingPayload{
