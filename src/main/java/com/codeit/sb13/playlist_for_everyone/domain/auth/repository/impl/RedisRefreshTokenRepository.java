@@ -72,6 +72,12 @@ public class RedisRefreshTokenRepository implements RefreshTokenRepository {
         redisTemplate.delete(key);
     }
 
+    @Override
+    public boolean rotate(UUID userId, String oldRefreshToken, String newRefreshToken, Duration ttl) {
+        // RED 단계: 다음 GREEN 단계에서 원자적 교체를 구현한다.
+        return false;
+    }
+
     /**
      * 토큰 원문을 저장하지 않고 해시값으로 Redis 키를 만든다.
      *

@@ -37,5 +37,18 @@ public interface RefreshTokenRepository {
      */
     void delete(String refreshToken);
 
+    /**
+     *
+     * 기존 Refresh Token을 새 토큰으로 원자적으로 교체한다.
+     *
+     * 기존 토큰이 해당 사용자에게 등록된 경우에만 교체한다.
+     * 확인·삭제·저장을 하나의 작업으로 처리하여,
+     * 같은 토큰에 대한 동시 재발급 중 하나만 성공하도록 한다.
+     *
+     * @return 교체에 성공하면 true,
+     * 기존 토큰이 없거나 사용자 ID가 다르면 false
+     */
+    boolean rotate(UUID userId, String oldRefreshToken, String newRefreshToken, Duration ttl);
+
 
 }

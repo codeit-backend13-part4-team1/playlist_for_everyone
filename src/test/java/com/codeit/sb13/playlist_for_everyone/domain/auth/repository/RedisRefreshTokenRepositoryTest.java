@@ -18,8 +18,9 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -162,6 +163,147 @@ class RedisRefreshTokenRepositoryTest {
         assertThat(repository.findUserId(refreshToken)).isEmpty();
     }
 
+    @Test
+    @DisplayName("토큰을 교체하면 기존 토큰을 폐기하고 새 토큰에 TTL이 적용된다.")
+    void 토큰을_교체하면_기존_토큰의_재사용을_거절한다() {
+        String newToken = "test-refresh-token-" + UUID.randomUUID();
+        String retryToken = "test-retry-token-" + UUID.randomUUID();
+        Duration newTtl = Duration.ofMinutes(5);
+
+        repository.save(userId, refreshToken, Duration.ofMinutes(10));
+
+        boolean rotated = repository.rotate(userId, refreshToken, newToken, newTtl);
+
+        assertThat(rotated).isTrue();
+
+        // 이전 토큰으로는 더 이상 재발급할 수 없어야 한다.
+        assertThat(repository.findUserId(refreshToken)).isEmpty();
+
+        // 새 토큰에는 동일한 사용자 ID가 연결되어야 한다.
+        assertThat(repository.findUserId(newToken)).contains(userId);
+
+        // 새 토큰에도 만료시간이 적용되어야 한다.
+        Long remainingMillis = redisTemplate.getExpire(redisKey(newToken), TimeUnit.MILLISECONDS);
+
+        assertThat(remainingMillis).isNotNull();
+        assertThat(remainingMillis)
+                .isPositive()
+                .isLessThanOrEqualTo(newTtl.toMillis());
+
+        // 이미 사용한 기존 토큰으로 다시 교체하려는 요청은 실패한다.
+        boolean reused = repository.rotate(
+                userId,
+                refreshToken,
+                retryToken,
+                newTtl
+        );
+
+        assertThat(reused).isFalse();
+        assertThat(repository.findUserId(retryToken)).isEmpty();
+
+        // 실패한 재시도가 정상 발급된 토큰에 영향을 주면 안 된다.
+        assertThat(repository.findUserId(newToken)).contains(userId);
+    }
+
+    @Test
+    @DisplayName("기존 토큰이 등록되어 있지 않으면 새 토큰으로 저장하지 않는다.")
+    void 미등록_토큰의_교체를_거절한다() {
+        String newToken = "new-refresh-token-" + UUID.randomUUID();
+
+        boolean rotated = repository.rotate(
+                userId,
+                refreshToken,
+                newToken,
+                Duration.ofMinutes(5)
+        );
+        assertThat(rotated).isFalse();
+        assertThat(repository.findUserId(newToken)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("기존 토큰의 사용자 ID가 다르면 기존 토큰을 유지하고 교체를 거절한다.")
+    void 사용자_ID가_다르면_교체를_거절한다() {
+        UUID anotherUserId = UUID.randomUUID();
+        String newToken = "new-refresh-token-" + UUID.randomUUID();
+
+        repository.save(userId, refreshToken, Duration.ofMinutes(10));
+
+        boolean rotated = repository.rotate(
+                anotherUserId,
+                refreshToken,
+                newToken,
+                Duration.ofMinutes(5)
+        );
+
+        assertThat(rotated).isFalse();
+
+        // 다른 사용자의 요청으로 정상 토큰이 삭제되면 안 된다.
+        assertThat(repository.findUserId(refreshToken)).contains(userId);
+        assertThat(repository.findUserId(newToken)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("같은 Refresh Token을 동시에 교체하면 하나만 성공한다.")
+    void 동시에_교체하면_하나만_성공한다() throws Exception {
+        String firstNewToken = "first-refresh-token-" + UUID.randomUUID();
+        String secondNewToken = "second-refresh-token-" + UUID.randomUUID();
+        Duration ttl = Duration.ofMinutes(5);
+
+        repository.save(userId, refreshToken, Duration.ofMinutes(10));
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        // 두 작업이 모두 준비된 뒤 교체 요청을 시작한다.
+        CyclicBarrier barrier = new CyclicBarrier(2);
+
+        try {
+            Future<Boolean> first = executor.submit(()-> {
+                barrier.await(5, TimeUnit.SECONDS);
+
+                return repository.rotate(
+                        userId,
+                        refreshToken,
+                        firstNewToken,
+                        ttl
+                );
+            });
+
+            Future<Boolean> second = executor.submit(()-> {
+                barrier.await(5, TimeUnit.SECONDS);
+
+                return repository.rotate(
+                        userId,
+                        refreshToken,
+                        secondNewToken,
+                        ttl
+                );
+            });
+
+            boolean firstSuccess = first.get(10, TimeUnit.SECONDS);
+            boolean secondSuccess = second.get(10, TimeUnit.SECONDS);
+
+            // 성공 하나, 실패 하나여야 한다.
+            assertThat(List.of(firstSuccess, secondSuccess))
+                    .containsExactlyInAnyOrder(true, false);
+
+            assertThat(repository.findUserId(refreshToken)).isEmpty();
+
+            String winnerToken = firstSuccess
+                    ? firstNewToken
+                    : secondNewToken;
+
+            String loserToken = firstSuccess
+                    ? secondNewToken
+                    : firstNewToken;
+
+            assertThat(repository.findUserId(winnerToken)).contains(userId);
+            assertThat(repository.findUserId(loserToken)).isEmpty();
+        } finally {
+            // 실패하더라도 작업 스레드를 정리한다.
+            executor.shutdown();
+            executor.awaitTermination(5, TimeUnit.SECONDS);
+        }
+    }
 
     @ParameterizedTest
     @ValueSource(longs = {0, -1})
