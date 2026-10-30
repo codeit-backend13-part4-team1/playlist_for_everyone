@@ -30,5 +30,9 @@ public record SseEvent<T>(
         Objects.requireNonNull(eventId, "이벤트 ID는 null일 수 없습니다.");
         Objects.requireNonNull(receiverId, "수신자 ID는 null일 수 없습니다.");
         Objects.requireNonNull(eventName, "이벤트 이름은 null일 수 없습니다.");
+        if (!Event.exist(eventName)){
+            throw new IllegalArgumentException("지원하지 않는 이벤트이름 입니다. eventName=%s".formatted(eventName));
+        }
     }
+
 }
