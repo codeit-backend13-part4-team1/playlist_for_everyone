@@ -40,4 +40,13 @@ class RedisSseSubscriptionTest {
         verify(redisBrokerRegister).register(subscriber, "test:sse:events");
     }
 
+    @Test
+    @DisplayName("구독을 종료하면 설정된 채널에서 SSE 수신 리스너를 해제한다.")
+    void unregisterSubscriberFromConfiguredChannelOnStop(){
+        subscription.start();
+        subscription.stop();
+        verify(redisBrokerRegister)
+                .unregister(subscriber, "test:sse:events");
+    }
+
 }
