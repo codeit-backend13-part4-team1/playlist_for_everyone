@@ -21,7 +21,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("Redis SSE 이벤트 수신")
@@ -75,6 +77,18 @@ class RedisSseEventSubscriberTest {
                 .isEqualTo(objectMapper.readTree("""
                         {"message": "테스트 알림"}
                         """));
+    }
+
+    @Test
+    @DisplayName("잘못된 JSON 메시지는 예외를 전파하지 않고 로컬 전송 없이 건너뛴다.")
+    void skipMalformedJsonWithoutDelivery(){
+        Message message = new DefaultMessage("test:sse:events".getBytes(StandardCharsets.UTF_8),
+                "{invalid-json}".getBytes(StandardCharsets.UTF_8));
+
+        assertThatCode(()-> subscriber.onMessage(message, null))
+                .doesNotThrowAnyException();
+
+        verifyNoInteractions(sseDeliveryService);
     }
 
 }
