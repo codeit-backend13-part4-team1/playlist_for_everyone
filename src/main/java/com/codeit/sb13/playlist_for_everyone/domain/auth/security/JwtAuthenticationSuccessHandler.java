@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.auth.security;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.dto.response.JwtDto;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
@@ -15,6 +16,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 
 /**
  * 로그인 인증 성공 후 토큰 발급과 HTTP 응답 작성을 담당한다.
@@ -26,6 +28,22 @@ public class JwtAuthenticationSuccessHandler implements AuthenticationSuccessHan
     private final JwtTokenProvider jwtTokenProvider;
     private final UserService userService;
     private final ObjectMapper objectMapper;
+
+    /**
+     * Refresh Token 저장소와 쿠키 정책을 전달받는 생성자.
+     *
+     * RED 단계에서는 기존 로그인 처리만 수행한다.
+     * 저장소 연결과 쿠키 작성은 GREEN 단계에서 구현한다.
+     */
+
+    public JwtAuthenticationSuccessHandler(JwtTokenProvider jwtTokenProvider,
+                                           UserService userService,
+                                           ObjectMapper objectMapper,
+                                           RefreshTokenRepository refreshTokenRepository,
+                                           Duration refreshTokenValidity,
+                                           boolean refreshCookieSecure) {
+        this(jwtTokenProvider, userService, objectMapper);
+    }
 
 
     public JwtAuthenticationSuccessHandler(JwtTokenProvider jwtTokenProvider, UserService userService, ObjectMapper objectMapper) {
