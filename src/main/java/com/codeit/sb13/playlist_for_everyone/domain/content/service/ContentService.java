@@ -83,7 +83,7 @@ public class ContentService {
                 .filter(Objects::nonNull)
                 .map(String::strip)
                 .filter(tag -> !tag.isBlank())
-                .filter(tag -> seen.add(tag.replaceAll("\\s+", "")))
+                .filter(tag -> seen.add(tag.replaceAll("(?U)\\s+", "")))
                 .toList();
     }
 
