@@ -37,6 +37,9 @@ public enum ApiErrorCode {
     //REVIEW R
     REVIEW_NOT_FOUND("R_001", HttpStatus.NOT_FOUND, "리뷰를 찾을 수 없습니다."),
 
+    //SSE S
+    SSE_PUBLISH_FAIL("S_001", HttpStatus.INTERNAL_SERVER_ERROR, "SSE 이벤트 발행에 실패했습니다."),
+
     //GLOBAL/COMMON GLB
     INVALID_REQUEST("GLB_001", HttpStatus.BAD_REQUEST, "요청 데이터가 올바르지 않습니다."),
     INTERNAL_SERVER_ERROR("GLB_999",HttpStatus.INTERNAL_SERVER_ERROR , "서버 내부 오류");

@@ -1,7 +1,11 @@
 package com.codeit.sb13.playlist_for_everyone.global.exception.sse;
 
-public class SsePublishException extends RuntimeException {
+import com.codeit.sb13.playlist_for_everyone.global.exception.ApiErrorCode;
+
+import java.util.Map;
+
+public class SsePublishException extends SseException {
     public SsePublishException(Throwable cause) {
-        super("SSE 이벤트 발행에 실패했습니다.", cause);
+        super(ApiErrorCode.SSE_PUBLISH_FAIL, Map.of(), cause);
     }
 }
