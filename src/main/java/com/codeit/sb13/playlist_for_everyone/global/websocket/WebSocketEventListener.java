@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket;
 
 
 import com.codeit.sb13.playlist_for_everyone.global.service.WatcherRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.chat.ChatMessagePublisher;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.dto.chat.ContentChatDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.dto.event.WebSocketChatEvent;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.dto.event.WebSocketContentWatchEvent;
@@ -22,7 +23,7 @@ import java.util.UUID;
 public class WebSocketEventListener {
 
     private final WatcherRegistry watcherRegistry;
-
+    private final ChatMessagePublisher chatMessagePublisher;
 
     private final SimpMessagingTemplate messagingTemplate;
 
@@ -49,8 +50,23 @@ public class WebSocketEventListener {
         watcherRegistry.unregister(sessionId, subscriptionId);
     }
 
+    @EventListener
+    public void onChat(WebSocketChatEvent event){
+        if (event.contentId() == null)
+            throw new RuntimeException();
+
+        String contentId = event.contentId().toString();
+        ContentChatDto chatDto = new ContentChatDto(event.user(), event.message());
+
+        chatMessagePublisher.publish(
+                contentId,
+                chatDto);
+    }
 
 
+
+
+    // 사용 안함. 추후 삭제예정.
     @EventListener
     public void onWatch(WebSocketContentWatchEvent event){
         messagingTemplate.convertAndSend(
@@ -58,15 +74,8 @@ public class WebSocketEventListener {
                 , event.content());
     }
 
-    @EventListener
-    public void onChat(WebSocketChatEvent event){
 
-        // 메세지 전송 로직
-        ContentChatDto chatDto = new ContentChatDto(event.user(), event.message());
-        messagingTemplate.convertAndSend(
-                pathResolve(SUB_PREFIX, event.contentId(), CHAT_POSTFIX),
-                chatDto);
-    }
+
 
     private String pathResolve(String prefix, UUID contentId, String postfix){
         return prefix + contentId + postfix ;

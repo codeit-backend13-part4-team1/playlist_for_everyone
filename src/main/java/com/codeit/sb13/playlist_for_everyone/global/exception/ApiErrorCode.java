@@ -28,6 +28,8 @@ public enum ApiErrorCode {
     //PLAYLIST P
     PLAYLIST_NOT_FOUND("P_001", HttpStatus.NOT_FOUND, "플레이리스트를 찾을 수 없습니다."),
     PLAYLIST_FORBIDDEN("P_002", HttpStatus.FORBIDDEN, "플레이리스트 소유자만 수정하거나 삭제할 수 있습니다."),
+    PLAYLIST_CONTENT_DUPLICATED("P_003", HttpStatus.BAD_REQUEST, "이미 플레이리스트에 담긴 콘텐츠입니다."),
+    PLAYLIST_CONTENT_NOT_FOUND("P_004", HttpStatus.BAD_REQUEST, "플레이리스트에 담기지 않은 콘텐츠입니다."),
 
     //REVIEW R
     REVIEW_NOT_FOUND("R_001", HttpStatus.NOT_FOUND, "리뷰를 찾을 수 없습니다."),

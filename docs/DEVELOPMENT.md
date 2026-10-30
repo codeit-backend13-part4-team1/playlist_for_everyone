@@ -2,6 +2,10 @@
 
 로컬 실행, 공통코드 사용법, 테스트 방법을 정리한 문서입니다. 프로젝트 소개는 [README](../README.md)에서 관리합니다.
 
+> **문서 기준 안내:** 아래에는 공통 기반을 처음 준비하던 시점의 설명이 일부 남아 있습니다.
+> 도메인 구현 현황과 개발용 보안 전환 설명은 최신 코드와 다를 수 있습니다.
+> 현재 SSE 연결·전송·인증·테스트는 [SSE 구현 가이드](sse/README.md)를 기준으로 확인합니다.
+
 ## 현재 개발 상태
 
 현재는 도메인 기능 개발에 사용할 공통 기반을 준비한 단계입니다.
@@ -13,7 +17,8 @@
 | 도메인 기능 | 회원·콘텐츠·플레이리스트 등의 실제 API와 서비스 구현 전 |
 | 로컬 인프라 | Docker Compose에 PostgreSQL과 Redis 서비스 정의 |
 | 개발용 보안 | `dev` 프로필에서 전체 요청을 인증 없이 허용하고 CSRF 검사를 비활성화하는 임시 설정 |
-| 후속 기능 | JWT 인증, Redis 기반 캐시·세션, 배치 작업, S3 연동, SSE·WebSocket 기능 등은 별도 구현 필요 |
+| SSE | 인증된 사용자의 다중 연결, 로컬 전송, 하트비트, 종료 정리 및 공통 발행 계약 구현. [SSE 구현 가이드](sse/README.md) 참고 |
+| 후속 기능 | JWT 인증, Redis 기반 캐시·세션, 배치 작업, S3 연동, WebSocket 기능 등은 별도 구현 필요. SSE는 서버 간 전송·이력 복구·연결 수 제한이 후속 범위 |
 
 라이브러리 의존성과 로컬 인프라를 준비한 상태와 기능 구현 완료를 구분합니다. Redis 서비스는 Compose에 포함되어 있으며, 이를 사용하는 캐시·세션 기능은 구현 전입니다. Kafka와 Elasticsearch는 현재 Compose에 포함되어 있지 않습니다.
 
@@ -68,6 +73,18 @@ cp .env.example .env.dev
 Spring 설정의 파일 import는 `optional`이지만, Compose 실행에는 `--env-file .env.dev`를 전달하므로 기본 로컬 실행 절차에서는 이 파일을 준비해야 합니다.
 
 ### 3. 애플리케이션 실행
+
+실행 전에 `.env.dev`의 `EVERYONE_TMDB_ACCESS_TOKEN` 값을 채웁니다.
+TMDB 조회 없이 다른 기능만 개발할 때는 `dummy`를 넣으면 됩니다.
+
+```dotenv
+EVERYONE_TMDB_ACCESS_TOKEN=dummy
+```
+
+실제 TMDB 조회가 필요하면 `dummy` 대신 발급받은 API Read Access Token을 입력합니다. `Bearer ` 접두사는 제외합니다.
+실제 토큰이 들어간 `.env.dev`는 커밋하지 않습니다.
+
+IntelliJ 실행 설정에 넣은 환경변수는 터미널 실행에 자동 적용되지 않습니다.
 
 ```bash
 ./gradlew bootRun
@@ -143,6 +160,8 @@ EVERYONE_REDIS_PORT=6379
 | `EVERYONE_REDIS_PORT` | `6379` | Compose Redis의 호스트 포트 매핑과 Spring Redis 접속 포트. 컨테이너 내부 포트는 `6379` |
 | `EVERYONE_MULTIPART_MAX_FILE_SIZE` | `10MB` | 업로드 파일 하나의 최대 크기 |
 | `EVERYONE_MULTIPART_MAX_REQUEST_SIZE` | `12MB` | 파일과 폼 데이터 등을 포함한 multipart 요청 전체의 최대 크기 |
+| `EVERYONE_SSE_HEARTBEAT_INTERVAL` | `15s` | 하트비트 작업 완료 후 대기 시간. 기본값 `15s`, 0보다 커야 함 |
+| `EVERYONE_SSE_CONNECTION_TIMEOUT` | `30m` | 개별 SSE 연결 제한 시간. 기본값 `30m`, 1ms 이상이어야 함 |
 | `EVERYONE_JPA_DDL_AUTO` | `validate` | 엔티티와 DB 스키마 일치 여부 검증 |
 | `EVERYONE_JPA_FORMAT_SQL` | `true` | 개발 환경 SQL 포맷 설정 |
 | `EVERYONE_JPA_SHOW_SQL` | `false` | 개발 환경 JPA SQL 출력 설정 |
@@ -152,6 +171,10 @@ EVERYONE_REDIS_PORT=6379
 | `EVERYONE_AWS_REGION` | `ap-northeast-2` | 향후 S3 연동에 사용할 리전 설정 |
 | `EVERYONE_AWS_ENDPOINT` | 빈 값 | 향후 S3 연동에 사용할 엔드포인트 설정 |
 | `EVERYONE_S3_BUCKET` | 빈 값 | 향후 S3 연동에 사용할 버킷 설정 |
+| `EVERYONE_TMDB_ACCESS_TOKEN` | 빈 값 (실행 전 설정 필요) | TMDB 인증 토큰. 실제 조회에는 유효한 토큰 필요 |
+
+SSE 환경변수를 생략하면 위 기본값을 사용합니다. 개발에서는 `.env.dev`, 운영에서는 외부 환경변수로 조정합니다.
+설정 검증과 시작 실패 조건은 [SSE 설정값과 허용 범위](sse/02-delivery-heartbeat.md#설정값과-허용-범위)를 참고합니다.
 
 S3 관련 값은 현재 공통 설정에 선언되어 있지만 실제 S3 연동 기능은 구현 전입니다.
 
@@ -376,9 +399,43 @@ CI는 성공한 빌드의 JaCoCo XML에서 전체 LINE 수치로 SVG 배지를 �
 - 공통 예외 테스트에는 [TestEveryOneException](../src/test/java/com/codeit/sb13/testsupport/exception/TestEveryOneException.java)을 사용합니다. 도메인 예외 예시의 변경이 공통 동작 테스트에 영향을 주지 않도록 분리합니다.
 - 기존 테스트는 애플리케이션 컨텍스트, 예외 응답, 검증 오류, MDC, JPA Auditing, Querydsl 조회, 비밀번호 인코더, OpenAPI 설정을 확인합니다.
 - 알림 테스트는 제목 말줄임, 입력 검증, 커밋 후 저장, 롤백·트랜잭션 외 발행 시 미저장, 저장 실패 시 원 업무 보존 및 후속 정상 저장을 확인합니다. 통합 테스트는 `TransactionTemplate`으로 실제 커밋·롤백을 수행합니다.
-- MVC 테스트는 Security 필터를 제외해 핸들러와 인터셉터를 검증합니다. 이 테스트의 통과는 인증·인가 동작 검증을 의미하지 않습니다.
+- 공통 예외 핸들러·인터셉터의 MVC 테스트는 Security 필터를 제외합니다. 이 테스트의 통과는 인증·인가 동작 검증을 의미하지 않습니다.
+- SSE MVC 테스트는 실제 보안 필터를 포함하여 인증 사용자와 ASYNC 종료 시 인증 복원을 확인합니다. 실제 HTTP 테스트는 인증 의존성을 Mock으로 대체하고, 프레임 전송과 JSON 변환 실패 시 기존 연결 유지를 검증합니다.
+- SSE 설정 테스트는 `SseConfig`만 등록하고 설정값을 직접 제공하여 바인딩을 확인합니다. 검증 범위와 실행 명령은 [SSE 테스트 가이드](sse/05-testing.md)를 참고합니다.
 
 알림 통합 테스트는 PostgreSQL에서 테스트 프로필의 애플리케이션 컨텍스트 기동과 Flyway 마이그레이션을 확인합니다. 실제 Redis 연결과 캐시·세션 동작, Swagger 접속 및 커서 목록 API의 응답은 해당 결과에 포함되지 않습니다. 최신 결과와 수치는 각자의 코드에서 명령을 실행해 보고서로 확인합니다.
+
+### TMDB API 연동
+
+TMDB API 설정에서 발급받은 API Read Access Token을 사용합니다.
+
+IntelliJ의 애플리케이션 실행 설정 → 환경 변수에 다음 값을 추가합니다.
+
+- 이름: `EVERYONE_TMDB_ACCESS_TOKEN`
+- 값: 발급받은 토큰
+
+실제 토큰과 토큰이 포함된 실행 설정 파일은 커밋하지 않습니다.
+
+현재 영화·TV 인기 목록을 페이지별로 조회할 수 있습니다.
+연결 제한 시간은 기본 3초, 읽기 제한 시간은 기본 10초입니다.
+
+#### 자동 테스트
+
+실제 토큰 없이 실행할 수 있습니다.
+
+```bash
+./gradlew test --tests '*TmdbClientTest' --tests '*TmdbClientTimeoutTest'
+```
+
+#### 실제 API 연결 확인
+
+IntelliJ에서 `TmdbClientLiveTest`의 실행 설정에
+`EVERYONE_TMDB_ACCESS_TOKEN`을 추가한 뒤 실행합니다.
+
+실제 TMDB에 접속하므로 인터넷 연결과 유효한 토큰이 필요합니다.
+해당 환경 변수가 없으면 이 테스트는 건너뜁니다.
+토큰은 수동 확인용 테스트 실행 설정에만 추가하고,
+일반 자동 테스트와 CI에는 설정하지 않습니다.
 
 ## 협업과 후속 작업
 
@@ -392,6 +449,7 @@ CI는 성공한 빌드의 JaCoCo XML에서 전체 LINE 수치로 SVG 배지를 �
 - JWT 인증·인가 및 쿠키 기반 CSRF 정책 적용, 운영 배포 시 개발용 Security 프로필 제한 제거, 관리자 초기화 및 인증 실패 응답 처리
 - 목록 API의 커서 규칙 확정과 직렬화·페이징 테스트
 - Redis 기반 캐시·세션 기능 구현과 데이터 보관 정책 결정
-- 배치, S3, SSE·WebSocket 등 기능별 구현과 필요한 인프라 추가
+- 배치, S3, WebSocket 등 기능별 구현과 필요한 인프라 추가
+- SSE 서버 간 이벤트 전송, [공유 이력·재연결 복구 #53](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/53), [동시 연결 수 제한·모니터링 #107](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/107)
 - README 배지 자동 게시 방식 확정 및 연결
 - 배포 파이프라인 구성
