@@ -8,6 +8,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentServi
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
 import org.mockito.ArgumentCaptor;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.test.context.support.WithMockUser;
 import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -26,6 +28,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -102,6 +105,42 @@ public class ContentControllerTest {
         assertThat(capturedRequest.title()).isEqualTo("너말고다른연애");
         assertThat(capturedRequest.description()).isEqualTo("KBS 드라마 입니다.");
         assertThat(capturedRequest.tags()).containsExactly("드라마", "로맨스");
+    }
+
+    @Test
+    @WithMockUser(roles = "USER")
+    @DisplayName("일반 사용자는 콘텐츠를 생성할 수 없다.")
+    void create_forbidden() throws Exception {
+        // given
+        ContentCreateRequest request = new ContentCreateRequest(
+                ContentType.movie,
+                "테스트 영화",
+                "테스트 설명",
+                List.of("액션")
+        );
+
+        MockMultipartFile requestPart = new MockMultipartFile(
+                "request",
+                "",
+                MediaType.APPLICATION_JSON_VALUE,
+                objectMapper.writeValueAsBytes(request)
+        );
+
+        MockMultipartFile thumbnail = new MockMultipartFile(
+                "thumbnail",
+                "test.jpg",
+                MediaType.IMAGE_JPEG_VALUE,
+                "image".getBytes()
+        );
+
+        // when & then
+        mockMvc.perform(multipart("/api/contents")
+                        .file(requestPart)
+                        .file(thumbnail)
+                        .with(csrf()))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(contentService);
     }
 
     @Test
@@ -264,6 +303,35 @@ public class ContentControllerTest {
     }
 
     @Test
+    @WithMockUser(roles = "USER")
+    @DisplayName("일반 사용자는 콘텐츠를 수정할 수 없다.")
+    void update_forbidden() throws Exception {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        ContentUpdateRequest request = new ContentUpdateRequest(
+                "수정된 제목",
+                "수정된 설명",
+                List.of("드라마")
+        );
+
+        MockMultipartFile requestPart = new MockMultipartFile(
+                "request",
+                "",
+                MediaType.APPLICATION_JSON_VALUE,
+                objectMapper.writeValueAsBytes(request)
+        );
+
+        // when & then
+        mockMvc.perform(multipart(HttpMethod.PATCH, "/api/contents/{contentId}", contentId)
+                        .file(requestPart)
+                        .with(csrf()))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(contentService);
+    }
+
+    @Test
     @DisplayName("수정 시 제목과 설명이 없어도 정상적으로 수정된다.")
     void update_withoutTitleAndDescription() throws Exception {
         // given
@@ -287,7 +355,7 @@ public class ContentControllerTest {
 
     @Test
     @DisplayName("콘텐츠 수정 시 태그가 50자를 초과하면 400을 응답한다.")
-    void update_titleTooLong() throws Exception {
+    void update_tagTooLong() throws Exception {
         // given
         UUID contentId = UUID.randomUUID();
 
