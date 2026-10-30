@@ -26,8 +26,7 @@ public class ContentController implements ContentApi {
 
     @Override
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    // TODO: JWT 인증 연동 후 관리자 권한 검증 적용
-    // @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ContentDto> create(
             @Valid @RequestPart("request") ContentCreateRequest request,
             @RequestPart("thumbnail") MultipartFile file
@@ -37,6 +36,7 @@ public class ContentController implements ContentApi {
     }
 
     @Override
+    @PreAuthorize("hasRole('ADMIN')")
     @PatchMapping(
             value = "/{contentId}",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE
