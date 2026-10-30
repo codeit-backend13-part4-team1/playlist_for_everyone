@@ -19,4 +19,14 @@ public interface PlaylistRepository
   @Query("update Playlist p set p.updatedAt = :now where p.id = :playlistId")
   int touchUpdatedAt(@Param("playlistId") UUID playlistId, @Param("now") LocalDateTime now);
 
+  @Modifying(flushAutomatically = true, clearAutomatically = true)
+  @Query("update Playlist p set p.subscriberCount = p.subscriberCount + 1 "
+      + "where p.id = :playlistId")
+  int increaseSubscriberCount(@Param("playlistId") UUID playlistId);
+
+  @Modifying(flushAutomatically = true, clearAutomatically = true)
+  @Query("update Playlist p set p.subscriberCount = p.subscriberCount - 1 "
+      + "where p.id = :playlistId and p.subscriberCount > 0")
+  int decreaseSubscriberCount(@Param("playlistId") UUID playlistId);
+
 }

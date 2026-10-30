@@ -123,4 +123,91 @@ public class PlaylistRepositoryTest {
     assertThat(updated).isZero();
   }
 
+  @Test
+  @DisplayName("구독자 수 증가 쿼리는 구독자 수를 1씩 늘린다")
+  void 구독자_수_증가_쿼리는_구독자_수를_1씩_늘린다() {
+    // given
+    Playlist saved = savePlaylist();
+
+    // when
+    int first = playlistRepository.increaseSubscriberCount(saved.getId());
+    int second = playlistRepository.increaseSubscriberCount(saved.getId());
+
+    // then
+    assertThat(first).isEqualTo(1);
+    assertThat(second).isEqualTo(1);
+    Playlist found = playlistRepository.findById(saved.getId()).orElseThrow();
+    assertThat(found.getSubscriberCount()).isEqualTo(2L);
+  }
+
+  @Test
+  @DisplayName("구독자 수를 바꿔도 수정일은 바뀌지 않는다")
+  void 구독자_수를_바꿔도_수정일은_바뀌지_않는다() {
+    // given
+    Playlist saved = savePlaylist();
+    em.clear();
+    LocalDateTime before = playlistRepository.findById(saved.getId())
+        .orElseThrow().getUpdatedAt();
+
+    // when
+    playlistRepository.increaseSubscriberCount(saved.getId());
+    playlistRepository.decreaseSubscriberCount(saved.getId());
+
+    // then
+    Playlist found = playlistRepository.findById(saved.getId()).orElseThrow();
+    assertThat(found.getUpdatedAt()).isEqualTo(before);
+  }
+
+  @Test
+  @DisplayName("구독자 수 감소 쿼리는 구독자 수를 1 줄인다")
+  void 구독자_수_감소_쿼리는_구독자_수를_1_줄인다() {
+    // given
+    Playlist saved = savePlaylist();
+    playlistRepository.increaseSubscriberCount(saved.getId());
+    playlistRepository.increaseSubscriberCount(saved.getId());
+
+    // when
+    int updated = playlistRepository.decreaseSubscriberCount(saved.getId());
+
+    // then
+    assertThat(updated).isEqualTo(1);
+    Playlist found = playlistRepository.findById(saved.getId()).orElseThrow();
+    assertThat(found.getSubscriberCount()).isEqualTo(1L);
+  }
+
+  @Test
+  @DisplayName("구독자 수가 0이면 감소시키지 않고 0을 반환한다")
+  void 구독자_수가_0이면_감소시키지_않는다() {
+    // given
+    Playlist saved = savePlaylist();
+
+    // when
+    int updated = playlistRepository.decreaseSubscriberCount(saved.getId());
+
+    // then
+    assertThat(updated).isZero();
+    Playlist found = playlistRepository.findById(saved.getId()).orElseThrow();
+    assertThat(found.getSubscriberCount()).isZero();
+  }
+
+  @Test
+  @DisplayName("없는 플레이리스트면 증가와 감소 모두 0을 반환한다")
+  void 없는_플레이리스트면_구독자_수_증감은_0을_반환한다() {
+    // given
+    UUID missingId = UUID.randomUUID();
+
+    // when & then
+    assertThat(playlistRepository.increaseSubscriberCount(missingId)).isZero();
+    assertThat(playlistRepository.decreaseSubscriberCount(missingId)).isZero();
+  }
+
+  private Playlist savePlaylist() {
+    User owner = userRepository.save(User.builder()
+        .email("count@test.com")
+        .name("tester")
+        .role(Role.USER)
+        .build());
+    return playlistRepository.saveAndFlush(new Playlist(owner, "제목", "설명"));
+  }
+
 }
