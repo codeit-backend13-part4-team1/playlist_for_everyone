@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.event.impl;
 
+import com.codeit.sb13.playlist_for_everyone.global.exception.sse.SsePublishException;
 import com.codeit.sb13.playlist_for_everyone.global.sse.config.SseTransportProperties;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Event;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
@@ -12,6 +13,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
@@ -20,8 +22,10 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("Redis SSE 이벤트 발행")
@@ -76,5 +80,28 @@ class RedisSseEventPublisherTest {
         assertThat(message.path("data").path("message").asString())
                 .isEqualTo("테스트 알림");
 
+    }
+
+    @Test
+    @DisplayName("JSON 직렬화에 실패하면 원인을 보존한 발행 예외를 던지고 Redis에 발행하지 않는다.")
+    void serializationFailureThrowPublishExceptionWithoutPublishing(){
+        SseEvent<SerializationFailingPayload> event = new SseEvent<>(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                Event.NOTIFICATIONS.getName(),
+                new SerializationFailingPayload()
+        );
+
+        assertThatThrownBy(()->publisher.publish(event))
+                .isInstanceOf(SsePublishException.class)
+                .hasCauseInstanceOf(JacksonException.class);
+
+        verifyNoInteractions(redisTemplate);
+    }
+
+    public static class SerializationFailingPayload{
+        public String getMessage(){
+            throw new IllegalStateException("테스트용 JSON 변환 실패");
+        }
     }
 }
