@@ -147,4 +147,46 @@ class SubscriptionRepositoryTest {
     // then
     assertThat(deleted).isZero();
   }
+
+  @Test
+  @DisplayName("플레이리스트와 구독자로 구독을 삭제하고 다른 구독은 남긴다")
+  void 플레이리스트와_구독자로_구독을_삭제한다() {
+    // given
+    UUID playlistId = UUID.randomUUID();
+    UUID otherPlaylistId = UUID.randomUUID();
+    UUID subscriberId = UUID.randomUUID();
+    UUID otherSubscriberId = UUID.randomUUID();
+    subscriptionRepository.saveAndFlush(new Subscription(playlistId, subscriberId));
+    Subscription otherSubscriber = subscriptionRepository.saveAndFlush(
+        new Subscription(playlistId, otherSubscriberId));
+    Subscription otherPlaylist = subscriptionRepository.saveAndFlush(
+        new Subscription(otherPlaylistId, subscriberId));
+
+    // when
+    int deleted = subscriptionRepository.deleteByPlaylistIdAndSubscriberId(
+        playlistId, subscriberId);
+
+    // then
+    assertThat(deleted).isEqualTo(1);
+    assertThat(subscriptionRepository.findAll())
+        .extracting(Subscription::getId)
+        .containsExactlyInAnyOrder(otherSubscriber.getId(), otherPlaylist.getId());
+  }
+
+  @Test
+  @DisplayName("삭제할 구독이 없으면 0을 반환한다")
+  void 구독자의_구독이_없으면_삭제_건수는_0이다() {
+    // given
+    UUID playlistId = UUID.randomUUID();
+    subscriptionRepository.saveAndFlush(new Subscription(playlistId, UUID.randomUUID()));
+
+    // when
+    int deleted = subscriptionRepository.deleteByPlaylistIdAndSubscriberId(
+        playlistId, UUID.randomUUID());
+
+    // then
+    assertThat(deleted).isZero();
+    assertThat(subscriptionRepository.findAll()).hasSize(1);
+  }
+
 }
