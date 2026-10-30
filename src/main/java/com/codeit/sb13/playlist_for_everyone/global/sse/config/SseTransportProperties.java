@@ -15,6 +15,9 @@ public record SseTransportProperties(
         if (!Transport.exist(transport)) {
             throw new IllegalArgumentException("지원하지 않는 SSE 전송 방식입니다. transport=%s".formatted(transport));
         }
+        if (redis == null){
+            throw new IllegalArgumentException("everyone.sse.redis 설정은 필수 입니다.");
+        }
     }
 
     public record Redis(
