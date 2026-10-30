@@ -8,14 +8,14 @@ import java.util.List;
 
 public record ContentUpdateRequest(
         @Pattern(
-                regexp = ".*\\S.*",
+                regexp = "(?U).*\\S.*",
                 message = "제목은 공백만 입력할 수 없습니다."
         )
         @Size(max = 100)
         String title,
 
         @Pattern(
-                regexp = "(?s).*\\S.*",
+                regexp = "(?sU).*\\S.*",
                 message = "설명은 공백만 입력할 수 없습니다."
         )
         String description,
