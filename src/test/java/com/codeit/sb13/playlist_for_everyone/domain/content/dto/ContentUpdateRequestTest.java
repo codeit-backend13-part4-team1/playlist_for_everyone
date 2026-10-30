@@ -172,4 +172,24 @@ public class ContentUpdateRequestTest {
                 .containsExactly("description");
     }
 
+    @Test
+    @DisplayName("유니코드 공백만 있는 제목과 설명은 검증에 실패한다.")
+    void unicodeWhitespace_invalid() {
+        // given
+        ContentUpdateRequest request = new ContentUpdateRequest(
+                "\u2003",
+                "\u2003",
+                null
+        );
+
+        // when
+        Set<ConstraintViolation<ContentUpdateRequest>> violations =
+                validator.validate(request);
+
+        // then
+        assertThat(violations)
+                .extracting(v -> v.getPropertyPath().toString())
+                .containsExactlyInAnyOrder("title", "description");
+    }
+
 }
