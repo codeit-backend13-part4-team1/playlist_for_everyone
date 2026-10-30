@@ -47,6 +47,7 @@ public class WebSocketInterceptor implements ChannelInterceptor {
         return switch (accessor.getCommand()) {
             case CONNECT -> connect(accessor,message);
             case SUBSCRIBE -> subscribe(accessor,message);
+            case UNSUBSCRIBE -> unsubscribe(accessor,message);
             case SEND -> send(accessor,message);
             default -> message;
         };
@@ -69,7 +70,6 @@ public class WebSocketInterceptor implements ChannelInterceptor {
 
     private Message<?> send(StompHeaderAccessor accessor, Message<?> message) {
         // /sub/contnet... 에 해당하는 destination 은 메세지를 통과시키지 않음.
-        if (isBlockedPath(accessor)) return null;
 
         return message;
     }
@@ -85,6 +85,10 @@ public class WebSocketInterceptor implements ChannelInterceptor {
         // subscription 관련 로직.
         registerContentId(accessor);
 
+        return message;
+    }
+
+    private Message<?> unsubscribe(StompHeaderAccessor accessor,Message<?> message){
         return message;
     }
 
@@ -155,16 +159,4 @@ public class WebSocketInterceptor implements ChannelInterceptor {
         else
             return Optional.empty();
     }
-
-    private boolean isBlockedPath(StompHeaderAccessor accessor){
-        // content 구독 경로
-        Pattern pattern = Pattern.compile("^/sub/contents/.*$");
-        String dst = accessor.getDestination();
-
-        if (dst == null) return true;
-
-        if (!pattern.matcher(dst).matches() || dst.isBlank()) return false;
-        return true;
-    }
-
 }
