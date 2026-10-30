@@ -87,4 +87,17 @@ class SseTransportPropertiesTest {
         });
     }
 
+    @Test
+    @DisplayName("Redis 채널이 빈 문자열이면 설정 로딩에 실패한다.")
+    void  failsToStartWhenRedisChannelIsEmpty(){
+        contextRunner.withPropertyValues(
+                "everyone.sse.transport=redis",
+                "everyone.sse.redis.channel="
+        ).run(context -> {
+            assertThat(context).hasFailed();
+            assertThat(context.getStartupFailure())
+                    .hasRootCauseInstanceOf(IllegalArgumentException.class);
+        });
+    }
+
 }
