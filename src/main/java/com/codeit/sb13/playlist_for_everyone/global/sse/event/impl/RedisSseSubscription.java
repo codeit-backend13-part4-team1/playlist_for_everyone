@@ -45,6 +45,9 @@ public class RedisSseSubscription implements SseSubscription {
     @Override
     @PreDestroy
     public void stop() {
-
+        redisBrokerRegister.unregister(
+                subscriber,
+                properties.redis().channel()
+        );
     }
 }
