@@ -2,7 +2,6 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket;
 
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
-import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;

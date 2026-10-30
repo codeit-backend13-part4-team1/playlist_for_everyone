@@ -1,9 +1,12 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket;
 
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.dto.chat.ContentChatSendRequest;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.dto.chat.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.dto.event.WebSocketChatEvent;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.dto.watcher.WatchingSessionDto;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.payload.ChangeType;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.payload.WatchingSessionChange;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -23,19 +26,45 @@ public class WebSocketController {
 
     private final ApplicationEventPublisher eventPublisher;
 
-    // 초기 구독시 WatchingSessionDto 한번 반환.
+    // todo - 채널 참가, 떠나기 기능은 event 를 통한 메세지 publish 가 필요.
+    //  때문에, 컨트롤러 단이 아닌, 채널 인터셉터를 통해 구현.
+    //  본 controller 는 삭제 예정.
     @SubscribeMapping("/contents/{contentId}/watch")
-    public WatchingSessionDto contentWatch(
+    public WatchingSessionChange contentWatch(
             @DestinationVariable UUID contentId,
             StompHeaderAccessor header,
             Principal principal
     ){
-        // 추후 컨텐츠, 유저 서비스 이용해서 WatcherSessionDto 반환.
-        return new WatchingSessionDto(null,null,null,null);
+
+//        SecurityUser sUser = (SecurityUser) principal;
+//
+//        // content 계통 구현 후 수정
+//        WatchContent content = new WatchContent(
+//                null,
+//                null,
+//                null,
+//                null,
+//                null,
+//                null,
+//                null,
+//                null
+//        );
+//
+//        // image profile 생성 후 수정
+//        new Watcher(
+//                sUser.getUserId(),
+//                sUser.getUsername(),
+//                null,    // user
+//                content
+//        );
+//
+//        // 추후 컨텐츠, 유저 서비스 이용해서 WatcherSessionDto 반환.
+//        // 반환 객체는 WatcherSessionChange 이다.
+//        new WatchingSessionDto(null,null,null,null);
+        return new WatchingSessionChange(ChangeType.JOIN, null, 0L);
     }
 
 
-    // todo - userSummary 객체가 정의/User 도메인이 어느정도 만들어 지면 user 필드를 userSummary 로 교체
     @MessageMapping("/contents/{contentId}/chat")
     public void contentChatReceive(
             @DestinationVariable UUID contentId,
@@ -43,7 +72,17 @@ public class WebSocketController {
             Principal principal,
             ContentChatSendRequest message
     ){
-        eventPublisher.publishEvent(new WebSocketChatEvent(contentId, null, message.content()));
+
+        SecurityUser sUser = (SecurityUser) principal;
+
+        eventPublisher.publishEvent(new WebSocketChatEvent(
+                contentId,
+                new UserSummary(
+                        sUser.getUserId(),
+                        sUser.getUsername(),
+                        null    // profile image url
+                ),
+                message.content()));
     }
 
 }

@@ -1,5 +1,9 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
+import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
+import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.service.WatcherRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.service.WatcherRegistryDelay;
 import lombok.RequiredArgsConstructor;
@@ -9,9 +13,13 @@ import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.ChannelInterceptor;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.LockedException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.stereotype.Component;
 
 import java.util.Optional;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -22,6 +30,9 @@ public class WebSocketInterceptor implements ChannelInterceptor {
 
     private final WatcherRegistry watcherRegistry;
     private final WatcherRegistryDelay delay;
+
+    private final JwtTokenProvider jwtTokenProvider;
+    private final UserService userService;
 
     @Override
     public @Nullable Message<?> preSend(Message<?> message, MessageChannel channel) {
@@ -83,17 +94,33 @@ public class WebSocketInterceptor implements ChannelInterceptor {
     private void authenticate(StompHeaderAccessor accessor) {
         String token = token(accessor);
 
-        // todo - token 으로 유저 정보를 조회하는 로직 -> princepal 반환 후 user 로 세팅.
+        UUID userId = jwtTokenProvider.parseAccessToken(token);
+        User user = userService.getById(userId);
 
-        accessor.setUser(null);
+        if (user.isLocked()) throw new LockedException("잠긴 계정입니다.");
+
+        SecurityUser securityUser = new SecurityUser(
+                user.getId(),
+                user.getEmail(),
+                "",
+                user.getRole(),
+                user.isLocked()
+        );
+
+        UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                securityUser,
+                null,
+                securityUser.getAuthorities()
+        );
+
+        accessor.setUser(authentication);
     }
 
     private String token(StompHeaderAccessor accessor) {
         String header = accessor.getFirstNativeHeader("Authorization");
 
-        // todo - 인증관련 예외가 생기면, 예외 대체
         if (header == null || !header.startsWith("Bearer "))
-            throw new RuntimeException("토큰이 없습니다.");
+            throw new BadCredentialsException("Bearer 토큰이 비어 있습니다.");
 
         return header.substring(7);
     }
