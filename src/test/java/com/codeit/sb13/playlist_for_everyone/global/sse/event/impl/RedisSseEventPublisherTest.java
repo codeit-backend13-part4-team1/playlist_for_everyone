@@ -12,6 +12,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -24,8 +25,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("Redis SSE 이벤트 발행")
@@ -97,6 +97,27 @@ class RedisSseEventPublisherTest {
                 .hasCauseInstanceOf(JacksonException.class);
 
         verifyNoInteractions(redisTemplate);
+    }
+
+    @Test
+    @DisplayName("Redis 발행에 실패하면 원인을 보존한 발행 예외를 던지고 재시도하지 않는다.")
+    void redisFailureThrowsPublishExceptionWithoutRetry(){
+        SseEvent<Map<String, String>> event = new SseEvent<>(UUID.randomUUID(),
+                UUID.randomUUID(),
+                Event.NOTIFICATIONS.getName(),
+                Map.of("message", "테스트 알림")
+        );
+
+        RedisConnectionFailureException redisFailure = new RedisConnectionFailureException("테스트용 Redis 연결 실패");
+
+        when(redisTemplate.convertAndSend(eq("test:sse:events"), anyString()))
+                .thenThrow(redisFailure);
+
+        assertThatThrownBy(()-> publisher.publish(event))
+                .isInstanceOf(SsePublishException.class)
+                .hasCause(redisFailure);
+
+        verify(redisTemplate).convertAndSend(eq("test:sse:events"), anyString());
     }
 
     public static class SerializationFailingPayload{
