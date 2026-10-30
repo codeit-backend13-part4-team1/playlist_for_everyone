@@ -6,6 +6,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
@@ -240,9 +242,10 @@ class RedisSseEventSubscriberTest {
         verifyNoInteractions(sseDeliveryService);
     }
 
-    @Test
+    @ParameterizedTest(name = "[{index}] eventName=[{0}]")
+    @ValueSource(strings = {"unknown-event", "", "   ", "NOTIFICATIONS"})
     @DisplayName("지원하지 않는 이벤트 이름이면 예외를 전파하지 않고 로컬 전송 없이 건너뛴다.")
-    void skipsMessageWithUnsupportedEventName(){
+    void skipsMessageWithUnsupportedEventName(String eventName){
         UUID eventId = UUID.randomUUID();
         UUID receiverId = UUID.randomUUID();
 
@@ -250,10 +253,10 @@ class RedisSseEventSubscriberTest {
                 {
                  "eventId": "%s",
                  "receiverId": "%s",
-                 "eventName": "unknown-event",
+                 "eventName": "%s",
                  "data": {"message": "다음 정상 알림"}
                 }
-                """.formatted(eventId, receiverId);
+                """.formatted(eventId, receiverId, eventName);
 
         Message message = new DefaultMessage("test:sse:events".getBytes(StandardCharsets.UTF_8),
                 json.getBytes(StandardCharsets.UTF_8));
@@ -263,4 +266,73 @@ class RedisSseEventSubscriberTest {
 
         verifyNoInteractions(sseDeliveryService);
     }
+
+    @Test
+    @DisplayName("direct-messages 이벤트를 수신하면 식별자와 이름 및 데이터를 보존해 로컬 전송한다.")
+    void deliversDirectMessageEventToLocalConnections(){
+        UUID eventId = UUID.randomUUID();
+        UUID receiverId = UUID.randomUUID();
+
+        String json = """
+                {
+                 "eventId": "%s",
+                 "receiverId": "%s",
+                 "eventName": "direct-messages",
+                 "data": {"content": "테스트 DM"}
+                }
+                """.formatted(eventId, receiverId);
+
+        Message message = new DefaultMessage("test:sse:events".getBytes(StandardCharsets.UTF_8),
+                json.getBytes(StandardCharsets.UTF_8));
+
+        subscriber.onMessage(message,  null);
+        verify(sseDeliveryService)
+                .sendToLocalConnections(eventCaptor.capture());
+
+        SseEvent<?> received = eventCaptor.getValue();
+
+        assertThat(received.eventId()).isEqualTo(eventId);
+        assertThat(received.receiverId()).isEqualTo(receiverId);
+        assertThat(received.eventName()).isEqualTo("direct-messages");
+
+        JsonNode receivedData = objectMapper.valueToTree(received.data());
+        assertThat(receivedData)
+                .isEqualTo(objectMapper.readTree("""
+                        {"content": "테스트 DM"}
+                        """));
+    }
+
+
+    @Test
+    @DisplayName("data가 null인 이벤트도 식별자와 이름을 보존해 로컬 전송한다.")
+    void deliversEventWithNullData(){
+        UUID eventId = UUID.randomUUID();
+        UUID receiverId = UUID.randomUUID();
+
+        String json = """
+                {
+                 "eventId": "%s",
+                 "receiverId": "%s",
+                 "eventName": "notifications",
+                 "data": null
+                }
+                """.formatted(eventId, receiverId);
+
+        Message message = new DefaultMessage("test:sse:events".getBytes(StandardCharsets.UTF_8),
+                json.getBytes(StandardCharsets.UTF_8));
+
+        subscriber.onMessage(message,  null);
+        verify(sseDeliveryService)
+                .sendToLocalConnections(eventCaptor.capture());
+
+        SseEvent<?> received = eventCaptor.getValue();
+
+        assertThat(received.eventId()).isEqualTo(eventId);
+        assertThat(received.receiverId()).isEqualTo(receiverId);
+        assertThat(received.eventName()).isEqualTo("notifications");
+
+        JsonNode receivedData = objectMapper.valueToTree(received.data());
+        assertThat(receivedData.isNull()).isTrue();
+    }
+
 }
