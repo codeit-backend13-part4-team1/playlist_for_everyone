@@ -91,4 +91,38 @@ class RedisSseEventSubscriberTest {
         verifyNoInteractions(sseDeliveryService);
     }
 
+    @Test
+    @DisplayName("잘못된 JSON 메시지를 건너뛴 뒤 다음 정상 메시지는 로컬 전송 서비스에 전달한다.")
+    void deliversValidEventAfterMalformedJson(){
+        UUID eventId = UUID.randomUUID();
+        UUID receiverId = UUID.randomUUID();
+
+        String json = """
+                {
+                 "eventId": "%s",
+                 "receiverId": "%s",
+                 "eventName": "notifications",
+                 "data": {"message": "다음 정상 알림"}
+                }
+                """.formatted(eventId, receiverId);
+
+        Message invalidMessage = new DefaultMessage("test:sse:events".getBytes(StandardCharsets.UTF_8),
+                "{invalid-json}".getBytes(StandardCharsets.UTF_8));
+
+        Message validMessage = new DefaultMessage("test:sse:events".getBytes(StandardCharsets.UTF_8),
+                json.getBytes(StandardCharsets.UTF_8));
+
+        assertThatCode(()-> subscriber.onMessage(invalidMessage, null))
+                .doesNotThrowAnyException();
+        verifyNoInteractions(sseDeliveryService);
+        subscriber.onMessage(validMessage, null);
+
+        verify(sseDeliveryService)
+                .sendToLocalConnections(eventCaptor.capture());
+
+        SseEvent<?> received = eventCaptor.getValue();
+        assertThat(received.eventId()).isEqualTo(eventId);
+        assertThat(received.receiverId()).isEqualTo(receiverId);
+    }
+
 }
