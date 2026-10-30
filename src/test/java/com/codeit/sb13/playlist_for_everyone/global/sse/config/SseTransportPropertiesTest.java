@@ -7,6 +7,9 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.boot.test.util.TestPropertyValues;
+
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -94,6 +97,21 @@ class SseTransportPropertiesTest {
                 "everyone.sse.transport=redis",
                 "everyone.sse.redis.channel="
         ).run(context -> {
+            assertThat(context).hasFailed();
+            assertThat(context.getStartupFailure())
+                    .hasRootCauseInstanceOf(IllegalArgumentException.class);
+        });
+    }
+
+    @Test
+    @DisplayName("Redis 채널이 공백만 있으면 설정 로딩에 실패한다.")
+    void failsToStartWhenRedisChannelIsWhitespaceOnly(){
+        contextRunner.withInitializer(context ->{
+            TestPropertyValues.of(Map.of(
+                    "everyone.sse.transport","redis",
+                    "everyone.sse.redis.channel","    "
+            )).applyTo(context);
+        }).run(context ->{
             assertThat(context).hasFailed();
             assertThat(context.getStartupFailure())
                     .hasRootCauseInstanceOf(IllegalArgumentException.class);
