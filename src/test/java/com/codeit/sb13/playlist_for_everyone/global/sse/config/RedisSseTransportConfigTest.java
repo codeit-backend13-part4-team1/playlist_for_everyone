@@ -32,6 +32,7 @@ public class RedisSseTransportConfigTest {
                     )
             .withPropertyValues(
                     "everyone.sse.transport=redis",
+                    "everyone.sse.subscription-enabled=true",
                     "everyone.sse.redis.channel=test:sse:events"
             )
             .withBean(StringRedisTemplate.class,
