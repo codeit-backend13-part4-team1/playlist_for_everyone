@@ -16,6 +16,12 @@ import org.springframework.stereotype.Component;
         name = "transport",
         havingValue = "redis"
 )
+@ConditionalOnProperty(
+        prefix = "everyone.sse",
+        name = "subscription-enabled",
+        havingValue = "true",
+        matchIfMissing = true
+)
 public class RedisSseSubscription implements SseSubscription {
 
     private final RedisBrokerRegister redisBrokerRegister;

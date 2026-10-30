@@ -43,3 +43,6 @@ everyone:
   tmdb:
     base-url: https://tmdb.test/3
     access-token: test-token
+
+  sse:
+    subscription-enabled: false

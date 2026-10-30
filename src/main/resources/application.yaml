@@ -61,6 +61,7 @@ everyone:
     # 개별 SSE 비동기 요청의 제한 시간. 하트비트 주기와 별개이며, 종료 후 클라이언트가 재연결한다.
     # 밀리초 변환 시 0으로 잘리지 않도록 1ms 이상이어야 한다.
     connection-timeout: ${EVERYONE_SSE_CONNECTION_TIMEOUT:30m}
+    subscription-enabled: ${EVERYONE_SSE_SUBSCRIPTION_ENABLED:true}
     transport: ${EVERYONE_SSE_TRANSPORT:redis}
     redis:
       channel: ${EVERYONE_SSE_REDIS_CHANNEL:everyone:sse:events}
