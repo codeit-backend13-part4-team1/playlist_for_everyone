@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.event.impl;
 
+import com.codeit.sb13.playlist_for_everyone.global.exception.sse.SsePublishException;
 import com.codeit.sb13.playlist_for_everyone.global.sse.config.SseTransportProperties;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEventPublisher;
@@ -8,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
 @Component
@@ -26,11 +28,18 @@ public class RedisSseEventPublisher implements SseEventPublisher {
 
     @Override
     public void publish(SseEvent<?> sseEvent) {
-
         redisTemplate.convertAndSend(
                 properties.redis().channel(),
-                objectMapper.writeValueAsString(sseEvent)
+                toJsonString(sseEvent)
         );
 
+    }
+
+    private String toJsonString(SseEvent<?> sseEvent) {
+        try {
+            return objectMapper.writeValueAsString(sseEvent);
+        }catch (JacksonException e){
+            throw new SsePublishException(e);
+        }
     }
 }
