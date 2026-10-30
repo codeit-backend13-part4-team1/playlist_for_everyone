@@ -50,4 +50,62 @@ public class Content extends UpdatedAtEntity {
     )
     private List<ContentTag> tags = new ArrayList<>();
 
+    public static Content createAdminContent(
+            ContentType type,
+            String title,
+            String description,
+            String thumbnailUrl
+    ) {
+        Content content = new Content();
+
+        content.type = type;
+        content.title = title;
+        content.description = description;
+        content.thumbnailUrl = thumbnailUrl;
+        content.provider = ContentSource.ADMIN;
+        content.providerItemId = null;
+
+        return content;
+    }
+
+    public void update(
+            String title,
+            String description,
+            String thumbnailUrl,
+            List<String> tags
+    ) {
+        if (title != null) {
+            this.title = title;
+        }
+
+        if (description != null) {
+            this.description = description;
+        }
+
+        if (thumbnailUrl != null) {
+            this.thumbnailUrl = thumbnailUrl;
+        }
+
+        if (tags != null) {
+            // 요청에 없는 기존 태그 삭제
+            this.tags.removeIf(
+                    contentTag -> !tags.contains(contentTag.getTag())
+            );
+
+            List<String> existingTags = this.tags.stream()
+                    .map(ContentTag::getTag)
+                    .toList();
+
+            // 기존에 없는 태그만 추가
+            tags.stream()
+                    .filter(tag -> !existingTags.contains(tag))
+                    .forEach(this::addTag);
+        }
+    }
+
+    public void addTag(String tag) {
+        ContentTag contentTag = new ContentTag(this, tag);
+        tags.add(contentTag);
+    }
+
 }

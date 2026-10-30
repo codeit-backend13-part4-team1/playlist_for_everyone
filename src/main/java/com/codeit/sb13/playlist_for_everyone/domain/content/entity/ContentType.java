@@ -9,7 +9,7 @@ public enum ContentType {
 
     movie("영화"),
     tvSeries("TV 시리즈"),
-    sports("스포츠");
+    sport("스포츠");
 
     private final String description;
 
