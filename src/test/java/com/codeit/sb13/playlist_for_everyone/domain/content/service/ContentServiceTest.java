@@ -172,6 +172,38 @@ public class ContentServiceTest {
     }
 
     @Test
+    @DisplayName("유니코드 내부 공백을 제거하여 태그 중복을 판정한다.")
+    void create_normalizeUnicodeWhitespaceTags() {
+        // given
+        ContentCreateRequest request = new ContentCreateRequest(
+                ContentType.tvSeries,
+                "너말고다른연애",
+                "KBS 드라마 입니다.",
+                List.of("드\u2003라마", "드라마", "로맨스")
+        );
+
+        MultipartFile file = mock(MultipartFile.class);
+
+        when(contentRepository.save(any(Content.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        // when
+        contentService.create(request, file);
+
+        // then
+        ArgumentCaptor<Content> captor =
+                ArgumentCaptor.forClass(Content.class);
+
+        verify(contentRepository).save(captor.capture());
+
+        Content savedContent = captor.getValue();
+
+        assertThat(savedContent.getTags())
+                .extracting(ContentTag::getTag)
+                .containsExactly("드\u2003라마", "로맨스");
+    }
+
+    @Test
     @DisplayName("콘텐츠 수정 시 제목, 설명, 태그가 변경되고 리뷰 집계가 전달된다.")
     void update_success() {
         // given
