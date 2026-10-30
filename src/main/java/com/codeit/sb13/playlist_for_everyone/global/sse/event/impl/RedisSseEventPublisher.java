@@ -7,6 +7,7 @@ import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEventPublisher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
@@ -28,11 +29,18 @@ public class RedisSseEventPublisher implements SseEventPublisher {
 
     @Override
     public void publish(SseEvent<?> sseEvent) {
-        redisTemplate.convertAndSend(
-                properties.redis().channel(),
-                toJsonString(sseEvent)
-        );
+        publishEvent(sseEvent);
+    }
 
+    private void publishEvent(SseEvent<?> sseEvent) {
+        try {
+            redisTemplate.convertAndSend(
+                    properties.redis().channel(),
+                    toJsonString(sseEvent)
+            );
+        } catch (DataAccessException e){
+            throw new SsePublishException(e);
+        }
     }
 
     private String toJsonString(SseEvent<?> sseEvent) {
