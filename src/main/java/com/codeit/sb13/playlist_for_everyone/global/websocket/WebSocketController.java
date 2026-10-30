@@ -1,9 +1,15 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket;
 
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
+import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
+import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
+import com.codeit.sb13.playlist_for_everyone.global.exception.EveryOneException;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.dto.chat.ContentChatSendRequest;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.dto.chat.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.dto.event.WebSocketChatEvent;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.dto.watcher.WatchingSessionDto;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.payload.ChangeType;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.payload.WatchingSessionChange;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -11,6 +17,8 @@ import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.simp.annotation.SubscribeMapping;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
 
 import java.security.Principal;
@@ -22,28 +30,69 @@ import java.util.UUID;
 public class WebSocketController {
 
     private final ApplicationEventPublisher eventPublisher;
+    private final UserService userService;
 
-    // 초기 구독시 WatchingSessionDto 한번 반환.
+    // todo - 채널 참가, 떠나기 기능은 event 를 통한 메세지 publish 가 필요.
+    //  때문에, 컨트롤러 단이 아닌, 채널 인터셉터를 통해 구현.
+    //  본 controller 는 삭제 예정.
     @SubscribeMapping("/contents/{contentId}/watch")
-    public WatchingSessionDto contentWatch(
+    public WatchingSessionChange contentWatch(
             @DestinationVariable UUID contentId,
             StompHeaderAccessor header,
             Principal principal
     ){
-        // 추후 컨텐츠, 유저 서비스 이용해서 WatcherSessionDto 반환.
-        return new WatchingSessionDto(null,null,null,null);
+
+//        SecurityUser sUser = (SecurityUser) principal;
+//
+//        // content 계통 구현 후 수정
+//        WatchContent content = new WatchContent(
+//                null,
+//                null,
+//                null,
+//                null,
+//                null,
+//                null,
+//                null,
+//                null
+//        );
+//
+//        // image profile 생성 후 수정
+//        new Watcher(
+//                sUser.getUserId(),
+//                sUser.getUsername(),
+//                null,    // user
+//                content
+//        );
+//
+//        // 추후 컨텐츠, 유저 서비스 이용해서 WatcherSessionDto 반환.
+//        // 반환 객체는 WatcherSessionChange 이다.
+//        new WatchingSessionDto(null,null,null,null);
+        return new WatchingSessionChange(ChangeType.JOIN, null, 0L);
     }
 
 
-    // todo - userSummary 객체가 정의/User 도메인이 어느정도 만들어 지면 user 필드를 userSummary 로 교체
     @MessageMapping("/contents/{contentId}/chat")
+    @PreAuthorize("hasRole('USER')")
     public void contentChatReceive(
             @DestinationVariable UUID contentId,
             StompHeaderAccessor header,
-            Principal principal,
+            Authentication authentication,
             ContentChatSendRequest message
     ){
-        eventPublisher.publishEvent(new WebSocketChatEvent(contentId, null, message.content()));
+
+        SecurityUser sUser = (SecurityUser) authentication.getPrincipal();
+
+        // 로직상 NPE 일어나지 않음.
+        User user = userService.getById(sUser.getUserId());
+
+        eventPublisher.publishEvent(new WebSocketChatEvent(
+                contentId,
+                new UserSummary(
+                        user.getId(),
+                        user.getName(),
+                        null    // profile image url
+                ),
+                message.content()));
     }
 
 }
