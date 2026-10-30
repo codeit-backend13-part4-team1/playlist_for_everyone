@@ -138,6 +138,20 @@ class RedisSseEventPublisherTest {
                 .convertAndSend(eq("test:sse:events"), anyString());
     }
 
+    @Test
+    @DisplayName("data가 null인 SSE 이벤트도 JSON으로 변환해 Redis에 발행한다.")
+    void publishesEventWithNullData(){
+        SseEvent<Object> event = new SseEvent<>(UUID.randomUUID(), UUID.randomUUID(), Event.NOTIFICATIONS.getName(), null);
+
+        publisher.publish(event);
+
+        ArgumentCaptor<String> messageCaptor = ArgumentCaptor.forClass(String.class);
+        verify(redisTemplate).convertAndSend(eq("test:sse:events"), messageCaptor.capture());
+
+        JsonNode message = objectMapper.readTree(messageCaptor.getValue());
+        assertThat(message.path("data").isNull()).isTrue();
+    }
+
     public static class SerializationFailingPayload{
         public String getMessage(){
             throw new IllegalStateException("테스트용 JSON 변환 실패");
