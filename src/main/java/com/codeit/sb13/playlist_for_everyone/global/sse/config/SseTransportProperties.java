@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.util.StringUtils;
 
 import java.util.Arrays;
 import java.util.Locale;
@@ -15,7 +16,7 @@ public record SseTransportProperties(
         if (!Transport.exist(transport)) {
             throw new IllegalArgumentException("지원하지 않는 SSE 전송 방식입니다. transport=%s".formatted(transport));
         }
-        if (redis == null){
+        if (redis == null || !StringUtils.hasText(redis.channel())){
             throw new IllegalArgumentException("everyone.sse.redis 설정은 필수 입니다.");
         }
     }
