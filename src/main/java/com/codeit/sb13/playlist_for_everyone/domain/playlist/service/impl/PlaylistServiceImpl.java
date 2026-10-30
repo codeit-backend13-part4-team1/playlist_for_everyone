@@ -27,6 +27,7 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListS
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscriptionDuplicatedException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscriptionNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
+import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
@@ -49,6 +50,8 @@ public class PlaylistServiceImpl implements PlaylistService {
   private final SubscriptionRepository subscriptionRepository;
   private final PlaylistContentRepository playlistContentRepository;
   private final ContentRepository contentRepository;
+
+  private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
 
   @Override
   @Transactional
@@ -217,6 +220,9 @@ public class PlaylistServiceImpl implements PlaylistService {
     try {
       subscriptionRepository.saveAndFlush(new Subscription(playlistId, subscriberId));
     } catch (DataIntegrityViolationException e) {
+      if (!isUniqueViolation(e)) {
+        throw e;
+      }
       throw new PlayListSubscriptionDuplicatedException(
           Map.of("playlistId", playlistId, "subscriberId", subscriberId), e);
     }
@@ -270,5 +276,15 @@ public class PlaylistServiceImpl implements PlaylistService {
     User owner = playlist.getOwner();
     UserSummary userSummary = new UserSummary(owner.getId(), owner.getName(), null);
     return PlaylistResponse.from(playlist, userSummary, subscribedByMe);
+  }
+
+  private boolean isUniqueViolation(Throwable throwable) {
+    for (Throwable cause = throwable; cause != null; cause = cause.getCause()) {
+      if (cause instanceof SQLException sqlException
+          && UNIQUE_VIOLATION_SQL_STATE.equals(sqlException.getSQLState())) {
+        return true;
+      }
+    }
+    return false;
   }
 }
