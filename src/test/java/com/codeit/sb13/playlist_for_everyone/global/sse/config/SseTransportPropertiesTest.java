@@ -75,5 +75,16 @@ class SseTransportPropertiesTest {
         });
     }
 
+    @Test
+    @DisplayName("Redis 전송 방식에서 Redis 설정이 누락되면 설정 로딩에 실패한다.")
+    void failsToStartWhenRedisSettingsAreMissing(){
+        contextRunner.withPropertyValues(
+                "everyone.sse.transport=redis"
+        ).run(context -> {
+            assertThat(context).hasFailed();
+            assertThat(context.getStartupFailure())
+                    .hasRootCauseInstanceOf(IllegalArgumentException.class);
+        });
+    }
 
 }
