@@ -77,6 +77,26 @@ public class ContentUpdateRequestTest {
     }
 
     @Test
+    @DisplayName("제목에 줄바꿈이 포함되면 검증에 실패한다.")
+    void update_titleWithNewline_invalid() {
+        // given
+        ContentUpdateRequest request = new ContentUpdateRequest(
+                "첫째 줄\n둘째 줄",
+                null,
+                null
+        );
+
+        // when
+        Set<ConstraintViolation<ContentUpdateRequest>> violations =
+                validator.validate(request);
+
+        // then
+        assertThat(violations)
+                .extracting(v -> v.getPropertyPath().toString())
+                .contains("title");
+    }
+
+    @Test
     @DisplayName("설명이 공백이면 검증에 실패한다.")
     void invalidDescription() {
         // given
@@ -112,6 +132,44 @@ public class ContentUpdateRequestTest {
 
         // then
         assertThat(violations).isEmpty();
+    }
+
+    @Test
+    @DisplayName("설명에 줄바꿈이 포함되어도 검증을 통과한다.")
+    void descriptionWithNewline_success() {
+        // given
+        ContentUpdateRequest request = new ContentUpdateRequest(
+                null,
+                "첫째 줄\n둘째 줄",
+                null
+        );
+
+        // when
+        Set<ConstraintViolation<ContentUpdateRequest>> violations =
+                validator.validate(request);
+
+        // then
+        assertThat(violations).isEmpty();
+    }
+
+    @Test
+    @DisplayName("설명이 공백과 줄바꿈만 있으면 검증에 실패한다.")
+    void descriptionOnlyWhitespace_invalid() {
+        // given
+        ContentUpdateRequest request = new ContentUpdateRequest(
+                null,
+                " \n \t ",
+                null
+        );
+
+        // when
+        Set<ConstraintViolation<ContentUpdateRequest>> violations =
+                validator.validate(request);
+
+        // then
+        assertThat(violations)
+                .extracting(v -> v.getPropertyPath().toString())
+                .containsExactly("description");
     }
 
 }
