@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.global.config;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.user.controller.UserController;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.command.UserCreateCommand;
@@ -72,6 +73,10 @@ class SecurityConfigTest {
 
     @MockitoBean
     private AuthenticationManager  authenticationManager;
+
+    // SecurityConfig 생성에 필요한 의존성.
+    @MockitoBean
+    private RefreshTokenRepository refreshTokenRepository;
 
 
     @Test

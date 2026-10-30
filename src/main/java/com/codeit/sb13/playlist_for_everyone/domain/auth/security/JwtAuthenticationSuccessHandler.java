@@ -63,26 +63,10 @@ public class JwtAuthenticationSuccessHandler implements AuthenticationSuccessHan
         this.refreshCookieSecure = refreshCookieSecure;
     }
 
-    /**
-     * 기존 SecurityConfig 연결을 유지하기 위한 임시 생성자.
-     *
-     * 다음 연결 단계에서 모든 호출부를 새 생성자로 변경한 뒤 제거한다.
-     * 이 생성자를 사용하면 기존 Access Token 응답만 제공한다.
-     */
-    public JwtAuthenticationSuccessHandler(JwtTokenProvider jwtTokenProvider, UserService userService, ObjectMapper objectMapper) {
-        this.jwtTokenProvider = jwtTokenProvider;
-        this.userService = userService;
-        this.objectMapper = objectMapper;
-
-        this.refreshTokenRepository = null;
-        this.refreshTokenValidity = null;
-        this.refreshCookieSecure = false;
-    }
-
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response, Authentication authentication) throws IOException, ServletException {
 
-        // 요청에 담긴 사용자 ID가 아니라 인증된 사용자의 ID를 사용한다.
+        // 클라이언트가 보낸 ID가 아니라 인증이 완료된 사용자의 ID를 사용한다.
         SecurityUser principal = (SecurityUser) authentication.getPrincipal();
 
         // 응답에 필요한, 가입 시각 등의 사용자 정보로 조회한다.
@@ -90,50 +74,33 @@ public class JwtAuthenticationSuccessHandler implements AuthenticationSuccessHan
 
         String accessToken = jwtTokenProvider.createAccessToken(principal.getUserId());
 
-        ResponseCookie refreshCookie = null;
+        String refreshToken = jwtTokenProvider.createRefreshToken(principal.getUserId());
 
-        // 기존 생성자를 유지하는 동안만 필요한 임시 분기다.
-        // SecurityConfig 연결 완료 후에는 조건 없이 수행하도록 변경한다.
-        if (refreshTokenRepository != null) {
-            String refreshToken = jwtTokenProvider.createRefreshToken(principal.getUserId());
+        ResponseCookie refreshCookie = createRefreshCookie(refreshToken);
 
-            // 쿠키 객체만 준비한다. 아직 HTTP 응답에는 추가하지 않는다.
-            refreshCookie = createRefreshCookie(refreshToken);
+        refreshTokenRepository.save(principal.getUserId(), refreshToken, refreshTokenValidity);
 
-            // 저장이 성공해야 브라우저 토큰을 전달한다.
-            // SHA-256 해싱과 실제 Redis 저장은 저장소 구현체가 담당한다.
-            // 저장 실패 예외는 삼키지 않고 호출자에게 전달한다.
-            refreshTokenRepository.save(
-                    principal.getUserId(),
-                    refreshToken,
-                    refreshTokenValidity
-            );
-
-        }
-
-        // 공개할 사용자 정보만 응답 DTO에 담는다.
         UserDto userDto = new UserDto(
                 user.getId(),
                 user.getCreatedAt(),
                 user.getEmail(),
                 user.getName(),
-                null, // 프로필 이미지 연동 전에는 기존 회원가입 응답과 동일하게 null 처리
+                null, // 프로필 이미지 연동 전에는 null을 반환한다.
                 user.getRole(),
                 user.isLocked()
         );
 
-        // Refresh Token은 JSON에 포함하지 않는다.
+        // Access Token은 JSON으로, Refresh Token은 HttpOnly 쿠키로 전달한다.
         JwtDto jwtDto = new JwtDto(userDto, accessToken);
 
-        // 저장 성공 이후에만 응답 헤더와 본문을 작성한다.
+        // Redis 저장 이후에 응답 작성
         response.setStatus(HttpServletResponse.SC_OK);
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding(StandardCharsets.UTF_8);
 
-        if (refreshCookie != null) {
-            response.addHeader(HttpHeaders.SET_COOKIE, refreshCookie.toString());
-        }
-        // 세션 생성이나 리다이렉트 없이 기존 JSON 응답을 유지한다.
+        response.addHeader(HttpHeaders.SET_COOKIE, refreshCookie.toString());
+
+        // 로그인 성공 응답은 세션이나 리다이렉트 없이 JSON으로 반환한다.
         objectMapper.writeValue(response.getWriter(), jwtDto);
     }
 

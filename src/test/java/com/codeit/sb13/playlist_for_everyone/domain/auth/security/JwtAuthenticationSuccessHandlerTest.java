@@ -76,11 +76,8 @@ class JwtAuthenticationSuccessHandlerTest {
         // JSON 직렬화는 실제 객체로 검증한다.
         objectMapper = JsonMapper.builder().build();
 
-        successHandler = new JwtAuthenticationSuccessHandler(
-                jwtTokenProvider,
-                userService,
-                objectMapper
-        );
+        // 기존 응답 테스트도 실제로 사용하는 생성자로 검증한다.
+        successHandler = createRefreshSuccessHandler(true);
 
         request = new MockHttpServletRequest();
         response = new MockHttpServletResponse();
@@ -90,6 +87,10 @@ class JwtAuthenticationSuccessHandlerTest {
     @DisplayName("인증 사용자에게 Access Token과 사용자 정보를 JSON으로 반환한다")
     void 로그인_성공_응답을_반환한다() throws Exception {
         Authentication authentication = prepareAuthentication();
+
+        // 모든 로그인 성공 경로에서 Refresh Token도 발급한다.
+        given(jwtTokenProvider.createRefreshToken(USER_ID))
+                .willReturn(REFRESH_TOKEN);
 
         successHandler.onAuthenticationSuccess(
                 request,
@@ -147,6 +148,10 @@ class JwtAuthenticationSuccessHandlerTest {
     void 비밀번호_세션을_응답에_남기지_않는다() throws Exception {
 
         Authentication authentication = prepareAuthentication();
+
+        // 로그인 성공 시 발급되는 Refresh Token을 준비한다.
+        given(jwtTokenProvider.createRefreshToken(USER_ID))
+                .willReturn(REFRESH_TOKEN);
 
         successHandler.onAuthenticationSuccess(
                 request,
