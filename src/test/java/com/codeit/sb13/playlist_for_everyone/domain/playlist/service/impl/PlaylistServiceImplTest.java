@@ -40,6 +40,7 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListS
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscriptionDuplicatedException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscriptionNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
+import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -850,12 +851,36 @@ public class PlaylistServiceImplTest {
     given(subscriptionRepository.existsByPlaylistIdAndSubscriberId(playlistId, subscriberId))
         .willReturn(false);
     given(subscriptionRepository.saveAndFlush(any(Subscription.class)))
-        .willThrow(new DataIntegrityViolationException("unique violation"));
+        .willThrow(new DataIntegrityViolationException("unique violation",
+            new SQLException("duplicate key", "23505")));
 
     // when & then
     assertThatExceptionOfType(PlayListSubscriptionDuplicatedException.class)
         .isThrownBy(() -> playlistService.subscribe(playlistId, subscriberId))
         .withCauseInstanceOf(DataIntegrityViolationException.class);
+
+    verify(playlistRepository, never()).increaseSubscriberCount(any());
+  }
+
+  @Test
+  @DisplayName("저장 시 유니크 위반이 아닌 무결성 오류는 중복 구독으로 바꾸지 않고 그대로 던진다")
+  void 저장시_유니크_위반이_아닌_무결성_오류는_그대로_던진다() {
+    // given
+    UUID ownerId = UUID.randomUUID();
+    UUID subscriberId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
+    given(playlistRepository.findById(playlistId)).willReturn(Optional.of(playlist));
+    given(subscriptionRepository.existsByPlaylistIdAndSubscriberId(playlistId, subscriberId))
+        .willReturn(false);
+    DataIntegrityViolationException foreignKeyViolation = new DataIntegrityViolationException(
+        "foreign key violation", new SQLException("fk violation", "23503"));
+    given(subscriptionRepository.saveAndFlush(any(Subscription.class)))
+        .willThrow(foreignKeyViolation);
+
+    // when & then
+    assertThatThrownBy(() -> playlistService.subscribe(playlistId, subscriberId))
+        .isSameAs(foreignKeyViolation);
 
     verify(playlistRepository, never()).increaseSubscriberCount(any());
   }
