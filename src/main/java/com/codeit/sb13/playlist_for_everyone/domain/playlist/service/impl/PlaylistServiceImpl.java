@@ -192,6 +192,16 @@ public class PlaylistServiceImpl implements PlaylistService {
     playlistRepository.touchUpdatedAt(playlistId, LocalDateTime.now());
   }
 
+  @Override
+  public void subscribe(UUID playlistId, UUID subscriberId) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public void unsubscribe(UUID playlistId, UUID subscriberId) {
+    throw new UnsupportedOperationException();
+  }
+
 
   //---------[헬퍼 메서드]
   private PlaylistSearchCondition toCondition(PlaylistSearchRequest request) {

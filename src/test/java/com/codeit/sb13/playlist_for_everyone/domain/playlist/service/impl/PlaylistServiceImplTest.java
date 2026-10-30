@@ -21,6 +21,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.Playli
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Playlist;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistContent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistSortBy;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Subscription;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistSearchCondition;
@@ -35,6 +36,9 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListC
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListContentNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListForbiddenException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscribeOwnException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscriptionDuplicatedException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscriptionNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -48,6 +52,7 @@ import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 import static org.mockito.ArgumentMatchers.eq;
 
@@ -747,6 +752,168 @@ public class PlaylistServiceImplTest {
             .containsEntry("contentId", contentId));
 
     verify(playlistRepository, never()).touchUpdatedAt(any(), any());
+  }
+
+  @Test
+  @DisplayName("구독하면 구독 정보를 저장하고 구독자 수를 늘린다")
+  void 플레이리스트를_구독하면_구독을_저장하고_구독자_수를_늘린다() {
+    // given
+    UUID ownerId = UUID.randomUUID();
+    UUID subscriberId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
+    given(playlistRepository.findById(playlistId)).willReturn(Optional.of(playlist));
+    given(subscriptionRepository.existsByPlaylistIdAndSubscriberId(playlistId, subscriberId))
+        .willReturn(false);
+
+    // when
+    playlistService.subscribe(playlistId, subscriberId);
+
+    // then
+    ArgumentCaptor<Subscription> captor = ArgumentCaptor.forClass(Subscription.class);
+    verify(subscriptionRepository).saveAndFlush(captor.capture());
+    assertThat(captor.getValue().getPlaylistId()).isEqualTo(playlistId);
+    assertThat(captor.getValue().getSubscriberId()).isEqualTo(subscriberId);
+    verify(playlistRepository).increaseSubscriberCount(playlistId);
+  }
+
+  @Test
+  @DisplayName("없는 플레이리스트를 구독하면 PlayListNotFoundException을 던지고 아무것도 저장하지 않는다")
+  void 없는_플레이리스트를_구독하면_PlayListNotFoundException을_던진다() {
+    // given
+    UUID playlistId = UUID.randomUUID();
+    UUID subscriberId = UUID.randomUUID();
+    given(playlistRepository.findById(playlistId)).willReturn(Optional.empty());
+
+    // when & then
+    assertThatExceptionOfType(PlayListNotFoundException.class)
+        .isThrownBy(() -> playlistService.subscribe(playlistId, subscriberId))
+        .satisfies(e -> assertThat(e.getDetails())
+            .containsEntry("playlistId", playlistId));
+
+    verifyNoInteractions(subscriptionRepository);
+    verify(playlistRepository, never()).increaseSubscriberCount(any());
+  }
+
+  @Test
+  @DisplayName("본인 플레이리스트를 구독하면 PlayListSubscribeOwnException을 던지고 아무것도 저장하지 않는다")
+  void 본인_플레이리스트를_구독하면_PlayListSubscribeOwnException을_던진다() {
+    // given
+    UUID ownerId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
+    given(playlistRepository.findById(playlistId)).willReturn(Optional.of(playlist));
+
+    // when & then
+    assertThatExceptionOfType(PlayListSubscribeOwnException.class)
+        .isThrownBy(() -> playlistService.subscribe(playlistId, ownerId))
+        .satisfies(e -> assertThat(e.getDetails())
+            .containsEntry("playlistId", playlistId)
+            .containsEntry("subscriberId", ownerId));
+
+    verifyNoInteractions(subscriptionRepository);
+    verify(playlistRepository, never()).increaseSubscriberCount(any());
+  }
+
+  @Test
+  @DisplayName("이미 구독한 플레이리스트를 구독하면 PlayListSubscriptionDuplicatedException을 던지고 저장하지 않는다")
+  void 이미_구독한_플레이리스트를_구독하면_PlayListSubscriptionDuplicatedException을_던진다() {
+    // given
+    UUID ownerId = UUID.randomUUID();
+    UUID subscriberId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
+    given(playlistRepository.findById(playlistId)).willReturn(Optional.of(playlist));
+    given(subscriptionRepository.existsByPlaylistIdAndSubscriberId(playlistId, subscriberId))
+        .willReturn(true);
+
+    // when & then
+    assertThatExceptionOfType(PlayListSubscriptionDuplicatedException.class)
+        .isThrownBy(() -> playlistService.subscribe(playlistId, subscriberId))
+        .satisfies(e -> assertThat(e.getDetails())
+            .containsEntry("playlistId", playlistId)
+            .containsEntry("subscriberId", subscriberId));
+
+    verify(subscriptionRepository, never()).saveAndFlush(any(Subscription.class));
+    verify(playlistRepository, never()).increaseSubscriberCount(any());
+  }
+
+  @Test
+  @DisplayName("동시 요청으로 저장 시 유니크 제약을 위반하면 중복 구독 예외로 바꾸고 구독자 수를 늘리지 않는다")
+  void 저장시_유니크_제약을_위반하면_PlayListSubscriptionDuplicatedException으로_바꾼다() {
+    // given
+    UUID ownerId = UUID.randomUUID();
+    UUID subscriberId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
+    given(playlistRepository.findById(playlistId)).willReturn(Optional.of(playlist));
+    given(subscriptionRepository.existsByPlaylistIdAndSubscriberId(playlistId, subscriberId))
+        .willReturn(false);
+    given(subscriptionRepository.saveAndFlush(any(Subscription.class)))
+        .willThrow(new DataIntegrityViolationException("unique violation"));
+
+    // when & then
+    assertThatExceptionOfType(PlayListSubscriptionDuplicatedException.class)
+        .isThrownBy(() -> playlistService.subscribe(playlistId, subscriberId))
+        .withCauseInstanceOf(DataIntegrityViolationException.class);
+
+    verify(playlistRepository, never()).increaseSubscriberCount(any());
+  }
+
+  @Test
+  @DisplayName("구독을 취소하면 구독 정보를 삭제하고 구독자 수를 줄인다")
+  void 구독을_취소하면_구독을_삭제하고_구독자_수를_줄인다() {
+    // given
+    UUID subscriberId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    given(playlistRepository.existsById(playlistId)).willReturn(true);
+    given(subscriptionRepository.deleteByPlaylistIdAndSubscriberId(playlistId, subscriberId))
+        .willReturn(1);
+
+    // when
+    playlistService.unsubscribe(playlistId, subscriberId);
+
+    // then
+    verify(subscriptionRepository).deleteByPlaylistIdAndSubscriberId(playlistId, subscriberId);
+    verify(playlistRepository).decreaseSubscriberCount(playlistId);
+  }
+
+  @Test
+  @DisplayName("없는 플레이리스트의 구독을 취소하면 PlayListNotFoundException을 던지고 아무것도 삭제하지 않는다")
+  void 없는_플레이리스트의_구독을_취소하면_PlayListNotFoundException을_던진다() {
+    // given
+    UUID subscriberId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    given(playlistRepository.existsById(playlistId)).willReturn(false);
+
+    // when & then
+    assertThatExceptionOfType(PlayListNotFoundException.class)
+        .isThrownBy(() -> playlistService.unsubscribe(playlistId, subscriberId))
+        .satisfies(e -> assertThat(e.getDetails())
+            .containsEntry("playlistId", playlistId));
+
+    verifyNoInteractions(subscriptionRepository);
+    verify(playlistRepository, never()).decreaseSubscriberCount(any());
+  }
+
+  @Test
+  @DisplayName("구독하지 않은 플레이리스트의 구독을 취소하면 PlayListSubscriptionNotFoundException을 던지고 구독자 수를 줄이지 않는다")
+  void 구독하지_않은_플레이리스트의_구독을_취소하면_PlayListSubscriptionNotFoundException을_던진다() {
+    // given
+    UUID subscriberId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    given(playlistRepository.existsById(playlistId)).willReturn(true);
+    given(subscriptionRepository.deleteByPlaylistIdAndSubscriberId(playlistId, subscriberId))
+        .willReturn(0);
+
+    // when & then
+    assertThatExceptionOfType(PlayListSubscriptionNotFoundException.class)
+        .isThrownBy(() -> playlistService.unsubscribe(playlistId, subscriberId))
+        .satisfies(e -> assertThat(e.getDetails())
+            .containsEntry("playlistId", playlistId)
+            .containsEntry("subscriberId", subscriberId));
+
+    verify(playlistRepository, never()).decreaseSubscriberCount(any());
   }
 
 
