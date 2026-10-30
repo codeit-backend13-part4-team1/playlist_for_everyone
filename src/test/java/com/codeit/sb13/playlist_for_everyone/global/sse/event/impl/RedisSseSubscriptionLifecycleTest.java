@@ -53,4 +53,16 @@ public class RedisSseSubscriptionLifecycleTest {
 
         verify(redisBrokerRegister).unregister(subscriber, "test:sse:events");
     }
+
+    @Test
+    @DisplayName("자동 구독을 비활성화하면 구독 관리 빈을 생성하지 않고 채널을 구독하지 않는다.")
+    void doesNotSubscribeWhenSubscriptionIsDisabled(){
+        contextRunner.withPropertyValues("everyone.sse.subscription-enabled=false")
+                .run(context ->{
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).doesNotHaveBean(SseSubscription.class);
+                });
+
+        verifyNoInteractions(redisBrokerRegister);
+    }
 }
