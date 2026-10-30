@@ -35,6 +35,10 @@ public class RedisSseSubscription implements SseSubscription {
     @Override
     @PostConstruct
     public void start() {
+        redisBrokerRegister.register(
+                subscriber,
+                properties.redis().channel()
+        );
 
     }
 
