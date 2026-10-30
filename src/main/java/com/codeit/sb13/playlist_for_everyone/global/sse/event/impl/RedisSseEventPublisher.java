@@ -27,5 +27,10 @@ public class RedisSseEventPublisher implements SseEventPublisher {
     @Override
     public void publish(SseEvent<?> sseEvent) {
 
+        redisTemplate.convertAndSend(
+                properties.redis().channel(),
+                objectMapper.writeValueAsString(sseEvent)
+        );
+
     }
 }
