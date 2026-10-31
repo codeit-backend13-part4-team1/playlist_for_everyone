@@ -1,12 +1,12 @@
-package com.codeit.sb13.playlist_for_everyone.global.websocket;
+package com.codeit.sb13.playlist_for_everyone.global.websocket.controller;
 
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.dto.chat.ContentChatSendRequest;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.dto.chat.UserSummary;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.dto.event.WebSocketChatEvent;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatSendRequest;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.UserSummary;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.ContentChatSendEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -41,7 +41,7 @@ public class WebSocketController {
         // 로직상 NPE 일어나지 않음.
         User user = userService.getById(sUser.getUserId());
 
-        eventPublisher.publishEvent(new WebSocketChatEvent(
+        eventPublisher.publishEvent(new ContentChatSendEvent(
                 contentId,
                 new UserSummary(
                         user.getId(),
