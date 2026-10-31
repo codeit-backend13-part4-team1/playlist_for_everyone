@@ -1,6 +1,6 @@
-package com.codeit.sb13.playlist_for_everyone.global.websocket.chat;
+package com.codeit.sb13.playlist_for_everyone.global.service;
 
-import com.codeit.sb13.playlist_for_everyone.global.service.RedisBrokerRegister;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.chat.ChatMessageListener;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -14,12 +14,10 @@ import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.IntStream;
 
-import static com.codeit.sb13.playlist_for_everyone.global.config.RedisConfig.CHAT_CONTENT_PREFIX;
-
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class ContentChatRegistry {
+public class RedisTopicRegistry {
 
     private final RedisBrokerRegister redisBroker;
 
@@ -66,46 +64,46 @@ public class ContentChatRegistry {
         }
     }
 
-    public void register(String contentId, String sessionId, String subscriptionId){
+    public void register(String topic, String sessionId, String subscriptionId){
         KeyPair key = KeyPair.of(sessionId, subscriptionId);
         AtomicBoolean initRegister = new AtomicBoolean(true);
-        synchronized (lock(contentId)){
+        synchronized (lock(topic)){
             registerMap.computeIfAbsent(
-                    contentId,
+                    topic,
                     k -> new CopyOnWriteArraySet<>());
 
             // 이전에 메세지 리스너가 구독되었다면 구독 안 함.
-            if (!registerMap.get(contentId).isEmpty())
+            if (!registerMap.get(topic).isEmpty())
                 initRegister.set(false);
 
-            registerMap.computeIfPresent(contentId, (k,v) -> {
+            registerMap.computeIfPresent(topic, (k,v) -> {
                 // 기존 등록된 id 변경 하지 않음.
                 if (v.contains(key)){
                     return v;
                 }
 
                 v.add(KeyPair.of(sessionId, subscriptionId));
-                registerIndex.put(key, contentId);
+                registerIndex.put(key, topic);
                 return v;
             });
 
             // 이미 등록된 경우 재등록 안 함.
             if (!initRegister.get()) return;
             // 미 해제 컨텐츠 채널에 등록 된 경우 재등록 안 함.
-            if (unregisterFailureSet.contains(contentId)) {
-                unregisterFailureSet.remove(contentId);
+            if (unregisterFailureSet.contains(topic)) {
+                unregisterFailureSet.remove(topic);
                 return;
             }
 
             try {
-                registerListener(contentId);
+                registerListener(topic);
             } catch (RuntimeException e) {
-                log.error("[{}] 레디스 리스너 등록 실패 - contentId: {}",
+                log.error("[{}] 레디스 리스너 등록 실패 - topic: {}",
                         this.getClass().getSimpleName(),
-                        contentId,
+                        topic,
                         e);
                 // 등록 실패시 키 삭제.
-                registerMap.get(contentId).remove(key);
+                registerMap.get(topic).remove(key);
                 registerIndex.remove(key);
             }
         }
@@ -117,33 +115,33 @@ public class ContentChatRegistry {
     }
 
     private void unregister(KeyPair key){
-        String contentId = registerIndex.get(key);
+        String topic = registerIndex.get(key);
 
-        if (contentId == null) return;
+        if (topic == null) return;
 
-        synchronized (lock(contentId)){
+        synchronized (lock(topic)){
             // 등록이 없다면 반환(동시 접속시 선두 매서드만 지움이 가능하도록)
-            if(registerMap.get(contentId) == null) return;
+            if(registerMap.get(topic) == null) return;
 
-            registerMap.computeIfPresent(contentId, (k,v) -> {
+            registerMap.computeIfPresent(topic, (k,v) -> {
                 v.remove(key);
                 registerIndex.remove(key);
                 return v;
             });
             try {
-                unregisterListener(contentId);
+                unregisterListener(topic);
             } catch (RuntimeException e){
-                log.error("[{}] 레디스 리스너 해제 실패 - contentId: {}",
+                log.error("[{}] 레디스 리스너 해제 실패 - topic: {}",
                         this.getClass().getSimpleName(),
-                        contentId,
+                        topic,
                         e);
 
                 // 삭제 실패시 삭제 대기열 등록
-                unregisterFailureSet.add(contentId);
+                unregisterFailureSet.add(topic);
             }
             // 등록값이 비어있으면 삭제.
-            if (registerMap.get(contentId).isEmpty())
-                registerMap.remove(contentId);
+            if (registerMap.get(topic).isEmpty())
+                registerMap.remove(topic);
         }
     }
 
@@ -161,22 +159,22 @@ public class ContentChatRegistry {
 
     @Scheduled(fixedDelay = 60000) // 60초마다 체크
     public void gc(){
-        for(String contentId : unregisterFailureSet) {
-            synchronized (lock(contentId)){
-                if (registerMap.get(contentId) != null){
-                    if (registerMap.get(contentId).isEmpty()){
-                        unregisterFailureSet.remove(contentId);
+        for(String topic : unregisterFailureSet) {
+            synchronized (lock(topic)){
+                if (registerMap.get(topic) != null){
+                    if (registerMap.get(topic).isEmpty()){
+                        unregisterFailureSet.remove(topic);
                         continue;
                     }
                 }
 
                 try {
-                    unregisterListener(contentId);
-                    unregisterFailureSet.remove(contentId);
+                    unregisterListener(topic);
+                    unregisterFailureSet.remove(topic);
                 } catch (RuntimeException e) {
-                    log.error("[{}] .gc() - 레디스 리스너 해제 실패 - contentId : {}",
+                    log.error("[{}] .gc() - 레디스 리스너 해제 실패 - topic : {}",
                             this.getClass().getSimpleName(),
-                            contentId,
+                            topic,
                             e);
                 }
             }
@@ -187,24 +185,20 @@ public class ContentChatRegistry {
     /*
     편의 매서드
      */
-    private String topicResolver(String sessionId){
-        return CHAT_CONTENT_PREFIX + sessionId;
-    }
-
-    private void registerListener(String contentId){
-        if (contentId == null || contentId.isEmpty()) return;
+    private void registerListener(String topic){
+        if (topic == null || topic.isEmpty()) return;
         // 구독 갯수가 1 이상이면 리스너 등록
-        Set<KeyPair> keyList = registerMap.get(contentId);
+        Set<KeyPair> keyList = registerMap.get(topic);
         if (!keyList.isEmpty())
-            redisBroker.register(listener,topicResolver(contentId));
+            redisBroker.register(listener,topic);
     }
 
-    private void unregisterListener(String contentId){
-        if (contentId == null || contentId.isEmpty()) return;
+    private void unregisterListener(String topic){
+        if (topic == null || topic.isEmpty()) return;
         // 구독 갯수가 0 이라면 리스너 해제
-        Set<KeyPair> keyList = registerMap.get(contentId);
+        Set<KeyPair> keyList = registerMap.get(topic);
         if (keyList == null || keyList.isEmpty())
-            redisBroker.unregister(listener,topicResolver(contentId));
+            redisBroker.unregister(listener,topic);
     }
 
     // 로컬 락 키 반환 매서드

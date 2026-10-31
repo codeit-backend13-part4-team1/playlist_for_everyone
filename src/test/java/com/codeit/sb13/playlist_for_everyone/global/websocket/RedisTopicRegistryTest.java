@@ -1,9 +1,8 @@
-package com.codeit.sb13.playlist_for_everyone.domain.websocket.chat;
+package com.codeit.sb13.playlist_for_everyone.global.websocket;
 
 
 import com.codeit.sb13.playlist_for_everyone.global.service.RedisBrokerRegister;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.chat.ChatMessageListener;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.chat.ContentChatRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.chat.ChatMessageListener;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,7 +24,7 @@ import static org.mockito.Mockito.*;
 @Slf4j
 @ExtendWith(MockitoExtension.class)
 @DisplayName("컨텐츠 별 채팅 등록 레지스트리 테스트")
-public class ContentChatRegistryTest {
+public class RedisTopicRegistryTest {
 
     @Mock
     RedisBrokerRegister redisBroker;
@@ -34,7 +33,7 @@ public class ContentChatRegistryTest {
     ChatMessageListener listener;
 
     @InjectMocks
-    ContentChatRegistry registry;
+    com.codeit.sb13.playlist_for_everyone.global.service.RedisTopicRegistry registry;
 
     private String topic(String contentId){
         return CHAT_CONTENT_PREFIX + contentId;
@@ -52,7 +51,7 @@ public class ContentChatRegistryTest {
 
             registry.register(contentId, sessionId, subscribeId);
 
-            verify(redisBroker, times(1)).register(eq(listener),eq(topic(contentId)));
+            verify(redisBroker, times(1)).register(eq(listener),eq(contentId));
         }
 
         @Test
@@ -65,7 +64,7 @@ public class ContentChatRegistryTest {
             registry.register(contentId, sessionId, subscribeId);
             registry.register(contentId, sessionId, subscribeId);
 
-            verify(redisBroker, times(1)).register(eq(listener),eq(topic(contentId)));
+            verify(redisBroker, times(1)).register(eq(listener),eq(contentId));
         }
     }
 
@@ -92,7 +91,7 @@ public class ContentChatRegistryTest {
         void unregisterTest(){
             registry.unregister(sessionId, subscribeId);
 
-            verify(redisBroker, times(1)).unregister(eq(listener),eq(topic(contentId)));
+            verify(redisBroker, times(1)).unregister(eq(listener),eq(contentId));
         }
 
         @Test
@@ -105,7 +104,7 @@ public class ContentChatRegistryTest {
 
             registry.unregister(sessionId, subscribeId);
 
-            verify(redisBroker, times(0)).unregister(eq(listener),eq(topic(contentId)));
+            verify(redisBroker, times(0)).unregister(eq(listener),eq(contentId));
         }
 
     }
@@ -129,8 +128,8 @@ public class ContentChatRegistryTest {
 
             registry.disconnect(sessionId);
 
-            verify(redisBroker, times(1)).register(eq(listener), eq(topic(contentId)));
-            verify(redisBroker, times(1)).unregister(eq(listener), eq(topic(contentId)));
+            verify(redisBroker, times(1)).register(eq(listener), eq(contentId));
+            verify(redisBroker, times(1)).unregister(eq(listener), eq(contentId));
         }
     }
 
