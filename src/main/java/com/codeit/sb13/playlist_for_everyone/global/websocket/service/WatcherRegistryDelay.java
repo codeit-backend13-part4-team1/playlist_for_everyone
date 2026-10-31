@@ -1,4 +1,4 @@
-package com.codeit.sb13.playlist_for_everyone.global.service;
+package com.codeit.sb13.playlist_for_everyone.global.websocket.service;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -8,7 +8,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.concurrent.ConcurrentHashMap;
 
-import static com.codeit.sb13.playlist_for_everyone.global.websocket.WatcherScriptConfig.TTL_TIMEOUT;
+import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatcherScriptConfig.TTL_TIMEOUT;
 
 @Component
 @RequiredArgsConstructor

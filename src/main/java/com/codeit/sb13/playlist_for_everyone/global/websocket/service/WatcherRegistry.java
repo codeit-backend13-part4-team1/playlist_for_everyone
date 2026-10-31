@@ -1,4 +1,4 @@
-package com.codeit.sb13.playlist_for_everyone.global.service;
+package com.codeit.sb13.playlist_for_everyone.global.websocket.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Objects;
 
 import static com.codeit.sb13.playlist_for_everyone.global.config.RedisConfig.*;
-import static com.codeit.sb13.playlist_for_everyone.global.websocket.WatcherScriptConfig.*;
+import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatcherScriptConfig.*;
 
 @Slf4j
 @Component
@@ -96,7 +96,7 @@ public class WatcherRegistry {
                 List.of(sessionKey(session)),
                 subscription,
                 new SetKey(session, subscription).toString(),
-                WATCHER_CONTENT_PREFIX
+                STORAGE_CONTENT_PREFIX
         );
 
 
@@ -109,7 +109,7 @@ public class WatcherRegistry {
         Long res = redis.execute(refreshScript,
                 List.of(sessionKey(session)),
                 session,
-                WATCHER_CONTENT_PREFIX,
+                STORAGE_CONTENT_PREFIX,
                 String.valueOf(TTL.toMillis()),
                 DELIMITER
         );
@@ -123,7 +123,7 @@ public class WatcherRegistry {
         Long res = redis.execute(deleteScript,
                 List.of(sessionKey(session)),
                 session,
-                WATCHER_CONTENT_PREFIX,
+                STORAGE_CONTENT_PREFIX,
                 DELIMITER
         );
 
@@ -148,10 +148,10 @@ public class WatcherRegistry {
     }
 
     private String sessionKey(String session){
-        return WEBSOCKET_SESSION_PREFIX + session;
+        return STORAGE_SESSION_PREFIX + session;
     }
 
     private String contentKey(String content){
-        return WATCHER_CONTENT_PREFIX + content;
+        return STORAGE_CONTENT_PREFIX + content;
     }
 }

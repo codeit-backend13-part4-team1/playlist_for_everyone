@@ -1,4 +1,4 @@
-package com.codeit.sb13.playlist_for_everyone.global.websocket.dto.watcher;
+package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher;
 
 import java.util.UUID;
 

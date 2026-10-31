@@ -1,8 +1,8 @@
-package com.codeit.sb13.playlist_for_everyone.global.websocket;
+package com.codeit.sb13.playlist_for_everyone.global.websocket.registry.redis;
 
 
 import com.codeit.sb13.playlist_for_everyone.global.service.RedisBrokerRegister;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.chat.ChatMessageListener;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingChatMessageListener;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -16,7 +16,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
-import static com.codeit.sb13.playlist_for_everyone.global.config.RedisConfig.CHAT_CONTENT_PREFIX;
+import static com.codeit.sb13.playlist_for_everyone.global.config.RedisConfig.MESSAGE_CHAT_PREFIX;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.*;
@@ -30,13 +30,13 @@ public class RedisTopicRegistryTest {
     RedisBrokerRegister redisBroker;
 
     @Mock
-    ChatMessageListener listener;
+    WatchingChatMessageListener listener;
 
     @InjectMocks
     com.codeit.sb13.playlist_for_everyone.global.service.RedisTopicRegistry registry;
 
     private String topic(String contentId){
-        return CHAT_CONTENT_PREFIX + contentId;
+        return MESSAGE_CHAT_PREFIX + contentId;
     }
 
     @Nested

@@ -1,6 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.service;
 
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.chat.ChatMessageListener;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingChatMessageListener;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -21,7 +21,7 @@ public class RedisTopicRegistry {
 
     private final RedisBrokerRegister redisBroker;
 
-    private final ChatMessageListener listener;
+    private final WatchingChatMessageListener listener;
 
     // content 를 기반으로 session - subscription 쌍을 관리
     private final ConcurrentHashMap<String, Set<KeyPair>> registerMap = new ConcurrentHashMap<>();

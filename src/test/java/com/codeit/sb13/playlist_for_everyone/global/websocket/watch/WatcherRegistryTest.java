@@ -1,7 +1,7 @@
-package com.codeit.sb13.playlist_for_everyone.domain.websocket.watch;
+package com.codeit.sb13.playlist_for_everyone.global.websocket.watch;
 
-import com.codeit.sb13.playlist_for_everyone.global.service.WatcherRegistry;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.WatcherScriptConfig;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.service.WatcherRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatcherScriptConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.*;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
@@ -78,7 +78,7 @@ public class WatcherRegistryTest {
 
     private boolean checkContainedChannelIdInList(String sessionId, String targetId){
          Map<Object,Object> test= template.opsForHash()
-                 .entries(WEBSOCKET_SESSION_PREFIX + sessionId);
+                 .entries(STORAGE_SESSION_PREFIX + sessionId);
 
          for(Object id : test.values()){
              log.info("[WatcherRegistryTest] id 검색됨 - {}",id);
@@ -88,7 +88,7 @@ public class WatcherRegistryTest {
     }
     private boolean checkContainedSessionIdInList(String contentId, String targetId){
         Set<String> idList = template.opsForZSet()
-                .range(WATCHER_CONTENT_PREFIX + contentId,0,-1);
+                .range(STORAGE_CONTENT_PREFIX + contentId,0,-1);
         for (String id : idList) {
             log.info("[WatcherRegistryTest] id 검색됨 - {}",id);
             if (targetId.equals(id)) return true;
