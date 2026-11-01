@@ -38,6 +38,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -185,6 +186,15 @@ class GlobalExceptionHandlerTest {
                 .andExpect(content().string(not(containsString(INTERNAL_DETAIL))));
     }
 
+    @Test
+    @DisplayName("접근 권한이 없으면 403 상태와 공통 메시지를 반환하고 내부 메시지를 숨긴다")
+    void mapsAccessDeniedToForbidden() throws Exception {
+        expectError(mockMvc.perform(get(BASE + "/access-denied")), 403,
+            "AccessDeniedException", "접근 권한이 없습니다.")
+            .andExpect(jsonPath("$.details", aMapWithSize(0)))
+            .andExpect(content().string(not(containsString(INTERNAL_DETAIL))));
+    }
+
     private ResultActions expectError(ResultActions result, int statusCode, String exceptionName, String message) throws Exception {
         return result.andExpect(status().is(statusCode))
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
@@ -248,6 +258,11 @@ class GlobalExceptionHandlerTest {
         @GetMapping("/unexpected")
         void unexpected() {
             throw new IllegalStateException(INTERNAL_DETAIL);
+        }
+
+        @GetMapping("/access-denied")
+        void accessDenied() {
+            throw new AccessDeniedException(INTERNAL_DETAIL);
         }
 
     }

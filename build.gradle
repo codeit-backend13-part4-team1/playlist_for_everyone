@@ -59,6 +59,7 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-batch'
 	implementation platform("software.amazon.awssdk:bom:${dependencyVersions.awsSdk}")
 	implementation 'software.amazon.awssdk:s3'
+	implementation 'org.springframework.boot:spring-boot-starter-restclient'
 
 	// 모니터링, AOP 및 재시도
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
@@ -83,6 +84,7 @@ dependencies {
 	testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-websocket-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-restclient-test'
 
 	// PostgreSQL 및 S3 통합 테스트 지원. 컨테이너 실행에는 Docker가 필요합니다.
 	testImplementation 'org.springframework.boot:spring-boot-testcontainers'
@@ -139,5 +141,32 @@ tasks.named('jacocoTestReport') {
 	reports {
 		xml.required = true
 		html.required = true
+	}
+}
+
+// 프로젝트 전체 라인 커버리지 80% 이상을 검증한다.
+tasks.named('jacocoTestCoverageVerification') {
+	violationRules {
+		rule {
+			element = 'BUNDLE'
+			limit {
+				counter = 'LINE'
+				value = 'COVEREDRATIO'
+				minimum = 0.80
+			}
+		}
+	}
+}
+
+// build → check → 커버리지 검사. 리포트와 같은 Q 클래스 제외 기준을 사용한다.
+tasks.named('check') {
+	dependsOn tasks.named('jacocoTestCoverageVerification')
+}
+
+sourceSets {
+	test {
+		java {
+			srcDir '.github/scripts'
+		}
 	}
 }
