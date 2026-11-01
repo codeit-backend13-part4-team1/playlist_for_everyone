@@ -28,6 +28,7 @@ import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -80,14 +81,20 @@ public class RedisSsePubSubIntegrationTest {
     private SseDeliveryService sseDeliveryService;
 
     @Test
-    @DisplayName("발행한 이벤트가 Redis를 거쳐 식별자와 이름 및 데이터를 보존해 전달된다.")
+    @DisplayName("발행한 이벤트가 Redis를 거쳐 식별자와 이름 및 중첩 JSON 데이터를 보존해 전달된다.")
     void deliversPublishedEventThroughRedis(){
         UUID eventId = UUID.randomUUID();
         UUID receiverId = UUID.randomUUID();
 
-        Map<String, String> data = Map.of("message", "Redis 통합 테스트 알림");
+        Map<String, Object> data = Map.of("message", "Redis 통합 테스트 알림",
+                "sender", Map.of(
+                        "id", UUID.randomUUID().toString(),
+                        "name","테스트 사용자"
+                ),
+                "tags", List.of("영화", "드라마")
+        );
 
-        SseEvent<Map<String, String>> event = new SseEvent<>(eventId, receiverId, Event.NOTIFICATIONS.getName(), data);
+        SseEvent<Map<String, Object>> event = new SseEvent<>(eventId, receiverId, Event.NOTIFICATIONS.getName(), data);
 
         ArgumentCaptor<SseEvent<?>> eventCaptor = ArgumentCaptor.captor();
         publisher.publish(event);
