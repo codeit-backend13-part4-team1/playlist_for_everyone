@@ -1,6 +1,8 @@
 package com.codeit.sb13.playlist_for_everyone.global.service;
 
 import com.codeit.sb13.playlist_for_everyone.global.config.S3Properties;
+import com.codeit.sb13.playlist_for_everyone.global.exception.file.FileEmptyException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.file.FileInvalidTypeException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -17,9 +19,9 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.*;
 
 @DisplayName("S3FileStorage 테스트")
 @ExtendWith(MockitoExtension.class)
@@ -65,6 +67,36 @@ public class S3FIleStorageTest {
                         any(PutObjectRequest.class),
                         any(RequestBody.class)
                 );
+    }
+
+    @Test
+    @DisplayName("빈 파일 업로드 시 예외 발생")
+    void upload_emptyFile() {
+        // given
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "empty.png", "image/png", new byte[0]
+        );
+
+        // when & then
+        assertThatThrownBy(() -> s3FileStorage.upload(file))
+                .isInstanceOf(FileEmptyException.class);
+
+        verifyNoInteractions(s3Client);
+    }
+
+    @Test
+    @DisplayName("지원하지 않는 파일 형식 업로드 시 예외 발생")
+    void upload_invalidType() {
+        // given
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "test.txt", "text/plain", "test".getBytes(StandardCharsets.UTF_8)
+        );
+
+        // when & then
+        assertThatThrownBy(() -> s3FileStorage.upload(file))
+                .isInstanceOf(FileInvalidTypeException.class);
+
+        verifyNoInteractions(s3Client);
     }
 
     @Test
