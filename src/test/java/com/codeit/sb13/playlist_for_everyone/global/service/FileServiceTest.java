@@ -16,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
@@ -63,6 +64,33 @@ public class FileServiceTest {
 
         verify(fileStorage).upload(file);
         verify(fileInfoRepository).save(any(FileInfo.class));
+    }
+
+    @Test
+    @DisplayName("파일 정보 저장 실패 시 S3에 업로드 파일을 삭제한다.")
+    void upload_saveFailed_deleteS3() {
+        // given
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "test.png",
+                "image/png",
+                "test image".getBytes()
+        );
+
+        String key = "test-key.png";
+
+        given(fileStorage.upload(file)).willReturn(key);
+
+        given(fileInfoRepository.save(any(FileInfo.class)))
+                .willThrow(new RuntimeException("DB 저장 실패"));
+
+        // when & then
+        assertThatThrownBy(() -> fileService.upload(file))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("DB 저장 실패");
+
+        verify(fileStorage).upload(file);
+        verify(fileStorage).delete(key);
     }
 
 }
