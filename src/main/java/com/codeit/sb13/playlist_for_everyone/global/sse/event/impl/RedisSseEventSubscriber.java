@@ -15,6 +15,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.Optional;
+import java.util.UUID;
 
 @Component
 @RequiredArgsConstructor
@@ -40,8 +41,40 @@ public class RedisSseEventSubscriber implements MessageListener {
             return objectMapper.readValue(message.getBody(),
                     new TypeReference<>() {});
         }catch (JacksonException e){
-            log.warn("SSE Redis 메시지 변환에 실패하여 전송을 건너뜁니다. exceptionType={}", e.getClass().getSimpleName());
+            logMessageConversionFailure(message, e);
             return Optional.empty();
+        }
+    }
+
+    private void logMessageConversionFailure(Message message, JacksonException cause){
+        JsonNode root = null;
+        try {
+            root = objectMapper.readTree(message.getBody());
+        } catch (JacksonException ignored){
+            // JSON 자체를 읽을 수 없으면 식별자를 null로 기록한다.
+        }
+
+        log.warn("SSE Redis 메시지 변환에 실패하여 전송을 건너뜁니다. eventId={}, receiverId={}, exceptionType={}",
+                extractUuid(root,"eventId"),
+                extractUuid(root, "receiverId"),
+                cause.getClass().getSimpleName()
+        );
+    }
+
+    private @Nullable UUID extractUuid(@Nullable JsonNode root, String fieldName){
+        if (root == null){
+            return null;
+
+        }
+        JsonNode value = root.path(fieldName);
+        if(!value.isString()){
+            return null;
+        }
+
+        try {
+            return UUID.fromString(value.asString());
+        } catch (IllegalArgumentException e) {
+            return null;
         }
     }
 }

@@ -39,6 +39,8 @@ public class RedisSseEventPublisher implements SseEventPublisher {
                     toJsonString(sseEvent)
             );
         } catch (DataAccessException e){
+            log.warn("SSE Redis 발행에 실패했습니다. eventId={}, receiverId={}, exceptionType={}",
+                    sseEvent.eventId(), sseEvent.receiverId(), e.getClass().getSimpleName());
             throw new SsePublishException(e);
         }
     }
@@ -47,6 +49,8 @@ public class RedisSseEventPublisher implements SseEventPublisher {
         try {
             return objectMapper.writeValueAsString(sseEvent);
         }catch (JacksonException e){
+            log.warn("SSE 이벤트 JSON 직렬화에 실패했습니다. eventId={}, receiverId={}, exceptionType={}",
+                    sseEvent.eventId(), sseEvent.receiverId(), e.getClass().getSimpleName());
             throw new SsePublishException(e);
         }
     }
