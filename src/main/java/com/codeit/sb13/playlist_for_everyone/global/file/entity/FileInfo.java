@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.global.domain.CreatedAtEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -11,9 +12,17 @@ import lombok.NoArgsConstructor;
 @Entity
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@Table(name = "file_infos")
+@Table(
+        name = "file_infos",
+        uniqueConstraints = {
+                @UniqueConstraint(
+                        name = "uk_file_infos_key",
+                        columnNames = {"key"}
+                )
+        }
+)
 public class FileInfo extends CreatedAtEntity {
-
+    @Column(unique = true)
     String key;
 
     @Column(name = "original_filename")
