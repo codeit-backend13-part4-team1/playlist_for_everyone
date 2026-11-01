@@ -1,9 +1,10 @@
 package com.codeit.sb13.playlist_for_everyone.global.service;
 
-import com.codeit.sb13.playlist_for_everyone.global.config.S3Properties;
+import com.codeit.sb13.playlist_for_everyone.global.file.config.S3Properties;
 import com.codeit.sb13.playlist_for_everyone.global.exception.file.FileDeleteException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.file.FileEmptyException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.file.FileInvalidTypeException;
+import com.codeit.sb13.playlist_for_everyone.global.file.storage.S3FileStorage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

@@ -1,4 +1,4 @@
-package com.codeit.sb13.playlist_for_everyone.global.config;
+package com.codeit.sb13.playlist_for_everyone.global.file.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 

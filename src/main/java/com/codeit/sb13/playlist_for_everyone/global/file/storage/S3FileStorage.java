@@ -1,7 +1,6 @@
-package com.codeit.sb13.playlist_for_everyone.global.service;
+package com.codeit.sb13.playlist_for_everyone.global.file.storage;
 
-import com.codeit.sb13.playlist_for_everyone.global.config.S3Properties;
-import com.codeit.sb13.playlist_for_everyone.global.exception.ApiErrorCode;
+import com.codeit.sb13.playlist_for_everyone.global.file.config.S3Properties;
 import com.codeit.sb13.playlist_for_everyone.global.exception.file.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

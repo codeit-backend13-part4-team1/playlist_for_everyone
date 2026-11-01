@@ -1,4 +1,4 @@
-package com.codeit.sb13.playlist_for_everyone.global.service;
+package com.codeit.sb13.playlist_for_everyone.global.file.storage;
 
 import org.springframework.web.multipart.MultipartFile;
 
