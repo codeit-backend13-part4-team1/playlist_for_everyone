@@ -11,8 +11,15 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 
-import static com.codeit.sb13.playlist_for_everyone.global.config.RedisConfig.*;
+import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatcherScriptConfig.*;
+
+/**
+ * 세션 - 구독  과 컨텐츠 간 관계 를 레디스에 저장하는 클래스
+ * 내부적으론, Hash 와 ZSet 구조를 사용한다.
+ * Key [Session] -> Hash[String subscription, String content]]
+ * ZSet [Content] -> [Time expiredAt, String session:subscription]
+ */
 
 @Slf4j
 @Component
@@ -137,6 +144,11 @@ public class WatcherRegistry {
         return redis.execute(countScript,
                 List.of(contentKey(content))
         );
+    }
+
+    // 세션 - 구독 쌍에 해당하는 컨텐츠 반환
+    public String getContent(String session, String subscription){
+        return (String) redis.opsForHash().get(sessionKey(session),subscription);
     }
 
 

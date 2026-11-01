@@ -5,7 +5,6 @@ import java.util.UUID;
 public record Watcher(
         UUID userId,
         String name,
-        String profileImageUrl,
-        WatchContent content
+        String profileImageUrl
 ) {
 }

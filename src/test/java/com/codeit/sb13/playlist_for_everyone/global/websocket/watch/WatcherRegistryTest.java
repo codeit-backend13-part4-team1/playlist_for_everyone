@@ -19,7 +19,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
-import static com.codeit.sb13.playlist_for_everyone.global.config.RedisConfig.*;
+import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
 
 
 @Slf4j
@@ -53,7 +53,7 @@ public class WatcherRegistryTest {
                 redisScriptConfig.watcherCountScript()
         );
 
-        // 테스트용 타임아웃 세팅
+        // 테스트용 타임아웃 세팅 ( 3초 )
         ReflectionTestUtils.setField(watcherRegistry, "TTL", Duration.ofSeconds(3));
 
         log.info("[WatcherRegistryTest] 테스트 세팅 완료");

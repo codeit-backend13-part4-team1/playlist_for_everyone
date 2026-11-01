@@ -1,6 +1,8 @@
 package com.codeit.sb13.playlist_for_everyone.global.config;
 
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
@@ -11,14 +13,7 @@ import org.springframework.data.redis.serializer.GenericJacksonJsonRedisSerializ
 
 @Configuration
 public class RedisConfig {
-    // redis Prefix
-    // watchingSession 의 세션 저장소용 prefix
-    public static final String STORAGE_SESSION_PREFIX = "storage:watching:session:";
-    public static final String STORAGE_CONTENT_PREFIX = "storage:watching:content:";
-    // watchingSession 의 데이터(Session change event, chat) 전달용 prefix
-    public static final String MESSAGE_CHAT_PREFIX = "message:watching:chat:";
-    public static final String MESSAGE_VIEW_PREFIX = "message:watching:view:";
-    // 클래스에서 자체적으로 템플릿을 만들어서 쓰면 삭제해도 무방할 듯.
+
     // 캐시 및 redis 데이터보관시 사용할 template
     @Bean
     public RedisTemplate<String, Object> redisTemplate(
