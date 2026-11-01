@@ -28,11 +28,14 @@ import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+import java.io.IOException;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 import static org.mockito.Mockito.*;
 
 @SpringBootTest(
@@ -153,6 +156,37 @@ public class RedisSsePubSubIntegrationTest {
 
             assertThat(receivedData).isEqualTo(expectedData);
         });
+    }
+
+    @Test
+    @DisplayName("Redis 구독 연결이 끊어져도 자동으로 재구독하여 새 이벤트를 전달한다.")
+    void deliversNewEventAfterSubscriptionReconnects() throws IOException, InterruptedException {
+        var disconnected = redis.execInContainer("redis-cli", "--raw", "CLIENT", "KILL", "TYPE", "pubsub");
+
+        assertThat(disconnected.getExitCode()).isZero();
+        assertThat(disconnected.getStdout().strip()).isEqualTo("1");
+
+        await()
+                .atMost(Duration.ofSeconds(15))
+                .untilAsserted(()->{
+                    var subscriptions = redis.execInContainer("redis-cli", "--raw", "PUBSUB", "NUMSUB", "test:sse:pubsub");
+                    assertThat(subscriptions.getExitCode()).isZero();
+                    assertThat(subscriptions.getStdout().lines().toList())
+                            .containsExactly("test:sse:pubsub", "1");
+                });
+
+        SseEvent<Map<String, String>> event = new SseEvent<>(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                Event.NOTIFICATIONS.getName(),
+                Map.of("message", "재구독 이후 발행한 알림")
+        );
+
+        publisher.publish(event);
+        verify(sseDeliveryService, timeout(5_000))
+                .sendToLocalConnections(argThat(received ->
+                        event.eventId().equals(received.eventId())));
+
     }
 
     private ApplicationContextRunner createAdditionalNodeRunner(){
