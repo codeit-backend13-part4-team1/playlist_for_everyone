@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.service;
 
+import com.codeit.sb13.playlist_for_everyone.global.exception.file.FileNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
 import com.codeit.sb13.playlist_for_everyone.global.file.repository.FileInfoRepository;
 import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
@@ -13,14 +14,14 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("File 서비스 테스트")
@@ -91,6 +92,47 @@ public class FileServiceTest {
 
         verify(fileStorage).upload(file);
         verify(fileStorage).delete(key);
+    }
+
+    @Test
+    @DisplayName("파일 삭제 시 S3 파일과 FileInfo를 함께 삭제한다")
+    void delete_success() {
+        // given
+        UUID id = UUID.randomUUID();
+        String key = "test-key.png";
+
+        FileInfo fileInfo = FileInfo.createS3File(
+                key,
+                "test.png",
+                "image/png",
+                40L
+        );
+
+        given(fileInfoRepository.findById(id))
+                .willReturn(Optional.of(fileInfo));
+
+        // when
+        fileService.delete(id);
+
+        // then
+        verify(fileStorage).delete(key);
+        verify(fileInfoRepository).delete(fileInfo);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 파일 삭제 시 FileNotFoundException이 발생한다")
+    void delete_fileNotFound() {
+        // given
+        UUID id = UUID.randomUUID();
+        given(fileInfoRepository.findById(id))
+                .willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> fileService.delete(id))
+                .isInstanceOf(FileNotFoundException.class);
+
+        verify(fileStorage, never()).delete(anyString());
+        verify(fileInfoRepository, never()).delete(any(FileInfo.class));
     }
 
 }

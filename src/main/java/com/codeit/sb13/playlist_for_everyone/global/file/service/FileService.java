@@ -5,7 +5,10 @@ import com.codeit.sb13.playlist_for_everyone.global.file.repository.FileInfoRepo
 import com.codeit.sb13.playlist_for_everyone.global.file.storage.FileStorage;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -14,6 +17,7 @@ public class FileService {
     private final FileInfoRepository fileInfoRepository;
     private final FileStorage fileStorage;
 
+    @Transactional
     public FileInfo upload(MultipartFile file) {
         String key = fileStorage.upload(file);
 
@@ -34,6 +38,10 @@ public class FileService {
             }
             throw e;
         }
+    }
+
+    public void delete(UUID id) {
+
     }
 
 }
