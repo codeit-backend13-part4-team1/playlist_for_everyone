@@ -24,7 +24,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 
 import java.util.UUID;
 
-import static com.codeit.sb13.playlist_for_everyone.global.config.RedisConfig.*;
+import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
 import static org.mockito.BDDMockito.*;
 
 /*
@@ -64,7 +64,8 @@ public class WatchingSessionServiceImplTest {
                         watcherRegistry,
                         redisTopicRegistry,
                         userService,
-                        contentService
+                        contentService,
+                        redisTemplate
                 );
     }
 
@@ -84,10 +85,19 @@ public class WatchingSessionServiceImplTest {
                 ));
     }
 
-    void checkRedisTopicRegistered(String sessionId, String subscriptionId, String contentId){
+    void checkRedisSessionTopicRegistered(String sessionId, String subscriptionId, String contentId){
         verify(redisTopicRegistry,times(1))
                 .register(
                         eq(watchTopic(contentId)),
+                        eq(sessionId),
+                        eq(subscriptionId)
+                );
+    }
+
+    void checkRedisChatTopicRegistered(String sessionId, String subscriptionId, String contentId){
+        verify(redisTopicRegistry,times(1))
+                .register(
+                        eq(chatTopic(contentId)),
                         eq(sessionId),
                         eq(subscriptionId)
                 );
@@ -143,7 +153,7 @@ public class WatchingSessionServiceImplTest {
             verify(watcherRegistry,times(1))
                     .register(eq(sessionId),eq(subscriptionId),eq(contentId));
             // join - leave 메세지를 보내기(받기) 위해 채널을 구독한다.
-            checkRedisTopicRegistered(sessionId,subscriptionId,contentId);
+            checkRedisSessionTopicRegistered(sessionId,subscriptionId,contentId);
 
             // JOIN 메세지 발행.
             verify(redisTemplate,times(1))
@@ -171,6 +181,8 @@ public class WatchingSessionServiceImplTest {
             given(userService.getById(userId))
                     .willReturn(User.builder().email("test@email.com").role(Role.USER).build());
             // 컨텐츠 조회 given
+            given(watcherRegistry.getContent(sessionId, subscriptionId))
+                    .willReturn(contentId);
             // todo - 아직 컨텐츠 조회가 생성되지 않았음으로, 생성되면 추가.
 
             watchingSessionServiceImpl.unsubscribeWatchingSession(sessionId,subscriptionId);
@@ -211,11 +223,11 @@ public class WatchingSessionServiceImplTest {
             watchingSessionServiceImpl.subscribeChatSession(sessionId, subscriptionId, contentId);
 
             // redis message 구독
-            checkRedisTopicRegistered(sessionId, subscriptionId, contentId);
+            checkRedisChatTopicRegistered(sessionId, subscriptionId, contentId);
         }
 
         @Test
-        @DisplayName("채팅 서비스 등록 시, sessionRegistry 에서 데이터를 받아와서 redis message 를 구독한다.")
+        @DisplayName("채팅 서비스 등록 취소 시, sessionRegistry 에서 데이터를 받아와서 redis message 를 구독 취소한다.")
         void unsubscribeChat(){
             String sessionId = "test-session";
             String subscriptionId = "test-sub-1";
