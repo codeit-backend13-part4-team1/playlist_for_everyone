@@ -16,9 +16,6 @@ public class FileInfo extends CreatedAtEntity {
 
     String key;
 
-    @Column(name = "external_url", length = 2048)
-    private String externalUrl;     // 외부 이미지 URL (존재하면 S3 업로드 X)
-
     @Column(name = "original_filename")
     String originalFilename;
 
@@ -38,12 +35,6 @@ public class FileInfo extends CreatedAtEntity {
         fileInfo.originalFilename = originalFilename;
         fileInfo.contentType = contentType;
         fileInfo.size = size;
-        return fileInfo;
-    }
-
-    public static FileInfo createExternalFile(String externalUrl) {
-        FileInfo fileInfo = new FileInfo();
-        fileInfo.externalUrl = externalUrl;
         return fileInfo;
     }
 

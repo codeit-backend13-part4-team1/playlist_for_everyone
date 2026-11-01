@@ -65,23 +65,4 @@ public class FileServiceTest {
         verify(fileInfoRepository).save(any(FileInfo.class));
     }
 
-    @Test
-    @DisplayName("외부 이미지 URL 저장 시 S3 업로드 없이 파일 정보만 저장한다")
-    void saveExternalUrl_success() {
-        // given
-        String url = "https://example.com/image.png";
-
-        given(fileInfoRepository.save(any(FileInfo.class)))
-                .willAnswer(invocation -> invocation.getArgument(0));
-
-        // when
-        FileInfo fileInfo = fileService.saveExternalUrl(url);
-
-        // then
-        assertThat(fileInfo.getExternalUrl()).isEqualTo(url);
-
-        verify(fileInfoRepository).save(any(FileInfo.class));
-        verifyNoInteractions(fileStorage);
-    }
-
 }
