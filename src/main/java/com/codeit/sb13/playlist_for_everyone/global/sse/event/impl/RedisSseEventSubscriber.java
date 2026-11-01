@@ -17,6 +17,14 @@ import tools.jackson.databind.ObjectMapper;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * Redis 이벤트를 {@code SseEvent<JsonNode>}로 읽어 현재 서버의 연결에 전달한다.
+ * 알림·DM DTO 타입에 의존하지 않으며, 수신한 메시지를 다시 Redis로 발행하지 않는다.
+ * 수신자 연결이 없는 경우의 정상 종료와 개별 연결 전송 실패 처리는 SseDeliveryService가 담당한다.
+ *
+ * <p>이벤트 변환에 실패하면 해당 메시지만 건너뛴다. 로컬 전송 호출은 변환 예외 처리 밖에 두어
+ * 전송 중 발생한 예외를 역직렬화 실패로 잘못 분류하지 않는다.
+ */
 @Component
 @RequiredArgsConstructor
 @ConditionalOnProperty(
@@ -46,6 +54,10 @@ public class RedisSseEventSubscriber implements MessageListener {
         }
     }
 
+    /**
+     * 실패한 경우에만 JSON을 다시 읽어 로그용 식별자를 추출한다.
+     * 원문·data·예외 메시지는 기록하지 않고, 최초 이벤트 변환 실패의 예외 타입을 남긴다.
+     */
     private void logMessageConversionFailure(Message message, JacksonException cause){
         JsonNode root = null;
         try {
@@ -61,6 +73,7 @@ public class RedisSseEventSubscriber implements MessageListener {
         );
     }
 
+    // 식별자가 누락되거나 UUID로 변환되지 않으면 원본 문자열 대신 null을 기록한다.
     private @Nullable UUID extractUuid(@Nullable JsonNode root, String fieldName){
         if (root == null){
             return null;

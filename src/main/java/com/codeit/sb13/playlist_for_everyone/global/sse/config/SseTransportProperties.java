@@ -6,6 +6,11 @@ import org.springframework.util.StringUtils;
 import java.util.Arrays;
 import java.util.Locale;
 
+/**
+ * SSE 브로커 전송 방식과 Redis 채널을 검증한다. 현재 지원하는 전송 방식은 redis이다.
+ * YAML의 기본값이 적용된 뒤에도 전송 방식이 없거나 지원하지 않는 값이면 시작에 실패한다.
+ * Redis 설정과 공백이 아닌 채널도 필수이며, 자동 구독 활성화 여부는 구독 빈의 조건에서 처리한다.
+ */
 @ConfigurationProperties(prefix = "everyone.sse")
 public record SseTransportProperties(
         String transport,

@@ -1,6 +1,6 @@
 # 5. 테스트 읽기와 실행
 
-SSE 테스트는 설정 바인딩, 저장소의 실제 동작, 서비스 간 협력, MVC 계약, 실제 HTTP 프레임을 검증합니다.
+SSE 테스트는 설정 바인딩, 저장소·서비스 동작, MVC 계약, 실제 HTTP 프레임과 Redis 분산 전송을 검증합니다.
 **어떤 역할을 검증하고 어떤 의존성을 대체했는지**부터 읽으면 테스트를 이해하기 쉽습니다.
 
 ## 테스트별 책임
@@ -76,7 +76,27 @@ SSE는 계속 열리는 응답이므로 EOF까지 읽지 않고 필요한 줄만
 연결·읽기에 제한 시간을 두고, `finally`에서 서버의 연결 정리와 클라이언트 연결 해제를 수행합니다.
 이 테스트는 공통 payload로 프레임을 검증하며 실제 알림·DM 업무 이벤트 생성까지 검증하지는 않습니다.
 
-`SseEvent` 생성자의 필수값 null 거부와 `data`의 null 허용은 별도 테스트가 없습니다.
+`SseEvent` 생성자 전용 테스트는 없습니다. Redis 발행·수신 테스트에서는 `data`의 null 허용과 수신 메시지의 필수 필드 누락 거부를 확인합니다.
+
+## Redis 테스트의 범위
+
+아래 테스트는 모두 `global.sse` 패키지에 있습니다. 각 클래스의 한글 `@DisplayName`으로 구체적인 사례를 확인합니다.
+
+| 테스트 | 실제 의존성과 확인하는 내용 |
+| --- | --- |
+| `RedisSseEventPublisherTest` / `RedisSseEventSubscriberTest` | 실제 JSON 매퍼 사용. Redis·전송 서비스는 Mock. 필드 보존, 발행 실패, 잘못된 메시지 후 정상 수신, null data |
+| `SseTransportPropertiesTest` / `RedisSseTransportConfigTest` | 설정값 검증과 Redis 구현체 선택. Redis 의존성은 Mock |
+| `RedisSseSubscriptionTest` / `RedisSseSubscriptionLifecycleTest` | 등록·해제 요청, 컨텍스트 생명주기, 자동 구독 비활성화. 등록 창구는 Mock |
+| [RedisSsePubSubIntegrationTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/event/impl/RedisSsePubSubIntegrationTest.java) | 실제 Redis와 독립 컨텍스트 사용. 전달 서비스는 Mock. 중첩 JSON 보존, 서버 간 수신, 구독 연결 복구 후 새 이벤트 수신 |
+| [RedisSseDeliveryIntegrationTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/event/impl/RedisSseDeliveryIntegrationTest.java) | 실제 Redis·전송 서비스·메모리 저장소 사용. emitter는 Mock. 여러 서버·연결로 전달, 다른 사용자 제외, 정상 발행의 중복 호출 방지 |
+
+두 Redis 통합 테스트는 Testcontainers의 Redis 7.4를 사용하므로 Docker가 필요합니다. 로컬 Redis나 Compose 서비스는 사용하지 않습니다.
+독립 컨텍스트는 서버별 빈·저장소를 구분하지만 별도 OS 프로세스는 아닙니다. 실제 프로세스와 HTTP 연결은 [Compose 수신 검증](08-redis-verification.md)에서 확인합니다.
+재연결 테스트는 테스트 Redis의 Pub/Sub 연결을 끊은 뒤 재구독과 새 이벤트 수신을 확인하며, 끊긴 동안의 이벤트 복구를 보장하지 않습니다.
+
+테스트 프로필은 `everyone.sse.subscription-enabled=false`로 SSE 자동 구독을 끕니다. Redis SSE 통합 테스트에서만 `true`와 전용 테스트 채널을 명시합니다.
+이 설정은 다른 기능의 Redis 의존성까지 끄지 않습니다. 설정 파일을 읽지 않는 `ApplicationContextRunner`에서는 필요한 값을 직접 지정합니다.
+발행·수신 로그의 출력 필드를 자동 단언하는 테스트는 없으며, [로그 기준](06-redis-transport.md#실패-처리와-로그)은 구현과 함께 확인합니다.
 
 ## 동시성과 종료 테스트의 해석
 
@@ -102,7 +122,21 @@ Mock 단위 테스트와 위의 `ApplicationContextRunner` 테스트는 이 설�
   --no-daemon --console=plain
 ```
 
-SSE와 전용 스케줄러만 확인할 때:
+발행·수신 단위 테스트만 확인할 때(Docker 불필요):
+
+```bash
+./gradlew test --tests '*RedisSseEventPublisherTest' \
+  --tests '*RedisSseEventSubscriberTest' --no-daemon --console=plain
+```
+
+Redis 통합 테스트만 확인할 때(Docker 필요):
+
+```bash
+./gradlew test --tests '*RedisSsePubSubIntegrationTest' \
+  --tests '*RedisSseDeliveryIntegrationTest' --no-daemon --console=plain
+```
+
+SSE와 전용 스케줄러 전체를 확인할 때(Redis 통합 테스트를 포함하므로 Docker 필요):
 
 ```bash
 ./gradlew test \
@@ -111,7 +145,7 @@ SSE와 전용 스케줄러만 확인할 때:
   --no-daemon --console=plain
 ```
 
-JWT·보안 설정까지 함께 회귀 검증할 때:
+JWT·보안 설정까지 함께 회귀 검증할 때(Docker 필요):
 
 ```bash
 ./gradlew test \
@@ -123,10 +157,10 @@ JWT·보안 설정까지 함께 회귀 검증할 때:
 ```
 
 프로젝트 전체 빌드·테스트·커버리지 검증은 Docker를 실행한 상태에서 `./gradlew build --no-daemon --console=plain`으로 수행합니다.
-SSE 외의 Testcontainers 기반 테스트가 포함되어 있기 때문입니다.
+SSE의 Redis 통합 테스트와 다른 도메인의 Testcontainers 기반 테스트가 포함되어 있기 때문입니다.
 결과는 `build/reports/tests/test/index.html`, 커버리지는 `build/reports/jacoco/test/html/index.html`에서 확인합니다.
 이는 테스트 실행 후 생성되는 파일 경로입니다.
 
 ---
 
-[← 이전: 비동기 응답과 인증](04-async-security.md) · [목차](README.md)
+[← 이전: 비동기 응답과 인증](04-async-security.md) · [목차](README.md) · [다음: Redis 전송 구조와 설정 →](06-redis-transport.md)
