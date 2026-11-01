@@ -16,6 +16,14 @@ public enum ApiErrorCode {
     //CONVERSATION CS
     CONVERSATION_NOT_FOUND("CS_001", HttpStatus.NOT_FOUND, "대화방을 찾을 수 없습니다."),
 
+    // FILE FL
+    FILE_NOT_FOUND("FL_001", HttpStatus.NOT_FOUND, "파일을 찾을 수 없습니다."),
+    FILE_UPLOAD_FAILED("FL_002", HttpStatus.INTERNAL_SERVER_ERROR, "파일 업로드에 실패했습니다."),
+    FILE_DELETE_FAILED("FL_003", HttpStatus.INTERNAL_SERVER_ERROR, "파일 삭제에 실패했습니다."),
+    FILE_INVALID_TYPE("FL_004", HttpStatus.BAD_REQUEST, "지원하지 않는 파일 형식입니다."),
+    FILE_EMPTY("FL_005", HttpStatus.BAD_REQUEST, "빈 파일은 업로드할 수 없습니다."),
+
+
     //FOLLOW F
     FOLLOW_NOT_FOUND("F_001", HttpStatus.NOT_FOUND, "팔로우를 찾을 수 없습니다."),
     FOLLOW_CREATION_FAILED("F_002", HttpStatus.INTERNAL_SERVER_ERROR, "팔로우 생성 처리에 실패했습니다."),
