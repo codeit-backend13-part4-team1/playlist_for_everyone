@@ -1,0 +1,36 @@
+services:
+  app-a: &sse-app
+    image: eclipse-temurin:17-jre
+    working_dir: /app
+    command: ["java", "-jar", "/app/app.jar"]
+    env_file:
+      - .env.dev
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      EVERYONE_DOCKER_COMPOSE_ENABLED: "false"
+      EVERYONE_DB_HOST: postgres
+      EVERYONE_DB_PORT: "5432"
+      EVERYONE_REDIS_HOST: redis
+      EVERYONE_REDIS_PORT: "6379"
+      EVERYONE_SERVER_PORT: "8080"
+      EVERYONE_SSE_TRANSPORT: redis
+      EVERYONE_SSE_SUBSCRIPTION_ENABLED: "true"
+    ports:
+      - "127.0.0.1:8081:8080"
+    volumes:
+      - type: bind
+        source: ./build/libs/playlist_for_everyone-0.0.1-SNAPSHOT.jar
+        target: /app/app.jar
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  app-b:
+    <<: *sse-app
+    ports:
+      - "127.0.0.1:8082:8080"
