@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.global.service;
 
 import com.codeit.sb13.playlist_for_everyone.global.config.S3Properties;
+import com.codeit.sb13.playlist_for_everyone.global.exception.file.FileDeleteException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.file.FileEmptyException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.file.FileInvalidTypeException;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,6 +16,7 @@ import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 
 import java.nio.charset.StandardCharsets;
 
@@ -70,7 +72,7 @@ public class S3FIleStorageTest {
     }
 
     @Test
-    @DisplayName("빈 파일 업로드 시 예외 발생")
+    @DisplayName("빈 파일 업로드 시 예외가 발생한다.")
     void upload_emptyFile() {
         // given
         MockMultipartFile file = new MockMultipartFile(
@@ -85,7 +87,7 @@ public class S3FIleStorageTest {
     }
 
     @Test
-    @DisplayName("지원하지 않는 파일 형식 업로드 시 예외 발생")
+    @DisplayName("지원하지 않는 파일 형식 업로드 시 예외가 발생한다.")
     void upload_invalidType() {
         // given
         MockMultipartFile file = new MockMultipartFile(
@@ -110,8 +112,42 @@ public class S3FIleStorageTest {
         s3FileStorage.delete(key);
 
         // then
-        verify(s3Client, times(1))
+        verify(s3Client).deleteObject(
+                argThat((DeleteObjectRequest request) ->
+                        BUCKET.equals(request.bucket())
+                                && key.equals(request.key())
+                )
+        );
+    }
+
+    @Test
+    @DisplayName("빈 key로 삭제 요청 시 예외가 발생한다.")
+    void delete_emptyKey() {
+        // given
+        String key = "";
+
+        // when & then
+        assertThatThrownBy(() -> s3FileStorage.delete(key))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(s3Client);
+    }
+
+    @Test
+    @DisplayName("S3 파일 삭제 실패 시 예외 발생")
+    void delete_failed() {
+        // given
+        String key = "test-image.png";
+
+        doThrow(S3Exception.builder()
+                .message("S3 삭제 실패")
+                .build())
+                .when(s3Client)
                 .deleteObject(any(DeleteObjectRequest.class));
+
+        // when & then
+        assertThatThrownBy(() -> s3FileStorage.delete(key))
+                .isInstanceOf(FileDeleteException.class);
     }
 
 }
