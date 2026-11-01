@@ -89,7 +89,8 @@ public class S3FIleStorageTest {
     void upload_invalidType() {
         // given
         MockMultipartFile file = new MockMultipartFile(
-                "file", "test.txt", "text/plain", "test".getBytes(StandardCharsets.UTF_8)
+                "file", "test.exe", "application/octet-stream",
+                "test".getBytes(StandardCharsets.UTF_8)
         );
 
         // when & then

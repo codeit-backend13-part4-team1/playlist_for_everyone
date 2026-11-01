@@ -6,11 +6,11 @@ import java.util.Map;
 
 public class FileDeleteException extends FileException {
 
-    public FileDeleteException(ApiErrorCode apiErrorCode, Map<String, Object> details) {
+    public FileDeleteException(Map<String, Object> details) {
         super(ApiErrorCode.FILE_DELETE_FAILED, details);
     }
 
-    public FileDeleteException(ApiErrorCode apiErrorCode, Map<String, Object> details, Throwable cause) {
+    public FileDeleteException(Map<String, Object> details, Throwable cause) {
         super(ApiErrorCode.FILE_DELETE_FAILED, details, cause);
     }
 }

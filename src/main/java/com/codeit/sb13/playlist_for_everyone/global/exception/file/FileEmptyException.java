@@ -6,11 +6,11 @@ import java.util.Map;
 
 public class FileEmptyException extends FileException {
 
-    public FileEmptyException(ApiErrorCode apiErrorCode, Map<String, Object> details) {
+    public FileEmptyException(Map<String, Object> details) {
         super(ApiErrorCode.FILE_EMPTY, details);
     }
 
-    public FileEmptyException(ApiErrorCode apiErrorCode, Map<String, Object> details, Throwable cause) {
+    public FileEmptyException(Map<String, Object> details, Throwable cause) {
         super(ApiErrorCode.FILE_EMPTY, details, cause);
     }
 }

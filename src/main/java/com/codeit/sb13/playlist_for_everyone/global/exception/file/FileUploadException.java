@@ -6,11 +6,11 @@ import java.util.Map;
 
 public class FileUploadException extends FileException {
 
-    public FileUploadException(ApiErrorCode apiErrorCode, Map<String, Object> details) {
+    public FileUploadException(Map<String, Object> details) {
         super(ApiErrorCode.FILE_UPLOAD_FAILED, details);
     }
 
-    public FileUploadException(ApiErrorCode apiErrorCode, Map<String, Object> details, Throwable cause) {
+    public FileUploadException(Map<String, Object> details, Throwable cause) {
         super(ApiErrorCode.FILE_UPLOAD_FAILED, details, cause);
     }
 }

@@ -17,6 +17,7 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import java.io.IOException;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -29,13 +30,33 @@ public class S3FileStorage implements FileStorage {
     private final S3Client s3Client;
     private final S3Properties s3Properties;
 
+    private static final Set<String> ALLOWED_EXTENSIONS = Set.of(
+            ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg",   // 이미지
+            ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",  // 문서
+            ".txt", ".md", ".csv", ".json"                              // 텍스트
+    );
+
     @Override
     public String upload(MultipartFile file) {
+        // 빈 파일 검증
+        if (file == null || file.isEmpty()) {
+            throw new FileEmptyException(Map.of());
+        }
+
         String originalFilename = file.getOriginalFilename();
         String extension = StringUtils.getFilenameExtension(originalFilename);
 
-        String key = UUID.randomUUID()
-                + (extension != null ? "." + extension : "");
+        // 확장자 검증
+        if (extension == null ||
+                !ALLOWED_EXTENSIONS.contains("." + extension.toLowerCase(Locale.ROOT))) {
+            throw new FileInvalidTypeException(
+                    Map.of("filename",
+                            originalFilename == null ? "unknown" : originalFilename)
+            );
+        }
+
+        // S3 파일 key 생성
+        String key = UUID.randomUUID() + "." + extension.toLowerCase(Locale.ROOT);
 
         PutObjectRequest request = PutObjectRequest.builder()
                 .bucket(s3Properties.bucket())
@@ -56,7 +77,6 @@ public class S3FileStorage implements FileStorage {
             log.error("S3 파일 업로드 실패. key={}", key, e);
 
             throw new FileUploadException(
-                    ApiErrorCode.FILE_UPLOAD_FAILED,
                     Map.of("key", key),
                     e
             );

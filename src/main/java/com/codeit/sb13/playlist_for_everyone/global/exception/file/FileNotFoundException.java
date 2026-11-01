@@ -6,12 +6,12 @@ import java.util.Map;
 
 public class FileNotFoundException extends FileException {
 
-  public FileNotFoundException(ApiErrorCode apiErrorCode, Map<String, Object> details) {
-    super(apiErrorCode, details);
+  public FileNotFoundException(Map<String, Object> details) {
+    super(ApiErrorCode.FILE_NOT_FOUND, details);
   }
 
-  public FileNotFoundException(ApiErrorCode apiErrorCode, Map<String, Object> details, Throwable cause) {
-    super(apiErrorCode, details, cause);
+  public FileNotFoundException(Map<String, Object> details, Throwable cause) {
+    super(ApiErrorCode.FILE_NOT_FOUND, details, cause);
   }
 
 }
