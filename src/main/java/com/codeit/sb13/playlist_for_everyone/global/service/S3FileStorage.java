@@ -2,10 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.global.service;
 
 import com.codeit.sb13.playlist_for_everyone.global.config.S3Properties;
 import com.codeit.sb13.playlist_for_everyone.global.exception.ApiErrorCode;
-import com.codeit.sb13.playlist_for_everyone.global.exception.file.FileEmptyException;
-import com.codeit.sb13.playlist_for_everyone.global.exception.file.FileException;
-import com.codeit.sb13.playlist_for_everyone.global.exception.file.FileInvalidTypeException;
-import com.codeit.sb13.playlist_for_everyone.global.exception.file.FileUploadException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.file.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -14,6 +11,7 @@ import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import java.io.IOException;
@@ -86,6 +84,28 @@ public class S3FileStorage implements FileStorage {
 
     @Override
     public void delete(String key) {
+        if (!StringUtils.hasText(key)) {
+            throw new IllegalArgumentException("파일 key가 비어 있습니다.");
+        }
+
+        DeleteObjectRequest request = DeleteObjectRequest.builder()
+                .bucket(s3Properties.bucket())
+                .key(key)
+                .build();
+
+        try {
+            s3Client.deleteObject(request);
+
+            log.info("S3 파일 삭제 완료: {}", key);
+
+        } catch (SdkException e) {
+            log.error("S3 파일 삭제 실패. key={}", key, e);
+
+            throw new FileDeleteException(
+                    Map.of("key", key),
+                    e
+            );
+        }
 
     }
 
