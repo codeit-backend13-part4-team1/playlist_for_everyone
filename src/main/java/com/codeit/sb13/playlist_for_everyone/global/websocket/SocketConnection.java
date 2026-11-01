@@ -19,6 +19,29 @@ public class SocketConnection {
     private final Authentication authentication;
 
     public SocketConnection(
+            String sessionId
+    ) {
+        Objects.requireNonNull(sessionId);
+        this.id = UUID.randomUUID();
+        this.createdAt = Instant.now();
+        this.sessionId = sessionId;
+        this.subscriptionId = null;
+        this.authentication = null;
+    }
+
+    public SocketConnection(
+            String sessionId,
+            String subscriptionId
+    ) {
+        Objects.requireNonNull(sessionId);
+        this.id = UUID.randomUUID();
+        this.createdAt = Instant.now();
+        this.sessionId = sessionId;
+        this.subscriptionId = subscriptionId;
+        this.authentication = null;
+    }
+
+    public SocketConnection(
             String sessionId,
             String subscriptionId,
             Authentication authentication

@@ -1,13 +1,12 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
+import com.codeit.sb13.playlist_for_everyone.global.service.RedisMessageDto;
 import com.codeit.sb13.playlist_for_everyone.global.service.RedisTopicRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.WatchContent;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.Watcher;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.WatchingSessionDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.service.WatcherRegistry;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatDto;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.RedisMessageChatDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.ChangeType;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.WatchingSessionChange;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +24,6 @@ import java.util.UUID;
 public class WatchingSessionEventListener {
     private final WatcherRegistry watcherRegistry;
     private final RedisTopicRegistry redisTopicRegistry;
-    private final ChatMessagePublisher chatMessagePublisher;
     private final SimpMessagingTemplate messagingTemplate;
 
     static private final String SUB_PREFIX = "/sub/contents/";
@@ -85,7 +83,7 @@ public class WatchingSessionEventListener {
 
         String destination = SUB_PREFIX + event.contentId() + WATCH_POSTFIX;
 
-        RedisMessageChatDto<WatchingSessionChange> message = new RedisMessageChatDto<>(
+        RedisMessageDto<WatchingSessionChange> message = new RedisMessageDto<>(
                 "destination",
                 new WatchingSessionChange(
                         ChangeType.JOIN,
@@ -111,7 +109,7 @@ public class WatchingSessionEventListener {
         watcherRegistry.unregister(event.sessionId(), event.subscriptionId());
         redisTopicRegistry.unregister(event.sessionId(), event.subscriptionId());
 
-        RedisMessageChatDto<WatchingSessionChange> message = new RedisMessageChatDto<>(
+        RedisMessageDto<WatchingSessionChange> message = new RedisMessageDto<>(
                 "destination",
                 new WatchingSessionChange(
                         ChangeType.LEAVE,
@@ -132,30 +130,6 @@ public class WatchingSessionEventListener {
     @EventListener
     public void chatLeaveEvent(WatchingChatLeaveEvent event){
         redisTopicRegistry.unregister(event.sessionId(), event.subscriptionId());
-    }
-
-
-
-
-    @EventListener
-    public void chatSendEvent(WatchingChatSendEvent event){
-//        StompHeaderAccessor accessor = StompHeaderAccessor.wrap(event.getMessage());
-//        String sessionId = accessor.getSessionId();
-//        String subscriptionId = accessor.getSubscriptionId();
-//
-//        watcherRegistry.unregister(sessionId, subscriptionId);
-
-
-
-        if (event.contentId() == null)
-            throw new RuntimeException();
-
-        String contentId = event.contentId().toString();
-        ContentChatDto chatDto = new ContentChatDto(event.user(), event.message());
-
-        chatMessagePublisher.publish(
-                contentId,
-                chatDto);
     }
 
 

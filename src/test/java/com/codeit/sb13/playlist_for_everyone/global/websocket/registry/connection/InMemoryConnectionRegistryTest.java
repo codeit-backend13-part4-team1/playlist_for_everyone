@@ -48,8 +48,10 @@ public class InMemoryConnectionRegistryTest {
 
 
         assertThat(registry.get("test-session-id"))
-                .hasSize(1)
+                // 테스트 로직 상 세션, 구독 2개가 필요.
+                .hasSize(2)
                 // SocketConnection 은 session - subscribe 쌍이 같다면 동일한 객체로 간주한다.
+                .contains(new SocketConnection("test-session-id",null))
                 .contains(new SocketConnection("test-session-id","sub-1",null));
     }
 
@@ -165,14 +167,16 @@ public class InMemoryConnectionRegistryTest {
                 .isNull();
     }
 
-    @Test
-    @DisplayName("없는 세션을 삭제하려 하면 예외가 발생한다")
-    void removeSession4(){
-        InMemoryConnectionRegistry registry = new InMemoryConnectionRegistry();
 
-        assertThatThrownBy(() -> registry.unregister("test-session-id"))
-                .isInstanceOf(IllegalArgumentException.class);
-    }
+    // 삭제는 멱등성이 있으므로, 예외를 발생시키지 않는다.
+//    @Test
+//    @DisplayName("없는 세션을 삭제하려 하면 예외가 발생한다")
+//    void removeSession4(){
+//        InMemoryConnectionRegistry registry = new InMemoryConnectionRegistry();
+//
+//        assertThatThrownBy(() -> registry.unregister("test-session-id"))
+//                .isInstanceOf(IllegalArgumentException.class);
+//    }
 
 
 
