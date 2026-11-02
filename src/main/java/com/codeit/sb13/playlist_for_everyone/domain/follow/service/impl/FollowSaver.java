@@ -30,7 +30,7 @@ public class FollowSaver {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public FollowDto save(FollowCommand command){
         Follow saved = followRepository.save(createFollow(command));
-        eventPublisher.publishEvent(new UserFollowedEvent(saved.getFollowerId(), saved.getFollower().getName(), saved.getFolloweeId()));
+        eventPublisher.publishEvent(new UserFollowedEvent(saved.getFollowerId(), saved.getFollowerName(), saved.getFolloweeId()));
         return FollowDto.from(saved);
     }
 

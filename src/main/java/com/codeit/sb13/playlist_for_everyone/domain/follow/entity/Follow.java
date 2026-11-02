@@ -45,4 +45,11 @@ public class Follow extends CreatedAtEntity {
         }
         return followee.getId();
     }
+
+    public String getFollowerName(){
+        if(follower == null){
+            return null;
+        }
+        return follower.getName();
+    }
 }
