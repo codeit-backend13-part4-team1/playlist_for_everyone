@@ -10,6 +10,8 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3ClientBuilder;
+import software.amazon.awssdk.services.s3.S3Configuration;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 import java.net.URI;
 
@@ -34,6 +36,29 @@ public class S3Config {
                     .credentialsProvider(DefaultCredentialsProvider.builder().build());
         }
 
+        return builder.build();
+    }
+
+    @Bean
+    public S3Presigner s3Presigner(S3Properties props) {
+        S3Presigner.Builder builder = S3Presigner.builder()
+                .region(Region.of(props.region()));
+
+        if (StringUtils.hasText(props.endpoint())) {
+            // endpoint에 값이 있다면 테스트 환경
+            builder.endpointOverride(URI.create(props.endpoint())) // test url로 endpoint를 설정
+                    .serviceConfiguration(S3Configuration.builder()
+                            .pathStyleAccessEnabled(true)
+                            .build())
+                    .credentialsProvider(StaticCredentialsProvider.create(
+                            AwsBasicCredentials.create("test", "test")));
+        } else {
+            // endpoint에 값이 없다면 진짜 AWS에 요청을 보내야 하는 상황
+            builder.serviceConfiguration(S3Configuration.builder()
+                            .pathStyleAccessEnabled(false)
+                            .build())
+                    .credentialsProvider(DefaultCredentialsProvider.builder().build());
+        }
         return builder.build();
     }
 
