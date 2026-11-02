@@ -1,5 +1,6 @@
-package com.codeit.sb13.playlist_for_everyone.global.websocket;
+package com.codeit.sb13.playlist_for_everyone.global.websocket.registry;
 
+import com.codeit.sb13.playlist_for_everyone.global.websocket.SocketConnection;
 import jakarta.annotation.Nullable;
 import org.springframework.security.core.Authentication;
 

@@ -8,7 +8,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.service.RedisMessageDto;
 import com.codeit.sb13.playlist_for_everyone.global.service.RedisTopicRegistry;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.ConnectionRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.ConnectionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SocketConnection;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.service.WatcherRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionServiceImpl;

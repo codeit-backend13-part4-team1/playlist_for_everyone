@@ -1,5 +1,6 @@
-package com.codeit.sb13.playlist_for_everyone.global.websocket;
+package com.codeit.sb13.playlist_for_everyone.global.websocket.registry;
 
+import com.codeit.sb13.playlist_for_everyone.global.websocket.SocketConnection;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;

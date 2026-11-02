@@ -1,6 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.registry.connection;
 
-import com.codeit.sb13.playlist_for_everyone.global.websocket.InMemoryConnectionRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.InMemoryConnectionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SocketConnection;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

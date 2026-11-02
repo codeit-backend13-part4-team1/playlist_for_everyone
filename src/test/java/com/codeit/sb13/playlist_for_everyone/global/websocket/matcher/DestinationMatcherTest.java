@@ -1,7 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.matcher;
 
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.WebSocketEventListener;
 import lombok.Getter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;

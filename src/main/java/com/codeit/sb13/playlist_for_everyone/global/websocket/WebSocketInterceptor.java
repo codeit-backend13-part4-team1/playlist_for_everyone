@@ -23,6 +23,17 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * 소켓 으로부터의 메세지를 처리하는 인터셉터.
+ * 실제 컨트롤러나, 관련 레지스터로 가는 메세지를 직접 조작하거나,
+ * 비즈니스 로직의 성공, 실패가 연결에 영향을 끼쳐야 하는 경우에 사용된다.
+ * 다음과 같은 작업들이다.
+ * - 메세지에 인증 정보 세팅
+ *
+ * 메세지의 정보를 바탕으로, 비즈니스 로직을 조작하는경우,
+ * Controller 와 WebSocketEventListener 을 사용해도 된다.
+ */
+
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -39,7 +50,7 @@ public class WebSocketInterceptor implements ChannelInterceptor {
         StompHeaderAccessor accessor = StompHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
         if (accessor == null) return message;
 
-        if (accessor.getSessionId() != null) sessionRefresh(accessor);
+        if (accessor.getSessionId() != null) all(message,channel);
 
         // java 17 버전 NPE 방지.
         if (accessor.getCommand() == null) return message;
@@ -48,13 +59,19 @@ public class WebSocketInterceptor implements ChannelInterceptor {
             case CONNECT -> connect(accessor,message);
             case SUBSCRIBE -> subscribe(accessor,message);
             case UNSUBSCRIBE -> unsubscribe(accessor,message);
+            case DISCONNECT -> disconnect(accessor,message);
             case SEND -> send(accessor,message);
             default -> message;
         };
     }
 
+    /*
+     * 모든 커맨드 프레임 에 대한 Message 조작 로직.
+     */
+
     // STOMP 의 모든 하트비트인지 미정?
-    private void sessionRefresh(StompHeaderAccessor accessor) {
+    private void all(Message<?> message, MessageChannel channel) {
+        StompHeaderAccessor accessor = StompHeaderAccessor.wrap(message);
         String session = accessor.getSessionId();
 
         // 세션 별 리프레시 시도 딜레이 작성
@@ -68,9 +85,11 @@ public class WebSocketInterceptor implements ChannelInterceptor {
         }
     }
 
-    private Message<?> send(StompHeaderAccessor accessor, Message<?> message) {
-        // /sub/contnet... 에 해당하는 destination 은 메세지를 통과시키지 않음.
+    /*
+     * 프레임의 커멘드 별 Message 를 직접 조작해야 할 때 사용되는 컨테이너 메서드.
+     */
 
+    private Message<?> send(StompHeaderAccessor accessor, Message<?> message) {
         return message;
     }
 
@@ -89,6 +108,10 @@ public class WebSocketInterceptor implements ChannelInterceptor {
     }
 
     private Message<?> unsubscribe(StompHeaderAccessor accessor,Message<?> message){
+        return message;
+    }
+
+    private Message<?> disconnect(StompHeaderAccessor accessor,Message<?> message){
         return message;
     }
 
@@ -133,6 +156,8 @@ public class WebSocketInterceptor implements ChannelInterceptor {
     구독 관련 로직과 편의 매서드
      */
 
+
+    // todo - 웹 소켓 연결과 별도로 연결 세션 구독에 대해선 이벤트 기반으로 옮긴다?
     // 컨텐츠 실시간 시청으로 가는 요청에서 컨텐츠 id 를 파싱, 등록한다.
     private void registerContentId(StompHeaderAccessor accessor) {
         String destination = accessor.getDestination();
