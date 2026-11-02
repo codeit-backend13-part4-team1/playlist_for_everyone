@@ -52,14 +52,14 @@ public class S3FileStorageTest {
 
     @Test
     @DisplayName("파일 업로드 성공")
-    void upload_success() {
+    void upload_success() throws IOException {
         // given
-        MultipartFile file = new MockMultipartFile(
+        MultipartFile file = spy(new MockMultipartFile(
                 "file",
                 "test.png",
                 "image/png",
                 "test image".getBytes(StandardCharsets.UTF_8)
-        );
+        ));
 
         // when
         String key = s3FileStorage.upload(file);
@@ -72,6 +72,10 @@ public class S3FileStorageTest {
                         any(PutObjectRequest.class),
                         any(RequestBody.class)
                 );
+
+        // 스트림 방식으로 업로드하는지 검증
+        verify(file).getInputStream();
+        verify(file, never()).getBytes();
     }
 
     @Test
