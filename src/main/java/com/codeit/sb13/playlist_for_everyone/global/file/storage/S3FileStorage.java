@@ -14,6 +14,7 @@ import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -72,10 +73,10 @@ public class S3FileStorage implements FileStorage {
                 .contentType(ALLOWED_CONTENT_TYPES.get("." + extension.toLowerCase(Locale.ROOT)))
                 .build();
 
-        try {
+        try (InputStream inputStream = file.getInputStream()) {
             s3Client.putObject(
                     request,
-                    RequestBody.fromBytes(file.getBytes())
+                    RequestBody.fromInputStream(inputStream, file.getSize())
             );
 
             log.info("S3 파일 업로드 완료: {}", key);
