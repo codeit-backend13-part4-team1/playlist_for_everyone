@@ -176,6 +176,7 @@ public class WebSocketInterceptorTest {
         }
 
         @Test
+        @Disabled   // 로직 변경으로, 인터셉터 대신 이벤트에 의해 런치되는 로직.
         @DisplayName("컨텐츠 동시 시청 경로일 시 컨텐츠 아이디를 저장한다.")
         public void registerIdTest(){
             String mockupContentId = UUID.randomUUID().toString();

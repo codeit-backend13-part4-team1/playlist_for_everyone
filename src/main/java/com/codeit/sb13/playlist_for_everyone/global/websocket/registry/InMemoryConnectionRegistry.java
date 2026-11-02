@@ -1,16 +1,13 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.registry;
 
-import com.codeit.sb13.playlist_for_everyone.global.websocket.SocketConnection;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionData;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
-import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.security.Principal;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArraySet;
 
@@ -26,42 +23,47 @@ public class InMemoryConnectionRegistry implements ConnectionRegistry {
     /*
      * 기본 세션 SocketConnection(sessionId,null) 을 키로 구독을 할 때마다 Set 에 엔티티 객체를 추가한다.
      */
-    private final Map<SocketConnection, Set<SocketConnection>> connectionList = new ConcurrentHashMap<>();
+    private final Map<SessionData, Set<SessionData>> connectionList = new ConcurrentHashMap<>();
 
     @Override
-    public void register(String sessionId, @Nullable Authentication authentication) {
-        register(sessionId, null, authentication);
+    public void register(String sessionId, @Nullable Principal principal) {
+        register(sessionId, null, principal);
     }
 
     @Override
-    public void register(String sessionId, @Nullable String subscriptionId, @Nullable Authentication authentication) {
-        SocketConnection connection = new SocketConnection(sessionId, subscriptionId, authentication);
+    public void register(String sessionId, @Nullable String subscriptionId, @Nullable Principal principal) {
+        SessionData connection = SessionData.builder()
+                .session(sessionId)
+                .subscription(subscriptionId)
+                .principal(principal)
+                .build();
 
-        if (connection.subscription() == null) {
-            // 구독이 없으면 커넥션 프레임. key 로 새 구독을 추가한다.
-            connectionList.computeIfAbsent(connection, k -> new CopyOnWriteArraySet<>());
+        register(connection);
+    }
 
+    @Override
+    public void register(SessionData data){
+        if (Objects.requireNonNull(data).subscription() == null){
+            connectionList.computeIfAbsent(data, k -> new CopyOnWriteArraySet<>());
         } else {
-
-            // 리스트 검색용 키 생성 - SocketConnection(session, null) 가 키.
-            SocketConnection key = new SocketConnection(sessionId);
-
+            SessionData key = SessionData.builder().session(data.session()).build();
             connectionList.compute(
                     key, (k,v) -> {
 
                         if(v == null) {
                             log.error("[{}] 구독 등록 에러. {} 세션이 존재하지 않음.",
                                     this.getClass().getSimpleName(),
-                                    sessionId);
+                                    key.session());
                             // todo - Internal server error 로 치환.
                             throw new IllegalArgumentException("세션 저장소 등록 에러.");
                         }
 
-                        v.add(connection);
+                        v.add(data);
                         return v;
                     }
             );
         }
+
     }
 
     @Override
@@ -71,27 +73,32 @@ public class InMemoryConnectionRegistry implements ConnectionRegistry {
 
     @Override
     public void unregister(String sessionId, @Nullable String subscriptionId) {
-        // 저장된 세션에 접근하기 위한 키 객체
-        SocketConnection key = new SocketConnection(sessionId, subscriptionId);
+        unregister(SessionData.builder().session(sessionId).subscription(subscriptionId).build());
+    }
 
-        if (key.subscription() == null) {
-            // 구독이 없다면 Disconnect 프레임 이라 판단.
-            // 세션과 연관된 구독 set 삭제.
-            connectionList.remove(key);
+    @Override
+    public void unregister(SessionData data) {
+        if (Objects.requireNonNull(data).subscription() == null) {
+            connectionList.remove(data);
         } else {
-            SocketConnection sessionKey = new SocketConnection(sessionId);
-            connectionList.get(sessionKey).remove(key);
+            SessionData sessionKey =
+                    SessionData
+                            .builder()
+                            .session(data.session())
+                            .build();
+
+            connectionList.get(sessionKey).remove(data);
         }
     }
 
     @Override
-    public List<SocketConnection> get(String sessionId) {
-        SocketConnection key = new SocketConnection(sessionId);
+    public List<SessionData> get(String sessionId) {
+        SessionData key = SessionData.builder().session(sessionId).build();
 
-        Set<SocketConnection> subscribes = connectionList.get(key);
-        for (SocketConnection session : connectionList.keySet()){
+        Set<SessionData> subscribes = connectionList.get(key);
+        for (SessionData session : connectionList.keySet()){
             if (key.equals(session)) {
-                List<SocketConnection> result = new ArrayList<>(subscribes.size() + 1);
+                List<SessionData> result = new ArrayList<>(subscribes.size() + 1);
                 // 원래의 등록된 session 객체.
                 result.add(session);
                 result.addAll(subscribes);
@@ -103,19 +110,23 @@ public class InMemoryConnectionRegistry implements ConnectionRegistry {
     }
 
     @Override
-    public SocketConnection get(String sessionId, @Nullable String subscriptionId) {
-        SocketConnection key = new SocketConnection(sessionId, subscriptionId);
+    public SessionData get(String sessionId, @Nullable String subscriptionId) {
+        SessionData key = SessionData.builder()
+                .session(sessionId)
+                .subscription(subscriptionId)
+                .build();
+
         if (key.subscription() == null) {
             // 구독ID 가 존재하지 않는다면 session 객체 반환.
-            for (SocketConnection session : connectionList.keySet()){
+            for (SessionData session : connectionList.keySet()){
                 if (key.equals(session)) {
                     return session;
                 }
             }
         } else {
             // 구독 Id 가 존재한다면 Set 내부 구독 연결 반환.
-            SocketConnection sessionKey = new SocketConnection(key.session());
-            for (SocketConnection subscription : connectionList.get(sessionKey)){
+            SessionData sessionKey = SessionData.builder().session(key.session()).build();
+            for (SessionData subscription : connectionList.get(sessionKey)){
                 if (key.equals(subscription)) {
                     return subscription;
                 }

@@ -2,8 +2,9 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket;
 
 
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.DestinationMatcher;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSessionJoinRule;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSessionLeaveRule;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.ConnectionRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.role.WatchingSessionJoinRule;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.role.WatchingSessionLeaveRule;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -11,8 +12,7 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.messaging.*;
 
-import java.util.regex.Pattern;
-
+import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
 /**
  * 웹 소켓의 연결 및 구독상태의 전환을 알리는 이벤트.
  * 리소스가 Spring에 정상적으로 반영되었는지는 알 수 없음.
@@ -23,15 +23,17 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class WebSocketEventListener {
 
+    private final ConnectionRegistry connectionRegistry;
+
     private final DestinationMatcher subscribe;
     private final DestinationMatcher unsubscribe;
     private final DestinationMatcher disconnect;
 
     @PostConstruct
     public void init(){
-
-        subscribe.add(new WatchingSessionJoinRule(Pattern.compile("^/sub/contents/test/watch$")));
-        unsubscribe.add(new WatchingSessionLeaveRule(Pattern.compile("^/sub/contents/test/watch$")));
+        // watchingSession 경로 이벤트 등록.
+        subscribe.add(new WatchingSessionJoinRule(watchingSessionUrlPattern()));
+        unsubscribe.add(new WatchingSessionLeaveRule(watchingSessionUrlPattern()));
     }
 
     /**
@@ -69,7 +71,15 @@ public class WebSocketEventListener {
      * @param event 일반적인 메세지(세션, 구독)와, Principal 을 담고있음.
      */
     @EventListener
-    public void onUnsubscribe(SessionUnsubscribeEvent event){ unsubscribe.run(new SessionInfo(event.getMessage(), event.getUser())); }
+    public void onUnsubscribe(SessionUnsubscribeEvent event){
+        SessionInfo info = new SessionInfo(event.getMessage(), event.getUser());
+        SessionData connection = connectionRegistry.get(info.session(), info.subscription());
+        // 연결에 대한 destination 복원.
+//        if (connection.destination() != null)
+//          info.destination(connection.destination());
+
+        unsubscribe.run(info);
+    }
 
 
     /**
@@ -79,7 +89,11 @@ public class WebSocketEventListener {
      * @param event 세션Id 와 closeStatus 를 담고 있음.
      */
     @EventListener
-    public void onDisconnect(SessionDisconnectEvent event){ disconnect.run(new SessionInfo(event.getMessage(), event.getUser())); }
+    public void onDisconnect(SessionDisconnectEvent event){
+        SessionInfo info = new SessionInfo(event.getMessage(), event.getUser());
+        SessionData connection = connectionRegistry.get(info.session(), info.subscription());
+        disconnect.run(new SessionInfo(event.getMessage(), event.getUser()));
+    }
 
 
 }

@@ -18,10 +18,7 @@ import org.springframework.security.authentication.LockedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.stereotype.Component;
 
-import java.util.Optional;
 import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * 소켓 으로부터의 메세지를 처리하는 인터셉터.
@@ -94,15 +91,12 @@ public class WebSocketInterceptor implements ChannelInterceptor {
     }
 
     private Message<?> connect(StompHeaderAccessor accessor, Message<?> message) {
-        // connection 관련 로직
         authenticate(accessor);
 
         return message;
     }
 
     private Message<?> subscribe(StompHeaderAccessor accessor, Message<?> message) {
-        // subscription 관련 로직.
-        registerContentId(accessor);
 
         return message;
     }
@@ -150,38 +144,5 @@ public class WebSocketInterceptor implements ChannelInterceptor {
             throw new BadCredentialsException("Bearer 토큰이 비어 있습니다.");
 
         return header.substring(7);
-    }
-
-    /*
-    구독 관련 로직과 편의 매서드
-     */
-
-
-    // todo - 웹 소켓 연결과 별도로 연결 세션 구독에 대해선 이벤트 기반으로 옮긴다?
-    // 컨텐츠 실시간 시청으로 가는 요청에서 컨텐츠 id 를 파싱, 등록한다.
-    private void registerContentId(StompHeaderAccessor accessor) {
-        String destination = accessor.getDestination();
-
-        if (destination != null && !destination.trim().isEmpty()){
-            contentsIdParse(destination)
-                    .ifPresent(contentId ->
-                            watcherRegistry.register(
-                                    accessor.getSessionId(),
-                                    accessor.getSubscriptionId(),
-                                    contentId));
-        }
-    }
-
-    private Optional<String> contentsIdParse(String url){
-        String uuidPattern = "([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})";
-
-        Pattern pattern = Pattern.compile("^/sub/contents/" + uuidPattern + "/watch$");
-
-        Matcher matcher = pattern.matcher(url);
-
-        if (matcher.matches())
-            return Optional.ofNullable(matcher.group(1));
-        else
-            return Optional.empty();
     }
 }

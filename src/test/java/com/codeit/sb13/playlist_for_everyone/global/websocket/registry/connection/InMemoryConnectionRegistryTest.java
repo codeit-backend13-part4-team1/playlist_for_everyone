@@ -1,9 +1,11 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.registry.connection;
 
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.InMemoryConnectionRegistry;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.SocketConnection;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionData;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+
+import java.security.Principal;
 
 import static org.assertj.core.api.Assertions.*;
 
@@ -14,6 +16,21 @@ import static org.assertj.core.api.Assertions.*;
 @DisplayName("세션-커넥션 키 쌍 테스트")
 public class InMemoryConnectionRegistryTest {
 
+    SessionData sessionData(String sessionId, String subscriptionId){
+        return SessionData.builder()
+                .session(sessionId)
+                .subscription(subscriptionId)
+                .build();
+    }
+
+    SessionData sessionData(String sessionId, String subscriptionId, Principal principal){
+        return SessionData.builder()
+                .session(sessionId)
+                .subscription(subscriptionId)
+                .principal(principal)
+                .build();
+    }
+
     @Test
     @DisplayName("세션 정보를 등록하고 조회하면, id 와 등록 시간이 포함된 SocketConnection 객체가 반환된다.")
     void saveSession(){
@@ -21,7 +38,7 @@ public class InMemoryConnectionRegistryTest {
 
         registry.register("test-session-id",null,null);
 
-        SocketConnection connection = registry.get("test-session-id", null);
+        SessionData connection = registry.get("test-session-id", null);
 
         assertThat(connection).isNotNull();
         assertThat(connection.session()).isEqualTo("test-session-id");
@@ -51,8 +68,8 @@ public class InMemoryConnectionRegistryTest {
                 // 테스트 로직 상 세션, 구독 2개가 필요.
                 .hasSize(2)
                 // SocketConnection 은 session - subscribe 쌍이 같다면 동일한 객체로 간주한다.
-                .contains(new SocketConnection("test-session-id",null))
-                .contains(new SocketConnection("test-session-id","sub-1",null));
+                .contains(sessionData("test-session-id",null))
+                .contains(sessionData("test-session-id","sub-1",null));
     }
 
 
@@ -71,7 +88,7 @@ public class InMemoryConnectionRegistryTest {
         registry.register("test-session-id2","sub-1",null);
 
         assertThat(registry.get("test-session-id","sub-1"))
-                .isEqualTo(new SocketConnection("test-session-id","sub-1",null));
+                .isEqualTo(sessionData("test-session-id","sub-1",null));
     }
 
     @Test
@@ -88,9 +105,9 @@ public class InMemoryConnectionRegistryTest {
 
         assertThat(registry.get("test-session-id"))
                 .hasSize(3)
-                .contains(new SocketConnection("test-session-id",null,null))
-                .contains(new SocketConnection("test-session-id","sub-1",null))
-                .contains(new SocketConnection("test-session-id","sub-2",null));
+                .contains(sessionData("test-session-id",null,null))
+                .contains(sessionData("test-session-id","sub-1",null))
+                .contains(sessionData("test-session-id","sub-2",null));
     }
 
     @Test
@@ -106,7 +123,7 @@ public class InMemoryConnectionRegistryTest {
         registry.register("test-session-id2","sub-1",null);
 
         assertThat(registry.get("test-session-id",null))
-                .isEqualTo(new SocketConnection("test-session-id",null,null));
+                .isEqualTo(sessionData("test-session-id",null,null));
     }
 
     @Test
@@ -133,8 +150,8 @@ public class InMemoryConnectionRegistryTest {
 
         assertThat(registry.get("test-session-id"))
                 .hasSize(2)
-                .contains(new SocketConnection("test-session-id",null,null))
-                .contains(new SocketConnection("test-session-id","sub-2",null));
+                .contains(sessionData("test-session-id",null,null))
+                .contains(sessionData("test-session-id","sub-2",null));
     }
 
     @Test

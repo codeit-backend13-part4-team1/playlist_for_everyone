@@ -1,31 +1,30 @@
-package com.codeit.sb13.playlist_for_everyone.global.websocket.watching;
+package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.role;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.DestinationRule;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionJoinEvent;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionLeaveEvent;
 
 import java.util.regex.Pattern;
 
-public class WatchingSessionJoinRule extends DestinationRule<WatchingSessionJoinEvent> {
+public class WatchingSessionLeaveRule extends DestinationRule<WatchingSessionLeaveEvent> {
 
-    public WatchingSessionJoinRule(Pattern pattern){
+    public WatchingSessionLeaveRule(Pattern pattern){
         super(pattern);
     }
 
     @Override
-    public WatchingSessionJoinEvent run(SessionInfo info) {
+    public WatchingSessionLeaveEvent run(SessionInfo info){
         String destination = info.destination();
         String sessionId = info.session();
         String subscriptionId = info.subscription();
         SecurityUser user = info.user();
-
-        return new WatchingSessionJoinEvent(
+        // todo - user 정보 추가.
+        return new WatchingSessionLeaveEvent(
                 destination,
                 sessionId,
-                subscriptionId,
-                user
+                subscriptionId
+//                user
         );
     }
-
 }

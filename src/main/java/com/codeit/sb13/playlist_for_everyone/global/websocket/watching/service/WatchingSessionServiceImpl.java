@@ -7,7 +7,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.service.RedisMessageDto;
 import com.codeit.sb13.playlist_for_everyone.global.service.RedisTopicRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.ConnectionRegistry;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.SocketConnection;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionData;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.service.WatcherRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.*;
 import lombok.RequiredArgsConstructor;
@@ -29,7 +29,7 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
 
     private final RedisTemplate<String, Object> redisTemplate;
 
-    private User getUserFromConnection(SocketConnection connection) {
+    private User getUserFromConnection(SessionData connection) {
         SecurityUser principal = (SecurityUser) connection.principal();
         return userService.getById(principal.getUserId());
     }
@@ -46,7 +46,7 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
     @Override
     public void subscribeWatchingSession(String sessionId, String subscribe, String content) {
 
-        SocketConnection connection = connectionRegistry.get(sessionId, subscribe);
+        SessionData connection = connectionRegistry.get(sessionId, subscribe);
         User user = getUserFromConnection(connection);
 
         // 연결 정보를 기반으로 redis 시청 채널 등록
@@ -110,7 +110,7 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
     @Override
     public void unsubscribeWatchingSession(String sessionId, @Nullable String subscribe) {
 
-        SocketConnection connection = connectionRegistry.get(sessionId, subscribe);
+        SessionData connection = connectionRegistry.get(sessionId, subscribe);
         User user = getUserFromConnection(connection);
 
         String content = watcherRegistry.getContent(connection.session(),connection.subscription());
@@ -176,7 +176,7 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
     @Override
     public void subscribeChatSession(String sessionId, String subscribe, String content) {
 
-        SocketConnection connection = connectionRegistry.get(sessionId, subscribe);
+        SessionData connection = connectionRegistry.get(sessionId, subscribe);
         User user = getUserFromConnection(connection);
 
         // redis 메세지 컨테이너 구독
@@ -190,7 +190,7 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
     @Override
     public void unsubscribeChatSession(String sessionId, @Nullable String subscribe) {
 
-        SocketConnection connection = connectionRegistry.get(sessionId, subscribe);
+        SessionData connection = connectionRegistry.get(sessionId, subscribe);
         User user = getUserFromConnection(connection);
 
         // redis 메세지 컨테이너 구독

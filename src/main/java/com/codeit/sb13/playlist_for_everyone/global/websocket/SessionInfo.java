@@ -9,44 +9,60 @@ import org.springframework.security.core.Authentication;
 import java.security.Principal;
 import java.util.Objects;
 
+/**
+ * 웹 소켓 메세지에서 세션 및 사용자 정보를 추출하는 클래스.
+ * message 에서 확인 가능한 정보를 추출 한 것이기 때문에, registry 에 저장된
+ * SessionData 와는 차이가 있을 수 있다.
+ */
+
 public class SessionInfo {
     private final String session;
     @Nullable private final String subscription;
-    @Nullable private final SecurityUser user;
+    @Nullable private Principal principal;
     @Nullable private String destination;
+
 
     public SessionInfo(
             Message<?> message,
             @Nullable Principal principal
     ){
-        Objects.requireNonNull(message);
+        StompHeaderAccessor accessor =
+                StompHeaderAccessor.wrap(Objects.requireNonNull(message));
 
-        StompHeaderAccessor accessor = StompHeaderAccessor.wrap(message);
-
-        Objects.requireNonNull(accessor.getSessionId());
-
-        this.session = accessor.getSessionId();
+        this.session = Objects.requireNonNull(accessor.getSessionId());
         this.subscription = accessor.getSubscriptionId();
         this.destination = accessor.getDestination();
-
-        if(principal instanceof SecurityUser){
-            // Connect 프레임에서 Authentication 을 principal 에 세팅함.
-            Authentication authToken = (Authentication) principal;
-            this.user = (SecurityUser) authToken.getPrincipal();
-        } else
-            this.user = null;
+        this.principal = principal;
     }
 
     // getter
     public String session(){ return session; }
     public String subscription(){ return subscription; }
     public String destination(){ return destination; }
-    public SecurityUser user(){ return user; }
+    public Principal principal(){ return principal; }
+    public SecurityUser user(){
+        if (principal instanceof SecurityUser) {
+            // Connect 프레임에서 Authentication 을 principal 에 세팅함.
+            Authentication authToken = (Authentication) principal;
+            return (SecurityUser) authToken.getPrincipal();
+        } else
+            return null;
+    }
 
     // setter
+    public Principal principal(Principal principal){
+        if (principal != null) this.principal = principal;
+        return this.principal;
+    }
     public String destination(String destination){
-        this.destination = destination;
+        if (destination != null) this.destination = destination;
         return this.destination;
+    }
+
+    public SessionInfo wrap(SessionData data){
+        destination(data.destination());
+        principal(data.principal());
+        return this;
     }
 
 }
