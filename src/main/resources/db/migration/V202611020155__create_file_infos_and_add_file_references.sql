@@ -7,7 +7,7 @@ CREATE TABLE file_infos (
                             original_filename VARCHAR(255),
                             content_type VARCHAR(255),
                             size BIGINT,
-                            created_at TIMESTAMPT NOT NULL
+                            created_at TIMESTAMP NOT NULL
 );
 
 ALTER TABLE file_infos
