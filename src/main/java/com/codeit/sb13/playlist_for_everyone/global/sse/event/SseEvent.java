@@ -35,4 +35,13 @@ public record SseEvent<T>(
         }
     }
 
+    public static <T> SseEvent<T> createNotificationEvent(UUID eventId, UUID receiverId, T data){
+        return new SseEvent<>(
+                eventId,
+                receiverId,
+                Event.NOTIFICATIONS.getName(),
+                data
+        );
+    }
+
 }
