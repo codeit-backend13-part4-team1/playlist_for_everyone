@@ -56,6 +56,7 @@ class SportsDbClientTimeoutTest {
 
             assertThatThrownBy(() -> client.getEventsBySeason("4328", "2014-2015"))
                     .isInstanceOf(ResourceAccessException.class)
+                    .hasMessageContaining("TIMEOUT")
                     .hasMessageNotContaining("test-key")
                     .hasNoCause();
         } finally {

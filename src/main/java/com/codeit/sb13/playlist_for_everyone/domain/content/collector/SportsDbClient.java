@@ -7,6 +7,12 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
+import java.net.ConnectException;
+import java.net.UnknownHostException;
+import java.net.SocketTimeoutException;
+import java.net.http.HttpTimeoutException;
+import java.nio.channels.UnresolvedAddressException;
+
 @Component
 public class SportsDbClient {
 
@@ -40,7 +46,22 @@ public class SportsDbClient {
                     .retrieve()
                     .body(SportsDbEventsResponse.class);
         } catch (ResourceAccessException e) {
-            throw new ResourceAccessException("TheSportsDB 서버에 연결하지 못했거나 응답 시간이 초과되었습니다.");
+            String code = networkErrorCode(e);
+            throw new ResourceAccessException("TheSportsDB 요청 실패: " + code);
         }
     }
+
+    private String networkErrorCode(ResourceAccessException e) {
+        if (e.contains(HttpTimeoutException.class) || e.contains(SocketTimeoutException.class)) {
+            return "TIMEOUT";
+        }
+        if (e.contains(UnknownHostException.class) || e.contains(UnresolvedAddressException.class)) {
+            return "DNS_ERROR";
+        }
+        if (e.contains(ConnectException.class)) {
+            return "CONNECTION_ERROR";
+        }
+        return "NETWORK_ERROR";
+    }
+
 }

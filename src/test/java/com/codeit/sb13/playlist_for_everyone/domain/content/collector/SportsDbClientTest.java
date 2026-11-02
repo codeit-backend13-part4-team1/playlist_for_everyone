@@ -4,6 +4,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.collector.config.Spo
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,8 +19,14 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.client.MockRestServiceServer;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
+
+import java.io.IOException;
+import java.net.ConnectException;
+import java.net.UnknownHostException;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
@@ -195,5 +203,30 @@ class SportsDbClientTest {
         assertThat(response.events()).isEmpty();
 
         server.verify();
+    }
+
+    @ParameterizedTest
+    @MethodSource("networkErrors")
+    void 연결_실패_이유는_구분하고_API_키는_노출하지_않는다(
+            IOException error, String expectedCode
+    ) {
+        server.expect(requestTo(
+                "https://sportsdb.test/test-key/eventsseason.php?id=4328&s=2014-2015"
+        )).andRespond(request -> { throw error; });
+
+        assertThatThrownBy(() -> sportsDbClient.getEventsBySeason("4328", "2014-2015"))
+                .isInstanceOf(ResourceAccessException.class)
+                .hasMessage("TheSportsDB 요청 실패: " + expectedCode)
+                .hasNoCause();
+
+        server.verify();
+    }
+
+    private static Stream<Arguments> networkErrors() {
+        return Stream.of(
+                Arguments.of(new UnknownHostException("test-key"), "DNS_ERROR"),
+                Arguments.of(new ConnectException("test-key"), "CONNECTION_ERROR"),
+                Arguments.of(new IOException("test-key"), "NETWORK_ERROR")
+        );
     }
 }
