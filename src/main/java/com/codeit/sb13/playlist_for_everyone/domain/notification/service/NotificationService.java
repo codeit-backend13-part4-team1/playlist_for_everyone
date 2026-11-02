@@ -4,12 +4,14 @@ import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.command.Not
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.repository.NotificationSearchCondition;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.response.NotificationDto;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.Notification;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.event.NotificationCreatedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.repository.NotificationRepository;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,10 +28,12 @@ import java.util.UUID;
 public class NotificationService {
 
     private final NotificationRepository notificationRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void save(@Valid @NotNull NotificationCommand command){
-        notificationRepository.save(new Notification(command));
+        Notification save = notificationRepository.save(new Notification(command));
+        eventPublisher.publishEvent(new NotificationCreatedEvent(UUID.randomUUID(), NotificationDto.from(save)));
     }
 
     @Transactional(readOnly = true)
