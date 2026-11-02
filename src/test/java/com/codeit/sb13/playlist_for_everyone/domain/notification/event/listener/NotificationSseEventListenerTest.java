@@ -14,6 +14,8 @@ import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -21,8 +23,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("알림 저장 후 SSE 전송 리스너")
@@ -73,6 +74,59 @@ class NotificationSseEventListenerTest {
                 .doesNotThrowAnyException();
 
         verify(sseEventPublisher).publish(any());
+    }
+
+    @Test
+    @DisplayName("알림 SSE 발행에 실패해도 다음 알림 이벤트를 정상 발행한다.")
+    void publishesNextNotificationAfterPublishFailure(){
+        NotificationCreatedEvent failedEvent = new NotificationCreatedEvent(UUID.randomUUID(), createNotificationDto());
+        NotificationCreatedEvent nextEvent = new NotificationCreatedEvent(UUID.randomUUID(), createNotificationDto());
+
+        SsePublishException failure = new SsePublishException(new IllegalStateException("테스트용 발행 실패"));
+
+        doThrow(failure)
+                .doNothing()
+                .when(sseEventPublisher).publish(any());
+
+        assertThatCode(()-> {
+            listener.handleNotificationCreated(failedEvent);
+            listener.handleNotificationCreated(nextEvent);
+        }).doesNotThrowAnyException();
+
+        verify(sseEventPublisher, times(2)).publish(eventCaptor.capture());
+
+        assertThat(eventCaptor.getAllValues())
+                .extracting(SseEvent::eventId)
+                .containsExactly(failedEvent.eventId(), nextEvent.eventId());
+
+        SseEvent<?> nextPublishedEvent = eventCaptor.getAllValues().get(1);
+        assertThat(nextPublishedEvent.receiverId())
+                .isEqualTo(nextEvent.notificationDto().receiverId());
+        assertThat(nextPublishedEvent.data())
+                .isEqualTo(nextEvent.notificationDto());
+    }
+
+    @Test
+    @ExtendWith(OutputCaptureExtension.class)
+    @DisplayName("SSE 발행 실패 로그에 식별자와 예외타입을 기록하고 알림 내용은 노출하지 않는다.")
+    void logsPublishFailureWithoutExposingNotificationData(CapturedOutput output){
+        NotificationDto notification = createNotificationDto();
+        NotificationCreatedEvent event = new NotificationCreatedEvent(UUID.randomUUID(), notification);
+
+        String sensitiveMessage = "민감한 예외 상세:" + notification.content();
+
+        SsePublishException failure = new SsePublishException(new IllegalStateException(sensitiveMessage));
+
+        doThrow(failure)
+                .when(sseEventPublisher).publish(any());
+
+        listener.handleNotificationCreated(event);
+        assertThat(output.getAll())
+                .contains("notificationId=" + notification.id(),
+                        "eventId="+event.eventId(),
+                        "receiverId=" + notification.receiverId(),
+                        "exceptionType=IllegalStateException")
+                .doesNotContain(notification.title(), notification.content(), sensitiveMessage);
     }
 
     private NotificationDto createNotificationDto(UUID notificationId, UUID receiverId) {
