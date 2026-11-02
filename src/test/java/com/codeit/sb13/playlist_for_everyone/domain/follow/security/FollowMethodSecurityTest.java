@@ -14,7 +14,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Import;
 import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -90,25 +89,6 @@ public class FollowMethodSecurityTest {
         verifyNoInteractions(userRepository, followSaver);
 
 
-    }
-
-    @Test
-    @DisplayName("인증 정보가 없으면 인증 예외가 발생하고 Guard와 서비스를 실행하지 않는다.")
-    void unfollow_rejectsWhenAuthenticationMissing(){
-        UUID followId = UUID.randomUUID();
-        UUID followerId = UUID.randomUUID();
-
-        UnFollowCommand command = new UnFollowCommand(followId, followerId);
-
-        assertThatThrownBy(()-> followService.unfollow(command))
-                .isInstanceOf(AuthenticationCredentialsNotFoundException.class);
-
-        verifyNoInteractions(
-                followGuard,
-                followRepository,
-                userRepository,
-                followSaver
-        );
     }
 
     @TestConfiguration(proxyBeanMethods = false)

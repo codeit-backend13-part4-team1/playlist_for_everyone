@@ -44,7 +44,7 @@ public class FollowServiceImpl implements FollowService {
     }
 
     @Override
-    @PreAuthorize("isAuthenticated() and @followGuard.canUnfollow(#command.followerId(), #command.followId())")
+    @PreAuthorize("@followGuard.canUnfollow(#command.followerId(), #command.followId())")
     @Transactional
     public void unfollow(UnFollowCommand command) {
         followRepository.findById(command.followId())

@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.follow.controller;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.controller.swagger.FollowApi;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.command.UnFollowCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.request.FollowRequest;
@@ -10,6 +11,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -23,26 +25,26 @@ public class FollowController implements FollowApi {
 
     @Override
     @PostMapping
-    public ResponseEntity<FollowDto> follow(@Valid @RequestBody FollowRequest request){
-        // 인증 붙이기전에 임시 null적용
-        UUID followerId = null;
+    public ResponseEntity<FollowDto> follow(@Valid @RequestBody FollowRequest request,
+                                            @AuthenticationPrincipal SecurityUser user){
+        UUID followerId = user.getUserId();
         return handleFollowResult(followService.follow(request.toFollowCommand(followerId)));
     }
 
     @Override
     @DeleteMapping("/{followId}")
-    public ResponseEntity<Void> unfollow(@PathVariable UUID followId){
-        // 인증 붙이기전에 임시 null적용
-        UUID followerId = null;
+    public ResponseEntity<Void> unfollow(@PathVariable UUID followId,
+                                         @AuthenticationPrincipal SecurityUser user){
+        UUID followerId = user.getUserId();
         followService.unfollow(new UnFollowCommand(followId, followerId));
         return ResponseEntity.noContent().build();
     }
 
     @Override
     @GetMapping("/followed-by-me")
-    public ResponseEntity<FollowDto> getFollowedByMe(@Valid FollowRequest request){
-        // 인증 붙이기전에 임시 null적용
-        UUID followerId = null;
+    public ResponseEntity<FollowDto> getFollowedByMe(@Valid FollowRequest request,
+                                                     @AuthenticationPrincipal SecurityUser user){
+        UUID followerId = user.getUserId();
         return ResponseEntity.ok(followService.findFollowDto(request.toFollowCommand(followerId)));
     }
 

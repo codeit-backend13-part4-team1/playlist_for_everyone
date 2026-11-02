@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.follow.controller.swagger;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.request.FollowRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowDto;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.ApiErrorResponse;
@@ -93,7 +94,9 @@ public interface FollowApi {
                     )
             )
     })
-    ResponseEntity<FollowDto> follow(@Valid @RequestBody FollowRequest request);
+    ResponseEntity<FollowDto> follow(@Valid @RequestBody FollowRequest request,
+                                     @Parameter(hidden = true)
+                                     SecurityUser user);
 
     @Operation(
             summary = "팔로우 취소",
@@ -125,7 +128,9 @@ public interface FollowApi {
                     description = "취소할 팔로우 관계 ID",
                     required = true
             )
-            @PathVariable UUID followId
+            @PathVariable UUID followId,
+            @Parameter(hidden = true)
+            SecurityUser user
     );
 
     @Operation(
@@ -155,7 +160,9 @@ public interface FollowApi {
     })
     ResponseEntity<FollowDto> getFollowedByMe(
             @ParameterObject
-            @Valid FollowRequest request);
+            @Valid FollowRequest request,
+            @Parameter(hidden = true)
+            SecurityUser user);
 
     @Operation(
             summary = "팔로워 수 조회",
