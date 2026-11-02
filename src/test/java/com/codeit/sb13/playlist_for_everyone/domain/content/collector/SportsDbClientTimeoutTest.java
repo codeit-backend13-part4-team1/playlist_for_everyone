@@ -9,7 +9,6 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
 import java.net.InetSocketAddress;
-import java.net.http.HttpTimeoutException;
 import java.time.Duration;
 import java.util.concurrent.Executors;
 
@@ -55,11 +54,10 @@ class SportsDbClientTimeoutTest {
             );
             var client = new SportsDbClient(restClient);
 
-            assertThatThrownBy(
-                    () -> client.getEventsBySeason("4328", "2014-2015")
-            )
+            assertThatThrownBy(() -> client.getEventsBySeason("4328", "2014-2015"))
                     .isInstanceOf(ResourceAccessException.class)
-                    .hasCauseInstanceOf(HttpTimeoutException.class);
+                    .hasMessageNotContaining("test-key")
+                    .hasNoCause();
         } finally {
             server.stop(0);
             executor.shutdownNow();

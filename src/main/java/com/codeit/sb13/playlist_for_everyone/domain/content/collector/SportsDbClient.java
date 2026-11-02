@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.Sports
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
 @Component
@@ -30,13 +31,16 @@ public class SportsDbClient {
             throw new IllegalArgumentException("시즌은 필수입니다.");
         }
 
-        return restClient.get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/eventsseason.php")
-                        .queryParam("id", leagueId)
-                        .queryParam("s", season)
-                        .build())
-                .retrieve()
-                .body(SportsDbEventsResponse.class);
+        try {
+            return restClient.get()
+                    .uri(uriBuilder -> uriBuilder.path("/eventsseason.php")
+                            .queryParam("id", leagueId)
+                            .queryParam("s", season)
+                            .build())
+                    .retrieve()
+                    .body(SportsDbEventsResponse.class);
+        } catch (ResourceAccessException e) {
+            throw new ResourceAccessException("TheSportsDB 서버에 연결하지 못했거나 응답 시간이 초과되었습니다.");
+        }
     }
 }
