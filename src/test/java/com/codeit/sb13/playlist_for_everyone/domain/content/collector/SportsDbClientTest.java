@@ -172,4 +172,28 @@ class SportsDbClientTest {
 
         server.verify();
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "{\"events\": null}",
+            "{\"events\": []}",
+            "{}"
+    })
+    void 경기_목록이_없으면_빈_목록을_반환한다(String responseBody) {
+        server.expect(requestTo(
+                        "https://sportsdb.test/test-key/eventsseason.php"
+                                + "?id=4328&s=2014-2015"
+                ))
+                .andRespond(withSuccess(
+                        responseBody,
+                        MediaType.APPLICATION_JSON
+                ));
+
+        var response = sportsDbClient.getEventsBySeason("4328", "2014-2015");
+
+        assertThat(response).isNotNull();
+        assertThat(response.events()).isEmpty();
+
+        server.verify();
+    }
 }
