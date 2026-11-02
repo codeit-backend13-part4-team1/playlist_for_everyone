@@ -128,11 +128,13 @@ public class SecurityConfig {
                         ).permitAll();
                     }
                     auth
-                            // 회원가입과 로그인은 인증 없이 접근할 수 있다.
+                            // 회원가입·로그인은 Access Token 없이 접근한다.
+                            // 재발급은 서비스에서 Refresh Token을 검증하므로 Access Token을 요구하지 않는다.
                             .requestMatchers(
                                     HttpMethod.POST,
                                     "/api/users",
-                                    "/api/auth/sign-in"
+                                    "/api/auth/sign-in",
+                                    "/api/auth/refresh"
                             ).permitAll()
 
                             // 사용자 목록 조회는 관리자 권한이 필요하다.

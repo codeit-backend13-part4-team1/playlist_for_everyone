@@ -12,6 +12,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;
 import org.springframework.validation.ObjectError;
@@ -156,5 +157,16 @@ public class GlobalExceptionHandler {
             return;
         }
         log.warn("비즈니스 예외가 발생했습니다. errorCode={}, message={}", e.getApiErrorCode(), e.getMessage());
+    }
+
+    @ExceptionHandler(BadCredentialsException.class)
+    public ResponseEntity<ApiErrorResponse> handleBadCredentials(BadCredentialsException exception) {
+        // 토큰 원문이나 예외의 상세 원인을 로그·응답에 노출하지 않는다.
+        log.warn("인증 정보 검증에 실패했습니다.");
+
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(new ApiErrorResponse("BadCredentialsException",
+                        "유효하지 않은 인증 정보입니다.", Map.of()));
     }
 }
