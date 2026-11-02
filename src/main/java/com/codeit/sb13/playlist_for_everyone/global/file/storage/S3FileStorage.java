@@ -27,10 +27,13 @@ public class S3FileStorage implements FileStorage {
     private final S3Client s3Client;
     private final S3Properties s3Properties;
 
-    private static final Set<String> ALLOWED_EXTENSIONS = Set.of(
-            ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg",   // 이미지
-            ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",  // 문서
-            ".txt", ".md", ".csv", ".json"                              // 텍스트
+    private static final Map<String, String> ALLOWED_CONTENT_TYPES = Map.of(
+            ".jpg", "image/jpeg",
+            ".jpeg", "image/jpeg",
+            ".png", "image/png",
+            ".gif", "image/gif",
+            ".webp", "image/webp",
+            ".bmp", "image/bmp"
     );
 
     @Override
@@ -45,10 +48,18 @@ public class S3FileStorage implements FileStorage {
 
         // 확장자 검증
         if (extension == null ||
-                !ALLOWED_EXTENSIONS.contains("." + extension.toLowerCase(Locale.ROOT))) {
+                !ALLOWED_CONTENT_TYPES.containsKey("." + extension.toLowerCase(Locale.ROOT))) {
             throw new FileInvalidTypeException(
                     Map.of("filename",
                             originalFilename == null ? "unknown" : originalFilename)
+            );
+        }
+
+        String normalizedExtension = "." + extension.toLowerCase(Locale.ROOT);
+
+        if (!ALLOWED_CONTENT_TYPES.containsKey(normalizedExtension)) {
+            throw new FileInvalidTypeException(
+                    Map.of("filename", originalFilename)
             );
         }
 
@@ -58,7 +69,7 @@ public class S3FileStorage implements FileStorage {
         PutObjectRequest request = PutObjectRequest.builder()
                 .bucket(s3Properties.bucket())
                 .key(key)
-                .contentType(file.getContentType())
+                .contentType(ALLOWED_CONTENT_TYPES.get("." + extension.toLowerCase(Locale.ROOT)))
                 .build();
 
         try {

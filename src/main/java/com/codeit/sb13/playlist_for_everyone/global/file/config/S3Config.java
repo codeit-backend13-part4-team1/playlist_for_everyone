@@ -22,6 +22,7 @@ public class S3Config {
         S3ClientBuilder builder = S3Client.builder()
                 .region(Region.of(props.region()));
 
+        // 현재 프로젝트에서는 커스텀 endpoint를 로컬 Mock S3 테스트에만 사용
         if (StringUtils.hasText(props.endpoint())) {
             builder.endpointOverride(URI.create(props.endpoint()))
                     .forcePathStyle(true)

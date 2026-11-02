@@ -9,6 +9,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
@@ -19,6 +20,7 @@ import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -28,7 +30,7 @@ import static org.mockito.Mockito.*;
 
 @DisplayName("S3FileStorage 테스트")
 @ExtendWith(MockitoExtension.class)
-public class S3FIleStorageTest {
+public class S3FileStorageTest {
 
     private static final String BUCKET = "test-bucket";
 
@@ -149,6 +151,33 @@ public class S3FIleStorageTest {
         // when & then
         assertThatThrownBy(() -> s3FileStorage.delete(key))
                 .isInstanceOf(FileDeleteException.class);
+    }
+
+    @Test
+    @DisplayName("클라이언트 MIME 타입과 관계없이 확장자에 맞는 MIME 타입으로 업로드한다")
+    void upload_contentType() throws IOException {
+        // given
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "test.png",
+                "text/html",
+                "test image".getBytes()
+        );
+
+        // when
+        s3FileStorage.upload(file);
+
+        // then
+        ArgumentCaptor<PutObjectRequest> captor =
+                ArgumentCaptor.forClass(PutObjectRequest.class);
+
+        verify(s3Client).putObject(
+                captor.capture(),
+                any(RequestBody.class)
+        );
+
+        assertThat(captor.getValue().contentType())
+                .isEqualTo("image/png");
     }
 
 }
