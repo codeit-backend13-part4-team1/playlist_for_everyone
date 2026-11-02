@@ -12,6 +12,7 @@ import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -27,6 +28,7 @@ public class S3FileStorage implements FileStorage {
 
     private final S3Client s3Client;
     private final S3Properties s3Properties;
+    private final S3Presigner s3Presigner;
 
     private static final Map<String, String> ALLOWED_CONTENT_TYPES = Map.of(
             ".jpg", "image/jpeg",
@@ -91,6 +93,11 @@ public class S3FileStorage implements FileStorage {
             );
         }
 
+    }
+
+    @Override
+    public String getFileUrl(String key) {
+        return "";
     }
 
     @Override

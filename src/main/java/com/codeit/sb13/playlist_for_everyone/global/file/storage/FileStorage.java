@@ -6,6 +6,8 @@ public interface FileStorage {
 
     String upload(MultipartFile file);
 
+    String getFileUrl(String key);
+
     void delete(String key);
 
 }

@@ -19,8 +19,12 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
+import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -37,6 +41,9 @@ public class S3FileStorageTest {
     @Mock
     private S3Client s3Client;
 
+    @Mock
+    private S3Presigner s3Presigner;
+
     private S3FileStorage s3FileStorage;
 
     @BeforeEach
@@ -47,7 +54,7 @@ public class S3FileStorageTest {
                 ""
         );
 
-        s3FileStorage = new S3FileStorage(s3Client, props);
+        s3FileStorage = new S3FileStorage(s3Client, props, s3Presigner);
     }
 
     @Test
@@ -107,6 +114,33 @@ public class S3FileStorageTest {
                 .isInstanceOf(FileInvalidTypeException.class);
 
         verifyNoInteractions(s3Client);
+    }
+
+    @Test
+    @DisplayName("파일 조회 URL 생성 성공")
+    void getFileUrl_success() throws IOException {
+        // given
+        String key = "test-image.png";
+        String expectedUrl = "https://example.com/test-image.png";
+
+        PresignedGetObjectRequest presignedRequest =
+                mock(PresignedGetObjectRequest.class);
+
+        when(presignedRequest.url())
+                .thenReturn(URI.create(expectedUrl).toURL());
+
+        when(s3Presigner.presignGetObject(any(GetObjectPresignRequest.class)))
+                .thenReturn(presignedRequest);
+
+        // when
+        String result = s3FileStorage.getFileUrl(key);
+
+        // then
+        assertThat(result).isEqualTo(expectedUrl);
+
+        verify(s3Presigner).presignGetObject(
+                any(GetObjectPresignRequest.class)
+        );
     }
 
     @Test
