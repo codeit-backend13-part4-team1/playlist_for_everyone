@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.response.NotificationDto;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.NotificationLevel;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.event.NotificationCreatedEvent;
+import com.codeit.sb13.playlist_for_everyone.global.exception.sse.SsePublishException;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEventPublisher;
 import org.junit.jupiter.api.DisplayName;
@@ -18,6 +19,9 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -40,14 +44,7 @@ class NotificationSseEventListenerTest {
         UUID notificationId = UUID.randomUUID();
         UUID receiverId = UUID.randomUUID();
 
-        NotificationDto notification = new NotificationDto(
-                notificationId,
-                LocalDateTime.of(2026, 11, 2, 10, 0),
-                receiverId,
-                "새 알림",
-                "알림 내용",
-                NotificationLevel.INFO
-        );
+        NotificationDto notification = createNotificationDto(notificationId, receiverId);
 
         NotificationCreatedEvent event = new NotificationCreatedEvent(eventId, notification);
 
@@ -60,6 +57,37 @@ class NotificationSseEventListenerTest {
         assertThat(publishedEvent.receiverId()).isEqualTo(receiverId);
         assertThat(publishedEvent.eventName()).isEqualTo("notifications");
         assertThat(publishedEvent.data()).isEqualTo(notification);
+    }
+
+    @Test
+    @DisplayName("SSE 발행에 실패해도 예외를 리스너밖으로 전파하지 않는다.")
+    void doesNotPropagatesSsePublishFailure(){
+        NotificationDto notification = createNotificationDto();
+        NotificationCreatedEvent event = new NotificationCreatedEvent(UUID.randomUUID(), notification);
+
+        SsePublishException failure = new SsePublishException(new IllegalStateException("테스트용 발행 실패"));
+        doThrow(failure)
+                .when(sseEventPublisher).publish(any());
+
+        assertThatCode(()-> listener.handleNotificationCreated(event))
+                .doesNotThrowAnyException();
+
+        verify(sseEventPublisher).publish(any());
+    }
+
+    private NotificationDto createNotificationDto(UUID notificationId, UUID receiverId) {
+        return new NotificationDto(
+                notificationId,
+                LocalDateTime.of(2026, 11, 2, 10, 0),
+                receiverId,
+                "새 알림",
+                "알림 내용",
+                NotificationLevel.INFO
+        );
+    }
+
+    private NotificationDto createNotificationDto() {
+        return createNotificationDto(UUID.randomUUID(), UUID.randomUUID());
     }
 
 }
