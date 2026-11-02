@@ -18,7 +18,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class DestinationMatcher
         extends AbstractMatcher<DestinationRule<?>, SessionInfo>
-        implements DestinationMatcherInterface<DestinationRule<?>, SessionInfo>
+        implements MatcherInterface<DestinationRule<?>, SessionInfo>
 {
 
     private final ApplicationEventPublisher publisher;

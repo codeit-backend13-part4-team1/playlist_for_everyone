@@ -4,8 +4,10 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.SessionMatcher;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.service.WatcherRegistry;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.service.WatcherRegistryDelay;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.role.SessionRefreshRule;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -37,17 +39,32 @@ import java.util.UUID;
 public class WebSocketInterceptor implements ChannelInterceptor {
 
     private final WatcherRegistry watcherRegistry;
-    private final WatcherRegistryDelay delay;
+    private final HeartBeatDelay delay = HeartBeatDelay.get(10000L);    // 설정에 하트비트값 추가하면 해당값 입력.
+    private final SessionMatcher heartBeatMatcher;
 
     private final JwtTokenProvider jwtTokenProvider;
     private final UserService userService;
+
+    // 서버가 올라가기 전, matcher 에 Rule 을 적재하는 구간.
+    @PostConstruct
+    private void setup(){
+        heartBeatMatcher.add(new SessionRefreshRule());
+    }
 
     @Override
     public @Nullable Message<?> preSend(Message<?> message, MessageChannel channel) {
         StompHeaderAccessor accessor = StompHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
         if (accessor == null) return message;
 
-        if (accessor.getSessionId() != null) all(message,channel);
+        /*
+         * 하트비트 프레임의 경우, getType() = SimpType.HEARTBEAT
+         * SessionID 와 Principal(getUser() 가 null 이 아니라면)
+         * 가 존재하는 프레임으로, 인터셉터에 들어온다고 한다.
+         * + 일반 프레임이 도달하면, heartbeat 가 아니더라도 연결된 것으로 판단함.
+         * -> SessionID 가 존재하는 프레임은 heartbeat 로 판단해도 된다.
+         * -> 다만 딜레이를 추가해서 로직을 너무 자주 돌리는 것을 방지한다.
+         */
+        heartbeat(message,channel);
 
         // java 17 버전 NPE 방지.
         if (accessor.getCommand() == null) return message;
@@ -66,20 +83,26 @@ public class WebSocketInterceptor implements ChannelInterceptor {
      * 모든 커맨드 프레임 에 대한 Message 조작 로직.
      */
 
-    // STOMP 의 모든 하트비트인지 미정?
-    private void all(Message<?> message, MessageChannel channel) {
-        StompHeaderAccessor accessor = StompHeaderAccessor.wrap(message);
-        String session = accessor.getSessionId();
+    /**
+     * 웹 소켓의 heartbeat 프레임 에 해당하는 로직.
+     * sessionId 가 있는 프레임은 전부 해당 세션에 대한 heartbeat 으로 간주한다.
+     * @param message .
+     * @param channel .
+     */
+    private void heartbeat(Message<?> message, MessageChannel channel) {
+        SessionInfo info = new SessionInfo(message);
+        // 세션 헤더가 없다면, 로직 패스.
+        if (info.session() == null) return;
 
-        // 세션 별 리프레시 시도 딜레이 작성
-        if (!delay.checkRefresh(session)) return;
+        // 세션 id 가 같으면, 같은 문자열 -> 같은 락 을 가지게 된다.
+        if (!delay.check(info.session())) return;
+        heartBeatMatcher.run(info);
 
-        try {
-            watcherRegistry.refresh(session);
-            delay.updateRefreshTime(session);
-        } catch (RuntimeException e) {
-            log.error("[{}] 세션 갱신 실패 - sessionId : {}", "ChannelInterceptor", session, e);
-        }
+//        try {
+//            watcherRegistry.refresh(session);
+//        } catch (RuntimeException e) {
+//            log.error("[{}] 세션 갱신 실패 - sessionId : {}", "ChannelInterceptor", session, e);
+//        }
     }
 
     /*

@@ -12,7 +12,7 @@ import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
 
 public abstract class DestinationRule<T>
         extends AbstractRule<Pattern, SessionInfo,T>
-        implements DestinationRuleInterface<SessionInfo,T>
+        implements RuleInterface<SessionInfo,T>
 {
 
     public DestinationRule(Pattern pattern) {

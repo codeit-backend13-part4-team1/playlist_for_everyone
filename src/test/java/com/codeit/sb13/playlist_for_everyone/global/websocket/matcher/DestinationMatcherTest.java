@@ -13,7 +13,6 @@ import org.springframework.messaging.Message;
 import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.MessageBuilder;
-import org.springframework.test.context.event.RecordApplicationEvents;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -32,7 +31,6 @@ import static org.mockito.Mockito.*;
  */
 
 @ExtendWith(MockitoExtension.class)
-@RecordApplicationEvents
 @DisplayName("웹 소켓 경로 매쳐 테스트")
 public class DestinationMatcherTest{
 

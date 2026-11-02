@@ -6,7 +6,6 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.service.WatcherRegistry;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.service.WatcherRegistryDelay;
 import io.jsonwebtoken.JwtException;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -41,7 +40,7 @@ public class WebSocketInterceptorTest {
     @Mock
     UserService userService;
     @Spy
-    WatcherRegistryDelay delay;
+    HeartBeatDelay delay;
     @InjectMocks
     private WebSocketInterceptor interceptor;
 

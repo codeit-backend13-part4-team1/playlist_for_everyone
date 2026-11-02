@@ -21,6 +21,17 @@ public class SessionInfo {
     @Nullable private Principal principal;
     @Nullable private String destination;
 
+    public SessionInfo(
+            Message<?> message
+    ){
+        StompHeaderAccessor accessor =
+                StompHeaderAccessor.wrap(Objects.requireNonNull(message));
+
+        this.session = Objects.requireNonNull(accessor.getSessionId());
+        this.subscription = accessor.getSubscriptionId();
+        this.destination = accessor.getDestination();
+        this.principal = accessor.getUser();
+    }
 
     public SessionInfo(
             Message<?> message,
