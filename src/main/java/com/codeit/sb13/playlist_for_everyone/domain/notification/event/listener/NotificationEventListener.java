@@ -1,4 +1,4 @@
-package com.codeit.sb13.playlist_for_everyone.domain.notification.event;
+package com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener;
 
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.command.NotificationCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationCreateRequestedEvent;
