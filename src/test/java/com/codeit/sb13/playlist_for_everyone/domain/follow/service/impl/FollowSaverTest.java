@@ -33,6 +33,11 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
+/**
+ * 사용자 조회·저장·이벤트 발행 의존성을 Mock으로 대체해 전달 값과 실패 시 협력을 확인한다.
+ * publishEvent 호출 검증은 커밋 후 리스너 처리 완료를 뜻하지 않는다.
+ * 실제 저장 커밋과 롤백의 영향은 FollowServiceIntegrationTest에서 확인한다.
+ */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("팔로우 저장")
 class FollowSaverTest {

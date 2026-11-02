@@ -5,21 +5,23 @@
 > **문서 기준 안내:** 아래에는 공통 기반을 처음 준비하던 시점의 설명이 일부 남아 있습니다.
 > 도메인 구현 현황과 개발용 보안 전환 설명은 최신 코드와 다를 수 있습니다.
 > 현재 SSE 연결·Redis 분산 전송·인증·테스트는 [SSE 구현 가이드](sse/README.md), 알림 저장 후 전송은 [알림 구현 가이드](notification/README.md)를 기준으로 확인합니다.
+> 팔로우 등록·취소·조회와 인증·이벤트의 구현 및 검증 범위는 [팔로우 구현 가이드](follow/README.md)를 참고합니다.
 
 ## 현재 개발 상태
 
-현재는 도메인 기능 개발에 사용할 공통 기반을 준비한 단계입니다.
+공통 기반 위에 도메인 기능을 추가하고 있습니다. 아래 팔로우·공통 보안 설명은 현재 코드에 맞췄으며, 다른 기능의 최신 범위는 해당 코드와 이슈를 함께 확인합니다.
 
 | 구분 | 현재 상태 |
 | --- | --- |
 | 공통 기반 | 예외 처리, 응답 DTO, 엔티티 기반 클래스, JPA Auditing, Querydsl 설정, MDC 로그, 비밀번호 인코더, OpenAPI 설정 구현 |
-| 도메인 예외 | 사용자·콘텐츠·대화방·팔로우·알림·플레이리스트·리뷰의 미존재 예외 7종을 작성 예시로 제공 |
-| 도메인 기능 | 회원·콘텐츠·플레이리스트 등의 실제 API와 서비스 구현 전 |
+| 도메인 예외 | 공통 예외 기반 위에 도메인 오류 정의. 팔로우는 자기 팔로우·대상 미존재·관계 미존재·생성 실패 예외 사용 |
+| 팔로우 | 등록·취소·조회, 중복 복구와 생성 이벤트 구현. Principal 연결 후 실제 JWT HTTP 통합 검증은 #76에서 진행 |
 | 로컬 인프라 | Docker Compose에 PostgreSQL과 Redis 서비스 정의 |
-| 개발용 보안 | `dev` 프로필에서 전체 요청을 인증 없이 허용하고 CSRF 검사를 비활성화하는 임시 설정 |
+| 공통 보안 | JWT 필터와 경로별 인증·인가 적용. 팔로우 API는 인증 필요, CSRF는 현재 비활성화 |
 | SSE | 인증된 사용자의 다중 연결, 하트비트, 종료 정리와 Redis Pub/Sub 분산 전송 구현. [SSE 구현 가이드](sse/README.md) 참고 |
 | 알림 전송 | 공통 알림 생성 요청 → 독립 저장·커밋 → Redis → 실제 SSE 수신 연동 구현. [알림 전송 흐름](notification/01-creation-and-delivery.md) 참고 |
-| 후속 기능 | JWT 인증, Redis 기반 캐시·세션, 배치 작업, S3 연동, WebSocket 기능 등의 설명은 위 문서 기준 안내 참고. SSE는 업무별 알림 생성 요청 변환(#45)·DM 본문 연동·Kafka·이력 복구·연결 수 제한이 후속 범위 |
+| SSE·알림 후속 | 업무별 알림 생성 요청 변환(#45)·DM 본문 연동·Kafka·이력 복구·연결 수 제한 |
+| 후속 기능 | 팔로우 JWT HTTP 통합 검증·Swagger 정리는 #76, 팔로우 CSRF 연동·검증은 #114. 다른 기능의 진행 상태는 개별 이슈 참고 |
 
 라이브러리 의존성과 로컬 인프라를 준비한 상태와 기능 구현 완료를 구분합니다. Redis 서비스는 Compose에 포함되어 있으며, 이를 사용하는 캐시·세션 기능은 구현 전입니다. Kafka와 Elasticsearch는 현재 Compose에 포함되어 있지 않습니다.
 
@@ -139,11 +141,11 @@ EVERYONE_REDIS_PORT=6379
 | Swagger UI | `http://localhost:8080/swagger-ui.html` |
 | OpenAPI JSON | `http://localhost:8080/v3/api-docs` |
 
-현재 [SecurityConfig](../src/main/java/com/codeit/sb13/playlist_for_everyone/global/config/SecurityConfig.java)는 `@Profile("dev")`가 적용된 개발 초기 임시 설정입니다. `dev`에서는 정적 리소스, Swagger UI, OpenAPI JSON 및 API 요청을 인증 없이 허용하고 CSRF 검사를 비활성화합니다. `STATELESS` 정책으로 인증 정보를 HTTP 세션에 저장하지 않으며, JWT 인증·인가 기능은 아직 구현 전입니다.
+현재 [SecurityConfig](../src/main/java/com/codeit/sb13/playlist_for_everyone/global/config/SecurityConfig.java)는 프로필 제한 없이 공통 JWT 필터와 경로별 접근 정책을 적용합니다. 팔로우 API는 인증이 필요하며, `STATELESS` 정책으로 인증정보를 HTTP 세션에 저장하지 않습니다. CSRF는 현재 비활성화되어 있습니다.
 
-`dev`가 활성화되지 않은 환경에는 이 임시 설정이 적용되지 않습니다. 현재 `test` 또는 `prod` 프로필만 사용하는 경우에는 Spring Boot의 기본 보안 자동 설정이 적용되어 Swagger 접근에도 인증이 필요할 수 있습니다. [Spring Boot 기본 Security 설정](https://docs.spring.io/spring-boot/reference/web/spring-security.html)
+Swagger UI와 OpenAPI 문서의 GET 조회는 `dev`가 활성화되고 `prod`는 비활성화된 경우에만 인증 없이 허용합니다. 그 외에는 공통 인증 정책을 따릅니다. Swagger 화면을 열 수 있어도 실제 팔로우 API 호출에는 인증이 필요합니다.
 
-현재는 도메인 컨트롤러가 없으므로 API 문서 설정이 있어도 실제 도메인 API 목록은 아직 제공되지 않습니다. 설정 경로는 [application.yaml](../src/main/resources/application.yaml)과 [OpenApiConfig](../src/main/java/com/codeit/sb13/playlist_for_everyone/global/config/OpenApiConfig.java)를 참고합니다.
+팔로우를 포함한 도메인 API는 현재 컨트롤러와 Swagger 선언을 기준으로 문서에 표시됩니다. Bearer 인증 스키마 연결과 팔로우의 적용 예정 설명 정리·UI 확인은 #76의 남은 작업입니다. 설정은 [application.yaml](../src/main/resources/application.yaml)과 [OpenApiConfig](../src/main/java/com/codeit/sb13/playlist_for_everyone/global/config/OpenApiConfig.java), 상세 정책은 [팔로우 API 가이드](follow/01-api-security.md)를 참고합니다.
 
 ## 환경변수와 프로필
 
@@ -200,17 +202,17 @@ S3 관련 값은 현재 공통 설정에 선언되어 있지만 실제 S3 연동
 
 파일 업로드 제한은 [공통 application.yaml](../src/main/resources/application.yaml)에 정의되어 dev와 prod 모두에 적용됩니다. `EVERYONE_MULTIPART_MAX_FILE_SIZE`와 `EVERYONE_MULTIPART_MAX_REQUEST_SIZE`를 생략하면 각각 `10MB`, `12MB`를 사용합니다. 개발에서는 `.env.dev`, 운영에서는 배포 환경의 환경변수로 조정할 수 있습니다. 요청 전체 크기에는 파일뿐 아니라 폼 데이터와 multipart 구분자 등 부가 정보도 포함됩니다. 파일당 제한과 요청 전체 제한은 별도로 적용되며, 여러 파일을 한 번에 받는 경우에도 요청 전체 제한을 넘을 수 없습니다.
 
-현재 [초기 스키마](../src/main/resources/db/migration/V202610220902__init_schema.sql)에 13개 테이블과 PK·FK가 정의되어 있으며, 실제 도메인 엔티티는 구현 전입니다. 엔티티를 추가할 때 초기 스키마의 컬럼·타입·제약조건과 매핑을 맞추고, 이후 스키마 변경은 새 Flyway 마이그레이션으로 작성합니다. 작성 규칙과 적용 절차는 [Flyway 마이그레이션 가이드](flyway-migration-guide.md)를 참고합니다. H2 테스트 통과만으로 PostgreSQL 마이그레이션까지 검증한 것으로 보지 않습니다.
+[초기 스키마](../src/main/resources/db/migration/V202610220902__init_schema.sql) 이후에도 도메인별 마이그레이션이 추가되고 있습니다. 팔로우는 엔티티와 UNIQUE 마이그레이션이 구현되어 있으므로 [등록·제약조건 설명](follow/02-registration-transactions.md)을 참고합니다. 매핑은 초기 스키마뿐 아니라 후속 마이그레이션까지 반영한 현재 DB와 맞추고, 변경은 새 Flyway 파일로 작성합니다. 작성 규칙은 [Flyway 마이그레이션 가이드](flyway-migration-guide.md)를 참고하되, 적용 상태는 실제 마이그레이션 파일을 기준으로 확인합니다. H2 통과만으로 PostgreSQL 마이그레이션까지 검증한 것으로 보지 않습니다.
 
-### 운영 배포 시 보안 설정 전환
+### 공통 보안과 팔로우 후속 검증
 
-운영 배포를 시작할 때 개발용 임시 보안 설정을 다음 순서로 전환합니다.
+현재 공통 Security 설정에는 `@Profile("dev")` 제한이 없으며, JWT 인증과 공개·보호 경로 구분이 구현되어 있습니다. 팔로우의 후속 작업은 다음과 같습니다.
 
-1. JWT 인증·인가를 구현하고, 전체 요청을 허용하는 정책을 공개 경로와 인증·권한이 필요한 경로별 정책으로 교체합니다.
-2. CSRF 검사를 활성화하고 `XSRF-TOKEN` 쿠키와 `X-XSRF-TOKEN` 헤더를 사용하는 쿠키 기반 CSRF 정책을 적용합니다.
-3. 운영 보안 정책 적용을 완료한 뒤 `SecurityConfig`의 `@Profile("dev")` 제한을 제거합니다.
+1. [#76](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/76)에서 실제 JWT·보안 필터·서비스·DB를 연결한 인증·소유자 인가와 API·이벤트 계약을 검증합니다.
+2. 공통 CSRF 토큰 기반은 [#35](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/35), 팔로우 연동·회귀 검증은 [#114](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/114)에서 진행합니다.
+3. 검증 결과에 맞춰 Swagger의 JWT·소유자 인가 설명을 정리하고, CSRF의 후속 적용 상태는 구분해 표시합니다.
 
-제거 대상은 Security 설정의 프로필 제한입니다. `application-dev.yaml`은 로컬 개발 환경 설정으로 유지합니다.
+`application-dev.yaml`은 로컬 개발 환경 설정으로 유지합니다. 위 항목은 팔로우의 남은 검증 범위이며 전체 운영 보안 검토의 완료를 의미하지 않습니다.
 
 ### 실행 중 확인할 항목
 
@@ -221,7 +223,7 @@ S3 관련 값은 현재 공통 설정에 선언되어 있지만 실제 S3 연동
 | 포트 충돌 | `EVERYONE_SERVER_PORT`, `EVERYONE_DB_PORT`, `EVERYONE_REDIS_PORT`에 지정한 포트를 사용 중인 다른 프로세스 |
 | `Redis health check failed` 또는 Redis 연결 거부 | Redis 컨테이너 실행 상태와 `PING` 응답, 호스트 포트, 설정 변경 후 애플리케이션 재시작 여부. Compose 연동을 끈 경우 직접 지정한 Redis 접속 정보 |
 | 엔티티 추가 후 스키마 검증 실패 | DB 테이블과 마이그레이션 적용 상태 |
-| Swagger 로그인 화면 또는 401 응답 | 활성 프로필과 `SecurityConfig` 로드 여부. `dev`에서는 인증 없이 접근하며, `dev`가 활성화되지 않으면 현재는 기본 보안 자동 설정 적용 |
+| Swagger 또는 API의 401 응답 | 공통 Security 정책과 JWT 유효성 확인. Swagger GET 문서만 `dev & !prod`에서 공개되며, 실제 팔로우 API는 항상 인증 필요 |
 
 DB 파일은 Compose의 `postgres-data` 볼륨에 저장됩니다. 기존 볼륨을 사용하는 경우 환경변수의 DB 계정 정보를 바꿔도 이미 초기화된 계정이 자동 변경되는 것은 아니므로 실제 DB 설정을 함께 확인합니다.
 
@@ -409,6 +411,7 @@ CI는 성공한 빌드의 JaCoCo XML에서 전체 LINE 수치로 SVG 배지를 �
 - 기존 테스트는 애플리케이션 컨텍스트, 예외 응답, 검증 오류, MDC, JPA Auditing, Querydsl 조회, 비밀번호 인코더, OpenAPI 설정을 확인합니다.
 - 알림 테스트는 제목 말줄임·입력 검증, 업무 커밋 후 저장, 알림 커밋 후 SSE 발행, 롤백·트랜잭션 외 발행 시 미처리를 확인합니다. `NotificationIntegrationTest`는 실제 PostgreSQL과 `TransactionTemplate`을 사용하고, SSE 발행자는 Mock으로 대체하여 저장·전송 실패 격리를 검증합니다.
 - 공통 예외 핸들러·인터셉터의 MVC 테스트는 Security 필터를 제외합니다. 이 테스트의 통과는 인증·인가 동작 검증을 의미하지 않습니다.
+- 팔로우는 서비스·Guard·메서드 인가·MVC 테스트와 PostgreSQL 저장소·서비스 통합 테스트를 구분합니다. MVC 테스트의 Principal 준비는 JWT 검증을 대체하지 않습니다. [팔로우 테스트 가이드](follow/05-testing.md)에 실행 명령과 #76의 남은 HTTP 검증 범위를 정리했습니다.
 - SSE MVC 테스트는 실제 보안 필터를 포함하여 인증 사용자와 ASYNC 종료 시 인증 복원을 확인합니다. 공통 `SseStreamingIntegrationTest`는 인증 의존성을 Mock으로 대체하고, 실제 HTTP 프레임과 JSON 변환 실패 시 기존 연결 유지를 검증합니다.
 - SSE 설정 테스트는 연결 설정에 `SseConfig`, 전송 설정에 `SseTransportConfig`를 사용하고 필요한 값을 직접 제공합니다.
 - SSE Redis 통합 테스트는 공통 발행 구현체, JSON 보존, 독립 컨텍스트 간 전달과 구독 연결 복구 후 새 이벤트 수신을 확인합니다. emitter를 Mock으로 사용하는 검증과 실제 HTTP 검증의 차이는 [SSE 테스트 가이드](sse/05-testing.md#redis-테스트의-범위)를 참고합니다.
@@ -495,7 +498,7 @@ RUN_SPORTSDB_LIVE_TEST=true ./gradlew test --tests '*SportsDbClientLiveTest' --r
 다음 항목은 후속 작업으로 관리합니다.
 
 - 도메인별 API·서비스·엔티티와 PostgreSQL/Flyway 검증
-- JWT 인증·인가 및 쿠키 기반 CSRF 정책 적용, 운영 배포 시 개발용 Security 프로필 제한 제거, 관리자 초기화 및 인증 실패 응답 처리
+- 팔로우 실제 JWT HTTP 통합 검증·Swagger 정리(#76), 공통 CSRF 기반(#35)과 팔로우 연동·검증(#114)
 - 목록 API의 커서 규칙 확정과 직렬화·페이징 테스트
 - Redis 기반 캐시·세션 기능 구현과 데이터 보관 정책 결정
 - 배치, S3, WebSocket 등 기능별 구현과 필요한 인프라 추가

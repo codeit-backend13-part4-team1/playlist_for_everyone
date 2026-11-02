@@ -39,6 +39,10 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+/**
+ * MVC 입력 검증, Principal의 사용자 ID 전달, 상태 코드와 응답 본문을 확인한다.
+ * 서비스는 Mock이며 보안 필터는 제외한다. 실제 JWT 검증·DB 저장·Guard 적용의 통합 검증은 #76의 별도 범위다.
+ */
 @WebMvcTest(controllers = FollowController.class)
 @AutoConfigureMockMvc(addFilters = false)
 @Import({WebMvcConfig.class, MDCLoggingInterceptor.class})
@@ -53,6 +57,7 @@ class FollowControllerTest {
 
     @AfterEach
     void clearSecurityContext(){
+        // 필터 없이 테스트가 직접 준비한 인증정보를 정리해 다음 사례에 남지 않도록 한다.
         SecurityContextHolder.clearContext();
     }
 
@@ -347,6 +352,10 @@ class FollowControllerTest {
     }
 
 
+    /**
+     * AuthenticationPrincipal 인자 해석기가 읽을 SecurityUser를 준비한다.
+     * 토큰을 발급·검증하는 절차가 아니라 컨트롤러의 요청자 ID 전달을 위한 테스트 설정이다.
+     */
     private void setUpUserAuthentication(UUID followerId) {
         SecurityUser principal = new SecurityUser(
                 followerId,

@@ -21,6 +21,13 @@ import org.springframework.web.bind.annotation.RequestBody;
 import java.util.UUID;
 
 
+/**
+ * 팔로우 API의 Swagger 계약을 모은 인터페이스.
+ * Principal은 서버가 주입하므로 문서 입력에서 숨기고, 실제 주입 어노테이션은 컨트롤러에 둔다.
+ *
+ * <p>인증·소유자 인가의 HTTP 통합 검증과 Swagger 설명 정리는 #76의 남은 작업이다.
+ * 아래 응답 설명의 기존 CSRF 이슈 표기도 후속 정리 대상이며, CSRF 연동·검증의 현재 범위는 #114다.
+ */
 @Tag(name = "팔로우", description = """
         팔로우 등록·취소 및 조회 API입니다.\n
         모든 팔로우 API는 최종적으로 JWT 인증을 요구합니다.\n

@@ -49,6 +49,13 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
 
+/**
+ * PostgreSQL 16과 실제 서비스 빈을 연결해 중복 등록, 동시성, 취소, 조회 및 트랜잭션 이벤트를 확인한다.
+ * 일부 충돌 시나리오는 FollowSaver Spy로 실행 순서를 조정하며, 커밋 후 처리는 테스트 전용 리스너가 기록한다.
+ *
+ * <p>HTTP 요청이나 실제 JWT를 사용하지 않는다. 이 테스트의 통과를 JWT HTTP 통합 검증이나
+ * 운영 알림 리스너·SSE 연동 완료로 해석하지 않는다.
+ */
 @SpringBootTest(properties = {
         "spring.flyway.enabled=true",
         "spring.jpa.hibernate.ddl-auto=validate",
@@ -508,6 +515,10 @@ public class FollowServiceIntegrationTest {
         }
     }
 
+    /**
+     * 발행 기록(ApplicationEvents)과 커밋 후 수신을 구분하기 위한 테스트 전용 관찰자.
+     * 저장 트랜잭션이 롤백되면 AFTER_COMMIT 기록에는 이벤트가 추가되지 않는다.
+     */
     static class CommittedFollowEventRecorder{
         private final List<UserFollowedEvent> events = new CopyOnWriteArrayList<>();
 

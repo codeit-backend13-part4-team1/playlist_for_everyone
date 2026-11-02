@@ -26,6 +26,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
 
+/**
+ * 실제 Spring 메서드 보안 프록시가 Guard의 허용·거부 결과를 적용하는지 확인한다.
+ * Guard와 저장소는 Mock이다. 서비스에는 인증 여부 검사 책임을 두지 않으며,
+ * 미인증 HTTP 요청의 401 처리는 공통 보안 필터를 포함한 통합 테스트에서 검증한다.
+ */
 @SpringJUnitConfig(FollowMethodSecurityTest.TestConfig.class)
 @DisplayName("팔로우 메서드 인가")
 public class FollowMethodSecurityTest {
