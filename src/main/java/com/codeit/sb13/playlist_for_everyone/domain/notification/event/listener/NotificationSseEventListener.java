@@ -18,6 +18,10 @@ public class NotificationSseEventListener {
 
     @TransactionalEventListener
     public void handleNotificationCreated(NotificationCreatedEvent event){
+        publishNotification(event);
+    }
+
+    private void publishNotification(NotificationCreatedEvent event) {
         try {
             sseEventPublisher.publish(SseEvent.createNotificationEvent(
                     event.eventId(),
