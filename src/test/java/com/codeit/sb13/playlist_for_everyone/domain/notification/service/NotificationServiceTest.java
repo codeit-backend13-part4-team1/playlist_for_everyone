@@ -6,6 +6,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.response.No
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.Notification;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.NotificationLevel;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.SortBy;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.event.NotificationCreatedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.repository.NotificationRepository;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
@@ -14,9 +15,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
@@ -24,15 +28,22 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-@DisplayName("알림 서비스 조회")
+@DisplayName("알림 서비스")
 public class NotificationServiceTest {
 
     @Mock
     private NotificationRepository notificationRepository;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
+    @Captor
+    private ArgumentCaptor<NotificationCreatedEvent> eventCaptor;
 
     @InjectMocks
     private NotificationService notificationService;
@@ -178,6 +189,39 @@ public class NotificationServiceTest {
         verify(notificationRepository).search(condition);
         verify(notificationRepository).searchCount(condition);
 
+    }
+
+    @Test
+    @DisplayName("알림을 저장하면 알림 정보로 생성이벤트를 한 번 발행한다.")
+    void publishesCreatedEventOnceWithSavedNotification(){
+        UUID notificationId = UUID.randomUUID();
+        UUID receiverId = UUID.randomUUID();
+        LocalDateTime createdAt = LocalDateTime.of(2026, 11, 2, 10, 0);
+
+        NotificationCommand command = new NotificationCommand(receiverId, "알림 제목", "알림 내용", NotificationLevel.INFO);
+        Notification savedNotification = createNotification(notificationId, receiverId, createdAt);
+
+        when(notificationRepository.save(any(Notification.class)))
+                .thenReturn(savedNotification);
+
+        notificationService.save(command);
+
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+
+        NotificationCreatedEvent publishedEvent = eventCaptor.getValue();
+        assertThat(publishedEvent.eventId())
+                .isNotNull()
+                .isNotEqualTo(notificationId);
+
+        assertThat(publishedEvent.notificationDto())
+                .isEqualTo(new NotificationDto(
+                        notificationId,
+                        createdAt,
+                        receiverId,
+                        "알림 제목",
+                        "알림 내용",
+                        NotificationLevel.INFO
+                ));
     }
 
 
