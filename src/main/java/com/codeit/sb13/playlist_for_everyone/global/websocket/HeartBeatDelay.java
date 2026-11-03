@@ -21,12 +21,10 @@ public class HeartBeatDelay {
     private final ConcurrentHashMap<Object, Instant> keys = new ConcurrentHashMap<>();
     private final AtomicBoolean autoRefresh = new AtomicBoolean(false);
     private final SpreadLock locks;
-
-    // 기본 싱글톤이라 문제는 없겠지만, 여러 스레드에서 동시에 접근할 수 있으므로 volatile 키워드를 추가한다.
     private final Long interval;
 
     public HeartBeatDelay(
-            @Value("${heartBeatDelay.interval:0}") Long interval,
+            @Value("${heartBeatDelay.interval:10000}") Long interval,
             SpreadLock locks
     ) {
         this.interval = interval;
@@ -106,6 +104,8 @@ public class HeartBeatDelay {
     public boolean check(Object key){
         // 인터벌 설정이 없다면, 딜레이 안 걸고, 저장 안 한다.
         if (interval == null || interval <= 0) return true;
+        if (!autoRefresh.get())
+            chronRefresh();
 
         synchronized (locks.lock(key)){
             boolean res = checkInterval(key);

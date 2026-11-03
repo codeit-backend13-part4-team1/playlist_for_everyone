@@ -52,10 +52,8 @@ public class SessionInfo {
     public String destination(){ return destination; }
     public Principal principal(){ return principal; }
     public SecurityUser user(){
-        if (principal instanceof SecurityUser) {
-            // Connect 프레임에서 Authentication 을 principal 에 세팅함.
-            Authentication authToken = (Authentication) principal;
-            return (SecurityUser) authToken.getPrincipal();
+        if (principal instanceof Authentication authentication) {
+            return (SecurityUser) authentication.getPrincipal();
         } else
             return null;
     }

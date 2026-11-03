@@ -67,8 +67,8 @@ public class WatcherRegistryTest {
     }
 
     private void clear(){
-        Set<String> watchers = template.keys("watcher:*");
-        Set<String> sessions = template.keys("websocket:*");
+        Set<String> watchers = template.keys(STORAGE_SESSION_PREFIX + "*");
+        Set<String> sessions = template.keys(STORAGE_CONTENT_PREFIX + "*");
         watchers.addAll(sessions);
         for(String key : watchers){
             template.delete(key);

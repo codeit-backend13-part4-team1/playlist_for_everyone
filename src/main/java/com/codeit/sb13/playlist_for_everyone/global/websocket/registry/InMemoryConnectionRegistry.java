@@ -24,6 +24,8 @@ public class InMemoryConnectionRegistry implements ConnectionRegistry {
      * 기본 세션 SocketConnection(sessionId,null) 을 키로 구독을 할 때마다 Set 에 엔티티 객체를 추가한다.
      */
     private final Map<SessionData, Set<SessionData>> connectionList = new ConcurrentHashMap<>();
+    private final Map<String, SessionData> keyMap = new ConcurrentHashMap<>();
+
 
     @Override
     public void register(String sessionId, @Nullable Principal principal) {
@@ -44,7 +46,16 @@ public class InMemoryConnectionRegistry implements ConnectionRegistry {
     @Override
     public void register(SessionData data){
         if (Objects.requireNonNull(data).subscription() == null){
-            connectionList.computeIfAbsent(data, k -> new CopyOnWriteArraySet<>());
+            connectionList.computeIfAbsent(data, k -> {
+
+                // 키맵에 같은 세션 id 가 없어야 세션 키 등록.
+                keyMap.compute( k.session(), (mk,mv) ->{
+                    if (mv != null) throw new RuntimeException();
+                    return k;
+                });
+
+                return new CopyOnWriteArraySet<>();
+            });
         } else {
             SessionData key = SessionData.builder().session(data.session()).build();
             connectionList.compute(
@@ -79,7 +90,11 @@ public class InMemoryConnectionRegistry implements ConnectionRegistry {
     @Override
     public void unregister(SessionData data) {
         if (Objects.requireNonNull(data).subscription() == null) {
-            connectionList.remove(data);
+            connectionList.compute(data, (k,v) -> {
+                // 세션 id 를 기준으로 키맵에서 제거 후, 세션 등록자 삭제.
+                keyMap.remove(k.session());
+                return v;
+            });
         } else {
             SessionData sessionKey =
                     SessionData
@@ -87,26 +102,26 @@ public class InMemoryConnectionRegistry implements ConnectionRegistry {
                             .session(data.session())
                             .build();
 
-            connectionList.get(sessionKey).remove(data);
+            connectionList.computeIfPresent(sessionKey, (k, v) -> {
+                v.remove(data);
+                return v;
+            });
         }
     }
 
     @Override
     public List<SessionData> get(String sessionId) {
-        SessionData key = SessionData.builder().session(sessionId).build();
+        SessionData key = keyMap.get(sessionId);
+
+        if (key == null) return null;
 
         Set<SessionData> subscribes = connectionList.get(key);
-        for (SessionData session : connectionList.keySet()){
-            if (key.equals(session)) {
-                List<SessionData> result = new ArrayList<>(subscribes.size() + 1);
-                // 원래의 등록된 session 객체.
-                result.add(session);
-                result.addAll(subscribes);
-                return result;
-            }
-        }
-        // 없을 경우 null 반환
-        return null;
+        List<SessionData> result = new ArrayList<>(subscribes.size() + 1);
+        // 원래의 등록된 session 객체.
+        result.add(key);
+        result.addAll(subscribes);
+
+        return result;
     }
 
     @Override

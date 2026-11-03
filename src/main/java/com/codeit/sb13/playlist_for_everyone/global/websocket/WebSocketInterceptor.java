@@ -93,9 +93,14 @@ public class WebSocketInterceptor implements ChannelInterceptor {
         // 세션 헤더가 없다면, 로직 패스.
         if (info.session() == null) return;
         // 세션 id 가 같으면, 같은 문자열 -> 같은 락 을 가지게 된다.
-        if (!delay.check(info.session())) return;
-        // 딜레이 체크 이후 작업.
-        heartBeatMatcher.run(info);
+        try {
+            if (!delay.check(info.session())) return;
+            // 딜레이 체크 이후 작업.
+            heartBeatMatcher.run(info);
+        } catch (RuntimeException e) {
+            log.info("[{}] heartbeat error : {}", this.getClass().getSimpleName(),e.getMessage());
+        }
+
 
     }
 

@@ -5,6 +5,8 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.data.redis.connection.Message;
 import org.springframework.data.redis.connection.MessageListener;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.serializer.RedisSerializer;
+
 import java.util.Objects;
 import java.util.UUID;
 
@@ -18,13 +20,16 @@ public abstract class RedisMessageListener implements MessageListener {
 
     private final UUID id;
     private final RedisTemplate<String, Object> redis;
+    private final RedisSerializer<Object> serializer;
 
     public RedisMessageListener(
-            RedisTemplate<String, Object> redis
+            RedisTemplate<String, Object> redis,
+            RedisSerializer<Object> serializer
     ) {
         super();
         this.id = UUID.randomUUID();
         this.redis = redis;
+        this.serializer = serializer;
     }
 
     @Override
@@ -41,7 +46,7 @@ public abstract class RedisMessageListener implements MessageListener {
     }
 
     private Object deserialize(@NonNull Message message){
-        return Objects.requireNonNull(redis.getDefaultSerializer()).deserialize(message.getBody());
+        return Objects.requireNonNull(serializer).deserialize(message.getBody());
     }
 
     /**

@@ -197,14 +197,15 @@ public class RedisTopicRegistry {
         if (topic == null || topic.isEmpty()) return;
         // 구독 갯수가 1 이상이면 리스너 등록
         Set<KeyPair> keyList = registerMap.get(topic);
-        if (!keyList.isEmpty())
-            redisBroker.register(listener,topic);
-            listenerMap.compute(topic,(k,v) -> {
+        if (!keyList.isEmpty()) {
+            listenerMap.compute(topic, (k, v) -> {
                 if (listener.equals(listenerMap.get(k)))
                     // 이미 존재하는 리스너가 있고, 어떤 게 연결이 끊긴건지 분간할 수 없음.
                     throw new RuntimeException();
+                redisBroker.register(listener, topic);
                 return listener;
             });
+        }
     }
 
     private void unregisterListener(String topic){
