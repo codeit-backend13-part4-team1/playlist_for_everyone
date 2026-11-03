@@ -22,6 +22,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Playlist;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistContent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistSortBy;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Subscription;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistSubscribedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistSearchCondition;
@@ -53,6 +54,7 @@ import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 import static org.mockito.ArgumentMatchers.eq;
@@ -69,6 +71,9 @@ public class PlaylistServiceImplTest {
 
   @Mock
   private PlaylistContentRepository playlistContentRepository;
+
+  @Mock
+  private ApplicationEventPublisher eventPublisher;
 
   @Mock
   private ContentRepository contentRepository;
@@ -766,6 +771,8 @@ public class PlaylistServiceImplTest {
     given(playlistRepository.findById(playlistId)).willReturn(Optional.of(playlist));
     given(subscriptionRepository.existsByPlaylistIdAndSubscriberId(playlistId, subscriberId))
         .willReturn(false);
+    given(userRepository.findById(subscriberId))
+        .willReturn(Optional.of(createUser(subscriberId)));
 
     // when
     playlistService.subscribe(playlistId, subscriberId);
@@ -794,6 +801,7 @@ public class PlaylistServiceImplTest {
 
     verifyNoInteractions(subscriptionRepository);
     verify(playlistRepository, never()).increaseSubscriberCount(any());
+    verifyNoInteractions(eventPublisher);
   }
 
   @Test
@@ -814,6 +822,7 @@ public class PlaylistServiceImplTest {
 
     verifyNoInteractions(subscriptionRepository);
     verify(playlistRepository, never()).increaseSubscriberCount(any());
+    verifyNoInteractions(eventPublisher);
   }
 
   @Test
@@ -837,6 +846,7 @@ public class PlaylistServiceImplTest {
 
     verify(subscriptionRepository, never()).saveAndFlush(any(Subscription.class));
     verify(playlistRepository, never()).increaseSubscriberCount(any());
+    verifyNoInteractions(eventPublisher);
   }
 
   @Test
@@ -860,6 +870,7 @@ public class PlaylistServiceImplTest {
         .withCauseInstanceOf(DataIntegrityViolationException.class);
 
     verify(playlistRepository, never()).increaseSubscriberCount(any());
+    verifyNoInteractions(eventPublisher);
   }
 
   @Test
@@ -883,6 +894,7 @@ public class PlaylistServiceImplTest {
         .isSameAs(foreignKeyViolation);
 
     verify(playlistRepository, never()).increaseSubscriberCount(any());
+    verifyNoInteractions(eventPublisher);
   }
 
   @Test
@@ -939,6 +951,35 @@ public class PlaylistServiceImplTest {
             .containsEntry("subscriberId", subscriberId));
 
     verify(playlistRepository, never()).decreaseSubscriberCount(any());
+  }
+
+  @Test
+  @DisplayName("구독에 성공하면 PlaylistSubscribedEvent를 발행한다")
+  void 구독에_성공하면_구독_이벤트를_발행한다() {
+    // given
+    UUID ownerId = UUID.randomUUID();
+    UUID subscriberId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
+    User subscriber = createUser(subscriberId);
+    given(playlistRepository.findById(playlistId)).willReturn(Optional.of(playlist));
+    given(subscriptionRepository.existsByPlaylistIdAndSubscriberId(playlistId, subscriberId))
+        .willReturn(false);
+    given(userRepository.findById(subscriberId)).willReturn(Optional.of(subscriber));
+
+    // when
+    playlistService.subscribe(playlistId, subscriberId);
+
+    // then
+    ArgumentCaptor<PlaylistSubscribedEvent> captor =
+        ArgumentCaptor.forClass(PlaylistSubscribedEvent.class);
+    verify(eventPublisher).publishEvent(captor.capture());
+    PlaylistSubscribedEvent event = captor.getValue();
+    assertThat(event.playlistId()).isEqualTo(playlistId);
+    assertThat(event.playlistTitle()).isEqualTo("title");
+    assertThat(event.ownerId()).isEqualTo(ownerId);
+    assertThat(event.subscriberId()).isEqualTo(subscriberId);
+    assertThat(event.subscriberName()).isEqualTo("tester");
   }
 
 
