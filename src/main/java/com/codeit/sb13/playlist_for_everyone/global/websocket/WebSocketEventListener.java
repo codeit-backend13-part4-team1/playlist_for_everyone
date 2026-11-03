@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket;
 
 
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.DestinationMatcher;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.SessionMatcher;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.ConnectionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.role.WatchingSessionJoinRule;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.role.WatchingSessionLeaveRule;
@@ -27,7 +28,7 @@ public class WebSocketEventListener {
 
     private final DestinationMatcher subscribe;
     private final DestinationMatcher unsubscribe;
-    private final DestinationMatcher disconnect;
+    private final SessionMatcher disconnect;
 
     @PostConstruct
     public void init(){
@@ -73,14 +74,10 @@ public class WebSocketEventListener {
     @EventListener
     public void onUnsubscribe(SessionUnsubscribeEvent event){
         SessionInfo info = new SessionInfo(event.getMessage(), event.getUser());
-        SessionData connection = connectionRegistry.get(info.session(), info.subscription());
-        // 연결에 대한 destination 복원.
-//        if (connection.destination() != null)
-//          info.destination(connection.destination());
+        SessionData data = connectionRegistry.get(info.session(), info.subscription());
 
-        unsubscribe.run(info);
+        unsubscribe.run(info.wrap(data));
     }
-
 
     /**
      * 웹 소켓 연결이 종료되고 난 후,
@@ -91,8 +88,9 @@ public class WebSocketEventListener {
     @EventListener
     public void onDisconnect(SessionDisconnectEvent event){
         SessionInfo info = new SessionInfo(event.getMessage(), event.getUser());
-        SessionData connection = connectionRegistry.get(info.session(), info.subscription());
-        disconnect.run(new SessionInfo(event.getMessage(), event.getUser()));
+        SessionData data = connectionRegistry.get(info.session(), info.subscription());
+
+        disconnect.run(info.wrap(data));
     }
 
 

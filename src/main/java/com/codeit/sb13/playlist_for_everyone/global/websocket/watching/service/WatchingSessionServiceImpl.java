@@ -200,8 +200,4 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
         );
     }
 
-//    @Override
-//    public void sendChat(String sessionId, String subscribe, String content) {
-//
-//    }
 }

@@ -7,5 +7,4 @@ public interface WatchingSessionService {
     void unsubscribeWatchingSession(String sessionId, @Nullable String subscribe);
     void subscribeChatSession(String sessionId, String subscribe, String content);
     void unsubscribeChatSession(String sessionId, @Nullable String subscribe);
-//    void sendChat(String sessionId, String subscribe, String content);
 }

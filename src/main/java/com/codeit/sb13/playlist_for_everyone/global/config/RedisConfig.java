@@ -1,6 +1,5 @@
 package com.codeit.sb13.playlist_for_everyone.global.config;
 
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.data.redis.connection.RedisConnectionFactory;

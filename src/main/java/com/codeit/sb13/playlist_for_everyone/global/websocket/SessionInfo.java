@@ -70,10 +70,20 @@ public class SessionInfo {
         return this.destination;
     }
 
+    // 편의 매서드
     public SessionInfo wrap(SessionData data){
         destination(data.destination());
         principal(data.principal());
         return this;
+    }
+
+    public SessionData toData(){
+        return SessionData.builder()
+                .session(session)
+                .subscription(subscription)
+                .destination(destination)
+                .principal(principal)
+                .build();
     }
 
 }

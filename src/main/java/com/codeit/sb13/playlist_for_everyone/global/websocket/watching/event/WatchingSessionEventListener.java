@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event;
 
+import com.codeit.sb13.playlist_for_everyone.global.websocket.service.WatcherRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -14,6 +15,7 @@ import java.util.UUID;
 public class WatchingSessionEventListener {
 
     private final WatchingSessionService watchingSessionService;
+    private final WatcherRegistry watcherRegistry;
 
     static private final String SUB_PREFIX = "/sub/contents/";
     static private final String CHAT_POSTFIX = "/chat";
@@ -35,12 +37,16 @@ public class WatchingSessionEventListener {
     /**
      * 동시 시청 세션을 종료한 이벤트.
      * 동시시청 레지스트리에서 등록을 취소하고, 현재 동시 시청자 수를 기준으로 메세지를 발행한다.
-     *
      * @param event
      */
     @EventListener
     public void watchLeaveEvent(WatchingSessionLeaveEvent event){
         watchingSessionService.unsubscribeWatchingSession(event.sessionId(), event.subscriptionId());
+    }
+
+    @EventListener
+    public void watchRefreshEvent(WatchingSessionRefreshEvent event){
+        watcherRegistry.refresh(event.session());
     }
 
 

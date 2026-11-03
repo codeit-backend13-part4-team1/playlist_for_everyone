@@ -5,7 +5,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.SessionMatcher;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.service.WatcherRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.ConnectionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.role.SessionRefreshRule;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -28,7 +28,6 @@ import java.util.UUID;
  * 비즈니스 로직의 성공, 실패가 연결에 영향을 끼쳐야 하는 경우에 사용된다.
  * 다음과 같은 작업들이다.
  * - 메세지에 인증 정보 세팅
- *
  * 메세지의 정보를 바탕으로, 비즈니스 로직을 조작하는경우,
  * Controller 와 WebSocketEventListener 을 사용해도 된다.
  */
@@ -38,12 +37,12 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class WebSocketInterceptor implements ChannelInterceptor {
 
-    private final WatcherRegistry watcherRegistry;
     private final HeartBeatDelay delay = HeartBeatDelay.get(10000L);    // 설정에 하트비트값 추가하면 해당값 입력.
     private final SessionMatcher heartBeatMatcher;
 
     private final JwtTokenProvider jwtTokenProvider;
     private final UserService userService;
+    private final ConnectionRegistry connectionRegistry;
 
     // 서버가 올라가기 전, matcher 에 Rule 을 적재하는 구간.
     @PostConstruct
@@ -93,16 +92,11 @@ public class WebSocketInterceptor implements ChannelInterceptor {
         SessionInfo info = new SessionInfo(message);
         // 세션 헤더가 없다면, 로직 패스.
         if (info.session() == null) return;
-
         // 세션 id 가 같으면, 같은 문자열 -> 같은 락 을 가지게 된다.
         if (!delay.check(info.session())) return;
+        // 딜레이 체크 이후 작업.
         heartBeatMatcher.run(info);
 
-//        try {
-//            watcherRegistry.refresh(session);
-//        } catch (RuntimeException e) {
-//            log.error("[{}] 세션 갱신 실패 - sessionId : {}", "ChannelInterceptor", session, e);
-//        }
     }
 
     /*
@@ -110,25 +104,28 @@ public class WebSocketInterceptor implements ChannelInterceptor {
      */
 
     private Message<?> send(StompHeaderAccessor accessor, Message<?> message) {
+        // todo - send 경로 화이트 리스트 필요?
         return message;
     }
 
     private Message<?> connect(StompHeaderAccessor accessor, Message<?> message) {
         authenticate(accessor);
-
+        connectionRegistry.register(new SessionInfo(message).toData());
         return message;
     }
 
     private Message<?> subscribe(StompHeaderAccessor accessor, Message<?> message) {
-
+        connectionRegistry.register(new SessionInfo(message).toData());
         return message;
     }
 
     private Message<?> unsubscribe(StompHeaderAccessor accessor,Message<?> message){
+        connectionRegistry.unregister(new SessionInfo(message).toData());
         return message;
     }
 
     private Message<?> disconnect(StompHeaderAccessor accessor,Message<?> message){
+        connectionRegistry.unregister(new SessionInfo(message).toData());
         return message;
     }
 
