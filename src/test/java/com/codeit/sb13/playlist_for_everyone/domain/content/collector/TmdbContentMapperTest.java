@@ -60,4 +60,15 @@ class TmdbContentMapperTest {
         assertThat(data.provider()).isEqualTo(ContentSource.TMDB);
         assertThat(data.providerItemId()).isEqualTo("550");
     }
+
+    @Test
+    void TV_장르_ID를_한글_태그로_변환한다() {
+        var tv = new TmdbTvResponse(
+                550L, "테스트 시리즈", "시리즈 설명", "/tv.jpg", List.of(10759, 18)
+        );
+
+        var data = new TmdbContentMapper().fromTv(tv);
+
+        assertThat(data.tags()).containsExactlyInAnyOrder("액션·모험", "드라마");
+    }
 }
