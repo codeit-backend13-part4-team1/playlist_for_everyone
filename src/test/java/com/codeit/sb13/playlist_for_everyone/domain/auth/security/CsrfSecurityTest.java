@@ -1,9 +1,13 @@
 package com.codeit.sb13.playlist_for_everyone.domain.auth.security;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.controller.AuthController;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.dto.TokenReissueResult;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.dto.response.JwtDto;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AuthService;
+import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
+import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.config.MDCLoggingInterceptor;
 import com.codeit.sb13.playlist_for_everyone.global.config.SecurityConfig;
@@ -21,11 +25,16 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.security.authentication.AuthenticationManager;
 
+import java.time.LocalDateTime;
+import java.util.UUID;
+
+import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verifyNoInteractions;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(controllers = AuthController.class)
 @AutoConfigureMockMvc(addFilters = true)
@@ -40,6 +49,15 @@ class CsrfSecurityTest {
 
     private static final String CSRF_TOKEN_URL = "/api/auth/csrf-token";
     private static final String CSRF_COOKIE_NAME = "XSRF-TOKEN";
+
+    private static final String CSRF_HEADER_NAME = "X-CSRF-TOKEN";
+    private static final String REFRESH_URL =  "/api/auth/refresh";
+
+    // 실제 JWT 검증은 서비스 테스트에서 확인한다.
+    // 여기서는 보안 필터와 컨트롤러 연결을 검증하므로 테스트 문자열을 사용한다.
+    private static final String OLD_REFRESH_TOKEN = "old-refresh-token";
+    private static final String NEW_REFRESH_TOKEN = "new-refresh-token";
+    private static final String NEW_ACCESS_TOKEN = "new-access-token";
 
     @Autowired
     private MockMvc mockMvc;
@@ -120,6 +138,127 @@ class CsrfSecurityTest {
                 .isNull();
 
         verifyNoInteractions(refreshTokenRepository, authService);
+    }
+
+
+    @Test
+    @DisplayName("CSRF 쿠키와 헤더가 일치하면 토큰 재발급을 허용한다")
+    void CSRF_쿠키와_헤더가_일치하면_재발급한다() throws Exception {
+        // 서버에서 실제로 발급한 CSRF 쿠키를 받는다.
+        Cookie csrfCookie = issueCsrfCookie();
+
+        // 보안 검증을 통과한 뒤 서비스가 정상 응답하는 상황을 준비한다.
+        givenReissueSuccess();
+
+        mockMvc.perform(post(REFRESH_URL)
+                        .cookie(
+                                csrfCookie,
+                                new Cookie("REFRESH_TOKEN", OLD_REFRESH_TOKEN)
+                        )
+                        // 프론트가 쿠키에서 읽은 원문을 그대로 헤더에 넣는 상황이다.
+                        .header(CSRF_HEADER_NAME, csrfCookie.getValue()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").value(NEW_ACCESS_TOKEN));
+
+        // 상태 코드뿐 아니라 실제 재발급 서비스까지 도달했는지 확인한다.
+        verify(authService).reissue(OLD_REFRESH_TOKEN);
+    }
+
+    @Test
+    @DisplayName("CSRF 쿠키가 있어도 헤더가 없으면 재발급을 거절한다")
+    void CSRF_헤더가_없으면_거절한다() throws Exception {
+        Cookie csrfCookie = issueCsrfCookie();
+
+        // 브라우저가 쿠키만 자동으로 보낸 상황을 재현한다.
+        // Refresh Token은 제공하되 CSRF 헤더는 넣지 않는다.
+        mockMvc.perform(post(REFRESH_URL)
+                        .cookie(
+                                csrfCookie,
+                                new Cookie("REFRESH_TOKEN", OLD_REFRESH_TOKEN)
+                        ))
+                .andExpect(status().isForbidden());
+
+        // 컨트롤러에서 서비스를 호출하기 전에 필터가 차단해야 한다.
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    @DisplayName("CSRF 헤더가 있어도 쿠키가 없으면 재발급을 거절한다")
+    void CSRF_쿠키가_없으면_거절한다() throws Exception {
+        Cookie csrfCookie = issueCsrfCookie();
+
+        // 발급받은 값을 헤더에 넣지만 CSRF 쿠키는 보내지 않는다.
+        // MockMvc는 앞선 응답의 쿠키를 다음 요청에 자동으로 보내지 않는다.
+        mockMvc.perform(post(REFRESH_URL)
+                        .cookie(new Cookie("REFRESH_TOKEN", OLD_REFRESH_TOKEN))
+                        .header(CSRF_HEADER_NAME, csrfCookie.getValue()))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(authService);
+    }
+
+    @Test
+    @DisplayName("CSRF 쿠키와 헤더가 다르면 재발급을 거절한다")
+    void CSRF_쿠키와_헤더가_다르면_거절한다() throws Exception {
+        Cookie csrfCookie = issueCsrfCookie();
+
+        // 쿠키는 정상 값이고, 헤더에만 다른 값을 넣는다.
+        String differentToken = csrfCookie.getValue() + "-changed";
+
+        mockMvc.perform(post(REFRESH_URL)
+                        .cookie(
+                                csrfCookie,
+                                new Cookie("REFRESH_TOKEN", OLD_REFRESH_TOKEN)
+                        )
+                        .header(CSRF_HEADER_NAME, differentToken))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(authService);
+    }
+
+
+    /**
+     * 실제 CSRF 토큰 발급 API를 호출하고 응답 쿠키를 가져온다.
+     *
+     * 테스트 도구가 만든 토큰이 아닌 서버가 발급한 값을 사용한다.
+     */
+    private Cookie issueCsrfCookie() throws Exception {
+        MvcResult result = mockMvc.perform(get(CSRF_TOKEN_URL))
+                .andExpect(status().isNoContent())
+                .andReturn();
+
+        Cookie csrfCookie = result.getResponse()
+                .getCookie(CSRF_COOKIE_NAME);
+
+        assertThat(csrfCookie).isNotNull();
+        assertThat(csrfCookie.getValue()).isNotBlank();
+
+        return csrfCookie;
+    }
+
+    /**
+     * CSRF 검증을 통과하면 재발급 서비스가 정상 처리하는 상황을 준비한다.
+     *
+     * Redis 조회나 JWT 검증 자체는 이번 테스트의 대상이 아니다.
+     */
+    private void givenReissueSuccess() {
+        UserDto userDto = new UserDto(
+                UUID.fromString("11111111-1111-1111-1111-111111111111"),
+                LocalDateTime.of(2026, 11, 3, 10, 0),
+                "user@gmail.com",
+                "테스트 사용자",
+                null,
+                Role.USER,
+                false
+        );
+
+        TokenReissueResult result = new TokenReissueResult(
+                new JwtDto(userDto, NEW_ACCESS_TOKEN),
+                NEW_REFRESH_TOKEN
+        );
+
+        given(authService.reissue(OLD_REFRESH_TOKEN))
+                .willReturn(result);
     }
 
 
