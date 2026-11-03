@@ -9,12 +9,14 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentTag;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.review.repository.ReviewRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -38,6 +40,9 @@ public class ContentServiceTest {
 
     @Mock
     private ReviewRepository reviewRepository;
+
+    @Mock
+    private PlaylistContentRepository playlistContentRepository;
 
     @Mock
     private ContentMapper contentMapper;
@@ -402,6 +407,37 @@ public class ContentServiceTest {
         // when & then
         assertThatThrownBy(() -> contentService.getById(contentId))
                 .isInstanceOf(ContentNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("존재하는 콘텐츠를 삭제한다.")
+    void deleteById_success() {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        Content content = Content.createAdminContent(
+                ContentType.tvSeries,
+                "너말고다른연애",
+                "KBS 드라마 입니다.",
+                "thumbnail-url"
+        );
+
+        given(contentRepository.findById(contentId))
+                .willReturn(Optional.of(content));
+
+        // when
+        contentService.deleteById(contentId);
+
+        // then
+        InOrder inOrder = inOrder(
+                reviewRepository,
+                playlistContentRepository,
+                contentRepository
+        );
+
+        inOrder.verify(reviewRepository).deleteByContentId(contentId);
+        inOrder.verify(playlistContentRepository).deleteByContentId(contentId);
+        inOrder.verify(contentRepository).delete(content);
     }
 
 }
