@@ -6,9 +6,11 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.Content
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.review.repository.ReviewRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -17,10 +19,12 @@ import java.util.*;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ContentService {
 
     private final ContentRepository contentRepository;
     private final ReviewRepository reviewRepository;
+    private final PlaylistContentRepository playlistContentRepository;
     private final ContentMapper contentMapper;
 
     @Transactional
@@ -87,6 +91,24 @@ public class ContentService {
                 averageRating,
                 reviewCount,
                 watcherCount);
+    }
+
+    @Transactional
+    public void deleteById(UUID contentId) {
+        Content content = contentRepository.findById(contentId)
+                .orElseThrow(() -> new ContentNotFoundException(
+                        Map.of("content", contentId)
+                ));
+
+        int deletedReviews = reviewRepository.deleteAllByContentId(contentId);
+        int deletedPlaylistContents = playlistContentRepository.deleteAllByContentId(contentId);
+
+        contentRepository.delete(content);
+
+        log.debug(
+                "콘텐츠 삭제: contentId={}, 삭제된 리뷰={}, 삭제된 플레이리스트 연결={}",
+                contentId, deletedReviews, deletedPlaylistContents
+        );
     }
 
     // 태그 중복 검사

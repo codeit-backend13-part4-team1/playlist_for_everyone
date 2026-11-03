@@ -435,8 +435,8 @@ public class ContentServiceTest {
                 contentRepository
         );
 
-        inOrder.verify(reviewRepository).deleteByContentId(contentId);
-        inOrder.verify(playlistContentRepository).deleteByContentId(contentId);
+        inOrder.verify(reviewRepository).deleteAllByContentId(contentId);
+        inOrder.verify(playlistContentRepository).deleteAllByContentId(contentId);
         inOrder.verify(contentRepository).delete(content);
     }
 
