@@ -6,6 +6,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.JwtAuthenticationFailureHandler;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.JwtAuthenticationSuccessHandler;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.security.JwtLogoutSuccessHandler;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AuthService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.ApiErrorResponse;
 import jakarta.servlet.DispatcherType;
@@ -27,6 +29,7 @@ import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import tools.jackson.databind.ObjectMapper;
 
 import java.nio.charset.StandardCharsets;
@@ -47,6 +50,7 @@ public class SecurityConfig {
                                                    Environment environment,
                                                    RefreshTokenRepository refreshTokenRepository,
                                                    JwtProperties jwtProperties,
+                                                   AuthService authService,
                                                    @Value("${everyone.jwt.refresh-cookie-secure:true}")
                                                    boolean refreshCookieSecure) throws Exception{
 
@@ -93,6 +97,12 @@ public class SecurityConfig {
                         refreshTokenRepository, jwtProperties.refreshTokenValidity(), refreshCookieSecure
                 );
 
+        // Refresh Token 삭제와 쿠키 만료, 로그아웃 응답을 담당한다.
+        // 쿠키 삭제 시에도 로그인 때와 동일한 Secure 설정을 사용한다.
+        JwtLogoutSuccessHandler logoutSuccessHandler =
+                new JwtLogoutSuccessHandler(authService, objectMapper, refreshCookieSecure);
+
+
         JwtAuthenticationFailureHandler failureHandler =
                 new JwtAuthenticationFailureHandler(objectMapper);
         // 개발 환경에서만 Swagger 문서를 인증 없이 허용한다.
@@ -105,8 +115,13 @@ public class SecurityConfig {
                 // CSRF 정책은 추후 별도로 진행 합니다.
                 .csrf(csrf -> csrf.disable())
                 .httpBasic(basic -> basic.disable())
-                // 토큰 무효화를 포함한 로그아웃은 이후 단계에서 구현한다.
-                .logout(logout -> logout.disable())
+                .logout(logout -> logout
+                        .logoutRequestMatcher(
+                                PathPatternRequestMatcher.withDefaults()
+                                        .matcher(HttpMethod.POST, "/api/auth/sign-out")
+                        )
+                        .logoutSuccessHandler(logoutSuccessHandler)
+                )
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
