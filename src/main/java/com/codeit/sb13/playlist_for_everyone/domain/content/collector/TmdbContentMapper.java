@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.content.collector;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.CollectedContentData;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.TmdbMovieResponse;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.TmdbTvResponse;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentSource;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 
@@ -44,6 +45,10 @@ public class TmdbContentMapper {
                 movie.id().toString(),
                 tags
         );
+    }
+
+    public CollectedContentData fromTv(TmdbTvResponse tv) {
+        throw new UnsupportedOperationException("TV 응답 변환 미구현");
     }
 
 }

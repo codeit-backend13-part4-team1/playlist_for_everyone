@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.collector;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.TmdbMovieResponse;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.TmdbTvResponse;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentSource;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import org.junit.jupiter.api.Test;
@@ -44,5 +45,19 @@ class TmdbContentMapperTest {
         var data = new TmdbContentMapper().fromMovie(movie);
 
         assertThat(data.tags()).containsExactlyInAnyOrder("액션", "코미디");
+    }
+
+    @Test
+    void TMDB_TV_응답의_name을_제목으로_사용하고_타입을_TV시리즈로_설정한다() {
+        var tv = new TmdbTvResponse(
+                550L, "테스트 시리즈", "시리즈 설명", "/tv.jpg", List.of()
+        );
+
+        var data = new TmdbContentMapper().fromTv(tv);
+
+        assertThat(data.title()).isEqualTo("테스트 시리즈");
+        assertThat(data.type()).isEqualTo(ContentType.tvSeries);
+        assertThat(data.provider()).isEqualTo(ContentSource.TMDB);
+        assertThat(data.providerItemId()).isEqualTo("550");
     }
 }
