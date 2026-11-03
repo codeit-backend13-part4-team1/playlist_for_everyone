@@ -189,4 +189,34 @@ class SubscriptionRepositoryTest {
     assertThat(subscriptionRepository.findAll()).hasSize(1);
   }
 
+  @Test
+  @DisplayName("플레이리스트의 구독자 ID만 조회하고 다른 플레이리스트의 구독자는 제외한다")
+  void 플레이리스트의_구독자_ID만_조회한다() {
+    // given
+    UUID playlistId = UUID.randomUUID();
+    UUID otherPlaylistId = UUID.randomUUID();
+    UUID subscriberA = UUID.randomUUID();
+    UUID subscriberB = UUID.randomUUID();
+    UUID otherSubscriber = UUID.randomUUID();
+    subscriptionRepository.save(new Subscription(playlistId, subscriberA));
+    subscriptionRepository.save(new Subscription(playlistId, subscriberB));
+    subscriptionRepository.saveAndFlush(new Subscription(otherPlaylistId, otherSubscriber));
+
+    // when
+    List<UUID> result = subscriptionRepository.findSubscriberIds(playlistId);
+
+    // then
+    assertThat(result).containsExactlyInAnyOrder(subscriberA, subscriberB);
+  }
+
+  @Test
+  @DisplayName("구독자가 없으면 빈 목록을 반환한다")
+  void 구독자가_없으면_빈_목록을_반환한다() {
+    // when
+    List<UUID> result = subscriptionRepository.findSubscriberIds(UUID.randomUUID());
+
+    // then
+    assertThat(result).isEmpty();
+  }
+
 }
