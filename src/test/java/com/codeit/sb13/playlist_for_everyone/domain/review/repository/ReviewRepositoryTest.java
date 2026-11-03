@@ -265,4 +265,54 @@ public class ReviewRepositoryTest {
         assertThat(count).isZero();
     }
 
+    @Test
+    @DisplayName("콘텐츠가 삭제되면 해당 콘텐츠의 모든 리뷰가 삭제된다.")
+    void delete_ByContentId() {
+        // given
+        Content content = createAndPersistContent(1);
+        Content otherContent = createAndPersistContent(2);
+
+        User author1 = createAuthor(1);
+        User author2 = createAuthor(2);
+        User author3 = createAuthor(3);
+
+        Review review1 = Review.builder()
+                .content(content)
+                .author(author1)
+                .text("재밌어요")
+                .rating(5.0)
+                .build();
+
+        Review review2 = Review.builder()
+                .content(content)
+                .author(author2)
+                .text("볼만해요")
+                .rating(4.0)
+                .build();
+
+        Review review3 = Review.builder()
+                .content(content)
+                .author(author3)
+                .text("그냥 그래요")
+                .rating(3.0)
+                .build();
+
+        Review review4 = Review.builder()
+                .content(otherContent)
+                .author(author3)
+                .text("그냥 그래요")
+                .rating(3.0)
+                .build();
+
+        reviewRepository.saveAllAndFlush(List.of(review1, review2, review3, review4));
+
+        // when
+        int deleted = reviewRepository.deleteAllByContentId(content.getId());
+
+        // then
+        assertThat(deleted).isEqualTo(3);
+        assertThat(reviewRepository.count()).isEqualTo(1);
+        assertThat(reviewRepository.existsById(review4.getId())).isTrue();
+    }
+
 }
