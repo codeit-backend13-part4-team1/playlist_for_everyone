@@ -9,6 +9,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.http.ContentStreamProvider;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
@@ -18,6 +19,7 @@ import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignReques
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.time.Duration;
 import java.util.Locale;
 import java.util.Map;
@@ -62,32 +64,40 @@ public class S3FileStorage implements FileStorage {
         }
 
         String normalizedExtension = "." + extension.toLowerCase(Locale.ROOT);
-
-        if (!ALLOWED_CONTENT_TYPES.containsKey(normalizedExtension)) {
-            throw new FileInvalidTypeException(
-                    Map.of("filename", originalFilename)
-            );
-        }
+        String contentType = ALLOWED_CONTENT_TYPES.get(normalizedExtension);
 
         // S3 파일 key 생성
-        String key = UUID.randomUUID() + "." + extension.toLowerCase(Locale.ROOT);
+        String key = UUID.randomUUID() + normalizedExtension;
 
         PutObjectRequest request = PutObjectRequest.builder()
                 .bucket(s3Properties.bucket())
                 .key(key)
-                .contentType(ALLOWED_CONTENT_TYPES.get("." + extension.toLowerCase(Locale.ROOT)))
+                .contentType(contentType)
                 .build();
 
-        try (InputStream inputStream = file.getInputStream()) {
+        try {
+            ContentStreamProvider provider = () -> {
+                try {
+                    return file.getInputStream();
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            };
+
             s3Client.putObject(
                     request,
-                    RequestBody.fromInputStream(inputStream, file.getSize())
+                    RequestBody.fromContentProvider(
+                            provider,
+                            file.getSize(),
+                            contentType
+                    )
             );
+
 
             log.info("S3 파일 업로드 완료: {}", key);
             return key;
 
-        } catch (IOException | SdkException e) {
+        } catch (UncheckedIOException | SdkException e) {
             log.error("S3 파일 업로드 실패. key={}", key, e);
 
             throw new FileUploadException(
