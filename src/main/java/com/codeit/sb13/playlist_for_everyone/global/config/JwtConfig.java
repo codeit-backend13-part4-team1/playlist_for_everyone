@@ -47,9 +47,15 @@ public class JwtConfig {
             );
         }
 
+        if (properties.refreshTokenValidity() == null) {
+            throw new IllegalArgumentException("everyone.jwt.refresh-token-validity 설정은 필수입니다.");
+        }
+
         return new JwtTokenProvider(
                 signingKey,
                 properties.accessTokenValidity(),
+                // 외부 설정에서 읽은 Refresh Token 유효기간을 전달한다.
+                properties.refreshTokenValidity(),
                 // 운영에서는 실제 현재 시각을 사용한다.
                 Clock.systemUTC()
         );

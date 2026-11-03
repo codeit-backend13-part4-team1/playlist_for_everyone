@@ -1,13 +1,19 @@
 package com.codeit.sb13.playlist_for_everyone.global.config;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtAuthenticationFilter;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtProperties;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.JwtAuthenticationFailureHandler;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.JwtAuthenticationSuccessHandler;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.security.JwtLogoutSuccessHandler;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AuthService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.ApiErrorResponse;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
@@ -23,6 +29,7 @@ import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import tools.jackson.databind.ObjectMapper;
 
 import java.nio.charset.StandardCharsets;
@@ -31,7 +38,7 @@ import java.util.Map;
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
-
+@EnableConfigurationProperties(JwtProperties.class)
 public class SecurityConfig {
 
     @Bean
@@ -40,7 +47,12 @@ public class SecurityConfig {
                                                    UserService userService,
                                                    AuthenticationManager authenticationManager,
                                                    ObjectMapper objectMapper,
-                                                   Environment environment) throws Exception{
+                                                   Environment environment,
+                                                   RefreshTokenRepository refreshTokenRepository,
+                                                   JwtProperties jwtProperties,
+                                                   AuthService authService,
+                                                   @Value("${everyone.jwt.refresh-cookie-secure:true}")
+                                                   boolean refreshCookieSecure) throws Exception{
 
         // 인증 정보가 없거나 JWT 검증에 실패한 경우의 응답이다.
         // 로그인 시 이메일·비밀번호 검증 실패는 기존 로그인 실패 핸들러가 담당한다.
@@ -78,8 +90,18 @@ public class SecurityConfig {
         JwtAuthenticationFilter jwtAuthenticationFilter =
                 new JwtAuthenticationFilter(jwtTokenProvider, userService, authenticationEntryPoint);
 
+        // JWT 발급, Redis 저장 TTL, 쿠키 보관 기간에 같은 유효기간을 사용한다.
+        // Secure 여부는 실행 환경의 설정으로 결정한다.
         JwtAuthenticationSuccessHandler successHandler =
-                new JwtAuthenticationSuccessHandler(jwtTokenProvider, userService, objectMapper);
+                new JwtAuthenticationSuccessHandler(jwtTokenProvider, userService, objectMapper,
+                        refreshTokenRepository, jwtProperties.refreshTokenValidity(), refreshCookieSecure
+                );
+
+        // Refresh Token 삭제와 쿠키 만료, 로그아웃 응답을 담당한다.
+        // 쿠키 삭제 시에도 로그인 때와 동일한 Secure 설정을 사용한다.
+        JwtLogoutSuccessHandler logoutSuccessHandler =
+                new JwtLogoutSuccessHandler(authService, objectMapper, refreshCookieSecure);
+
 
         JwtAuthenticationFailureHandler failureHandler =
                 new JwtAuthenticationFailureHandler(objectMapper);
@@ -93,8 +115,13 @@ public class SecurityConfig {
                 // CSRF 정책은 추후 별도로 진행 합니다.
                 .csrf(csrf -> csrf.disable())
                 .httpBasic(basic -> basic.disable())
-                // 토큰 무효화를 포함한 로그아웃은 이후 단계에서 구현한다.
-                .logout(logout -> logout.disable())
+                .logout(logout -> logout
+                        .logoutRequestMatcher(
+                                PathPatternRequestMatcher.withDefaults()
+                                        .matcher(HttpMethod.POST, "/api/auth/sign-out")
+                        )
+                        .logoutSuccessHandler(logoutSuccessHandler)
+                )
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
@@ -116,11 +143,13 @@ public class SecurityConfig {
                         ).permitAll();
                     }
                     auth
-                            // 회원가입과 로그인은 인증 없이 접근할 수 있다.
+                            // 회원가입·로그인은 Access Token 없이 접근한다.
+                            // 재발급은 서비스에서 Refresh Token을 검증하므로 Access Token을 요구하지 않는다.
                             .requestMatchers(
                                     HttpMethod.POST,
                                     "/api/users",
-                                    "/api/auth/sign-in"
+                                    "/api/auth/sign-in",
+                                    "/api/auth/refresh"
                             ).permitAll()
 
                             // 사용자 목록 조회는 관리자 권한이 필요하다.

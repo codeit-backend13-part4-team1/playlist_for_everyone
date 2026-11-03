@@ -1,6 +1,8 @@
 package com.codeit.sb13.playlist_for_everyone.domain.auth.security;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AuthService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.controller.UserController;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
@@ -15,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -25,6 +28,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -37,7 +41,16 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(UserController.class)
+@WebMvcTest(
+        controllers = UserController.class,
+        properties = {
+                // 기본값이 7일이 아니라 이 값을 성공 핸들러에 전달하는지 검증한다.
+                "everyone.jwt.refresh-token-validity=3d",
+
+                // 실제 SecurityConfig에서 쿠키 설정을 읽어 전달해야 한다.
+                "everyone.jwt.refresh-cookie-secure=true"
+        }
+)
 @AutoConfigureMockMvc(addFilters = true)
 @Import({
         SecurityConfig.class,
@@ -51,6 +64,9 @@ class LoginSecurityTest {
 
     private static final UUID USER_ID =
             UUID.fromString("11111111-1111-1111-1111-111111111111");
+    private static final String REFRESH_TOKEN = "issued-refresh-token";
+
+    private static final Duration REFRESH_TOKEN_EXPIRATION = Duration.ofDays(3);
 
     private static final String EMAIL = "test@gmail.com";
     private static final String PASSWORD = "test=password";
@@ -67,6 +83,11 @@ class LoginSecurityTest {
     @MockitoBean
     private CustomUserDetailsService userDetailsService;
 
+    // 실제 Redis 연결은 저장소 테스트에서 검증한다.
+    // 여기서는 로그인 성공 후 저장 요청이 전달되는지 확인 한다.
+    @MockitoBean
+    private RefreshTokenRepository refreshTokenRepository;
+
 
     @MockitoBean
     private UserService userService;
@@ -75,6 +96,10 @@ class LoginSecurityTest {
     private JwtTokenProvider jwtTokenProvider;
     @Autowired
     private PasswordEncoder passwordEncoder;
+
+    // SecurityConfig에서 로그아웃 핸들러를 생성할 때 필요한 의존성이다.
+    @MockitoBean
+    private AuthService authService;
 
     @Test
     @DisplayName("올바른 이메일과 비밀번호로 로그인하면 토큰과 사용자 정보를 반환한다")
@@ -92,10 +117,12 @@ class LoginSecurityTest {
 
         given(userService.getById(USER_ID)).willReturn(user);
         given(jwtTokenProvider.createAccessToken(USER_ID)).willReturn(ACCESS_TOKEN);
+        given(jwtTokenProvider.createRefreshToken(USER_ID)).willReturn(REFRESH_TOKEN);
 
         MvcResult result = mockMvc.perform(signIn(PASSWORD))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").value(ACCESS_TOKEN))
+                .andExpect(jsonPath("$.refreshToken").doesNotExist())
                 .andExpect(jsonPath("$.userDto.id").value(USER_ID.toString()))
                 .andExpect(jsonPath("$.userDto.email").value(EMAIL))
                 .andExpect(jsonPath("$.userDto.name").value("테스트 사용자"))
@@ -105,6 +132,38 @@ class LoginSecurityTest {
         // 성공 응답뿐 아니라 실제 인증 경로가 실행됐는지도 확인한다.
         verify(userDetailsService).loadUserByUsername(EMAIL);
         verify(jwtTokenProvider).createAccessToken(USER_ID);
+
+        // SecurityConfig가 Refresh Token을 지원하는 성공 핸들러를
+        // 실제 로그인 경로에 연결했는지 확인한다.
+        verify(jwtTokenProvider).createRefreshToken(USER_ID);
+
+        // 테스트 설정의 3일이 저장소 TTL로 전달되어야 한다.
+        verify(refreshTokenRepository).save(
+                USER_ID,
+                REFRESH_TOKEN,
+                REFRESH_TOKEN_EXPIRATION
+        );
+
+        // 다른 쿠키가 추가되더라도 Refresh Token 쿠키만 선택한다.
+        var refreshCookies = result.getResponse()
+                .getHeaders(HttpHeaders.SET_COOKIE)
+                .stream()
+                .filter(value -> value.startsWith("REFRESH_TOKEN="))
+                .toList();
+
+        assertThat(refreshCookies).hasSize(1);
+
+        assertThat(refreshCookies.get(0))
+                .startsWith("REFRESH_TOKEN=" + REFRESH_TOKEN + ";")
+                .contains("HttpOnly")
+                .contains("; Secure")
+                .contains("SameSite=Lax")
+                .contains("Max-Age=" + REFRESH_TOKEN_EXPIRATION.toSeconds())
+                .contains("Path=/api/auth")
+                .doesNotContain("Domain=");
+
+        assertThat(result.getResponse().getContentAsString())
+                .doesNotContain(REFRESH_TOKEN);
 
         assertThat(result.getResponse().getRedirectedUrl()).isNull();
 
@@ -181,10 +240,12 @@ class LoginSecurityTest {
         verify(userDetailsService).loadUserByUsername(EMAIL);
 
         // 인증 실패 후 성공 핸들러의 사용자 조회·토큰 발급은 실행되지 않는다.
-        verifyNoInteractions(userService, jwtTokenProvider);
+        verifyNoInteractions(userService, jwtTokenProvider, refreshTokenRepository);
 
         assertThat(result.getResponse().getRedirectedUrl()).isNull();
         assertThat(result.getRequest().getSession(false)).isNull();
+        assertThat(result.getResponse().getHeaders(HttpHeaders.SET_COOKIE))
+                .noneMatch(value -> value.startsWith("REFRESH_TOKEN="));
         assertThat(SecurityContextHolder.getContext().getAuthentication())
                 .isNull();
 

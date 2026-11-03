@@ -39,6 +39,9 @@ class JwtTokenProviderTest {
     private static final Duration ACCESS_TOKEN_VALIDITY =
             Duration.ofMinutes(15);
 
+    private static final Duration REFRESH_TOKEN_VALIDITY =
+            Duration.ofDays(7);
+
     private SecretKey signingKey;
     private JwtTokenProvider jwtTokenProvider;
 
@@ -55,6 +58,7 @@ class JwtTokenProviderTest {
         jwtTokenProvider = new JwtTokenProvider(
                 signingKey,
                 ACCESS_TOKEN_VALIDITY,
+                REFRESH_TOKEN_VALIDITY,
                 clock
         );
     }
