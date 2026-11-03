@@ -68,6 +68,32 @@ public class Content extends UpdatedAtEntity {
         return content;
     }
 
+    /** 외부 API에서 수집한 콘텐츠 생성 */
+    public static Content createCollectedContent(
+            ContentType type,
+            String title,
+            String description,
+            String thumbnailUrl,
+            ContentSource provider,
+            String providerItemId
+    ) {
+        if (provider == null || provider == ContentSource.ADMIN) {
+            throw new IllegalArgumentException("수집한 콘텐츠에는 외부 API 출처가 필요합니다.");
+        }
+        if (providerItemId == null || providerItemId.isBlank()) {
+            throw new IllegalArgumentException("수집한 콘텐츠에는 외부 ID가 필요합니다.");
+        }
+
+        Content content = new Content();
+        content.type = type;
+        content.title = title;
+        content.description = description;
+        content.thumbnailUrl = thumbnailUrl;
+        content.provider = provider;
+        content.providerItemId = providerItemId;
+        return content;
+    }
+
     public void update(
             String title,
             String description,

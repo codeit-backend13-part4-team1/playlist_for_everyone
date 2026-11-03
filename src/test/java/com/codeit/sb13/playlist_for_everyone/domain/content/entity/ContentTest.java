@@ -2,10 +2,14 @@ package com.codeit.sb13.playlist_for_everyone.domain.content.entity;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
 @DisplayName("Content 엔터티")
 public class ContentTest {
@@ -28,6 +32,43 @@ public class ContentTest {
         assertThat(content.getThumbnailUrl()).isEqualTo("thumbnail-url");
         assertThat(content.getProvider()).isEqualTo(ContentSource.ADMIN);
         assertThat(content.getProviderItemId()).isNull();
+    }
+
+    @Test
+    @DisplayName("수집한 영화에는 TMDB 출처와 외부 ID가 설정된다.")
+    void createCollectedContent_success() {
+        Content content = Content.createCollectedContent(
+                ContentType.movie,
+                "테스트 영화",
+                "영화 설명",
+                "https://example.com/poster.jpg",
+                ContentSource.TMDB,
+                "550"
+        );
+
+        assertThat(content.getType()).isEqualTo(ContentType.movie);
+        assertThat(content.getProvider()).isEqualTo(ContentSource.TMDB);
+        assertThat(content.getProviderItemId()).isEqualTo("550");
+    }
+
+    @Test
+    @DisplayName("관리자 출처로는 수집 콘텐츠를 생성할 수 없다.")
+    void createCollectedContent_rejectsAdmin() {
+        assertThatThrownBy(() -> Content.createCollectedContent(
+                ContentType.movie, "테스트 영화", "영화 설명", "thumbnail-url",
+                ContentSource.ADMIN, "550"
+        )).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"   "})
+    @DisplayName("외부 ID가 없으면 수집 콘텐츠를 생성할 수 없다.")
+    void createCollectedContent_rejectsMissingExternalId(String externalId) {
+        assertThatThrownBy(() -> Content.createCollectedContent(
+                ContentType.movie, "테스트 영화", "영화 설명", "thumbnail-url",
+                ContentSource.TMDB, externalId
+        )).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
