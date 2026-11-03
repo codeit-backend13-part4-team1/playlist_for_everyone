@@ -21,6 +21,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -791,6 +792,72 @@ public class FollowSecurityIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(content().string("0"));
+    }
+
+    @Test
+    @DisplayName("유효한 JWT로 내 팔로우 관계 조회시 대상 ID를 누락하면 400과 공통 오류 응답을 반환한다.")
+    void getFollowedByMe_returnsBadRequestWhenFolloweeIdMissing() throws Exception {
+        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+
+        mockMvc.perform(get("/api/follows/followed-by-me")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.exceptionName").value(MethodArgumentNotValidException.class.getSimpleName()))
+                .andExpect(jsonPath("$.message").value("요청 데이터가 올바르지 않습니다."))
+                .andExpect(jsonPath("$.details").isMap())
+                .andExpect(jsonPath("$.details.followeeId").isArray())
+                .andExpect(jsonPath("$.details.followeeId").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("유효한 JWT로 내 팔로우 관계 조회시 대상 ID의 UUID 형식이 잘못되면 400과 공통 오류 응답을 반환한다.")
+    void getFollowedByMe_returnsBadRequestWhenFolloweeIdInvalid() throws Exception {
+        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+
+        mockMvc.perform(get("/api/follows/followed-by-me")
+                .param("followeeId", "not-a-uuid")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.exceptionName").value(MethodArgumentNotValidException.class.getSimpleName()))
+                .andExpect(jsonPath("$.message").value("요청 데이터가 올바르지 않습니다."))
+                .andExpect(jsonPath("$.details").isMap())
+                .andExpect(jsonPath("$.details.followeeId").isArray())
+                .andExpect(jsonPath("$.details.followeeId").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("유효한 JWT로 팔로워 수 조회 시 대상 ID를 누락하면 400과 공통 오류 응답을 반환한다.")
+    void getFollowCount_returnsBadRequestWhenFolloweeIdMissing() throws Exception {
+        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+
+        mockMvc.perform(get("/api/follows/count")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.exceptionName").value(MethodArgumentNotValidException.class.getSimpleName()))
+                .andExpect(jsonPath("$.message").value("요청 데이터가 올바르지 않습니다."))
+                .andExpect(jsonPath("$.details").isMap())
+                .andExpect(jsonPath("$.details.followeeId").isArray())
+                .andExpect(jsonPath("$.details.followeeId").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("유효한 JWT로 팔로워 수 조회 시 대상 ID의 UUID 형식이 잘못되면 400과 공통 오류 응답을 반환한다.")
+    void getFollowCount_returnsBadRequestWhenFolloweeIdInvalid() throws Exception {
+        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+
+        mockMvc.perform(get("/api/follows/count")
+                .param("followeeId", "not-a-uuid")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.exceptionName").value(MethodArgumentNotValidException.class.getSimpleName()))
+                .andExpect(jsonPath("$.message").value("요청 데이터가 올바르지 않습니다."))
+                .andExpect(jsonPath("$.details").isMap())
+                .andExpect(jsonPath("$.details.followeeId").isArray())
+                .andExpect(jsonPath("$.details.followeeId").isNotEmpty());
     }
 
     private void insertUser(UUID userId, String name){
