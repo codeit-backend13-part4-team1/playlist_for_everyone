@@ -801,6 +801,7 @@ public class PlaylistServiceImplTest {
 
     verifyNoInteractions(subscriptionRepository);
     verify(playlistRepository, never()).increaseSubscriberCount(any());
+    verifyNoInteractions(eventPublisher);
   }
 
   @Test
@@ -821,6 +822,7 @@ public class PlaylistServiceImplTest {
 
     verifyNoInteractions(subscriptionRepository);
     verify(playlistRepository, never()).increaseSubscriberCount(any());
+    verifyNoInteractions(eventPublisher);
   }
 
   @Test
@@ -844,6 +846,7 @@ public class PlaylistServiceImplTest {
 
     verify(subscriptionRepository, never()).saveAndFlush(any(Subscription.class));
     verify(playlistRepository, never()).increaseSubscriberCount(any());
+    verifyNoInteractions(eventPublisher);
   }
 
   @Test
@@ -867,6 +870,7 @@ public class PlaylistServiceImplTest {
         .withCauseInstanceOf(DataIntegrityViolationException.class);
 
     verify(playlistRepository, never()).increaseSubscriberCount(any());
+    verifyNoInteractions(eventPublisher);
   }
 
   @Test
@@ -890,6 +894,7 @@ public class PlaylistServiceImplTest {
         .isSameAs(foreignKeyViolation);
 
     verify(playlistRepository, never()).increaseSubscriberCount(any());
+    verifyNoInteractions(eventPublisher);
   }
 
   @Test
