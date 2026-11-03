@@ -5,13 +5,16 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.service.WatcherRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.service.lock.SpreadLock;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.DestinationMatcher;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.SessionMatcher;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.ConnectionRegistry;
 import io.jsonwebtoken.JwtException;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
@@ -22,25 +25,39 @@ import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
 
+/**
+ * 채널 인터셉터 모듈 테스트.
+ * 인증 정보를 메세지 안에 잘 담는지,
+ * 하트비트를 잘 받는지
+ * 직접 클래스를 올려서 테스트.
+ */
+
+@Slf4j
 @ExtendWith(MockitoExtension.class)
 public class WebSocketInterceptorTest {
 
-    @Mock
-    WatcherRegistry watcherRegistry;
     @Mock
     MessageChannel messageChannel;
     @Mock
     JwtTokenProvider tokenProvider;
     @Mock
     UserService userService;
-    @Spy
+    @Mock
     HeartBeatDelay delay;
+    @Mock
+    ConnectionRegistry connectionRegistry;
+    @Mock
+    SessionMatcher sessionMatcher;
+    @Mock
+    DestinationMatcher destinationMatcher;
+
     @InjectMocks
     private WebSocketInterceptor interceptor;
 
@@ -97,28 +114,45 @@ public class WebSocketInterceptorTest {
     }
 
 
+    private Message<byte[]> getMessage(
+            StompCommand command,
+            String sessionId,
+            String authToken
+    ){
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(command);
+        accessor.setSessionId(sessionId);
+        accessor.setSubscriptionId("test-sub");
+        if (authToken != null) {
+        accessor.setNativeHeader("Authorization", authToken);
+        }
+        accessor.setLeaveMutable(true);
+        return MessageBuilder.createMessage(
+                new byte[2],
+                accessor.getMessageHeaders()
+        );
+    }
+
+    @BeforeEach
+    public void setup() {
+        // 테스트를 위한 딜레이 객체 교체
+        ReflectionTestUtils.setField(
+                interceptor,
+                "delay",
+                new HeartBeatDelay(2000L,new SpreadLock())); // 딜레이 텀
+    }
+
+
     @Nested
     @DisplayName("Connection 동작 테스트")
     class Connection {
-
-
-
         @Test
         @DisplayName("유효한 토큰이면 연결. 유저 정보가 메세지에 담겨나옴. 세션이 등록된다.")
         public void wrightTokenConnectionTest() throws Exception {
-            StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.CONNECT);
-            accessor.setNativeHeader("Authorization", "Bearer testToken");
-            accessor.setLeaveMutable(true);
-
-            Message<byte[]> message = MessageBuilder.createMessage(
-                    new byte[2],
-                    accessor.getMessageHeaders()
-            );
+            Message<?> message = getMessage(StompCommand.CONNECT, "testSession", "Bearer " + "testToken");
 
             tokenSimulateSetup("testToken");
 
             Message<?> result = interceptor.preSend(message,messageChannel);
-
 
             assertThat(result).isNotNull();
 
@@ -130,14 +164,7 @@ public class WebSocketInterceptorTest {
         @Test
         @DisplayName("Bearer 형식이 아닐경우, 인증 실패")
         public void wrongTokenConnectionTest() throws Exception {
-            StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.CONNECT);
-            accessor.setNativeHeader("Authorization", "testToken");
-            accessor.setLeaveMutable(true);
-
-            Message<byte[]> message = MessageBuilder.createMessage(
-                    new byte[2],
-                    accessor.getMessageHeaders()
-            );
+            Message<?> message = getMessage(StompCommand.CONNECT, "testSession", "testToken");
 
             assertThatThrownBy(
                     () -> interceptor.preSend(message,messageChannel)
@@ -147,12 +174,7 @@ public class WebSocketInterceptorTest {
         @Test
         @DisplayName("토큰이 없다면 연결 실패")
         public void noTokenConnectionTest(){
-            Message<byte[]> message = createMessage(
-                    StompCommand.CONNECT,
-                    null,
-                    "/ws",
-                    new byte[2]
-            );
+            Message<?> message = getMessage(StompCommand.CONNECT, "testSession", null);
 
             assertThatThrownBy(
                     () -> interceptor.preSend(message,messageChannel)
@@ -168,15 +190,14 @@ public class WebSocketInterceptorTest {
         private StompHeaderAccessor subscriptionHeader(String destination){
             StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
             accessor.setSessionId("test-session-1");
-            accessor.setSubscriptionId("test-subscription-1");
+            accessor.setSubscriptionId("test-subscribe-1");
             accessor.setDestination(destination);
             accessor.setLeaveMutable(true);
             return accessor;
         }
 
         @Test
-        @Disabled   // 로직 변경으로, 인터셉터 대신 이벤트에 의해 런치되는 로직.
-        @DisplayName("컨텐츠 동시 시청 경로일 시 컨텐츠 아이디를 저장한다.")
+        @DisplayName("connectionRegistry 에 현재 세션 정보를 저장한다.")
         public void registerIdTest(){
             String mockupContentId = UUID.randomUUID().toString();
             String destination = "/sub/contents/" + mockupContentId + "/watch";
@@ -187,56 +208,151 @@ public class WebSocketInterceptorTest {
 
             interceptor.preSend(message,messageChannel);
 
-            verify(watcherRegistry,times(1)).register(any(String.class),any(String.class),eq(mockupContentId));
+            // 세션 정보 저장 매서드가 호출됨.
+            verify(connectionRegistry,times(1))
+                    .register(any(SessionData.class));
+
+            List<SessionData> sessiondDataList = mockingDetails(connectionRegistry)
+                    .getInvocations()
+                    .stream()
+                    .filter(inv -> inv.getMethod().getName().equals("register"))
+                    .map(inv -> (SessionData) inv.getArguments()[0])
+                    .toList();
+
+            assertThat(sessiondDataList).hasSize(1);
+            assertThat(sessiondDataList.get(0).session()).isEqualTo("test-session-1");
+            assertThat(sessiondDataList.get(0).subscription()).isEqualTo("test-subscribe-1");
+            assertThat(sessiondDataList.get(0).destination()).isEqualTo(destination);
+
         }
-
-        @Test
-        @DisplayName("컨텐츠 동시 시청 경로가 아닐 시 컨텐츠 아이디를 저장하지 않는다.")
-        public void notRegisterIdTest(){
-            String mockupContentId = UUID.randomUUID().toString();
-            String destination = "/sub/contents/" + mockupContentId + "/chat";
-            Message<byte[]> message = MessageBuilder.createMessage(
-                    new byte[2],
-                    subscriptionHeader(destination).getMessageHeaders()
-            );
-            interceptor.preSend(message,messageChannel);
-
-
-            verify(watcherRegistry,never()).register(any(String.class),any(String.class),eq(mockupContentId));
-        }
-
-        @Test
-        @DisplayName("경로가 맞다 하더라도, 아이디 형식이 지정된 형식(UUID) 이 아니라면 저장하지 않는다.")
-        public void notRegisterIdTest2(){
-            String mockupContentId = "fhjenof";
-            String destination = "/sub/contents/" + mockupContentId + "/watch";
-            Message<byte[]> message = MessageBuilder.createMessage(
-                    new byte[2],
-                    subscriptionHeader(destination).getMessageHeaders()
-            );
-
-            interceptor.preSend(message,messageChannel);
-
-
-            verify(watcherRegistry,never()).register(any(String.class),any(String.class),eq(mockupContentId));
-        }
-
     }
 
-    @Test
+    @Nested
+    @DisplayName("구독 취소 테스트")
+    class unsubscribeTest {
+
+        @Test
+        @DisplayName("구독 취소 시, connectionRegistry 에서 정보를 취소한다.")
+        void unsubscribeTest1(){
+            Message<?> message = getMessage(StompCommand.UNSUBSCRIBE, "testSession", null);
+
+            interceptor.preSend(message,messageChannel);
+
+            verify(connectionRegistry,times(1)).unregister(any(SessionData.class));
+            List<SessionData> sessiondDataList = mockingDetails(connectionRegistry)
+                    .getInvocations()
+                    .stream()
+                    .filter(inv -> inv.getMethod().getName().equals("unregister"))
+                    .map(inv -> (SessionData) inv.getArguments()[0])
+                    .toList();
+
+            assertThat(sessiondDataList).hasSize(1);
+            assertThat(sessiondDataList.get(0).session()).isEqualTo("testSession");
+            assertThat(sessiondDataList.get(0).subscription()).isEqualTo("test-sub");
+        }
+    }
+
+    @Nested
+    @DisplayName("구독 삭제 테스트")
+    class disconnectTest {
+
+        @Test
+        @DisplayName("연결 끊김시, connectionRegistry 에서 정보를 취소한다.")
+        void disconnectTest1(){
+            Message<?> message = getMessage(StompCommand.DISCONNECT, "testSession", null);
+
+            interceptor.preSend(message,messageChannel);
+
+            verify(connectionRegistry,times(1)).unregister(any(SessionData.class));
+            List<SessionData> sessiondDataList = mockingDetails(connectionRegistry)
+                    .getInvocations()
+                    .stream()
+                    .filter(inv -> inv.getMethod().getName().equals("unregister"))
+                    .map(inv -> (SessionData) inv.getArguments()[0])
+                    .toList();
+
+            assertThat(sessiondDataList).hasSize(1);
+            assertThat(sessiondDataList.get(0).session()).isEqualTo("testSession");
+        }
+    }
+
+    @Nested
     @DisplayName("하트비트 테스트")
-    void heartbeatTest(){
-        String mockupSessionId = UUID.randomUUID().toString();
+    class heartbeatTest {
 
-        StompHeaderAccessor headerAccessor = StompHeaderAccessor.createForHeartbeat();
-        headerAccessor.setSessionId(mockupSessionId);
+        Message<byte[]> getHeartbeat(){
+            String mockupSessionId = UUID.randomUUID().toString();
 
-        Message<byte[]> message = MessageBuilder
-                .createMessage(new byte[]{'\n'},headerAccessor.getMessageHeaders());
+            StompHeaderAccessor headerAccessor = StompHeaderAccessor.createForHeartbeat();
+            headerAccessor.setSessionId(mockupSessionId);
 
-        interceptor.preSend(message,messageChannel);
+            return MessageBuilder
+                    .createMessage(new byte[]{'\n'},headerAccessor.getMessageHeaders());
 
-        verify(watcherRegistry,times(1)).refresh(eq(mockupSessionId));
+        }
+
+        @Test
+        @DisplayName("하트비트 테스트 - 하트비트 매쳐를 정상적으로 작동 시키는지 테스트")
+        void heartbeatTest1(){
+            Message<byte[]> message = getHeartbeat();
+
+            interceptor.preSend(message,messageChannel);
+
+            // 하트비트 매쳐 작동 확인
+            verify(sessionMatcher,times(1)).run(any(SessionInfo.class));
+        }
+
+        @Test
+        @DisplayName("하트비트 테스트 - 딜레이 타입이 지나면, 정상적으로 다시 실행된다.")
+        void heartbeatTest4(){
+            Message<byte[]> message = getHeartbeat();
+            log.info("하트비트 테스트 4 - 시작");
+            interceptor.preSend(message,messageChannel);
+
+            try{
+                Thread.sleep(2000);
+            } catch (InterruptedException e) {
+                log.info("하트비트 테스트 4 - 에러", e);
+            }
+
+            interceptor.preSend(message,messageChannel);
+            log.info("하트비트 테스트 4 - 끝");
+            // 하트비트 매쳐 작동 확인
+            verify(sessionMatcher,times(2)).run(any(SessionInfo.class));
+        }
+
+        @Test
+        @DisplayName("하트비트 테스트 - 메세지가 동시에 여러개 도착해도, 하트비트 로직은 한번만 실행된다.")
+        void heartbeatTest2(){
+            Message<byte[]> message = getHeartbeat();
+            for(int i=0;i<10;i++){
+                log.info("하트비트 큐");
+                interceptor.preSend(message,messageChannel);
+            }
+
+            // 하트비트 매쳐 작동 확인
+            verify(sessionMatcher,times(1)).run(any(SessionInfo.class));
+        }
+
+        @Test
+        @DisplayName("하트비트 테스트 - 서로 다른 세션은 각각의 딜레이를 가진다.")
+        void heartbeatTest3(){
+            Message<byte[]> message = getHeartbeat();
+            Message<byte[]> message2 = getHeartbeat();
+
+            for(int i=0;i<10;i++){
+                log.info("하트비트 큐");
+                if(i < 7)
+                    interceptor.preSend(message,messageChannel);
+                else
+                    interceptor.preSend(message2,messageChannel);
+            }
+
+            // 하트비트 매쳐 작동 확인
+            verify(sessionMatcher,times(2)).run(any(SessionInfo.class));
+        }
+
     }
+
 
 }

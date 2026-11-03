@@ -1,4 +1,4 @@
-package com.codeit.sb13.playlist_for_everyone.global.service;
+package com.codeit.sb13.playlist_for_everyone.global.service.redis;
 
 /**
  * 데이터를 레디스 구독으로 전달하기 위한 객체.

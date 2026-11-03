@@ -1,12 +1,14 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket;
 
+import com.codeit.sb13.playlist_for_everyone.global.service.lock.SpreadLock;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.IntStream;
 
 /**
  * 로직이 실핸되는 구간에 딜레이를 걸어서 반복요청에 의한 연산 부하를 방지하기 위한 클래스.
@@ -14,40 +16,21 @@ import java.util.stream.IntStream;
  */
 
 @Slf4j
+@Component
 public class HeartBeatDelay {
     private final ConcurrentHashMap<Object, Instant> keys = new ConcurrentHashMap<>();
-    private final Object[] locks = IntStream.range(0, 1024).mapToObj(i -> new Object()).toArray();
     private final AtomicBoolean autoRefresh = new AtomicBoolean(false);
+    private final SpreadLock locks;
 
     // 기본 싱글톤이라 문제는 없겠지만, 여러 스레드에서 동시에 접근할 수 있으므로 volatile 키워드를 추가한다.
-    volatile private Long interval;
+    private final Long interval;
 
-
-    static class Inner {
-        static public final HeartBeatDelay outer = new HeartBeatDelay(0L);
-    }
-
-    private HeartBeatDelay(Long interval) {
+    public HeartBeatDelay(
+            @Value("${heartBeatDelay.interval:0}") Long interval,
+            SpreadLock locks
+    ) {
         this.interval = interval;
-    }
-
-    public static HeartBeatDelay get(Long interval){
-        HeartBeatDelay instance = Inner.outer;
-        instance.setInterval(interval);
-        if (!instance.autoRefresh.get() && (instance.interval > 0))
-            instance.chronRefresh();
-        return instance;
-    }
-
-    // 사용되는 모든 딜레이 설정이 바뀌는 문제가 있으나, 지금은 무시
-    protected void setInterval(Long interval){
-        if (interval != null && interval > 0)
-            this.interval = interval;
-    }
-    private Object lock(Object key){
-        int hash = key.hashCode();
-        int spread = hash ^ (hash >>> 16);
-        return locks[spread & (locks.length - 1)];
+        this.locks = locks;
     }
 
     private void update(Object key){
@@ -124,7 +107,7 @@ public class HeartBeatDelay {
         // 인터벌 설정이 없다면, 딜레이 안 걸고, 저장 안 한다.
         if (interval == null || interval <= 0) return true;
 
-        synchronized (lock(key)){
+        synchronized (locks.lock(key)){
             boolean res = checkInterval(key);
             if (res) update(key);
             return res;

@@ -4,11 +4,12 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
-import com.codeit.sb13.playlist_for_everyone.global.service.RedisMessageDto;
-import com.codeit.sb13.playlist_for_everyone.global.service.RedisTopicRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageDto;
+import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisTopicRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.ConnectionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionData;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.service.WatcherRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSessionMessageListener;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.WatcherRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.*;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
@@ -29,8 +30,10 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
 
     private final RedisTemplate<String, Object> redisTemplate;
 
+    private final WatchingSessionMessageListener watchingSessionMessageListener;
+
     private User getUserFromConnection(SessionData connection) {
-        SecurityUser principal = (SecurityUser) connection.principal();
+        SecurityUser principal = connection.user();
         return userService.getById(principal.getUserId());
     }
 
@@ -60,7 +63,8 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
         redisTopicRegistry.register(
                 redisMessageViewTopic(content),
                 connection.session(),
-                connection.subscription()
+                connection.subscription(),
+                watchingSessionMessageListener
         );
 
         WatchContent watchContent = new WatchContent(
@@ -183,7 +187,8 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
         redisTopicRegistry.register(
                 redisMessageChatTopic(content),
                 connection.session(),
-                connection.subscription()
+                connection.subscription(),
+                watchingSessionMessageListener
         );
     }
 

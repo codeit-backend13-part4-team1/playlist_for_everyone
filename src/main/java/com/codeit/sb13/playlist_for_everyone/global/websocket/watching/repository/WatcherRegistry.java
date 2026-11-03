@@ -1,4 +1,4 @@
-package com.codeit.sb13.playlist_for_everyone.global.websocket.service;
+package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

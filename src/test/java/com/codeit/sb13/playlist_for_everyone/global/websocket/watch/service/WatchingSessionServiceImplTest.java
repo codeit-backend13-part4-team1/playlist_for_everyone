@@ -6,11 +6,12 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentServi
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
-import com.codeit.sb13.playlist_for_everyone.global.service.RedisMessageDto;
-import com.codeit.sb13.playlist_for_everyone.global.service.RedisTopicRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageDto;
+import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisTopicRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.ConnectionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionData;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.service.WatcherRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSessionMessageListener;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.WatcherRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -54,6 +55,9 @@ public class WatchingSessionServiceImplTest {
     @Mock
     RedisTemplate<String, Object> redisTemplate;
 
+    @Mock
+    WatchingSessionMessageListener watchingSessionMessageListener;
+
     WatchingSessionServiceImpl watchingSessionServiceImpl;
 
     @BeforeEach
@@ -65,7 +69,8 @@ public class WatchingSessionServiceImplTest {
                         redisTopicRegistry,
                         userService,
                         contentService,
-                        redisTemplate
+                        redisTemplate,
+                        watchingSessionMessageListener
                 );
     }
 
@@ -90,7 +95,8 @@ public class WatchingSessionServiceImplTest {
                 .register(
                         eq(watchTopic(contentId)),
                         eq(sessionId),
-                        eq(subscriptionId)
+                        eq(subscriptionId),
+                        eq(watchingSessionMessageListener)
                 );
     }
 
@@ -99,7 +105,8 @@ public class WatchingSessionServiceImplTest {
                 .register(
                         eq(chatTopic(contentId)),
                         eq(sessionId),
-                        eq(subscriptionId)
+                        eq(subscriptionId),
+                        eq(watchingSessionMessageListener)
                 );
     }
 

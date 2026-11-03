@@ -37,7 +37,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class WebSocketInterceptor implements ChannelInterceptor {
 
-    private final HeartBeatDelay delay = HeartBeatDelay.get(10000L);    // 설정에 하트비트값 추가하면 해당값 입력.
+    private final HeartBeatDelay delay;    // 설정에 하트비트값 추가하면 해당값 입력.
     private final SessionMatcher heartBeatMatcher;
 
     private final JwtTokenProvider jwtTokenProvider;

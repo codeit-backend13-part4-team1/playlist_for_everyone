@@ -1,42 +1,45 @@
-package com.codeit.sb13.playlist_for_everyone.global.service;
+package com.codeit.sb13.playlist_for_everyone.global.service.redis;
 
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingChatMessageListener;
+import com.codeit.sb13.playlist_for_everyone.global.service.lock.Locks;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.IntStream;
+
+/**
+ * 외부에서 메세지 리스너를 받아와서 토픽에 대해 등록/해제를 관리하는 클래스
+ * 외부 리스너 - 토픽 단위에, 토픽 - 구독 수 단위로
+ * 두 가지 리스트를 통해 리스너 별 구독 을 관리한다.
+ * 동시성은 로컬 로직에 의한 동시성만 고려하면 된다.
+ */
 
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class RedisTopicRegistry {
 
+    private final Locks locks;
     private final RedisBrokerRegister redisBroker;
 
-    private final WatchingChatMessageListener listener;
-
+    private final Map<String, RedisMessageListener> listenerMap = new ConcurrentHashMap<>();
     // content 를 기반으로 session - subscription 쌍을 관리
-    private final ConcurrentHashMap<String, Set<KeyPair>> registerMap = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<KeyPair,String> registerIndex = new ConcurrentHashMap<>();
+    private final Map<String, Set<KeyPair>> registerMap = new ConcurrentHashMap<>();
+    private final Map<KeyPair,String> registerIndex = new ConcurrentHashMap<>();
 
     // 등록 실패 컨텐츠를 저장하는 셋
     private final Set<String> unregisterFailureSet = new CopyOnWriteArraySet<>();
 
 
-    static private final int LOCK_SIZE = 1024;
-    private final Object[] locks = IntStream.range(0,LOCK_SIZE)
-            .mapToObj(i -> new Object()).toArray();
-
-
     // KeyPair 는 동시에 같은 값이 2개 이상 존재할 수 없다.
+    // 동기 작업을 위해 세션 저장소도 해당 클래스만 접근하도록 구성.
     @RequiredArgsConstructor
     static public class KeyPair{
         private final String session;
@@ -64,10 +67,15 @@ public class RedisTopicRegistry {
         }
     }
 
-    public void register(String topic, String sessionId, String subscriptionId){
+    public void register(
+            String topic,
+            String sessionId,
+            String subscriptionId,
+            RedisMessageListener listener
+    ){
         KeyPair key = KeyPair.of(sessionId, subscriptionId);
         AtomicBoolean initRegister = new AtomicBoolean(true);
-        synchronized (lock(topic)){
+        synchronized (locks.lock(topic)){
             registerMap.computeIfAbsent(
                     topic,
                     k -> new CopyOnWriteArraySet<>());
@@ -96,7 +104,7 @@ public class RedisTopicRegistry {
             }
 
             try {
-                registerListener(topic);
+                registerListener(topic, listener);
             } catch (RuntimeException e) {
                 log.error("[{}] 레디스 리스너 등록 실패 - topic: {}",
                         this.getClass().getSimpleName(),
@@ -119,7 +127,7 @@ public class RedisTopicRegistry {
 
         if (topic == null) return;
 
-        synchronized (lock(topic)){
+        synchronized (locks.lock(topic)){
             // 등록이 없다면 반환(동시 접속시 선두 매서드만 지움이 가능하도록)
             if(registerMap.get(topic) == null) return;
 
@@ -160,7 +168,7 @@ public class RedisTopicRegistry {
     @Scheduled(fixedDelay = 60000) // 60초마다 체크
     public void gc(){
         for(String topic : unregisterFailureSet) {
-            synchronized (lock(topic)){
+            synchronized (locks.lock(topic)){
                 if (registerMap.get(topic) != null){
                     if (registerMap.get(topic).isEmpty()){
                         unregisterFailureSet.remove(topic);
@@ -185,12 +193,18 @@ public class RedisTopicRegistry {
     /*
     편의 매서드
      */
-    private void registerListener(String topic){
+    private void registerListener(String topic,RedisMessageListener listener){
         if (topic == null || topic.isEmpty()) return;
         // 구독 갯수가 1 이상이면 리스너 등록
         Set<KeyPair> keyList = registerMap.get(topic);
         if (!keyList.isEmpty())
             redisBroker.register(listener,topic);
+            listenerMap.compute(topic,(k,v) -> {
+                if (listener.equals(listenerMap.get(k)))
+                    // 이미 존재하는 리스너가 있고, 어떤 게 연결이 끊긴건지 분간할 수 없음.
+                    throw new RuntimeException();
+                return listener;
+            });
     }
 
     private void unregisterListener(String topic){
@@ -198,15 +212,13 @@ public class RedisTopicRegistry {
         // 구독 갯수가 0 이라면 리스너 해제
         Set<KeyPair> keyList = registerMap.get(topic);
         if (keyList == null || keyList.isEmpty())
-            redisBroker.unregister(listener,topic);
-    }
+            listenerMap.compute(topic, (k,v) -> {
+                if (v != null){
+                    redisBroker.unregister(v,k);
+                }
+                return null;    // 키쌍 삭제.
+            });
 
-    // 로컬 락 키 반환 매서드
-    private Object lock(Object key){
-        int hash = key.hashCode();  // 32 비트 해시
-        // lock count 가 hash 보다 작을 시, hash 하위 비트를 인덱스에 고르게 분포 시키기 위한 스프레드
-        int spread = hash ^ (hash >>> 16);
-        return locks[spread & (LOCK_SIZE - 1)];
     }
 
 }

@@ -1,6 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watch;
 
-import com.codeit.sb13.playlist_for_everyone.global.websocket.service.WatcherRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.WatcherRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatcherScriptConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.*;

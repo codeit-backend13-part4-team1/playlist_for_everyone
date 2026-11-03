@@ -1,4 +1,4 @@
-package com.codeit.sb13.playlist_for_everyone.global.service;
+package com.codeit.sb13.playlist_for_everyone.global.service.redis;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.connection.MessageListener;

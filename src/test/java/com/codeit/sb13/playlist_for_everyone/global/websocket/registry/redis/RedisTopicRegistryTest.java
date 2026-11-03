@@ -1,22 +1,29 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.registry.redis;
 
 
-import com.codeit.sb13.playlist_for_everyone.global.service.RedisBrokerRegister;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingChatMessageListener;
+import com.codeit.sb13.playlist_for_everyone.global.service.lock.SpreadLock;
+import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisBrokerRegister;
+import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageListener;
+import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisTopicRegistry;
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.redis.core.RedisTemplate;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
-import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.*;
@@ -28,16 +35,43 @@ public class RedisTopicRegistryTest {
 
     @Mock
     RedisBrokerRegister redisBroker;
-
     @Mock
-    WatchingChatMessageListener listener;
-
+    RedisTemplate<String,Object> redisTemplate;
+    @Spy
+    SpreadLock locks;
     @InjectMocks
-    com.codeit.sb13.playlist_for_everyone.global.service.RedisTopicRegistry registry;
+    RedisTopicRegistry registry;
 
-    private String topic(String contentId){
-        return MESSAGE_CHAT_PREFIX + contentId;
+    TestMessageListener listener = new TestMessageListener();
+
+    class TestMessageListener extends RedisMessageListener{
+
+        public TestMessageListener(){
+            super(redisTemplate);
+        }
+
+        @Override
+        public void run(Object o){
+            // test logic
+        }
     }
+
+    @RequiredArgsConstructor
+    @Getter
+    class InvParams{
+        private final RedisMessageListener listener;
+        private final String topic;
+    }
+
+    private List<InvParams> getRes(String method){
+        return mockingDetails(redisBroker)
+                    .getInvocations()
+                    .stream()
+                    .filter(inv -> inv.getMethod().getName().equals(method))
+                    .map(inv -> new InvParams((RedisMessageListener) inv.getArguments()[0], (String) inv.getArguments()[1]))
+                    .toList();
+    }
+
 
     @Nested
     @DisplayName("구독 테스트")
@@ -49,9 +83,15 @@ public class RedisTopicRegistryTest {
             String sessionId = "test-session";
             String subscribeId = "subscribeId";
 
-            registry.register(contentId, sessionId, subscribeId);
+            registry.register(contentId, sessionId, subscribeId, listener);
 
             verify(redisBroker, times(1)).register(eq(listener),eq(contentId));
+
+            List<InvParams> res = getRes("register");
+
+            assertThat(res).hasSize(1);
+            assertThat(res.get(0).getListener()).isEqualTo(listener);
+            assertThat(res.get(0).getTopic()).isEqualTo(contentId);
         }
 
         @Test
@@ -61,8 +101,8 @@ public class RedisTopicRegistryTest {
             String sessionId = "test-session";
             String subscribeId = "subscribeId";
 
-            registry.register(contentId, sessionId, subscribeId);
-            registry.register(contentId, sessionId, subscribeId);
+            registry.register(contentId, sessionId, subscribeId, listener);
+            registry.register(contentId, sessionId, subscribeId, listener);
 
             verify(redisBroker, times(1)).register(eq(listener),eq(contentId));
         }
@@ -78,7 +118,7 @@ public class RedisTopicRegistryTest {
 
         @BeforeEach
         void set(){
-            registry.register(contentId, sessionId, subscribeId);
+            registry.register(contentId, sessionId, subscribeId, listener);
         }
 
         @AfterEach
@@ -92,6 +132,12 @@ public class RedisTopicRegistryTest {
             registry.unregister(sessionId, subscribeId);
 
             verify(redisBroker, times(1)).unregister(eq(listener),eq(contentId));
+
+            List<InvParams> res = getRes("unregister");
+
+            assertThat(res).hasSize(1);
+            assertThat(res.get(0).getListener()).isEqualTo(listener);
+            assertThat(res.get(0).getTopic()).isEqualTo(contentId);
         }
 
         @Test
@@ -100,7 +146,7 @@ public class RedisTopicRegistryTest {
             String sessionId = "test2-session";
             String subscribeId = "subscribeId2";
 
-            registry.register(contentId, sessionId, subscribeId);
+            registry.register(contentId, sessionId, subscribeId, listener);
 
             registry.unregister(sessionId, subscribeId);
 
@@ -122,14 +168,26 @@ public class RedisTopicRegistryTest {
             String subscribeId3 = "subscribeId3";
 
 
-            registry.register(contentId, sessionId, subscribeId);
-            registry.register(contentId, sessionId, subscribeId2);
-            registry.register(contentId, sessionId, subscribeId3);
+            registry.register(contentId, sessionId, subscribeId, listener);
+            registry.register(contentId, sessionId, subscribeId2, listener);
+            registry.register(contentId, sessionId, subscribeId3, listener);
 
             registry.disconnect(sessionId);
 
             verify(redisBroker, times(1)).register(eq(listener), eq(contentId));
             verify(redisBroker, times(1)).unregister(eq(listener), eq(contentId));
+
+            List<InvParams> res = getRes("register");
+
+            assertThat(res).hasSize(1);
+            assertThat(res.get(0).getListener()).isEqualTo(listener);
+            assertThat(res.get(0).getTopic()).isEqualTo(contentId);
+
+            List<InvParams> res2 = getRes("unregister");
+
+            assertThat(res2).hasSize(1);
+            assertThat(res2.get(0).getListener()).isEqualTo(listener);
+            assertThat(res2.get(0).getTopic()).isEqualTo(contentId);
         }
     }
 
@@ -142,7 +200,7 @@ public class RedisTopicRegistryTest {
         String subscribeId = "subscribeId";
 
         void register(){
-            registry.register(contentId,sessionId,subscribeId);
+            registry.register(contentId,sessionId,subscribeId,listener);
         }
 
         void unregister(){
