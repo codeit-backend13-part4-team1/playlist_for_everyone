@@ -29,6 +29,7 @@ import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import tools.jackson.databind.ObjectMapper;
 
@@ -110,10 +111,20 @@ public class SecurityConfig {
         boolean allowSwagger =
                 environment.acceptsProfiles(Profiles.of("dev & !prod"));
 
+        CookieCsrfTokenRepository csrfTokenRepository = CookieCsrfTokenRepository.withHttpOnlyFalse();
+
+        csrfTokenRepository.setCookieName("XSRF-TOKEN");
+        csrfTokenRepository.setHeaderName("X-XSRF-TOKEN");
+
+        csrfTokenRepository.setCookiePath("/");
+
         return http
                 .authenticationManager(authenticationManager)
-                // CSRF 정책은 추후 별도로 진행 합니다.
-                .csrf(csrf -> csrf.disable())
+                // CSRF 보호를 활성화하고 쿠키 기반 저장소를 사용한다.
+                // POST, PUT, PATCH, DELETE 등의 요청은 CSRF 검증 대상이 된다.
+                .csrf(csrf -> csrf
+                        .csrfTokenRepository(csrfTokenRepository)
+                )
                 .httpBasic(basic -> basic.disable())
                 .logout(logout -> logout
                         .logoutRequestMatcher(
@@ -143,8 +154,12 @@ public class SecurityConfig {
                         ).permitAll();
                     }
                     auth
-                            // 회원가입·로그인은 Access Token 없이 접근한다.
-                            // 재발급은 서비스에서 Refresh Token을 검증하므로 Access Token을 요구하지 않는다.
+                            // 로그인 요청을 보내기 전에도 CSRF 토큰을 받을 수 있어야 한다.
+                            .requestMatchers(
+                                    HttpMethod.GET,
+                                    "/api/auth/csrf-token"
+                            ).permitAll()
+
                             .requestMatchers(
                                     HttpMethod.POST,
                                     "/api/users",
