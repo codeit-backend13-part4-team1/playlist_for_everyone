@@ -76,13 +76,14 @@ public class S3FileStorage implements FileStorage {
                 .build();
 
         try {
-            ContentStreamProvider provider = () -> {
-                try {
-                    return file.getInputStream();
-                } catch (IOException e) {
-                    throw new UncheckedIOException(e);
-                }
-            };
+            ContentStreamProvider provider =
+                    ContentStreamProvider.fromInputStreamSupplier(() -> {
+                        try {
+                            return file.getInputStream();
+                        } catch (IOException e) {
+                            throw new UncheckedIOException(e);
+                        }
+                    });
 
             s3Client.putObject(
                     request,
