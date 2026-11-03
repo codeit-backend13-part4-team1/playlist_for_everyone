@@ -34,4 +34,15 @@ class TmdbContentMapperTest {
 
         assertThat(data.tags()).containsExactlyInAnyOrder("액션", "드라마");
     }
+
+    @Test
+    void 알_수_없는_장르가_섞여도_알려진_장르는_태그로_남긴다() {
+        var movie = new TmdbMovieResponse(
+                550L, "테스트 영화", "영화 설명", "/poster.jpg", List.of(28, 35, -1)
+        );
+
+        var data = new TmdbContentMapper().fromMovie(movie);
+
+        assertThat(data.tags()).containsExactlyInAnyOrder("액션", "코미디");
+    }
 }
