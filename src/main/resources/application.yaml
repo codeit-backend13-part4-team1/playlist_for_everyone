@@ -54,6 +54,12 @@ everyone:
     connect-timeout: 3s
     read-timeout: 10s
 
+  sportsdb:
+    base-url: https://www.thesportsdb.com/api/v1/json
+    api-key: ${EVERYONE_SPORTSDB_API_KEY:123}
+    connect-timeout: 3s
+    read-timeout: 10s
+
   sse:
     # 환경변수 미지정 시 아래 기본값을 사용한다. 연결 설정은 SseProperties, 전송 설정은 SseTransportProperties가 검증한다.
     # 하트비트 작업 완료 후 다음 실행까지 대기하는 시간. 0보다 커야 한다.

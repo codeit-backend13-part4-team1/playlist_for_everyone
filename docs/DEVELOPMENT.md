@@ -175,6 +175,7 @@ EVERYONE_REDIS_PORT=6379
 | `EVERYONE_AWS_ENDPOINT` | 빈 값 | 향후 S3 연동에 사용할 엔드포인트 설정 |
 | `EVERYONE_S3_BUCKET` | 빈 값 | 향후 S3 연동에 사용할 버킷 설정 |
 | `EVERYONE_TMDB_ACCESS_TOKEN` | 빈 값 (실행 전 설정 필요) | TMDB 인증 토큰. 실제 조회에는 유효한 토큰 필요 |
+| `EVERYONE_SPORTSDB_API_KEY` | `123` | TheSportsDB API 키. 생략하면 공개 무료 키 `123` 사용 |
 
 SSE 환경변수를 생략하면 위 기본값을 사용합니다. 개발에서는 `.env.dev`, 운영에서는 외부 환경변수로 조정합니다.
 설정 검증과 시작 실패 조건은 [연결·하트비트 설정](sse/02-delivery-heartbeat.md#설정값과-허용-범위)과 [Redis 전송·구독 설정](sse/06-redis-transport.md#설정과-구독-생명주기)을 참고합니다.
@@ -444,6 +445,42 @@ IntelliJ에서 `TmdbClientLiveTest`의 실행 설정에
 해당 환경 변수가 없으면 이 테스트는 건너뜁니다.
 토큰은 수동 확인용 테스트 실행 설정에만 추가하고,
 일반 자동 테스트와 CI에는 설정하지 않습니다.
+
+### TheSportsDB API 연동
+
+리그 ID와 시즌을 기준으로 경기 목록을 조회합니다.
+DB 저장 및 Content 필드 변환은 후속 작업입니다.
+
+기본적으로 공개 무료 API 키 `123`을 사용합니다.
+다른 키를 사용할 때는 `.env.dev` 또는 실행 환경변수에
+`EVERYONE_SPORTSDB_API_KEY`를 설정합니다.
+개인 API 키는 커밋하지 않습니다.
+
+무료 API에는 요청 횟수와 반환 데이터 개수 제한이 있어,
+조회 결과가 시즌 전체 경기 목록이라고 보장할 수 없습니다.
+
+연결 제한 시간은 기본 3초, 읽기 제한 시간은 기본 10초입니다.
+
+#### 자동 테스트
+
+실제 API를 호출하지 않으며, Docker 없이 실행할 수 있습니다.
+
+```bash
+./gradlew test --tests '*SportsDbClientTest' --tests '*SportsDbClientTimeoutTest' --tests '*SportsDbPropertiesTest'
+```
+
+#### 실제 API 연결 확인
+
+macOS/Linux 터미널에서 아래 명령으로 실행합니다.
+
+```bash
+RUN_SPORTSDB_LIVE_TEST=true ./gradlew test --tests '*SportsDbClientLiveTest' --rerun-tasks
+```
+
+실제 API 연결 테스트는 공개 무료 키 `123`을 사용하며 인터넷 연결이 필요합니다.
+`RUN_SPORTSDB_LIVE_TEST=true`인 경우에만 실행되고,
+설정하지 않으면 건너뜁니다.
+일반 자동 테스트와 CI에는 이 실행 변수를 설정하지 않습니다.
 
 ## 협업과 후속 작업
 
