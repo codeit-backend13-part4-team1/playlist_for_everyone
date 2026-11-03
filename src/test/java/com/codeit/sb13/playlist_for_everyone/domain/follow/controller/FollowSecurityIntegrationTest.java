@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -153,6 +154,148 @@ public class FollowSecurityIntegrationTest {
 
         List<Map<String, Object>> afterRows = jdbcTemplate.queryForList(findRelationSql, followerId, followeeId);
 
+        assertThat(afterRows)
+                .hasSize(1)
+                .containsExactlyElementsOf(beforeRows);
+    }
+
+    @Test
+    @DisplayName("유효한 JWT로 본인의 팔로우를 취소하면 해당 관계만 삭제하고 다른 관계와 두 사용자는 유지한다.")
+    void unfollow_returnsNoContentForOwnRelation() throws Exception {
+        UUID followId = UUID.randomUUID();
+        jdbcTemplate.update("""
+            INSERT INTO follows (id, follower_id, followee_id, created_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        """, followId, followerId, followeeId);
+
+        UUID reverseFollowId = UUID.randomUUID();
+        jdbcTemplate.update("""
+            INSERT INTO follows (id, follower_id, followee_id, created_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            """, reverseFollowId, followeeId, followerId);
+
+        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+        mockMvc.perform(delete("/api/follows/{followId}", followId)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
+
+        Long remainingFollowCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM follows WHERE id = ?",
+                Long.class, followId);
+
+        assertThat(remainingFollowCount).isZero();
+
+        List<UUID> remainingUserIds = jdbcTemplate.queryForList("SELECT id FROM users WHERE id IN (?, ?)",
+                UUID.class, followerId, followeeId);
+
+        List<UUID> remainingReverseFollowIds = jdbcTemplate.queryForList("""
+                    SELECT id
+                    FROM follows
+                    WHERE follower_id = ?
+                        AND followee_id = ?
+                """,
+                UUID.class, followeeId, followerId);
+
+        assertThat(remainingUserIds)
+                .containsExactlyInAnyOrder(followerId, followeeId);
+
+        assertThat(remainingReverseFollowIds)
+                .containsExactly(reverseFollowId);
+    }
+
+    @Test
+    @DisplayName("유효한 JWT로 같은 팔로우를 두 번 취소하면 두 요청 모두 204를 반환하고 삭제 상태를 유지한다.")
+    void unfollow_returnsNoContentForRepeatedRequest() throws Exception {
+        UUID followId = UUID.randomUUID();
+        jdbcTemplate.update("""
+            INSERT INTO follows (id, follower_id, followee_id, created_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        """, followId, followerId, followeeId);
+
+        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+        String countRelationSql = "SELECT COUNT(*) FROM follows WHERE id =?";
+
+        mockMvc.perform(delete("/api/follows/{followId}", followId)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer "+accessToken))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
+
+        Long countAfterFirstRequest = jdbcTemplate.queryForObject(countRelationSql, Long.class, followId);
+        assertThat(countAfterFirstRequest).isZero();
+
+        mockMvc.perform(delete("/api/follows/{followId}",followId)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer "+accessToken))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
+
+        Long countAfterSecondRequest = jdbcTemplate.queryForObject(countRelationSql, Long.class, followId);
+        assertThat(countAfterSecondRequest).isZero();
+    }
+
+    @Test
+    @DisplayName("유효한 JWT로 다른 사용자의 팔로우를 취소하면 공통 오류 응답으로 403을 반환하고 관계 정보를 유지한다.")
+    void unfollow_returnsForbiddenForAnotherUsersRelation() throws Exception {
+        UUID followId = UUID.randomUUID();
+        jdbcTemplate.update("""
+            INSERT INTO follows (id, follower_id, followee_id, created_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        """, followId, followerId, followeeId);
+
+        String findRelationSql = """
+                SELECT id, follower_id, followee_id, created_at
+                FROM follows
+                WHERE id = ?
+                """;
+
+        List<Map<String, Object>> beforeRows = jdbcTemplate.queryForList(findRelationSql, followId);
+        assertThat(beforeRows).hasSize(1);
+
+        String accessToken = jwtTokenProvider.createAccessToken(followeeId);
+
+        mockMvc.perform(delete("/api/follows/{followId}",followId)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+                .andExpect(status().isForbidden())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.exceptionName").isString())
+                .andExpect(jsonPath("$.exceptionName").isNotEmpty())
+                .andExpect(jsonPath("$.message").value("접근 권한이 없습니다."))
+                .andExpect(jsonPath("$.details").isMap())
+                .andExpect(jsonPath("$.details").isEmpty())
+        ;
+
+        List<Map<String, Object>> afterRows = jdbcTemplate.queryForList(findRelationSql, followId);
+        assertThat(afterRows)
+                .hasSize(1)
+                .containsExactlyElementsOf(beforeRows);
+    }
+
+    @Test
+    @DisplayName("유효한 JWT로 존재하지 않는 팔로우를 취소하면 204를 반환하고 기존 관계를 유지한다.")
+    void unfollow_returnsNoContentForMissingRelation() throws Exception {
+        UUID existingFollowId = UUID.randomUUID();
+        jdbcTemplate.update("""
+            INSERT INTO follows (id, follower_id, followee_id, created_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        """, existingFollowId, followerId, followeeId);
+
+        String findRelationSql = """
+                SELECT id, follower_id, followee_id, created_at
+                FROM follows
+                WHERE id =?
+                """;
+
+        List<Map<String, Object>> beforeRows = jdbcTemplate.queryForList(findRelationSql, existingFollowId);
+        assertThat(beforeRows).hasSize(1);
+
+        UUID missingFollowId = UUID.randomUUID();
+        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+
+        mockMvc.perform(delete("/api/follows/{followId}", missingFollowId)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
+
+        List<Map<String, Object>> afterRows = jdbcTemplate.queryForList(findRelationSql, existingFollowId);
         assertThat(afterRows)
                 .hasSize(1)
                 .containsExactlyElementsOf(beforeRows);
