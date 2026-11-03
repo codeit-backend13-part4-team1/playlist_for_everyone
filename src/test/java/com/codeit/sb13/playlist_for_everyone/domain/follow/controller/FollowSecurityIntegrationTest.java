@@ -1,6 +1,10 @@
 package com.codeit.sb13.playlist_for_everyone.domain.follow.controller;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtProperties;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.io.Decoders;
+import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -20,11 +24,17 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import javax.crypto.SecretKey;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -60,6 +70,9 @@ public class FollowSecurityIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private JwtProperties jwtProperties;
 
     private final UUID followerId = UUID.randomUUID();
 
@@ -162,10 +175,7 @@ public class FollowSecurityIntegrationTest {
     @DisplayName("유효한 JWT로 본인의 팔로우를 취소하면 해당 관계만 삭제하고 다른 관계와 두 사용자는 유지한다.")
     void unfollow_returnsNoContentForOwnRelation() throws Exception {
         UUID followId = UUID.randomUUID();
-        jdbcTemplate.update("""
-            INSERT INTO follows (id, follower_id, followee_id, created_at)
-            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-        """, followId, followerId, followeeId);
+        followInsert(followId);
 
         UUID reverseFollowId = UUID.randomUUID();
         jdbcTemplate.update("""
@@ -206,10 +216,7 @@ public class FollowSecurityIntegrationTest {
     @DisplayName("유효한 JWT로 같은 팔로우를 두 번 취소하면 두 요청 모두 204를 반환하고 삭제 상태를 유지한다.")
     void unfollow_returnsNoContentForRepeatedRequest() throws Exception {
         UUID followId = UUID.randomUUID();
-        jdbcTemplate.update("""
-            INSERT INTO follows (id, follower_id, followee_id, created_at)
-            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-        """, followId, followerId, followeeId);
+        followInsert(followId);
 
         String accessToken = jwtTokenProvider.createAccessToken(followerId);
         String countRelationSql = "SELECT COUNT(*) FROM follows WHERE id =?";
@@ -235,10 +242,7 @@ public class FollowSecurityIntegrationTest {
     @DisplayName("유효한 JWT로 다른 사용자의 팔로우를 취소하면 공통 오류 응답으로 403을 반환하고 관계 정보를 유지한다.")
     void unfollow_returnsForbiddenForAnotherUsersRelation() throws Exception {
         UUID followId = UUID.randomUUID();
-        jdbcTemplate.update("""
-            INSERT INTO follows (id, follower_id, followee_id, created_at)
-            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-        """, followId, followerId, followeeId);
+        followInsert(followId);
 
         String findRelationSql = """
                 SELECT id, follower_id, followee_id, created_at
@@ -272,10 +276,7 @@ public class FollowSecurityIntegrationTest {
     @DisplayName("유효한 JWT로 존재하지 않는 팔로우를 취소하면 204를 반환하고 기존 관계를 유지한다.")
     void unfollow_returnsNoContentForMissingRelation() throws Exception {
         UUID existingFollowId = UUID.randomUUID();
-        jdbcTemplate.update("""
-            INSERT INTO follows (id, follower_id, followee_id, created_at)
-            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-        """, existingFollowId, followerId, followeeId);
+        followInsert(existingFollowId);
 
         String findRelationSql = """
                 SELECT id, follower_id, followee_id, created_at
@@ -330,10 +331,7 @@ public class FollowSecurityIntegrationTest {
     @DisplayName("JWT 없이 팔로우를 취소하면 공통 오류 응답으로 401을 반환하고 기존 관계를 유지한다.")
     void unfollow_returnsUnauthorizedWithoutJwt() throws Exception {
         UUID followId = UUID.randomUUID();
-        jdbcTemplate.update("""
-            INSERT INTO follows (id, follower_id, followee_id, created_at)
-            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-        """, followId, followerId, followeeId);
+        followInsert(followId);
 
         String findRelationSql = """
                 SELECT id, follower_id, followee_id, created_at
@@ -363,10 +361,7 @@ public class FollowSecurityIntegrationTest {
     @DisplayName("JWT 없이 내 팔로우 관계를 조회하면 공통 오류 응답으로 401을 반환합니다.")
     void getFollowedByMe_returnsUnauthorizedWithoutJwt() throws Exception {
         UUID followId = UUID.randomUUID();
-        jdbcTemplate.update("""
-            INSERT INTO follows (id, follower_id, followee_id, created_at)
-            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-        """, followId, followerId, followeeId);
+        followInsert(followId);
 
         mockMvc.perform(get("/api/follows/followed-by-me")
                 .param("followeeId",followeeId.toString()))
@@ -382,10 +377,7 @@ public class FollowSecurityIntegrationTest {
     @DisplayName("JWT 없이 팔로워 수를 조회하면 공통 오류 응답으로 401을 반환한다.")
     void getFollowCount_returnsUnauthorizedWithoutJwt() throws Exception {
         UUID followId = UUID.randomUUID();
-        jdbcTemplate.update("""
-            INSERT INTO follows (id, follower_id, followee_id, created_at)
-            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-        """, followId, followerId, followeeId);
+        followInsert(followId);
 
         mockMvc.perform(get("/api/follows/count")
                 .param("followeeId", followeeId.toString()))
@@ -397,6 +389,114 @@ public class FollowSecurityIntegrationTest {
                 .andExpect(jsonPath("$.details").isEmpty());
     }
 
+    @Test
+    @DisplayName("만료된 JWT로 팔로우를 등록하면 공통오류 응답으로 401을 반환하고 관계를 저장하지 않는다.")
+    void follow_returnsUnauthorizedWithExpiredJwt() throws Exception {
+        String expiredToken = createExpiredAccessToken(followerId);
+        assertThatThrownBy(()-> jwtTokenProvider.parseAccessToken(expiredToken))
+                .isInstanceOf(ExpiredJwtException.class);
+
+        mockMvc.perform(post("/api/follows")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + expiredToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                            "followeeId": "%s"
+                        }
+                        """.formatted(followeeId)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.exceptionName").value("UnauthorizedException"))
+                .andExpect(jsonPath("$.message").value("인증이 필요합니다."))
+                .andExpect(jsonPath("$.details").isMap())
+                .andExpect(jsonPath("$.details").isEmpty());
+
+        Long savedFollowCount = jdbcTemplate.queryForObject("""
+                    SELECT COUNT(*)
+                    FROM follows
+                    WHERE followee_id = ?
+                """, Long.class, followeeId);
+
+        assertThat(savedFollowCount).isZero();
+    }
+
+    @Test
+    @DisplayName("만료된 JWT로 팔로우를 취소하면 공통오류 응답으로 401을 반환하고 기존 관계를 유지한다.")
+    void unfollow_returnsUnauthorizedWithExpiredJwt() throws Exception {
+        UUID followId = UUID.randomUUID();
+        followInsert(followId);
+
+        String findRelationSql = """
+                SELECT id, follower_id, followee_id, created_at
+                FROM follows
+                WHERE id =?
+                """;
+
+        List<Map<String, Object>> beforeRows = jdbcTemplate.queryForList(findRelationSql, followId);
+        assertThat(beforeRows).hasSize(1);
+
+        String expiredToken = createExpiredAccessToken(followerId);
+        assertThatThrownBy(()-> jwtTokenProvider.parseAccessToken(expiredToken))
+                .isInstanceOf(ExpiredJwtException.class);
+
+        mockMvc.perform(delete("/api/follows/{followId}", followId)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + expiredToken))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.exceptionName").value("UnauthorizedException"))
+                .andExpect(jsonPath("$.message").value("인증이 필요합니다."))
+                .andExpect(jsonPath("$.details").isMap())
+                .andExpect(jsonPath("$.details").isEmpty());
+
+        List<Map<String, Object>> afterRows = jdbcTemplate.queryForList(findRelationSql, followId);
+        assertThat(afterRows)
+                .hasSize(1)
+                .containsExactlyElementsOf(beforeRows);
+
+
+    }
+
+    @Test
+    @DisplayName("만료된 JWT로 내 팔로우 관계를 조회하면 공통 오류 응답으로 401을 반환한다.")
+    void getFollowedByMe_returnsUnauthorizedWithExpiredJwt() throws Exception {
+        UUID followId = UUID.randomUUID();
+        followInsert(followId);
+
+        String expiredToken = createExpiredAccessToken(followerId);
+        assertThatThrownBy(()-> jwtTokenProvider.parseAccessToken(expiredToken))
+                .isInstanceOf(ExpiredJwtException.class);
+
+        mockMvc.perform(get("/api/follows/followed-by-me")
+                .param("followeeId", followeeId.toString())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + expiredToken))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.exceptionName").value("UnauthorizedException"))
+                .andExpect(jsonPath("$.message").value("인증이 필요합니다."))
+                .andExpect(jsonPath("$.details").isMap())
+                .andExpect(jsonPath("$.details").isEmpty());
+    }
+
+    @Test
+    @DisplayName("만료된 JWT로 팔로워 수를 조회하면 공통 오류 응답으로 401을 반환한다.")
+    void getFollowCount_returnsUnauthorizedWithExpiredJwt() throws Exception {
+        UUID followId = UUID.randomUUID();
+        followInsert(followId);
+
+        String expiredToken = createExpiredAccessToken(followerId);
+        assertThatThrownBy(()-> jwtTokenProvider.parseAccessToken(expiredToken))
+                .isInstanceOf(ExpiredJwtException.class);
+
+        mockMvc.perform(get("/api/follows/count")
+                .param("followeeId", followeeId.toString())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + expiredToken))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.exceptionName").value("UnauthorizedException"))
+                .andExpect(jsonPath("$.message").value("인증이 필요합니다."))
+                .andExpect(jsonPath("$.details").isMap())
+                .andExpect(jsonPath("$.details").isEmpty());
+    }
 
 
 
@@ -410,5 +510,25 @@ public class FollowSecurityIntegrationTest {
                 name);
     }
 
+    private String createExpiredAccessToken(UUID userId){
+        SecretKey signingKey = Keys.hmacShaKeyFor(Decoders.BASE64.decode(jwtProperties.secretKey()));
 
+        Duration validity = jwtProperties.accessTokenValidity();
+
+        Instant issuedAt = Instant.now()
+                .minus(validity)
+                .minus(Duration.ofMinutes(1));
+
+        JwtTokenProvider pastTokenProvider = new JwtTokenProvider(signingKey, validity,
+                jwtProperties.refreshTokenValidity(), Clock.fixed(issuedAt, ZoneOffset.UTC));
+        return pastTokenProvider.createAccessToken(userId);
+
+    }
+
+    private void followInsert(UUID followId) {
+        jdbcTemplate.update("""
+            INSERT INTO follows (id, follower_id, followee_id, created_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        """, followId, followerId, followeeId);
+    }
 }
