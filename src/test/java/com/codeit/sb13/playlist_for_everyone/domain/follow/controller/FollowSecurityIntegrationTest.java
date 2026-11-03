@@ -79,21 +79,24 @@ public class FollowSecurityIntegrationTest {
 
     private final UUID followeeId = UUID.randomUUID();
 
+    private final UUID otherFollowerId = UUID.randomUUID();
+
     @BeforeEach
     void setUp(){
         insertUser(followerId, "팔로우하는 사용자");
         insertUser(followeeId, "팔로우받는 사용자");
+        insertUser(otherFollowerId, "다른 팔로우하는 사용자");
     }
 
     @AfterEach
     void cleanUp(){
         jdbcTemplate.update("""
             DELETE FROM follows
-            WHERE follower_id IN (?, ?)
-                OR followee_id IN (?, ?)
-        """, followeeId, followerId,
-                followeeId, followerId);
-        jdbcTemplate.update("DELETE FROM users WHERE id IN (?, ?)", followeeId, followerId);
+            WHERE follower_id IN (?, ?, ?)
+                OR followee_id IN (?, ?, ?)
+        """, followeeId, followerId, otherFollowerId,
+                followeeId, followerId, otherFollowerId);
+        jdbcTemplate.update("DELETE FROM users WHERE id IN (?, ?, ?)", followeeId, followerId, otherFollowerId);
     }
 
     @Test
@@ -606,6 +609,144 @@ public class FollowSecurityIntegrationTest {
                 .andExpect(jsonPath("$.details").isMap())
                 .andExpect(jsonPath("$.details").isEmpty());
     }
+
+    @Test
+    @DisplayName("유효한 JWT로 본인의 팔로우 관계를 조회하면 200과 정확한 관계 정보를 반환한다.")
+    void getFollowedByMe_returnsOwnRelationWithValidJwt() throws Exception {
+        UUID followId = UUID.randomUUID();
+        followInsert(followId);
+
+        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+        mockMvc.perform(get("/api/follows/followed-by-me")
+                .param("followeeId", followeeId.toString())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.id").value(followId.toString()))
+                .andExpect(jsonPath("$.followerId").value(followerId.toString()))
+                .andExpect(jsonPath("$.followeeId").value(followeeId.toString()));
+    }
+
+    @Test
+    @DisplayName("같은 대상을 팔로우한 두 사용자가 각자의 JWT로 조회하면 각각 자신의 관계 정보를 반환한다.")
+    void getFollowedByMe_returnsEachAuthenticatedUsersRelation() throws Exception {
+        UUID firstFollowId = UUID.randomUUID();
+        followInsert(firstFollowId);
+
+        UUID secondFollowId = UUID.randomUUID();
+        followInsert(secondFollowId, otherFollowerId, followeeId);
+
+        String firstToken = jwtTokenProvider.createAccessToken(followerId);
+        String secondToken = jwtTokenProvider.createAccessToken(otherFollowerId);
+
+        mockMvc.perform(get("/api/follows/followed-by-me")
+                .param("followeeId", followeeId.toString())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + firstToken))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.id").value(firstFollowId.toString()))
+                .andExpect(jsonPath("$.followerId").value(followerId.toString()))
+                .andExpect(jsonPath("$.followeeId").value(followeeId.toString()));
+
+
+        mockMvc.perform(get("/api/follows/followed-by-me")
+                        .param("followeeId", followeeId.toString())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + secondToken))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.id").value(secondFollowId.toString()))
+                .andExpect(jsonPath("$.followerId").value(otherFollowerId.toString()))
+                .andExpect(jsonPath("$.followeeId").value(followeeId.toString()));
+
+
+    }
+
+    @Test
+    @DisplayName("유효한 JWT로 팔로우하지 않은 사용자를 조회하면 404와 공통 오류 응답을 반환한다.")
+    void getFollowedByMe_returnsNotFoundWhenNotFollowing() throws Exception {
+        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+
+        mockMvc.perform(get("/api/follows/followed-by-me")
+                .param("followeeId", followeeId.toString())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.exceptionName").value("FollowNotFoundException"))
+                .andExpect(jsonPath("$.message").value("팔로우를 찾을 수 없습니다."))
+                .andExpect(jsonPath("$.details").isMap())
+                .andExpect(jsonPath("$.details.followeeId").value(followeeId.toString()));
+
+
+    }
+
+    @Test
+    @DisplayName("유효한 JWT로 팔로우를 취소한 뒤 관계를 조회하면 404와 공통 오류 응답을 반환한다.")
+    void getFollowedByMe_returnsNotFoundAfterUnfollow() throws Exception {
+        UUID followId = UUID.randomUUID();
+        followInsert(followId);
+
+        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+        mockMvc.perform(delete("/api/follows/{followId}", followId)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
+
+        mockMvc.perform(get("/api/follows/followed-by-me")
+                .param("followeeId", followeeId.toString())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.exceptionName").value("FollowNotFoundException"))
+                .andExpect(jsonPath("$.message").value("팔로우를 찾을 수 없습니다."))
+                .andExpect(jsonPath("$.details").isMap())
+                .andExpect(jsonPath("$.details.followeeId").value(followeeId.toString()));
+
+
+    }
+
+    @Test
+    @DisplayName("유효한 JWT로 존재하지 않는 사용자의 팔로우 관계를 조회하면 404와 공통 오류 응답을 반환한다.")
+    void getFollowedByMe_returnsNotFoundForMissingFollowee() throws Exception {
+        UUID missingFolloweeId = UUID.randomUUID();
+        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+
+        mockMvc.perform(get("/api/follows/followed-by-me")
+                .param("followeeId", missingFolloweeId.toString())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.exceptionName").value("FollowNotFoundException"))
+                .andExpect(jsonPath("$.message").value("팔로우를 찾을 수 없습니다."))
+                .andExpect(jsonPath("$.details").isMap())
+                .andExpect(jsonPath("$.details.followeeId").value(missingFolloweeId.toString()));
+    }
+
+    @Test
+    @DisplayName("다른 사용자의 팔로우 관계만 존재하면 내 관계 조회는 404를 반환하고 기존 관계를 유지한다.")
+    void getFollowedByMe_returnsNotFoundWhenOnlyAnotherUserFollows() throws Exception {
+        UUID otherFollowId = UUID.randomUUID();
+        followInsert(otherFollowId, otherFollowerId, followeeId);
+
+        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+        mockMvc.perform(get("/api/follows/followed-by-me")
+                .param("followeeId", followeeId.toString())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.exceptionName").value("FollowNotFoundException"))
+                .andExpect(jsonPath("$.message").value("팔로우를 찾을 수 없습니다."))
+                .andExpect(jsonPath("$.details").isMap())
+                .andExpect(jsonPath("$.details.followeeId").value(followeeId.toString()));
+
+        Long remainingCount = jdbcTemplate.queryForObject("""
+                    SELECT COUNT(*)
+                    FROM follows
+                    WHERE id = ? AND follower_id = ?
+                        AND followee_id = ?
+                """, Long.class, otherFollowId, otherFollowerId, followeeId);
+
+        assertThat(remainingCount).isEqualTo(1L);
+    }
     private void insertUser(UUID userId, String name){
         jdbcTemplate.update("""
             INSERT INTO users(id, email, nickname, role, enabled, created_at)
@@ -632,6 +773,10 @@ public class FollowSecurityIntegrationTest {
     }
 
     private void followInsert(UUID followId) {
+        followInsert(followId, followerId, followeeId);
+    }
+
+    private void followInsert(UUID followId, UUID followerId, UUID followeeId) {
         jdbcTemplate.update("""
             INSERT INTO follows (id, follower_id, followee_id, created_at)
             VALUES (?, ?, ?, CURRENT_TIMESTAMP)
