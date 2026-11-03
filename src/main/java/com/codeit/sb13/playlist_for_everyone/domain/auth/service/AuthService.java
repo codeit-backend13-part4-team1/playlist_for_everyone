@@ -113,6 +113,14 @@ public class AuthService {
         }
     }
 
+    /**
+     * 전달받은 Refresh Token의 등록 정보를 삭제한다.
+     */
+    public void logout(String refreshToken) {
+        // RED : 다음 단계에서 Redis 삭제를 구현한다.
+        throw new UnsupportedOperationException("로그아웃 구현 예정");
+    }
+
 
 
 

@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.security.authentication.BadCredentialsException;
 
 import java.time.Duration;
@@ -229,6 +230,34 @@ class AuthServiceTest {
         verify(refreshTokenRepository, never())
                 .save(any(), anyString(), any());
     }
+
+    @Test
+    @DisplayName("로그아웃하면 전달받은 Refresh Token의 등록 정보를 삭제한다.")
+    void 로그아웃하면_리프레시_토큰을_삭제한다() {
+        authService.logout(OLD_REFRESH_TOKEN);
+
+        // 해당 토큰으로 더 이상 재발급하지 못하도록 등록 정보를 삭제한다.
+        verify(refreshTokenRepository).delete(OLD_REFRESH_TOKEN);
+
+        // 로그아웃에서는 새 토큰을 발급하거나 사용자 정보를 조회하지 않는다.
+        verifyNoInteractions(jwtTokenProvider, userService);
+    }
+
+    @Test
+    @DisplayName("Redis 삭제에 실패하면 로그아웃을 성공으로 처리하지 않는다.")
+    void 토큰_삭제_실패를_호출자에게_전달한다() {
+        var exception = new DataAccessResourceFailureException("Redis 연결 실패");
+
+
+        doThrow(exception)
+                .when(refreshTokenRepository)
+                .delete(OLD_REFRESH_TOKEN);
+
+        // 토큰을 삭제하지 못했는데 정상 로그아웃한 것처럼 처리하지 않는다
+        assertThatThrownBy(() -> authService.logout(OLD_REFRESH_TOKEN))
+                .isSameAs(exception);
+    }
+
 
     /**
      * JWT와 Redis에 동일한 사용자가 등록된 상황을 준비한다.
