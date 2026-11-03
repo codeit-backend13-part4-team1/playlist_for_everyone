@@ -12,6 +12,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
@@ -51,47 +53,86 @@ public class FileServiceTest {
 
         given(fileStorage.upload(file)).willReturn(key);
 
-        given(fileInfoRepository.save(any(FileInfo.class)))
+        given(fileInfoRepository.saveAndFlush(any(FileInfo.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
 
-        // when
-        FileInfo fileInfo = fileService.upload(file);
+        TransactionSynchronizationManager.initSynchronization();
+        TransactionSynchronizationManager.setActualTransactionActive(true);
 
-        // then
-        assertThat(fileInfo.getKey()).isEqualTo(key);
-        assertThat(fileInfo.getOriginalFilename()).isEqualTo("test.png");
-        assertThat(fileInfo.getContentType()).isEqualTo("image/png");
-        assertThat(fileInfo.getSize()).isEqualTo(file.getSize());
+        try {
+            // when
+            FileInfo fileInfo = fileService.upload(file);
 
-        verify(fileStorage).upload(file);
-        verify(fileInfoRepository).save(any(FileInfo.class));
+            // then
+            assertThat(fileInfo.getKey()).isEqualTo(key);
+            assertThat(fileInfo.getOriginalFilename()).isEqualTo("test.png");
+            assertThat(fileInfo.getContentType()).isEqualTo("image/png");
+            assertThat(fileInfo.getSize()).isEqualTo(file.getSize());
+
+            verify(fileStorage).upload(file);
+            verify(fileInfoRepository).saveAndFlush(any(FileInfo.class));
+
+            // 트랜잭션 커밋 상황 재현
+            for (TransactionSynchronization synchronization :
+                    TransactionSynchronizationManager.getSynchronizations()) {
+                synchronization.afterCompletion(
+                        TransactionSynchronization.STATUS_COMMITTED
+                );
+            }
+
+            // 정상 커밋 시 S3 파일 삭제하지 않음
+            verify(fileStorage, never()).delete(key);
+
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+            TransactionSynchronizationManager.setActualTransactionActive(false);
+        }
     }
 
     @Test
-    @DisplayName("파일 정보 저장 실패 시 S3에 업로드 파일을 삭제한다.")
+    @DisplayName("파일 정보 저장 실패 시 롤백되면 S3 업로드 파일을 삭제한다.")
     void upload_saveFailed_deleteS3() {
         // given
         MockMultipartFile file = new MockMultipartFile(
                 "file",
                 "test.png",
                 "image/png",
-                "test image".getBytes()
+                "test image".getBytes(StandardCharsets.UTF_8)
         );
 
         String key = "test-key.png";
 
         given(fileStorage.upload(file)).willReturn(key);
 
-        given(fileInfoRepository.save(any(FileInfo.class)))
+        given(fileInfoRepository.saveAndFlush(any(FileInfo.class)))
                 .willThrow(new RuntimeException("DB 저장 실패"));
 
-        // when & then
-        assertThatThrownBy(() -> fileService.upload(file))
-                .isInstanceOf(RuntimeException.class)
-                .hasMessage("DB 저장 실패");
+        TransactionSynchronizationManager.initSynchronization();
+        TransactionSynchronizationManager.setActualTransactionActive(true);
 
-        verify(fileStorage).upload(file);
-        verify(fileStorage).delete(key);
+        try {
+            // when & then
+            assertThatThrownBy(() -> fileService.upload(file))
+                    .isInstanceOf(RuntimeException.class)
+                    .hasMessage("DB 저장 실패");
+
+            verify(fileStorage).upload(file);
+
+            // 트랜잭션 롤백 상황 재현
+            for (TransactionSynchronization synchronization :
+                    TransactionSynchronizationManager.getSynchronizations()) {
+                synchronization.afterCompletion(
+                        TransactionSynchronization.STATUS_ROLLED_BACK
+                );
+            }
+
+            // 롤백 후 S3 파일 삭제 확인
+            verify(fileStorage).delete(key);
+
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+            TransactionSynchronizationManager.setActualTransactionActive(false);
+        }
     }
 
     @Test
