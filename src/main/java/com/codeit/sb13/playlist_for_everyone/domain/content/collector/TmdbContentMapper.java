@@ -48,7 +48,24 @@ public class TmdbContentMapper {
     }
 
     public CollectedContentData fromTv(TmdbTvResponse tv) {
-        throw new UnsupportedOperationException("TV 응답 변환 미구현");
+        if (tv.id() == null) {
+            throw new IllegalArgumentException("TMDB TV 시리즈 ID가 필요합니다.");
+        }
+
+        String posterPath = tv.posterPath();
+        String thumbnailUrl = posterPath == null || posterPath.isBlank()
+                ? null
+                : "https://image.tmdb.org/t/p/w500" + posterPath;
+
+        return new CollectedContentData(
+                ContentType.tvSeries,
+                tv.name(),
+                tv.overview(),
+                thumbnailUrl,
+                ContentSource.TMDB,
+                tv.id().toString(),
+                List.of()
+        );
     }
 
 }
