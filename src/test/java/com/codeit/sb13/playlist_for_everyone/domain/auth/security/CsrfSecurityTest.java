@@ -15,6 +15,8 @@ import com.codeit.sb13.playlist_for_everyone.global.controller.GlobalExceptionHa
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -164,48 +166,74 @@ class CsrfSecurityTest {
         verify(authService).reissue(OLD_REFRESH_TOKEN);
     }
 
-    @Test
-    @DisplayName("CSRF 쿠키가 있어도 헤더가 없으면 재발급을 거절한다")
-    void CSRF_헤더가_없으면_거절한다() throws Exception {
+    @ParameterizedTest(name = "{0}: CSRF 헤더가 없으면 403")
+    @ValueSource(strings = {
+            "/api/auth/sign-in",
+            "/api/auth/refresh",
+            "/api/auth/sign-out"
+    })
+    @DisplayName("인증 관련 POST 요청도 CSRF 헤더가 없으면 거절한다")
+    void CSRF_헤더가_없으면_거절한다(String path) throws Exception {
         Cookie csrfCookie = issueCsrfCookie();
 
         // 브라우저가 쿠키만 자동으로 보낸 상황을 재현한다.
         // Refresh Token은 제공하되 CSRF 헤더는 넣지 않는다.
-        mockMvc.perform(post(REFRESH_URL)
-                        .cookie(
-                                csrfCookie,
-                                new Cookie("REFRESH_TOKEN", OLD_REFRESH_TOKEN)
-                        ))
+        mockMvc.perform(post(path)
+                        .param("username", "user@gmail.com")
+                        .param("password", "password123")
+                        .cookie(csrfCookie, new Cookie("REFRESH_TOKEN", OLD_REFRESH_TOKEN)))
                 .andExpect(status().isForbidden());
 
-        // 컨트롤러에서 서비스를 호출하기 전에 필터가 차단해야 한다.
-        verifyNoInteractions(authService);
+        // 로그인 인증아나 토큰 재발급, 로그아웃 처리 전에 차단되어야 한다.
+        verifyNoInteractions(
+                authenticationManager,
+                authService,
+                refreshTokenRepository
+        );
     }
 
-    @Test
-    @DisplayName("CSRF 헤더가 있어도 쿠키가 없으면 재발급을 거절한다")
-    void CSRF_쿠키가_없으면_거절한다() throws Exception {
+    @ParameterizedTest(name = "{0}: CSRF 쿠기가 없으면 403")
+    @ValueSource(strings = {
+            "/api/auth.sign-in",
+            "/api/auth/refresh",
+            "/api/auth/sign-out"
+    })
+    @DisplayName("CSRF 헤더가 있어도 비교할 쿠키가 없으면 거절한다")
+    void CSRF_쿠키가_없으면_거절한다(String path) throws Exception {
         Cookie csrfCookie = issueCsrfCookie();
 
-        // 발급받은 값을 헤더에 넣지만 CSRF 쿠키는 보내지 않는다.
-        // MockMvc는 앞선 응답의 쿠키를 다음 요청에 자동으로 보내지 않는다.
-        mockMvc.perform(post(REFRESH_URL)
+        // 토큰 값을 헤더에만 넣고 XSRF-TOKEN 쿠키는 보내지 않는다.
+        // MockMvc는 이전 응답의 쿠키를 다음 요청에 자동으로 전달하지 않는다.
+        mockMvc.perform(post(path)
+                        .param("username", "user@gmail.com")
+                        .param("password", "password123!")
                         .cookie(new Cookie("REFRESH_TOKEN", OLD_REFRESH_TOKEN))
                         .header(CSRF_HEADER_NAME, csrfCookie.getValue()))
                 .andExpect(status().isForbidden());
 
-        verifyNoInteractions(authService);
+        verifyNoInteractions(
+                authenticationManager,
+                authService,
+                refreshTokenRepository
+        );
     }
 
-    @Test
-    @DisplayName("CSRF 쿠키와 헤더가 다르면 재발급을 거절한다")
-    void CSRF_쿠키와_헤더가_다르면_거절한다() throws Exception {
+    @ParameterizedTest(name = "{0}: CSRF 쿠키와 헤더가 다르면 403")
+    @ValueSource(strings = {
+            "/api/auth/sign-in",
+            "/api/auth/refresh",
+            "/api/auth/sign-out"
+    })
+    @DisplayName("CSRF 쿠키와 헤더의 토큰이 다르면 거절한다")
+    void CSRF_쿠키와_헤더가_다르면_거절한다(String path) throws Exception {
         Cookie csrfCookie = issueCsrfCookie();
 
-        // 쿠키는 정상 값이고, 헤더에만 다른 값을 넣는다.
+        // 쿠키는 서버가 발급한 값이고, 헤더만 다른 값으로 변경한다.
         String differentToken = csrfCookie.getValue() + "-changed";
 
-        mockMvc.perform(post(REFRESH_URL)
+        mockMvc.perform(post(path)
+                        .param("username", "user@gmail.com")
+                        .param("password", "password123!")
                         .cookie(
                                 csrfCookie,
                                 new Cookie("REFRESH_TOKEN", OLD_REFRESH_TOKEN)
@@ -213,7 +241,40 @@ class CsrfSecurityTest {
                         .header(CSRF_HEADER_NAME, differentToken))
                 .andExpect(status().isForbidden());
 
-        verifyNoInteractions(authService);
+        verifyNoInteractions(
+                authenticationManager,
+                authService,
+                refreshTokenRepository
+        );
+    }
+
+
+    @Test
+    @DisplayName("실제 CSRF 쿠키와 헤더가 일치하면 로그아웃한다")
+    void CSRF_검증을_통과하면_로그아웃한다() throws Exception {
+        Cookie csrfCookie = issueCsrfCookie();
+
+        // 테스트용 csrf() 대신 서버에서 받은 실제 쿠키와 헤더를 사용한다.
+        MvcResult result = mockMvc.perform(post("/api/auth/sign-out")
+                        .cookie(
+                                csrfCookie,
+                                new Cookie("REFRESH_TOKEN", OLD_REFRESH_TOKEN)
+                        )
+                        .header(CSRF_HEADER_NAME, csrfCookie.getValue()))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""))
+                .andReturn();
+
+        // CSRF 검증을 통과한 뒤 로그아웃 서비스가 실행되어야 한다.
+        verify(authService).logout(OLD_REFRESH_TOKEN);
+
+        // 로그아웃 성공 시 Refresh Token 쿠키를 삭제하도록 응답한다.
+        Cookie deletedRefreshCookie =
+                result.getResponse().getCookie("REFRESH_TOKEN");
+
+        assertThat(deletedRefreshCookie).isNotNull();
+        assertThat(deletedRefreshCookie.getMaxAge()).isZero();
+        assertThat(deletedRefreshCookie.getPath()).isEqualTo("/api/auth");
     }
 
 
