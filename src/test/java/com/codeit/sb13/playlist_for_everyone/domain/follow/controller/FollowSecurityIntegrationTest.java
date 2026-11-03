@@ -747,6 +747,52 @@ public class FollowSecurityIntegrationTest {
 
         assertThat(remainingCount).isEqualTo(1L);
     }
+
+    @Test
+    @DisplayName("유효한 JWT로 팔로워가 없는 사용자의 팔로워 수를 조회하면 200과 숫자 0을 반환한다.")
+    void getFollowCount_returnsZeroWhenNoFollowers() throws Exception {
+        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+
+        mockMvc.perform(get("/api/follows/count")
+                .param("followeeId", followeeId.toString())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(content().string("0"));
+    }
+
+    @Test
+    @DisplayName("일반 사용자 JWT로 다른 사용자의 팔로워 수를 조회하면 해당 사용자의 팔로워만 집계한다.")
+    void getFollowCount_returnsTargetFollowerCountWithUserJwt() throws Exception {
+        followInsert(UUID.randomUUID(), followerId, followeeId);
+        followInsert(UUID.randomUUID(), otherFollowerId, followeeId);
+
+        followInsert(UUID.randomUUID(), followeeId, followerId);
+
+        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+
+        mockMvc.perform(get("/api/follows/count")
+                .param("followeeId", followeeId.toString())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(content().string("2"));
+    }
+
+    @Test
+    @DisplayName("유효한 JWT로 존재하지 않는 사용자의 팔로워 수를 조회하면 200과 숫자 0을 반환한다.")
+    void getFollowCount_returnsZeroForMissingFollowee() throws Exception {
+        UUID missingFolloweeId = UUID.randomUUID();
+        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+
+        mockMvc.perform(get("/api/follows/count")
+                .param("followeeId", missingFolloweeId.toString())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(content().string("0"));
+    }
+
     private void insertUser(UUID userId, String name){
         jdbcTemplate.update("""
             INSERT INTO users(id, email, nickname, role, enabled, created_at)
