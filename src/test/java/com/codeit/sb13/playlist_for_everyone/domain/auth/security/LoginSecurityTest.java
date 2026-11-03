@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.auth.security;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.controller.AuthController;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AuthService;
@@ -11,6 +12,7 @@ import com.codeit.sb13.playlist_for_everyone.global.config.MDCLoggingInterceptor
 import com.codeit.sb13.playlist_for_everyone.global.config.PasswordEncoderConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.SecurityAuthenticationConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.SecurityConfig;
+import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,13 +38,14 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(
-        controllers = UserController.class,
+        // 실제 CSRF 토큰 발급 API를 테스트에 포함한다.
+        controllers = {UserController.class, AuthController.class},
         properties = {
                 // 기본값이 7일이 아니라 이 값을 성공 핸들러에 전달하는지 검증한다.
                 "everyone.jwt.refresh-token-validity=3d",
@@ -71,6 +74,10 @@ class LoginSecurityTest {
     private static final String EMAIL = "test@gmail.com";
     private static final String PASSWORD = "test=password";
     private static final String ACCESS_TOKEN = "issued-access-token";
+
+    private static final String CSRF_TOKEN_URL = "/api/auth/csrf-token";
+    private static final String CSRF_COOKIE_NAME = "XSRF-TOKEN";
+    private static final String CSRF_HEADER_NAME = "X-XSRF-TOKEN";
 
     @Autowired
     private MockMvc mockMvc;
@@ -213,17 +220,16 @@ class LoginSecurityTest {
                 .willReturn(principal);
     }
 
-    private MockHttpServletRequestBuilder signIn(String password) {
-        // 명세에 맞춰 JSON이 아닌 폼 파라미터로 요청한다.
-        // username에는 사용자의 이메일이 들어간다.
+    private MockHttpServletRequestBuilder signIn(String password) throws Exception {
+
+        Cookie csrfCookie = issueCsrfCookie();
+
         return post("/api/auth/sign-in")
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                 .param("username", EMAIL)
                 .param("password", password)
-
-                // 이번 테스트는 로그인 처리에 집중한다.
-                // CSRF 검증 정책은 이후에 별도로 진행한다.
-                .with(csrf());
+                .cookie(csrfCookie)
+                .header(CSRF_HEADER_NAME, csrfCookie.getValue());
     }
 
     private void expectLoginFailure(String password) throws Exception {
@@ -251,14 +257,22 @@ class LoginSecurityTest {
 
     }
 
+    /**
+     * 로그인 전에 서버가 발급한 CSRF 쿠키를 받는다.
+     *
+     * 토큰 생성과 쿠키 저장은 실제 SecurityFilterChain이 처리한다.
+     */
+    private Cookie issueCsrfCookie() throws Exception {
+        MvcResult result = mockMvc.perform(get(CSRF_TOKEN_URL))
+                .andExpect(status().isNoContent())
+                .andReturn();
 
+        Cookie csrfCookie = result.getResponse()
+                .getCookie(CSRF_COOKIE_NAME);
 
+        assertThat(csrfCookie).isNotNull();
+        assertThat(csrfCookie.getValue()).isNotBlank();
 
-
-
-
-
-
-
-
+        return csrfCookie;
+    }
 }
