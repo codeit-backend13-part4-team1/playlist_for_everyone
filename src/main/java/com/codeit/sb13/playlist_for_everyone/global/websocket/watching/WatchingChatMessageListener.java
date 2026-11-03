@@ -2,7 +2,10 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.watching;
 
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageListener;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.serializer.GenericJacksonJsonRedisSerializer;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
 
 /**
@@ -14,10 +17,15 @@ import org.springframework.stereotype.Component;
 @Component
 public class WatchingChatMessageListener extends RedisMessageListener {
 
-    static private final String pathPrefix = "/sub/contents/";
+    private final SimpMessagingTemplate message;
 
-    public WatchingChatMessageListener(RedisTemplate<String, Object> redis) {
-        super(redis);
+    public WatchingChatMessageListener(
+            RedisTemplate<String, Object> redisTemplate,
+            @Qualifier("redisSerializer") GenericJacksonJsonRedisSerializer serializer,
+            SimpMessagingTemplate simpMessagingTemplate
+    ) {
+        super(redisTemplate,serializer);
+        message = simpMessagingTemplate;
     }
 
     @Override
@@ -26,8 +34,4 @@ public class WatchingChatMessageListener extends RedisMessageListener {
 
     }
 
-    // content subscribe 주소 반환.
-    private String destination(String contentId){
-        return pathPrefix + contentId + "/chat";
-    }
 }

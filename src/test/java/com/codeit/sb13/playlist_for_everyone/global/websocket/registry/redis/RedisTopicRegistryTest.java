@@ -15,6 +15,7 @@ import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.serializer.GenericJacksonJsonRedisSerializer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -37,6 +38,8 @@ public class RedisTopicRegistryTest {
     RedisBrokerRegister redisBroker;
     @Mock
     RedisTemplate<String,Object> redisTemplate;
+    @Mock
+    GenericJacksonJsonRedisSerializer serializer;
     @Spy
     SpreadLock locks;
     @InjectMocks
@@ -47,7 +50,7 @@ public class RedisTopicRegistryTest {
     class TestMessageListener extends RedisMessageListener{
 
         public TestMessageListener(){
-            super(redisTemplate);
+            super(redisTemplate,serializer);
         }
 
         @Override

@@ -30,7 +30,7 @@ public class WatchingSessionEventListener {
     public void watchJoinEvent(WatchingSessionJoinEvent event){
 
         // todo - 알림 이벤트 발행과 동일해야 함.
-        watchingSessionService.subscribeWatchingSession(event.sessionId(), event.subscriptionId(), event.contentId());
+        watchingSessionService.subscribeWatchingSession(event.sessionId(), event.subscriptionId(), event.destination());
 
     }
 

@@ -4,7 +4,9 @@ import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageDt
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageListener;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.WatchingSessionChange;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.serializer.GenericJacksonJsonRedisSerializer;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
 
@@ -24,9 +26,10 @@ public class WatchingSessionMessageListener extends RedisMessageListener {
 
     public WatchingSessionMessageListener(
             RedisTemplate<String, Object> redisTemplate,
+            @Qualifier("redisSerializer") GenericJacksonJsonRedisSerializer serializer,
             SimpMessagingTemplate simpMessagingTemplate
     ) {
-        super(redisTemplate);
+        super(redisTemplate,serializer);
         message = simpMessagingTemplate;
     }
 
