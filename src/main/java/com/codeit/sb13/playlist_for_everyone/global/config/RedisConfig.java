@@ -11,11 +11,7 @@ import org.springframework.data.redis.serializer.GenericJacksonJsonRedisSerializ
 
 @Configuration
 public class RedisConfig {
-    // redis Prefix
-    public static final String WEBSOCKET_SESSION_PREFIX = "websocket:session:";
-    public static final String WATCHER_CONTENT_PREFIX = "watcher:content:";
-    public static final String CHAT_CONTENT_PREFIX = "chat:content:";
-    // 클래스에서 자체적으로 템플릿을 만들어서 쓰면 삭제해도 무방할 듯.
+
     // 캐시 및 redis 데이터보관시 사용할 template
     @Bean
     public RedisTemplate<String, Object> redisTemplate(
