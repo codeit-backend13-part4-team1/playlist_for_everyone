@@ -6,6 +6,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record S3Properties(
         String bucket,
         String region,
-        String endpoint
+        String endpoint,
+        int presignMinutes
 ) {
+    public S3Properties {
+        if (presignMinutes <= 0) {
+            presignMinutes = 5;
+        }
+    }
 }

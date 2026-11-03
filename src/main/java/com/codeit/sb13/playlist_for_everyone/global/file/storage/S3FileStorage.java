@@ -11,11 +11,14 @@ import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.Duration;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -97,7 +100,15 @@ public class S3FileStorage implements FileStorage {
 
     @Override
     public String getFileUrl(String key) {
-        return "";
+        GetObjectPresignRequest request = GetObjectPresignRequest.builder()
+                .signatureDuration(Duration.ofMinutes(s3Properties.presignMinutes()))
+                .getObjectRequest(GetObjectRequest.builder()
+                        .bucket(s3Properties.bucket())
+                        .key(key)
+                        .build())
+                .build();
+
+        return s3Presigner.presignGetObject(request).url().toString();
     }
 
     @Override

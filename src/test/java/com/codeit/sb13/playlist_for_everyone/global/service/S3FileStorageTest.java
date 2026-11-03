@@ -51,7 +51,8 @@ public class S3FileStorageTest {
         S3Properties props = new S3Properties(
                 BUCKET,
                 "ap-northeast-2",
-                ""
+                "",
+                5
         );
 
         s3FileStorage = new S3FileStorage(s3Client, props, s3Presigner);
