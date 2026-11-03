@@ -9,7 +9,8 @@ package com.codeit.sb13.playlist_for_everyone.global.sse.event;
  * 발행 서버도 Redis 구독 경로로 전달받으며, 발행 단계에서 로컬 전송을 직접 수행하지 않는다.
  *
  * <p>로컬 emitter 관리와 브로커 발행은 서로 다른 책임이다.
- * Kafka 구현체와 알림·DM 생성 후의 발행 연동은 후속 작업이다.
+ * 알림 저장 커밋 후 NotificationSseEventListener가 이 계약을 호출한다.
+ * 업무별 알림 생성 요청 변환과 DM 본문 전송 연동, Kafka 구현체는 별도 작업이다.
  */
 public interface SseEventPublisher {
     /**

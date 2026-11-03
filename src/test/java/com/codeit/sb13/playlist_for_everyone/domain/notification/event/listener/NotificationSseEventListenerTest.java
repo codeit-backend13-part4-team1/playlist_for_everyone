@@ -25,6 +25,13 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+/**
+ * 리스너의 이벤트 변환·발행 요청·실패 처리·로그 내용을 검증하는 단위 테스트다.
+ *
+ * <p>리스너를 직접 호출하고 SseEventPublisher를 Mock으로 대체한다. 따라서 Spring의
+ * AFTER_COMMIT 실행 시점이나 실제 Redis·HTTP 수신을 검증하지 않는다.
+ * 트랜잭션 경계는 NotificationIntegrationTest, 실제 수신은 NotificationSseIntegrationTest가 맡는다.
+ */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("알림 저장 후 SSE 전송 리스너")
 class NotificationSseEventListenerTest {
@@ -113,6 +120,7 @@ class NotificationSseEventListenerTest {
         NotificationDto notification = createNotificationDto();
         NotificationCreatedEvent event = new NotificationCreatedEvent(UUID.randomUUID(), notification);
 
+        // 예외 메시지에도 본문을 넣어, Throwable을 통째로 로그에 넘기는 회귀를 검출한다.
         String sensitiveMessage = "민감한 예외 상세:" + notification.content();
 
         SsePublishException failure = new SsePublishException(new IllegalStateException(sensitiveMessage));

@@ -49,6 +49,13 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+/**
+ * 실제 PostgreSQL·Flyway와 Spring 트랜잭션으로 공통 생성 요청부터 커밋 후 SSE 발행 요청까지 검증한다.
+ *
+ * <p>SseEventPublisher만 Mock으로 대체하므로 Redis·HTTP 수신은 이 클래스의 검증 범위가 아니다.
+ * 테스트 전체를 @Transactional로 감싸지 않고 TransactionTemplate으로 커밋·롤백 시점을 제어한다.
+ * 사용자 닉네임 변경은 알림 처리 실패에도 원래 업무의 커밋이 보존되는지 확인하기 위한 업무 대역이다.
+ */
 @RecordApplicationEvents
 @SpringBootTest(properties = {
         "spring.flyway.enabled=true",
@@ -91,6 +98,7 @@ class NotificationIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    // DB와 리스너는 실제 빈을 사용하되, 외부 전송 경계의 호출 횟수·데이터·실패를 제어한다.
     @MockitoBean
     private SseEventPublisher sseEventPublisher;
 
@@ -334,6 +342,8 @@ class NotificationIntegrationTest {
     @Test
     @DisplayName("알림 저장 트랜잭션이 커밋되기 전에는 SSE를 발행하지 않고 커밋 후 한 번 발행한다.")
     void publishesSseOnlyAfterNotificationTransactionCommits(){
+        // 서비스의 REQUIRES_NEW는 반환 시 이미 커밋된다. 여기서는 저장 트랜잭션을 직접 열어
+        // 내부의 미발행과 커밋 후 발행을 각각 관찰한다. 공통 생성 경로는 위 통합 사례에서 검증한다.
         transactionTemplate.executeWithoutResult(status ->{
             NotificationCommand command = new NotificationCommand(RECEIVER_ID, TITLE, CONTENT, NotificationLevel.INFO);
 
@@ -351,6 +361,7 @@ class NotificationIntegrationTest {
     @Test
     @DisplayName("알림 저장 트랜잭션이 롤백되면 알림이 남지 않고 SSE를 발행하지 않는다.")
     void doesNotPublishSseWhenNotificationTransactionRollsBack(){
+        // 생성 이벤트가 등록되었더라도 저장 트랜잭션을 롤백하면 AFTER_COMMIT은 실행되지 않는다.
         transactionTemplate.executeWithoutResult(status ->{
             NotificationCommand command = new NotificationCommand(RECEIVER_ID, TITLE, CONTENT, NotificationLevel.INFO);
             Notification saved = notificationRepository.save(new Notification(command));
@@ -367,6 +378,7 @@ class NotificationIntegrationTest {
         return new NotificationCreateRequestedEvent(receiverId, title, CONTENT, level);
     }
 
+    /** 업무 트랜잭션의 정상 종료를 재현하여 첫 번째 AFTER_COMMIT 리스너부터 실행한다. */
     private void publishAndCommit(NotificationCreateRequestedEvent event) {
         transactionTemplate.executeWithoutResult(status -> eventPublisher.publishEvent(event));
     }

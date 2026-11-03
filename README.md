@@ -3,3 +3,5 @@
 [팀원 개발 가이드](docs/DEVELOPMENT.md)
 
 [SSE 구현 가이드](docs/sse/README.md)
+
+[알림 구현 가이드](docs/notification/README.md)

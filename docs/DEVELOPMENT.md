@@ -4,7 +4,7 @@
 
 > **문서 기준 안내:** 아래에는 공통 기반을 처음 준비하던 시점의 설명이 일부 남아 있습니다.
 > 도메인 구현 현황과 개발용 보안 전환 설명은 최신 코드와 다를 수 있습니다.
-> 현재 SSE 연결·Redis 분산 전송·인증·테스트는 [SSE 구현 가이드](sse/README.md)를 기준으로 확인합니다.
+> 현재 SSE 연결·Redis 분산 전송·인증·테스트는 [SSE 구현 가이드](sse/README.md), 알림 저장 후 전송은 [알림 구현 가이드](notification/README.md)를 기준으로 확인합니다.
 
 ## 현재 개발 상태
 
@@ -18,7 +18,8 @@
 | 로컬 인프라 | Docker Compose에 PostgreSQL과 Redis 서비스 정의 |
 | 개발용 보안 | `dev` 프로필에서 전체 요청을 인증 없이 허용하고 CSRF 검사를 비활성화하는 임시 설정 |
 | SSE | 인증된 사용자의 다중 연결, 하트비트, 종료 정리와 Redis Pub/Sub 분산 전송 구현. [SSE 구현 가이드](sse/README.md) 참고 |
-| 후속 기능 | JWT 인증, Redis 기반 캐시·세션, 배치 작업, S3 연동, WebSocket 기능 등의 설명은 위 문서 기준 안내 참고. SSE는 Kafka 구현체·업무 이벤트 연동·이력 복구·연결 수 제한이 후속 범위 |
+| 알림 전송 | 공통 알림 생성 요청 → 독립 저장·커밋 → Redis → 실제 SSE 수신 연동 구현. [알림 전송 흐름](notification/01-creation-and-delivery.md) 참고 |
+| 후속 기능 | JWT 인증, Redis 기반 캐시·세션, 배치 작업, S3 연동, WebSocket 기능 등의 설명은 위 문서 기준 안내 참고. SSE는 업무별 알림 생성 요청 변환(#45)·DM 본문 연동·Kafka·이력 복구·연결 수 제한이 후속 범위 |
 
 라이브러리 의존성과 로컬 인프라를 준비한 상태와 기능 구현 완료를 구분합니다. Redis 서비스는 Compose에 포함되어 있으며, 이를 사용하는 캐시·세션 기능은 구현 전입니다. Kafka와 Elasticsearch는 현재 Compose에 포함되어 있지 않습니다.
 
@@ -351,6 +352,7 @@ Docker Desktop 또는 Docker 엔진을 실행한 뒤 프로젝트 루트에서 �
 
 공통 테스트는 `test` 프로필과 H2를 사용합니다. 알림 통합 테스트는 Testcontainers로 별도의 PostgreSQL 16 컨테이너를 실행하고 실제 Flyway 마이그레이션을 적용합니다.
 SSE Redis 통합 테스트는 별도의 Redis 7.4 컨테이너로 실제 Pub/Sub을 검증합니다. 전체 테스트와 빌드에는 Docker가 필요하며, 로컬 PostgreSQL·Redis나 `.env.dev`는 필요하지 않습니다.
+`NotificationSseIntegrationTest`는 PostgreSQL과 Redis를 함께 사용하여 알림 저장부터 실제 HTTP 수신까지 확인합니다. [검증 범위와 실행 명령](notification/02-testing.md)을 참고합니다.
 최초 실행 시 테스트용 컨테이너 이미지 다운로드가 필요할 수 있습니다. 테스트 프로필은 SSE 자동 구독을 끄고, Redis SSE 통합 테스트에서만 명시적으로 활성화합니다.
 
 제목 말줄임 단위 테스트만 확인하려면 Docker 없이 다음 명령을 사용할 수 있습니다.
@@ -404,13 +406,15 @@ CI는 성공한 빌드의 JaCoCo XML에서 전체 LINE 수치로 SVG 배지를 �
 - 테스트 클래스와 메서드에 한글 `@DisplayName`으로 대상과 기대 결과를 설명합니다. 파라미터화 테스트는 개별 사례도 구분할 수 있게 이름을 지정합니다.
 - 공통 예외 테스트에는 [TestEveryOneException](../src/test/java/com/codeit/sb13/testsupport/exception/TestEveryOneException.java)을 사용합니다. 도메인 예외 예시의 변경이 공통 동작 테스트에 영향을 주지 않도록 분리합니다.
 - 기존 테스트는 애플리케이션 컨텍스트, 예외 응답, 검증 오류, MDC, JPA Auditing, Querydsl 조회, 비밀번호 인코더, OpenAPI 설정을 확인합니다.
-- 알림 테스트는 제목 말줄임, 입력 검증, 커밋 후 저장, 롤백·트랜잭션 외 발행 시 미저장, 저장 실패 시 원 업무 보존 및 후속 정상 저장을 확인합니다. 통합 테스트는 `TransactionTemplate`으로 실제 커밋·롤백을 수행합니다.
+- 알림 테스트는 제목 말줄임·입력 검증, 업무 커밋 후 저장, 알림 커밋 후 SSE 발행, 롤백·트랜잭션 외 발행 시 미처리를 확인합니다. `NotificationIntegrationTest`는 실제 PostgreSQL과 `TransactionTemplate`을 사용하고, SSE 발행자는 Mock으로 대체하여 저장·전송 실패 격리를 검증합니다.
 - 공통 예외 핸들러·인터셉터의 MVC 테스트는 Security 필터를 제외합니다. 이 테스트의 통과는 인증·인가 동작 검증을 의미하지 않습니다.
-- SSE MVC 테스트는 실제 보안 필터를 포함하여 인증 사용자와 ASYNC 종료 시 인증 복원을 확인합니다. 실제 HTTP 테스트는 인증 의존성을 Mock으로 대체하고, 프레임 전송과 JSON 변환 실패 시 기존 연결 유지를 검증합니다.
+- SSE MVC 테스트는 실제 보안 필터를 포함하여 인증 사용자와 ASYNC 종료 시 인증 복원을 확인합니다. 공통 `SseStreamingIntegrationTest`는 인증 의존성을 Mock으로 대체하고, 실제 HTTP 프레임과 JSON 변환 실패 시 기존 연결 유지를 검증합니다.
 - SSE 설정 테스트는 연결 설정에 `SseConfig`, 전송 설정에 `SseTransportConfig`를 사용하고 필요한 값을 직접 제공합니다.
 - SSE Redis 통합 테스트는 공통 발행 구현체, JSON 보존, 독립 컨텍스트 간 전달과 구독 연결 복구 후 새 이벤트 수신을 확인합니다. emitter를 Mock으로 사용하는 검증과 실제 HTTP 검증의 차이는 [SSE 테스트 가이드](sse/05-testing.md#redis-테스트의-범위)를 참고합니다.
 
-알림 통합 테스트의 PostgreSQL·Flyway 검증과 SSE의 Redis Pub/Sub 검증은 별도입니다. SSE Redis 테스트의 통과가 Redis 캐시·세션이나 알림·DM 업무 연동 완료를 의미하지는 않습니다.
+`NotificationSseIntegrationTest`는 실제 JWT·사용자 조회·PostgreSQL·Redis·HTTP를 연결해 DTO와 이벤트 ID 보존, 다른 사용자 미전달, A에서 저장한 알림의 B 수신을 확인합니다.
+A·B는 동일 JVM의 독립 컨텍스트와 서로 다른 HTTP 포트이며, 이 검증에 로그인 API·업무별 알림 생성 요청 변환(#45)·DM 연동은 포함하지 않습니다.
+공통 Redis 전송 테스트와 알림 연동 테스트의 차이는 [알림 테스트 가이드](notification/02-testing.md)에 정리합니다.
 최신 결과와 수치는 각자의 코드에서 명령을 실행해 보고서로 확인합니다.
 
 ### TMDB API 연동
@@ -458,6 +462,6 @@ IntelliJ에서 `TmdbClientLiveTest`의 실행 설정에
 - 목록 API의 커서 규칙 확정과 직렬화·페이징 테스트
 - Redis 기반 캐시·세션 기능 구현과 데이터 보관 정책 결정
 - 배치, S3, WebSocket 등 기능별 구현과 필요한 인프라 추가
-- SSE Kafka 구현체와 알림·DM 생성 후 발행 연동, [공유 이력·재연결 복구 #53](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/53), [동시 연결 수 제한·모니터링 #107](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/107)
+- 업무별 알림 생성 요청 변환(#45), DM 본문 전송 연동, SSE Kafka 구현체, [공유 이력·재연결 복구 #53](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/53), [동시 연결 수 제한·모니터링 #107](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/107)
 - README 배지 자동 게시 방식 확정 및 연결
 - 배포 파이프라인 구성

@@ -2,6 +2,7 @@
 
 SSE 테스트는 설정 바인딩, 저장소·서비스 동작, MVC 계약, 실제 HTTP 프레임과 Redis 분산 전송을 검증합니다.
 **어떤 역할을 검증하고 어떤 의존성을 대체했는지**부터 읽으면 테스트를 이해하기 쉽습니다.
+알림 저장·커밋부터 실제 수신까지의 #51 검증은 [알림 전송 테스트](../notification/02-testing.md)에서 별도로 설명합니다.
 
 ## 테스트별 책임
 
@@ -92,11 +93,13 @@ SSE는 계속 열리는 응답이므로 EOF까지 읽지 않고 필요한 줄만
 
 두 Redis 통합 테스트는 Testcontainers의 Redis 7.4를 사용하므로 Docker가 필요합니다. 로컬 Redis나 Compose 서비스는 사용하지 않습니다.
 독립 컨텍스트는 서버별 빈·저장소를 구분하지만 별도 OS 프로세스는 아닙니다. 실제 프로세스와 HTTP 연결은 [Compose 수신 검증](08-redis-verification.md)에서 확인합니다.
+알림 저장과 실제 HTTP 수신까지 연결한 자동 검증은 `domain.notification`의 [NotificationSseIntegrationTest](../notification/02-testing.md#실제-http-수신-검증-읽기)가 맡습니다.
 재연결 테스트는 테스트 Redis의 Pub/Sub 연결을 끊은 뒤 재구독과 새 이벤트 수신을 확인하며, 끊긴 동안의 이벤트 복구를 보장하지 않습니다.
 
 테스트 프로필은 `everyone.sse.subscription-enabled=false`로 SSE 자동 구독을 끕니다. Redis SSE 통합 테스트에서만 `true`와 전용 테스트 채널을 명시합니다.
 이 설정은 다른 기능의 Redis 의존성까지 끄지 않습니다. 설정 파일을 읽지 않는 `ApplicationContextRunner`에서는 필요한 값을 직접 지정합니다.
-발행·수신 로그의 출력 필드를 자동 단언하는 테스트는 없으며, [로그 기준](06-redis-transport.md#실패-처리와-로그)은 구현과 함께 확인합니다.
+위 Redis 발행·수신 테스트는 로그의 출력 필드를 자동 단언하지 않으므로, [로그 기준](06-redis-transport.md#실패-처리와-로그)은 구현과 함께 확인합니다.
+알림 전송 리스너의 실패 로그는 별도의 `NotificationSseEventListenerTest`에서 검증합니다.
 
 ## 동시성과 종료 테스트의 해석
 
@@ -136,7 +139,7 @@ Redis 통합 테스트만 확인할 때(Docker 필요):
   --tests '*RedisSseDeliveryIntegrationTest' --no-daemon --console=plain
 ```
 
-SSE와 전용 스케줄러 전체를 확인할 때(Redis 통합 테스트를 포함하므로 Docker 필요):
+공통 SSE와 전용 스케줄러를 확인할 때(Redis 통합 테스트를 포함하므로 Docker 필요):
 
 ```bash
 ./gradlew test \
@@ -144,6 +147,8 @@ SSE와 전용 스케줄러 전체를 확인할 때(Redis 통합 테스트를 포
   --tests 'com.codeit.sb13.playlist_for_everyone.global.config.SchedulerConfigTest' \
   --no-daemon --console=plain
 ```
+
+위 명령의 패키지 필터에는 알림 도메인 테스트가 포함되지 않습니다. 알림 저장 연동은 [별도 실행 명령](../notification/02-testing.md#실행-방법)으로 확인합니다.
 
 JWT·보안 설정까지 함께 회귀 검증할 때(Docker 필요):
 

@@ -32,6 +32,11 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * 저장소·이벤트 발행자를 Mock으로 대체하여 서비스의 조회 결과 구성과 저장 후 발행 요청을 검증한다.
+ * 저장 테스트의 ID·생성시각은 직접 준비하므로 JPA 생성 전략·Auditing·실제 커밋을 검증하지 않는다.
+ * 해당 동작과 커밋 후 SSE 발행 시점은 NotificationIntegrationTest에서 확인한다.
+ */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("알림 서비스")
 public class NotificationServiceTest {
@@ -201,6 +206,7 @@ public class NotificationServiceTest {
         NotificationCommand command = new NotificationCommand(receiverId, "알림 제목", "알림 내용", NotificationLevel.INFO);
         Notification savedNotification = createNotification(notificationId, receiverId, createdAt);
 
+        // 저장소가 돌려준 엔티티를 기준으로 DTO를 구성하는지 확인한다. 실제 INSERT는 실행하지 않는다.
         when(notificationRepository.save(any(Notification.class)))
                 .thenReturn(savedNotification);
 
@@ -226,6 +232,7 @@ public class NotificationServiceTest {
 
 
 
+    /** Mock 저장·조회 결과를 준비한다. 실제 UUID 생성이나 JPA Auditing 실행을 흉내 내는 테스트는 아니다. */
     private Notification createNotification(UUID notificationId, UUID receiverId, LocalDateTime createdAt){
         Notification notification = new Notification(new NotificationCommand(receiverId, "알림 제목", "알림 내용", NotificationLevel.INFO));
 

@@ -5,6 +5,7 @@
 
 이 절차는 Redis CLI 발행 이후 수신 리스너 → 로컬 전송 → 실제 HTTP 응답을 확인합니다.
 실제 `RedisSseEventPublisher`를 통한 발행은 [Redis 통합 테스트](05-testing.md#redis-테스트의-범위)에서 검증합니다.
+알림 DB 저장·커밋·생성 리스너까지 포함하는 #51 경로는 [알림 전송 통합 테스트](../notification/02-testing.md)로 확인합니다.
 
 ## 1. 검증용 사용자로 로그인
 
@@ -106,4 +107,4 @@ data:{"message":"두 서버 SSE 전송 확인"}
 
 ---
 
-[← 이전: 다중 서버 실행](07-redis-multi-node.md) · [목차](README.md)
+[← 이전: 다중 서버 실행](07-redis-multi-node.md) · [SSE 목차](README.md) · [관련: 알림 구현 가이드](../notification/README.md)
