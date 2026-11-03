@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.playlist.service.impl;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.PlaylistResponse;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistSubscribedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.PlaylistService;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscriptionDuplicatedException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscriptionNotFoundException;
@@ -27,6 +28,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.event.ApplicationEvents;
+import org.springframework.test.context.event.RecordApplicationEvents;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -37,6 +40,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
     "spring.docker.compose.enabled=false"
 })
 @Testcontainers
+@RecordApplicationEvents
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @DisplayName("플레이리스트 구독 통합 테스트")
 class PlaylistSubscriptionIntegrationTest {
@@ -59,6 +63,9 @@ class PlaylistSubscriptionIntegrationTest {
 
   @Autowired
   private JdbcTemplate jdbcTemplate;
+
+  @Autowired
+  private ApplicationEvents applicationEvents;
 
   private final UUID ownerId = UUID.randomUUID();
   private final UUID playlistId = UUID.randomUUID();
@@ -172,6 +179,41 @@ class PlaylistSubscriptionIntegrationTest {
         .allSatisfy(r -> assertThat(r).isInstanceOf(PlayListSubscriptionDuplicatedException.class));
     assertThat(subscriptionRows()).isEqualTo(1L);
     assertThat(subscriberCountColumn()).isEqualTo(1L);
+  }
+
+  @Test
+  @DisplayName("구독하면 구독 이벤트가 한 건 발행되고 플레이리스트·소유자·구독자 정보를 담는다")
+  void 구독하면_구독_이벤트가_한_건_발행된다() {
+    // given
+    UUID subscriberId = newUser();
+
+    // when
+    playlistService.subscribe(playlistId, subscriberId);
+
+    // then
+    List<PlaylistSubscribedEvent> events =
+        applicationEvents.stream(PlaylistSubscribedEvent.class).toList();
+    assertThat(events).hasSize(1);
+    PlaylistSubscribedEvent event = events.get(0);
+    assertThat(event.playlistId()).isEqualTo(playlistId);
+    assertThat(event.playlistTitle()).isEqualTo("제목");
+    assertThat(event.ownerId()).isEqualTo(ownerId);
+    assertThat(event.subscriberId()).isEqualTo(subscriberId);
+    assertThat(event.subscriberName()).isEqualTo("tester");
+  }
+
+  @Test
+  @DisplayName("중복 구독이 거부되면 이벤트가 추가로 발행되지 않는다")
+  void 중복_구독이_거부되면_이벤트가_추가로_발행되지_않는다() {
+    // given
+    UUID subscriberId = newUser();
+    playlistService.subscribe(playlistId, subscriberId);
+
+    // when
+    assertThrowsDuplicated(subscriberId);
+
+    // then
+    assertThat(applicationEvents.stream(PlaylistSubscribedEvent.class).count()).isEqualTo(1L);
   }
 
   //-------[헬퍼 메서드]-----
