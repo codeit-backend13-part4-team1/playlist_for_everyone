@@ -5,6 +5,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
+import io.jsonwebtoken.security.SignatureException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -498,8 +499,113 @@ public class FollowSecurityIntegrationTest {
                 .andExpect(jsonPath("$.details").isEmpty());
     }
 
+    @Test
+    @DisplayName("변조된 JWT로 팔로우를 등록하면 공통오류 응답으로 401을 반환하고 관계를 저장하지 않는다.")
+    void follow_returnsUnauthorizedWithTamperedJwt() throws Exception {
+        String tamperedToken = createTamperedAccessToken(followerId);
+        assertThatThrownBy(()-> jwtTokenProvider.parseAccessToken(tamperedToken))
+                .isInstanceOf(SignatureException.class);
 
+        mockMvc.perform(post("/api/follows")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + tamperedToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                            "followeeId": "%s"
+                        }
+                        """.formatted(followeeId)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.exceptionName").value("UnauthorizedException"))
+                .andExpect(jsonPath("$.message").value("인증이 필요합니다."))
+                .andExpect(jsonPath("$.details").isMap())
+                .andExpect(jsonPath("$.details").isEmpty());
 
+        Long saveFollowCount = jdbcTemplate.queryForObject("""
+                    SELECT COUNT(*)
+                    FROM follows
+                    WHERE followee_id = ?
+                """, Long.class, followeeId);
+
+        assertThat(saveFollowCount).isZero();
+    }
+
+    @Test
+    @DisplayName("변조된 JWT로 팔로우를 취소하면 공통오류 응답으로 401을 반환하고 기존 관계를 유지한다.")
+    void unfollow_returnsUnauthorizedWithTamperedJwt() throws Exception {
+        UUID followId = UUID.randomUUID();
+        followInsert(followId);
+
+        String findRelationSql = """
+                SELECT id, follower_id, followee_id, created_at
+                FROM follows
+                WHERE id = ?
+                """;
+
+        List<Map<String, Object>> beforeRows = jdbcTemplate.queryForList(findRelationSql, followId);
+        assertThat(beforeRows).hasSize(1);
+
+        String tamperedToken = createTamperedAccessToken(followerId);
+        assertThatThrownBy(()-> jwtTokenProvider.parseAccessToken(tamperedToken))
+                .isInstanceOf(SignatureException.class);
+
+        mockMvc.perform(delete("/api/follows/{followId}", followId)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + tamperedToken))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.exceptionName").value("UnauthorizedException"))
+                .andExpect(jsonPath("$.message").value("인증이 필요합니다."))
+                .andExpect(jsonPath("$.details").isMap())
+                .andExpect(jsonPath("$.details").isEmpty());
+
+        List<Map<String, Object>> afterRows = jdbcTemplate.queryForList(findRelationSql, followId);
+        assertThat(afterRows)
+                .hasSize(1)
+                .containsExactlyElementsOf(beforeRows);
+
+    }
+
+    @Test
+    @DisplayName("변조된 JWT로 내 팔로우 관계를 조회하면 공통 오류 응답으로 401을 반환한다.")
+    void getFollowedByMe_returnsUnauthorizedWithTamperedJwt() throws Exception {
+        UUID followId = UUID.randomUUID();
+        followInsert(followId);
+
+        String tamperedToken = createTamperedAccessToken(followerId);
+        assertThatThrownBy(()-> jwtTokenProvider.parseAccessToken(tamperedToken))
+                .isInstanceOf(SignatureException.class);
+
+        mockMvc.perform(get("/api/follows/followed-by-me")
+                .param("followeeId", followeeId.toString())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + tamperedToken))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.exceptionName").value("UnauthorizedException"))
+                .andExpect(jsonPath("$.message").value("인증이 필요합니다."))
+                .andExpect(jsonPath("$.details").isMap())
+                .andExpect(jsonPath("$.details").isEmpty());
+    }
+
+    @Test
+    @DisplayName("변조된 JWT로 팔로워 수를 조회하면 공통 오류 응답으로 401을 반환한다.")
+    void getFollowCount_returnsUnauthorizedWithTamperedJwt() throws Exception {
+        UUID followId = UUID.randomUUID();
+        followInsert(followId);
+
+        String tamperedToken = createTamperedAccessToken(followerId);
+        assertThatThrownBy(()-> jwtTokenProvider.parseAccessToken(tamperedToken))
+                .isInstanceOf(SignatureException.class);
+
+        mockMvc.perform(get("/api/follows/count")
+                .param("followeeId", followeeId.toString())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + tamperedToken))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.exceptionName").value("UnauthorizedException"))
+                .andExpect(jsonPath("$.message").value("인증이 필요합니다."))
+                .andExpect(jsonPath("$.details").isMap())
+                .andExpect(jsonPath("$.details").isEmpty());
+    }
     private void insertUser(UUID userId, String name){
         jdbcTemplate.update("""
             INSERT INTO users(id, email, nickname, role, enabled, created_at)
@@ -530,5 +636,16 @@ public class FollowSecurityIntegrationTest {
             INSERT INTO follows (id, follower_id, followee_id, created_at)
             VALUES (?, ?, ?, CURRENT_TIMESTAMP)
         """, followId, followerId, followeeId);
+    }
+
+    private String createTamperedAccessToken(UUID userId){
+        String validToken = jwtTokenProvider.createAccessToken(userId);
+        String[] tokenParts = validToken.split("\\.");
+
+        String signature = tokenParts[2];
+        String replacement = signature.startsWith("A") ? "B" : "A";
+        tokenParts[2] = replacement + signature.substring(1);
+
+        return String.join(".", tokenParts);
     }
 }
