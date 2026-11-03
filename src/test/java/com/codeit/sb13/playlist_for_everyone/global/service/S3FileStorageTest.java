@@ -26,6 +26,7 @@ import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequ
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -139,9 +140,14 @@ public class S3FileStorageTest {
         // then
         assertThat(result).isEqualTo(expectedUrl);
 
-        verify(s3Presigner).presignGetObject(
-                any(GetObjectPresignRequest.class)
-        );
+        ArgumentCaptor<GetObjectPresignRequest> captor =
+                ArgumentCaptor.forClass(GetObjectPresignRequest.class);
+
+        verify(s3Presigner).presignGetObject(captor.capture());
+
+        // 유효시간 5분 검증
+        assertThat(captor.getValue().signatureDuration())
+                .isEqualTo(Duration.ofMinutes(5));
     }
 
     @Test
