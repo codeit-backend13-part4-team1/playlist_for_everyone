@@ -25,8 +25,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest(
@@ -299,6 +298,103 @@ public class FollowSecurityIntegrationTest {
         assertThat(afterRows)
                 .hasSize(1)
                 .containsExactlyElementsOf(beforeRows);
+    }
+
+    @Test
+    @DisplayName("JWT 없이 팔로우를 등록하면 공통 오류 응답으로 401을 반환하고 관계를 저장하지 않는다.")
+    void follow_returnsUnauthorizedWithoutJwt() throws Exception {
+        mockMvc.perform(post("/api/follows")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                            "followeeId": "%s"
+                        }
+                        """.formatted(followeeId)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.exceptionName").value("UnauthorizedException"))
+                .andExpect(jsonPath("$.message").value("인증이 필요합니다."))
+                .andExpect(jsonPath("$.details").isMap())
+                .andExpect(jsonPath("$.details").isEmpty());
+
+        Long savedFollowCount = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM follows
+                WHERE followee_id = ?
+                """, Long.class, followeeId);
+
+        assertThat(savedFollowCount).isZero();
+    }
+
+    @Test
+    @DisplayName("JWT 없이 팔로우를 취소하면 공통 오류 응답으로 401을 반환하고 기존 관계를 유지한다.")
+    void unfollow_returnsUnauthorizedWithoutJwt() throws Exception {
+        UUID followId = UUID.randomUUID();
+        jdbcTemplate.update("""
+            INSERT INTO follows (id, follower_id, followee_id, created_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        """, followId, followerId, followeeId);
+
+        String findRelationSql = """
+                SELECT id, follower_id, followee_id, created_at
+                FROM follows
+                WHERE id = ?
+                """;
+
+        List<Map<String, Object>> beforeRows = jdbcTemplate.queryForList(findRelationSql, followId);
+        assertThat(beforeRows).hasSize(1);
+
+        mockMvc.perform(delete("/api/follows/{followId}", followId))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.exceptionName").value("UnauthorizedException"))
+                .andExpect(jsonPath("$.message").value("인증이 필요합니다."))
+                .andExpect(jsonPath("$.details").isEmpty())
+                .andExpect(jsonPath("$.details").isMap());
+
+        List<Map<String, Object>> afterRows = jdbcTemplate.queryForList(findRelationSql, followId);
+        assertThat(afterRows)
+                .hasSize(1)
+                .containsExactlyElementsOf(beforeRows);
+
+    }
+
+    @Test
+    @DisplayName("JWT 없이 내 팔로우 관계를 조회하면 공통 오류 응답으로 401을 반환합니다.")
+    void getFollowedByMe_returnsUnauthorizedWithoutJwt() throws Exception {
+        UUID followId = UUID.randomUUID();
+        jdbcTemplate.update("""
+            INSERT INTO follows (id, follower_id, followee_id, created_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        """, followId, followerId, followeeId);
+
+        mockMvc.perform(get("/api/follows/followed-by-me")
+                .param("followeeId",followeeId.toString()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.exceptionName").value("UnauthorizedException"))
+                .andExpect(jsonPath("$.message").value("인증이 필요합니다."))
+                .andExpect(jsonPath("$.details").isMap())
+                .andExpect(jsonPath("$.details").isEmpty());
+    }
+
+    @Test
+    @DisplayName("JWT 없이 팔로워 수를 조회하면 공통 오류 응답으로 401을 반환한다.")
+    void getFollowCount_returnsUnauthorizedWithoutJwt() throws Exception {
+        UUID followId = UUID.randomUUID();
+        jdbcTemplate.update("""
+            INSERT INTO follows (id, follower_id, followee_id, created_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        """, followId, followerId, followeeId);
+
+        mockMvc.perform(get("/api/follows/count")
+                .param("followeeId", followeeId.toString()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.exceptionName").value("UnauthorizedException"))
+                .andExpect(jsonPath("$.message").value("인증이 필요합니다."))
+                .andExpect(jsonPath("$.details").isMap())
+                .andExpect(jsonPath("$.details").isEmpty());
     }
 
 
