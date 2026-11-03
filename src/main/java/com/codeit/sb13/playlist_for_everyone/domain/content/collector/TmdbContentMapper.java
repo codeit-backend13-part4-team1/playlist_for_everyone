@@ -30,13 +30,7 @@ public class TmdbContentMapper {
 
         String thumbnailUrl = toThumbnailUrl(movie.posterPath());
 
-        List<String> tags = movie.genreIds() == null
-                ? List.of()
-                : movie.genreIds().stream()
-                  .filter(Objects::nonNull)
-                  .map(MOVIE_GENRES::get)
-                  .filter(Objects::nonNull)
-                  .toList();
+        List<String> tags = toGenreTags(movie.genreIds(), MOVIE_GENRES);
 
         return new CollectedContentData(
                 ContentType.movie,
@@ -56,13 +50,7 @@ public class TmdbContentMapper {
 
         String thumbnailUrl = toThumbnailUrl(tv.posterPath());
 
-        List<String> tags = tv.genreIds() == null
-                ? List.of()
-                : tv.genreIds().stream()
-                  .filter(Objects::nonNull)
-                  .map(TV_GENRES::get)
-                  .filter(Objects::nonNull)
-                  .toList();
+        List<String> tags = toGenreTags(tv.genreIds(), TV_GENRES);
 
         return new CollectedContentData(
                 ContentType.tvSeries,
@@ -80,6 +68,18 @@ public class TmdbContentMapper {
             return null;
         }
         return "https://image.tmdb.org/t/p/w500" + posterPath;
+    }
+
+    private List<String> toGenreTags(List<Integer> genreIds, Map<Integer, String> genreNames) {
+        if (genreIds == null) {
+            return List.of();
+        }
+
+        return genreIds.stream()
+                .filter(Objects::nonNull)
+                .map(genreNames::get)
+                .filter(Objects::nonNull)
+                .toList();
     }
 
 }
