@@ -3,6 +3,8 @@ package com.codeit.sb13.playlist_for_everyone.global.sse.event;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
+import java.util.Arrays;
+
 /**
  * 프론트엔드가 구독하는 업무 이벤트 이름이다.
  * enum 상수명이 아니라 name 값을 SSE의 event 필드에 기록한다.
@@ -15,4 +17,11 @@ public enum Event {
 
     private final String name;
 
+    public static boolean exist(String name) {
+        if (name == null) {
+            return false;
+        }
+        return Arrays.stream(Event.values())
+                .anyMatch(e -> e.name.equals(name));
+    }
 }

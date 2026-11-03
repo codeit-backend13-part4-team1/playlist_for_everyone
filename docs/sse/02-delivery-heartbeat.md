@@ -1,7 +1,8 @@
 # 2. 이벤트 전송과 하트비트
 
 `SseDeliveryService`는 수신자의 **현재 서버 연결들**을 찾아 같은 이벤트를 보냅니다.
-다른 서버로 메시지를 전달하는 책임은 향후 `SseEventPublisher` 구현체가 담당합니다.
+다른 서버로 메시지를 전달하는 책임은 `SseEventPublisher`의 Redis 구현체가 담당합니다.
+전체 흐름은 [Redis 전송 구조와 설정](06-redis-transport.md)을 참고합니다.
 
 ## 이벤트가 클라이언트에 전달되는 형태
 
@@ -43,6 +44,7 @@ DM 이벤트 이름은 `direct-messages`입니다. `Event`의 enum 상수명 대
 | 실패 단계 | 원인·예외 | 처리 |
 | --- | --- | --- |
 | 이벤트 생성 | 필수 필드가 null | 한글 메시지의 `NullPointerException`으로 생성을 중단합니다. |
+| 이벤트 생성 | 지원하지 않는 이벤트 이름 | `IllegalArgumentException`으로 생성을 중단합니다. |
 | JSON 변환 | `JacksonException` | WARN 로그를 남기고 해당 이벤트 전송만 건너뜁니다. 연결은 유지합니다. |
 | 각 연결의 `send()` | `IOException`, `IllegalStateException` | 실패한 연결만 삭제하고 다음 연결에 계속 전송합니다. |
 
@@ -52,7 +54,8 @@ JSON 변환 실패 시에는 아직 어떤 연결에도 데이터를 쓰지 않�
 
 ## 단절과 오류의 로그 기준
 
-JSON 변환 실패는 이벤트·수신자 ID와 예외 스택을 `WARN`으로 남기며 연결을 유지합니다.
+로컬 전송 서비스의 JSON 변환 실패는 이벤트·수신자 ID와 예외 스택을 `WARN`으로 남기며 연결을 유지합니다.
+Redis 발행·수신 단계의 로그는 [별도 기준](06-redis-transport.md#실패-처리와-로그)을 따릅니다.
 아래 표는 실제 연결 전송과 `onError` 콜백에서 발생한 오류의 로그 기준입니다.
 
 `DisconnectedClientHelper`가 클라이언트 단절로 식별한 예외는 스택 없이 식별 정보와 정리 메시지를 `DEBUG`로 남깁니다.
@@ -108,11 +111,11 @@ JSON 변환 실패는 이벤트·수신자 ID와 예외 스택을 `WARN`으로 �
 
 ## 서버 간 전송과의 경계
 
-현재 `SseEventPublisher`는 `publish(SseEvent<?>)` 계약만 있으며 구현체는 없습니다.
-향후 Redis·Kafka에서 이벤트를 수신한 각 서버가 로컬 전송 서비스를 호출하는 구성을 위한 인터페이스입니다.
-이 경우에도 실제 HTTP 연결을 가진 emitter는 연결된 서버의 메모리에 남습니다.
+현재 `SseEventPublisher`의 Redis 구현체가 이벤트를 발행하고, 각 서버의 Redis 수신자가 로컬 전송 서비스를 호출합니다.
+발행 서버도 구독 경로로 전달받습니다. 실제 HTTP 연결을 가진 emitter는 연결된 서버의 메모리에 남습니다.
+구독 설정과 실패 처리는 [Redis 전송 구조와 설정](06-redis-transport.md)에서 설명합니다.
 
-이벤트 저장·재전송과 알림·DM 생성 후의 연동은 후속 구현입니다.
+Kafka 구현체, 이벤트 저장·재전송과 알림·DM 생성 후의 연동은 후속 구현입니다.
 현재 `publish` 계약에는 브라우저 수신 확인을 반환하는 기능이 없습니다.
 
 ## 관련 코드와 테스트

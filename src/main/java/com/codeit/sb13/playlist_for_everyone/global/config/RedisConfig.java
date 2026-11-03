@@ -47,6 +47,7 @@ public class RedisConfig {
     }
 
 
+    // SSE와 WebSocket 등이 공유한다. 각 기능은 자기 리스너만 등록·해제하고 컨테이너 생명주기는 Spring에 맡긴다.
     @Bean
     public RedisMessageListenerContainer redisMessageListenerContainer(
             RedisConnectionFactory factory
