@@ -11,6 +11,8 @@ import io.jsonwebtoken.security.Keys;
 import io.jsonwebtoken.security.WeakKeyException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 import java.time.Duration;
@@ -39,7 +41,8 @@ class JwtConfigTest {
         contextRunner
                 .withPropertyValues(
                         "everyone.jwt.secret-key=" + TEST_SECRET_KEY,
-                        "everyone.jwt.access-token-validity=30m"
+                        "everyone.jwt.access-token-validity=30m",
+                        "everyone.jwt.refresh-token-validity=7d"
                 )
                 .run(context -> {
                     assertThat(context).hasNotFailed();
@@ -96,7 +99,8 @@ class JwtConfigTest {
 
         contextRunner
                 .withPropertyValues(
-                        "everyone.jwt.access-token-validity=30m"
+                        "everyone.jwt.access-token-validity=30m",
+                        "everyone.jwt.refresh-token-validity=7d"
                 )
                 .run(context -> {
                     assertThat(context).hasFailed();
@@ -119,7 +123,8 @@ class JwtConfigTest {
         contextRunner
                 .withPropertyValues(
                         "everyone.jwt.secret-key=" + shortSecretKey,
-                        "everyone.jwt.access-token-validity=30m"
+                        "everyone.jwt.access-token-validity=30m",
+                        "everyone.jwt.refresh-token-validity=7d"
                 )
                 .run(context -> {
                     assertThat(context).hasFailed();
@@ -142,7 +147,8 @@ class JwtConfigTest {
         contextRunner
                 .withPropertyValues(
                         "everyone.jwt.secret-key=" + TEST_SECRET_KEY,
-                        "everyone.jwt.access-token-validity=0s"
+                        "everyone.jwt.access-token-validity=0s",
+                        "everyone.jwt.refresh-token-validity=7d"
                 )
                 .run(context -> {
                     assertThat(context).hasFailed();
@@ -165,7 +171,8 @@ class JwtConfigTest {
         contextRunner
                 .withPropertyValues(
                         "everyone.jwt.secret-key=" + invalidSecretKey,
-                        "everyone.jwt.access-token-validity=30m"
+                        "everyone.jwt.access-token-validity=30m",
+                        "everyone.jwt.refresh-token-validity=7d"
                 )
                 .run(context -> {
                     assertThat(context).hasFailed();
@@ -178,6 +185,101 @@ class JwtConfigTest {
                                     "everyone.jwt.secret-key는 Base64로 인코딩되어야 하며, "
                                             + "디코딩한 키 길이는 32바이트 이상이어야 합니다."
                             );
+                });
+    }
+
+
+    @Test
+    @DisplayName("설정한 Refresh Token 유효기간으로 발급·검증 가능한 Provider를 등록한다.")
+    void Refresh_Token_유효기간을_Provider에_전달한다() {
+        contextRunner
+                .withPropertyValues(
+                        "everyone.jwt.secret-key=" + TEST_SECRET_KEY,
+                        "everyone.jwt.access-token-validity=30m",
+                        // 기존 단위 테스트의 7일과 다른 값으로 설정을 전달한다.
+                        "everyone.jwt.refresh-token-validity=3d"
+                )
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).hasSingleBean(JwtProperties.class);
+                    assertThat(context).hasSingleBean(JwtTokenProvider.class);
+
+                    JwtProperties properties = context.getBean(JwtProperties.class);
+
+
+                    // 외부 설정의 "3d"가 Duration으로 바인딩 되어 있는지 확인 한다.
+                    assertThat(properties.refreshTokenValidity())
+                            .isEqualTo(Duration.ofDays(3));
+
+                    JwtTokenProvider provider = context.getBean(JwtTokenProvider.class);
+
+                    UUID userId = UUID.randomUUID();
+
+                    // 직접 생성한 객체가 아니라 Spring이 등록한 Bean을 사용한다.
+                    String token = provider.createRefreshToken(userId);
+
+                    // 설정한 키로 실제 서명을 검증하고 토큰 내용을 읽는다.
+                    Claims claims = Jwts.parser().verifyWith(Keys.hmacShaKeyFor(
+                            Decoders.BASE64.decode(TEST_SECRET_KEY)))
+                            .build()
+                            .parseSignedClaims(token)
+                            .getPayload();
+
+                    assertThat(claims.getSubject()).isEqualTo(userId.toString());
+                    assertThat(claims.getId()).isNotBlank();
+                    assertThat(claims.get("tokenType", String.class))
+                            .isEqualTo("REFRESH");
+
+                    // 현재 시각을 직접 비교하지 않고 발급~만료 사이의 기간을 검증한다.
+                    Duration actualValidity = Duration.between(
+                            claims.getIssuedAt().toInstant(),
+                            claims.getExpiration().toInstant()
+                    );
+
+                    assertThat(actualValidity).isEqualTo(Duration.ofDays(3));
+                    assertThat(provider.parseRefreshToken(token))
+                            .isEqualTo(userId);
+                });
+    }
+
+
+    @Test
+    @DisplayName("Refresh Token 유효기간 설정이 없으면 컨텍스트 시작에 실패한다")
+    void Refresh_Token_유효기간이_없으면_시작에_실패한다() {
+        contextRunner
+                .withPropertyValues(
+                        "everyone.jwt.secret-key=" + TEST_SECRET_KEY,
+                        "everyone.jwt.access-token-validity=30m"
+                        // refresh-token-validity는 의도적으로 누락한다.
+                )
+                .run(context -> {
+                    assertThat(context).hasFailed();
+
+                    // 설정 누락을 시작 단계에서 명확한 오류로 알린다.
+                    assertThat(context.getStartupFailure())
+                            .hasRootCauseInstanceOf(IllegalArgumentException.class)
+                            .hasStackTraceContaining("everyone.jwt.refresh-token-validity");
+                });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0s", "-1s"})
+    @DisplayName("Refresh Token 유효기간이 0이면 시작에 실패한다")
+    void Refresh_Token_유효기간이_0_이하면_시작에_실패한다(String validity) {
+
+        contextRunner
+                .withPropertyValues(
+                        "everyone.jwt.secret-key=" + TEST_SECRET_KEY,
+                        "everyone.jwt.access-token-validity=30m",
+                        "everyone.jwt.refresh-token-validity=" + validity
+                )
+                .run(context -> {
+                    assertThat(context).hasFailed();
+
+                    // Provider의 유효기간 검사가 설정 연결 후에도 적용되어야 한다.
+                    assertThat(context.getStartupFailure())
+                            .hasRootCauseInstanceOf(IllegalArgumentException.class)
+                            .hasStackTraceContaining("Refresh Token 유효시간은 0보다 커야 합니다.");
                 });
     }
 

@@ -62,12 +62,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return false;
         }
 
-        // /mopl 같은 context path가 지정된 실행 환경도 고려한다.
+        // context path가 설정된 환경에서도 정확한 경로를 비교한다.
         String contextPath = request.getContextPath();
         String requestUri = request.getRequestURI();
 
         return (contextPath + "/api/auth/sign-in").equals(requestUri)
-                || (contextPath + "/api/users").equals(requestUri);
+                || (contextPath + "/api/users").equals(requestUri)
+                || (contextPath + "/api/auth/refresh").equals(requestUri);
 
     }
 

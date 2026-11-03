@@ -8,12 +8,14 @@ import java.time.Duration;
  * JWT 발급에 필요한 외부 설정
  *
  * secret-key: Base64로 인코딩한 서명 키
- * access-token-validity: Access Token 유효 시간
+ * access-token-validity: Access Token 유효기간
+ * refresh-token-validity: Refresh Token 유효기간
  */
 
 @ConfigurationProperties(prefix = "everyone.jwt")
 public record JwtProperties(
         String secretKey,
-        Duration accessTokenValidity
+        Duration accessTokenValidity,
+        Duration refreshTokenValidity
 ) {
 }
