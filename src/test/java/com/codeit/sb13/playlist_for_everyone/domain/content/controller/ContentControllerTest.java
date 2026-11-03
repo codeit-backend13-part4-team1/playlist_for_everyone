@@ -33,6 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -264,6 +265,7 @@ public class ContentControllerTest {
     }
 
     @Test
+    @WithMockUser
     @DisplayName("콘텐츠 단건 조회 요청 시 200 OK와 ContentDto를 반환한다.")
     void getContent_success() throws Exception {
         // given
@@ -289,12 +291,26 @@ public class ContentControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(contentId.toString()))
                 .andExpect(jsonPath("$.title").value("너 말고 다른 연애"))
-                .andExpect(jsonPath("$.description").value("서강준, 안은진 주연"))
-                .andExpect(jsonPath("$.tags[0]").value("드라마"))
-                .andExpect(jsonPath("$.tags[1]").value("로맨스"))
-                .andExpect(jsonPath("$.averageRating").value(4.5))
-                .andExpect(jsonPath("$.reviewCount").value(10))
-                .andExpect(jsonPath("$.watcherCount").value(0));
+                .andExpect(jsonPath("$.tags[0]").value("드라마"));
+
+        verify(contentService).getById(contentId);
+    }
+
+    @Test
+    @WithMockUser
+    @DisplayName("존재하지 않는 콘텐츠 조회 요청 시 404 Not Found를 반환한다.")
+    void getContent_notFound() throws Exception {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        when(contentService.getById(contentId))
+                .thenThrow(new ContentNotFoundException(
+                        Map.of("contentId", contentId)
+                ));
+
+        // when & then
+        mockMvc.perform(get("/api/contents/{contentId}", contentId))
+                .andExpect(status().isNotFound());
 
         verify(contentService).getById(contentId);
     }

@@ -35,6 +35,11 @@ public class ContentController implements ContentApi {
                 .body(contentService.create(request, file));
     }
 
+    @GetMapping("/{contentId}")
+    public ResponseEntity<ContentDto> get(@PathVariable UUID contentId) {
+        return ResponseEntity.ok(contentService.getById(contentId));
+    }
+
     @Override
     @PreAuthorize("hasRole('ADMIN')")
     @PatchMapping(
