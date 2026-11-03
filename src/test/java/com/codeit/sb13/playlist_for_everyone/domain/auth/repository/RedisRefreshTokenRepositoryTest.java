@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.auth.repository;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.impl.RedisRefreshTokenRepository;
+import kotlin.DslMarker;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -218,6 +219,46 @@ class RedisRefreshTokenRepositoryTest {
         );
         assertThat(rotated).isFalse();
         assertThat(repository.findUserId(newToken)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("새 토큰이 이미 등록되어 있으면 두 토큰을 유지하고 교체를 거절한다.")
+    void 새_토큰이_이미_등록되어_있으면_교체를_거절한다() {
+
+        UUID anotherUserId = UUID.randomUUID();
+        String newToken = "existing-refresh-token-" + UUID.randomUUID();
+
+        repository.save(
+                userId,
+                refreshToken,
+                Duration.ofMinutes(10)
+        );
+
+        repository.save(
+                anotherUserId,
+                newToken,
+                Duration.ofMinutes(10)
+        );
+
+        boolean rotated = repository.rotate(
+                userId,
+                refreshToken,
+                newToken,
+                Duration.ofMinutes(5)
+        );
+
+        // 새 키가 이미 존재하므로 교체에 실패해야 한다.
+        assertThat(rotated).isFalse();
+
+        // 교체 실패로 현재 사용자의 기존 토큰이 삭제되면 안 된다.
+        assertThat(repository.findUserId(refreshToken))
+                .contains(userId);
+
+        // 이미 등록된 토큰의 소유자가 현재 사용자로 덮어써지면 안 된다.
+        assertThat(repository.findUserId(newToken))
+                .contains(anotherUserId);
+
+
     }
 
     @Test
