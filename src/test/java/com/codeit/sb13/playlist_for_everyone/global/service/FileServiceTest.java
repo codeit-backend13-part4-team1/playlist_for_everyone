@@ -95,6 +95,33 @@ public class FileServiceTest {
     }
 
     @Test
+    @DisplayName("파일 조회 URL 생성 성공")
+    void getFileInfo_success() {
+        // given
+        UUID fileId = UUID.randomUUID();
+        String key = "test-image.png";
+        String expectedUrl = "https://example.com/test-image.png";
+
+        FileInfo fileInfo = mock(FileInfo.class);
+
+        given(fileInfoRepository.findById(fileId))
+                .willReturn(Optional.of(fileInfo));
+
+        given(fileInfo.getKey()).willReturn(key);
+
+        given(fileStorage.getFileUrl(key)).willReturn(expectedUrl);
+
+        // when
+        String result = fileService.getFileUrl(fileId);
+
+        // then
+        assertThat(result).isEqualTo(expectedUrl);
+
+        verify(fileInfoRepository).findById(fileId);
+        verify(fileStorage).getFileUrl(key);
+    }
+
+    @Test
     @DisplayName("파일 삭제 시 S3 파일과 FileInfo를 함께 삭제한다")
     void delete_success() {
         // given
