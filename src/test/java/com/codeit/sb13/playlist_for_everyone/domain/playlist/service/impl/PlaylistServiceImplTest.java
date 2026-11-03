@@ -619,8 +619,8 @@ public class PlaylistServiceImplTest {
 
     given(playlistRepository.findById(playlistId))
         .willReturn(Optional.of(playlist));
-    given(contentRepository.existsById(contentId))
-        .willReturn(true);
+    given(contentRepository.findById(contentId)).willReturn(Optional.of(
+        Content.createAdminContent(ContentType.movie, "콘텐츠 제목", "설명", "https://example.com/thumb.png")));
     given(playlistContentRepository
         .existsByPlaylistIdAndContentId(playlistId, contentId)).willReturn(false);
 
@@ -692,6 +692,7 @@ public class PlaylistServiceImplTest {
 
     verifyNoInteractions(contentRepository, playlistContentRepository);
     verify(playlistRepository, never()).touchUpdatedAt(any(), any());
+    verifyNoInteractions(eventPublisher);
   }
 
 
@@ -704,7 +705,7 @@ public class PlaylistServiceImplTest {
     UUID contentId = UUID.randomUUID();
     Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
     given(playlistRepository.findById(playlistId)).willReturn(Optional.of(playlist));
-    given(contentRepository.existsById(contentId)).willReturn(false);
+    given(contentRepository.findById(contentId)).willReturn(Optional.empty());
 
     // when & then
     assertThatExceptionOfType(ContentNotFoundException.class)
@@ -714,6 +715,7 @@ public class PlaylistServiceImplTest {
 
     verifyNoInteractions(playlistContentRepository);
     verify(playlistRepository, never()).touchUpdatedAt(any(), any());
+    verifyNoInteractions(eventPublisher);
   }
 
   @Test
@@ -725,7 +727,8 @@ public class PlaylistServiceImplTest {
     UUID contentId = UUID.randomUUID();
     Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
     given(playlistRepository.findById(playlistId)).willReturn(Optional.of(playlist));
-    given(contentRepository.existsById(contentId)).willReturn(true);
+    given(contentRepository.findById(contentId)).willReturn(Optional.of(
+        Content.createAdminContent(ContentType.movie, "콘텐츠 제목", "설명", "https://example.com/thumb.png")));
     given(playlistContentRepository.existsByPlaylistIdAndContentId(playlistId, contentId))
         .willReturn(true);
 
@@ -738,6 +741,7 @@ public class PlaylistServiceImplTest {
 
     verify(playlistContentRepository, never()).save(any(PlaylistContent.class));
     verify(playlistRepository, never()).touchUpdatedAt(any(), any());
+    verifyNoInteractions(eventPublisher);
   }
 
   @Test
