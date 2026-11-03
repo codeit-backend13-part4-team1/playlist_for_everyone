@@ -79,13 +79,22 @@ public class S3FileStorageTest {
         // then
         assertThat(key).isNotBlank();
 
-        verify(s3Client, times(1))
-                .putObject(
-                        any(PutObjectRequest.class),
-                        any(RequestBody.class)
-                );
+        ArgumentCaptor<RequestBody> captor =
+                ArgumentCaptor.forClass(RequestBody.class);
 
-        // 스트림 방식으로 업로드하는지 검증
+        verify(s3Client).putObject(
+                any(PutObjectRequest.class),
+                captor.capture()
+        );
+
+        // RequestBody가 스트림을 제공할 수 있는지 확인
+        try (InputStream inputStream =
+                     captor.getValue().contentStreamProvider().newStream()) {
+
+            assertThat(inputStream.readAllBytes())
+                    .isEqualTo("test image".getBytes(StandardCharsets.UTF_8));
+        }
+
         verify(file).getInputStream();
         verify(file, never()).getBytes();
     }
