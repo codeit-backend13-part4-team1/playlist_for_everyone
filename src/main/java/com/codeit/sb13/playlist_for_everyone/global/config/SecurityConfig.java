@@ -123,6 +123,9 @@ public class SecurityConfig {
                 // CSRF 보호를 활성화하고 쿠키 기반 저장소를 사용한다.
                 // POST, PUT, PATCH, DELETE 등의 요청은 CSRF 검증 대상이 된다.
                 .csrf(csrf -> csrf
+                        // 프론트가 쿠키에서 읽은 원본 토큰을 헤더로 보내는 방식을 지원한다.
+                        .spa()
+                        // SPA 기본 설정 후, 쿠키 이름, 헤더, 경로 설정을 적용한다.
                         .csrfTokenRepository(csrfTokenRepository)
                 )
                 .httpBasic(basic -> basic.disable())

@@ -50,7 +50,7 @@ class CsrfSecurityTest {
     private static final String CSRF_TOKEN_URL = "/api/auth/csrf-token";
     private static final String CSRF_COOKIE_NAME = "XSRF-TOKEN";
 
-    private static final String CSRF_HEADER_NAME = "X-CSRF-TOKEN";
+    private static final String CSRF_HEADER_NAME = "X-XSRF-TOKEN";
     private static final String REFRESH_URL =  "/api/auth/refresh";
 
     // 실제 JWT 검증은 서비스 테스트에서 확인한다.
