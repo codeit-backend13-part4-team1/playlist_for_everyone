@@ -3,7 +3,7 @@
 -- ============================================================
 CREATE TABLE file_infos (
                             id UUID PRIMARY KEY,
-                            key VARCHAR(255) NOT NULL,
+                            file_key VARCHAR(255) NOT NULL,
                             original_filename VARCHAR(255),
                             content_type VARCHAR(255),
                             size BIGINT,
@@ -11,4 +11,4 @@ CREATE TABLE file_infos (
 );
 
 ALTER TABLE file_infos
-    ADD CONSTRAINT uk_file_infos_key UNIQUE (key);
+    ADD CONSTRAINT uk_file_infos_key UNIQUE (file_key);

@@ -17,12 +17,12 @@ import lombok.NoArgsConstructor;
         uniqueConstraints = {
                 @UniqueConstraint(
                         name = "uk_file_infos_key",
-                        columnNames = {"key"}
+                        columnNames = {"file_key"}
                 )
         }
 )
 public class FileInfo extends CreatedAtEntity {
-    @Column(unique = true)
+    @Column(name = "file_key", unique = true)
     String key;
 
     @Column(name = "original_filename")
