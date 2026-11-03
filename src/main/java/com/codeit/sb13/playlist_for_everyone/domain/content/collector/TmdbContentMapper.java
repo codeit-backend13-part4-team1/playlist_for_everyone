@@ -18,6 +18,11 @@ public class TmdbContentMapper {
             35, "코미디"
     );
 
+    private static final Map<Integer, String> TV_GENRES = Map.of(
+            10759, "액션·모험",
+            18, "드라마"
+    );
+
     public CollectedContentData fromMovie(TmdbMovieResponse movie) {
         if (movie.id() == null) {
             throw new IllegalArgumentException("TMDB 영화 ID가 필요합니다.");
@@ -51,6 +56,14 @@ public class TmdbContentMapper {
 
         String thumbnailUrl = toThumbnailUrl(tv.posterPath());
 
+        List<String> tags = tv.genreIds() == null
+                ? List.of()
+                : tv.genreIds().stream()
+                  .filter(Objects::nonNull)
+                  .map(TV_GENRES::get)
+                  .filter(Objects::nonNull)
+                  .toList();
+
         return new CollectedContentData(
                 ContentType.tvSeries,
                 tv.name(),
@@ -58,7 +71,7 @@ public class TmdbContentMapper {
                 thumbnailUrl,
                 ContentSource.TMDB,
                 tv.id().toString(),
-                List.of()
+                tags
         );
     }
 
