@@ -771,6 +771,8 @@ public class PlaylistServiceImplTest {
     given(playlistRepository.findById(playlistId)).willReturn(Optional.of(playlist));
     given(subscriptionRepository.existsByPlaylistIdAndSubscriberId(playlistId, subscriberId))
         .willReturn(false);
+    given(userRepository.findById(subscriberId))
+        .willReturn(Optional.of(createUser(subscriberId)));
 
     // when
     playlistService.subscribe(playlistId, subscriberId);

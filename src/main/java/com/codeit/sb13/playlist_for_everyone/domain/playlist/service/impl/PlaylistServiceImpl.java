@@ -10,6 +10,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Playlist;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistContent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistSortBy;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Subscription;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistSubscribedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistSearchCondition;
@@ -35,6 +36,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
@@ -50,6 +52,7 @@ public class PlaylistServiceImpl implements PlaylistService {
   private final SubscriptionRepository subscriptionRepository;
   private final PlaylistContentRepository playlistContentRepository;
   private final ContentRepository contentRepository;
+  private final ApplicationEventPublisher eventPublisher;
 
   private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
 
@@ -228,6 +231,16 @@ public class PlaylistServiceImpl implements PlaylistService {
     }
 
     playlistRepository.increaseSubscriberCount(playlistId);
+
+    User subscriber = userRepository.findById(subscriberId)
+        .orElseThrow(() -> new UserNotFoundException(Map.of("userId", subscriberId)));
+    eventPublisher.publishEvent(new PlaylistSubscribedEvent(
+        playlistId,
+        playlist.getTitle(),
+        playlist.getOwner().getId(),
+        subscriberId,
+        subscriber.getName()));
+
   }
 
   @Override
