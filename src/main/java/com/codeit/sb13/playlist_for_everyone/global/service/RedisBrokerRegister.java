@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.Objects;
 
+/** 공용 Redis 컨테이너에 리스너와 채널을 등록·해제한다. 컨테이너 자체의 시작·종료는 Spring이 담당한다. */
 @Component
 @RequiredArgsConstructor
 public class RedisBrokerRegister {
@@ -24,7 +25,7 @@ public class RedisBrokerRegister {
         redisMessageListenerContainer.removeMessageListener(listener, new ChannelTopic(topic));
     }
 
-    // npe 방지를 위해 o 가 null 이면 IllegalArgumentException 반환.
+    // 전달받은 인자 중 null이 있으면 NullPointerException을 던져 등록·해제를 중단한다.
     private void check(Object ...os) {
         for (Object o : os) {
             Objects.requireNonNull(o);

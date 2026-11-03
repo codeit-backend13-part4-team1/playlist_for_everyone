@@ -23,4 +23,8 @@ public interface PlaylistService {
 
   void removeContent(UUID playlistId, UUID contentId, UUID requesterId);
 
+  void subscribe(UUID playlistId, UUID subscriberId);
+
+  void unsubscribe(UUID playlistId, UUID subscriberId);
+
 }

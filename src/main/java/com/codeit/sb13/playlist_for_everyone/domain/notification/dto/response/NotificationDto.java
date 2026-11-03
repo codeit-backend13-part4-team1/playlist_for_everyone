@@ -6,6 +6,13 @@ import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.Notifica
 import java.time.LocalDateTime;
 import java.util.UUID;
 
+/**
+ * 알림 조회 응답과 notifications SSE의 data에 공통으로 사용하는 불변 스냅샷이다.
+ *
+ * <p>저장 서비스가 엔티티의 값을 복사하므로 커밋 후 전송 리스너는 엔티티를 다시 조회하지 않는다.
+ * id는 DB 알림 식별자이며, SSE 프레임의 id로 사용하는 별도 이벤트 식별자와 다르다.
+ * 이벤트 이름과 이벤트 식별자는 이 DTO를 감싸는 내부 SseEvent가 담당한다.
+ */
 public record NotificationDto(
         UUID id,
         LocalDateTime createdAt,
@@ -15,6 +22,7 @@ public record NotificationDto(
         NotificationLevel level
 ) {
 
+    /** 엔티티에 이미 채워진 값을 복사한다. ID·생성시각을 새로 만들거나 DB에 flush하지 않는다. */
     public static NotificationDto from(Notification notification){
         return new NotificationDto(
                 notification.getId(),

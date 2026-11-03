@@ -92,4 +92,20 @@ public class PlaylistController {
     return ResponseEntity.ok().build();
   }
 
+  @PostMapping("/{playlistId}/subscription")
+  public ResponseEntity<Void> subscribe(
+      @PathVariable UUID playlistId,
+      @AuthenticationPrincipal SecurityUser principal) {
+    playlistService.subscribe(playlistId, principal.getUserId());
+    return ResponseEntity.ok().build();
+  }
+
+  @DeleteMapping("/{playlistId}/subscription")
+  public ResponseEntity<Void> unsubscribe(
+      @PathVariable UUID playlistId,
+      @AuthenticationPrincipal SecurityUser principal) {
+    playlistService.unsubscribe(playlistId, principal.getUserId());
+    return ResponseEntity.ok().build();
+  }
+
 }

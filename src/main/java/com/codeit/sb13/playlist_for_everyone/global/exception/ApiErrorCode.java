@@ -16,6 +16,14 @@ public enum ApiErrorCode {
     //CONVERSATION CS
     CONVERSATION_NOT_FOUND("CS_001", HttpStatus.NOT_FOUND, "대화방을 찾을 수 없습니다."),
 
+    // FILE FL
+    FILE_NOT_FOUND("FL_001", HttpStatus.NOT_FOUND, "파일을 찾을 수 없습니다."),
+    FILE_UPLOAD_FAILED("FL_002", HttpStatus.INTERNAL_SERVER_ERROR, "파일 업로드에 실패했습니다."),
+    FILE_DELETE_FAILED("FL_003", HttpStatus.INTERNAL_SERVER_ERROR, "파일 삭제에 실패했습니다."),
+    FILE_INVALID_TYPE("FL_004", HttpStatus.BAD_REQUEST, "지원하지 않는 파일 형식입니다."),
+    FILE_EMPTY("FL_005", HttpStatus.BAD_REQUEST, "빈 파일은 업로드할 수 없습니다."),
+
+
     //FOLLOW F
     FOLLOW_NOT_FOUND("F_001", HttpStatus.NOT_FOUND, "팔로우를 찾을 수 없습니다."),
     FOLLOW_CREATION_FAILED("F_002", HttpStatus.INTERNAL_SERVER_ERROR, "팔로우 생성 처리에 실패했습니다."),
@@ -30,9 +38,15 @@ public enum ApiErrorCode {
     PLAYLIST_FORBIDDEN("P_002", HttpStatus.FORBIDDEN, "플레이리스트 소유자만 수정하거나 삭제할 수 있습니다."),
     PLAYLIST_CONTENT_DUPLICATED("P_003", HttpStatus.BAD_REQUEST, "이미 플레이리스트에 담긴 콘텐츠입니다."),
     PLAYLIST_CONTENT_NOT_FOUND("P_004", HttpStatus.BAD_REQUEST, "플레이리스트에 담기지 않은 콘텐츠입니다."),
+    PLAYLIST_SUBSCRIBE_OWN("P_005", HttpStatus.BAD_REQUEST, "본인의 플레이리스트는 구독할 수 없습니다."),
+    PLAYLIST_SUBSCRIPTION_DUPLICATED("P_006", HttpStatus.BAD_REQUEST, "이미 구독한 플레이리스트입니다."),
+    PLAYLIST_SUBSCRIPTION_NOT_FOUND("P_007", HttpStatus.BAD_REQUEST, "구독하지 않은 플레이리스트입니다."),
 
     //REVIEW R
     REVIEW_NOT_FOUND("R_001", HttpStatus.NOT_FOUND, "리뷰를 찾을 수 없습니다."),
+
+    //SSE S
+    SSE_PUBLISH_FAIL("S_001", HttpStatus.INTERNAL_SERVER_ERROR, "SSE 이벤트 발행에 실패했습니다."),
 
     //GLOBAL/COMMON GLB
     INVALID_REQUEST("GLB_001", HttpStatus.BAD_REQUEST, "요청 데이터가 올바르지 않습니다."),

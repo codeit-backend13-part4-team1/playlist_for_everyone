@@ -22,7 +22,12 @@ spring:
       max-file-size: ${EVERYONE_MULTIPART_MAX_FILE_SIZE:10MB}
       # 파일과 폼 데이터를 포함한 요청 전체의 최대 크기
       max-request-size: ${EVERYONE_MULTIPART_MAX_REQUEST_SIZE:12MB}
-
+  data:
+    redis:
+      # 공용 Redis 명령 응답 대기 시간. SSE 연결 유지 시간과는 별개다.
+      # 3초는 운영 지연을 측정하기 전 정한 초기값이다.
+      # 지연·타임아웃 발생 시 원인과 요청 응답 시간을 확인하고 환경별로 조정한다.
+      timeout: ${EVERYONE_REDIS_TIMEOUT:3s}
 springdoc:
   api-docs:
     # OpenAPI 명세 제공 경로
@@ -37,8 +42,8 @@ springdoc:
 everyone:
   s3:
     bucket: ${EVERYONE_S3_BUCKET}
-    region: ${EVERYONE_AWS_REGION}
-    endpoint: ${EVERYONE_AWS_ENDPOINT}
+    region: ${EVERYONE_AWS_REGION:ap-northeast-2}
+    endpoint: ${EVERYONE_AWS_ENDPOINT:}
 
   openapi:
     server-url: http://localhost:${server.port:8080}
@@ -56,10 +61,23 @@ everyone:
     connect-timeout: 3s
     read-timeout: 10s
 
+  sportsdb:
+    base-url: https://www.thesportsdb.com/api/v1/json
+    api-key: ${EVERYONE_SPORTSDB_API_KEY:123}
+    connect-timeout: 3s
+    read-timeout: 10s
+
   sse:
-    # 환경변수 미지정 시 아래 기본값을 사용한다. 최종 바인딩 값의 허용 범위는 SseProperties가 검증한다.
+    # 환경변수 미지정 시 아래 기본값을 사용한다. 연결 설정은 SseProperties, 전송 설정은 SseTransportProperties가 검증한다.
     # 하트비트 작업 완료 후 다음 실행까지 대기하는 시간. 0보다 커야 한다.
     heartbeat-interval: ${EVERYONE_SSE_HEARTBEAT_INTERVAL:15s}
     # 개별 SSE 비동기 요청의 제한 시간. 하트비트 주기와 별개이며, 종료 후 클라이언트가 재연결한다.
     # 밀리초 변환 시 0으로 잘리지 않도록 1ms 이상이어야 한다.
     connection-timeout: ${EVERYONE_SSE_CONNECTION_TIMEOUT:30m}
+    # SSE의 Redis 자동 구독 여부. false여도 발행자 빈과 다른 기능의 Redis 사용은 유지된다.
+    subscription-enabled: ${EVERYONE_SSE_SUBSCRIPTION_ENABLED:true}
+    # 현재 지원하는 구현체는 redis이다. Kafka 구현체는 후속 작업이다.
+    transport: ${EVERYONE_SSE_TRANSPORT:redis}
+    redis:
+      # 같은 환경의 서버는 같은 채널을 사용한다. 환경을 격리하려면 Redis 또는 채널을 구분한다.
+      channel: ${EVERYONE_SSE_REDIS_CHANNEL:everyone:sse:events}

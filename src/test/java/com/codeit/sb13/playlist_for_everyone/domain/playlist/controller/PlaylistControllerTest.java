@@ -18,6 +18,9 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListC
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListContentNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListForbiddenException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscribeOwnException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscriptionDuplicatedException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscriptionNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
@@ -762,6 +765,147 @@ class PlaylistControllerTest {
         .andExpect(jsonPath("$.exceptionName").value("PlayListContentNotFoundException"));
   }
 
+  @Test
+  @DisplayName("구독 요청이 올바르면 200으로 응답하고 서비스에 경로변수와 인증 사용자 ID를 전달한다")
+  void 구독_요청이_올바르면_200을_반환한다() throws Exception {
+    // given
+    UUID requesterId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+
+    // when & then
+    mockMvc.perform(post("/api/playlists/{playlistId}/subscription", playlistId)
+            .with(loginAs(requesterId)))
+        .andExpect(status().isOk());
+
+    verify(playlistService).subscribe(playlistId, requesterId);
+  }
+
+  @Test
+  @DisplayName("구독 시 playlistId가 UUID 형식이 아니면 400으로 응답한다")
+  void 구독_id형식이_잘못되면_400으로_응답한다() throws Exception {
+    // given
+    UUID requesterId = UUID.randomUUID();
+
+    // when & then
+    mockMvc.perform(post("/api/playlists/{playlistId}/subscription", "not-a-uuid")
+            .with(loginAs(requesterId)))
+        .andExpect(status().isBadRequest());
+
+    verify(playlistService, never()).subscribe(any(), any());
+  }
+
+  @Test
+  @DisplayName("구독 시 없는 플레이리스트면 404로 응답한다")
+  void 없는_플레이리스트를_구독하면_404로_응답한다() throws Exception {
+    // given
+    UUID requesterId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    willThrow(new PlayListNotFoundException(Map.of("playlistId", playlistId)))
+        .given(playlistService).subscribe(playlistId, requesterId);
+
+    // when & then
+    mockMvc.perform(post("/api/playlists/{playlistId}/subscription", playlistId)
+            .with(loginAs(requesterId)))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.exceptionName").value("PlayListNotFoundException"))
+        .andExpect(jsonPath("$.details.playlistId").value(playlistId.toString()));
+  }
+
+  @Test
+  @DisplayName("본인 플레이리스트를 구독하면 400으로 응답한다")
+  void 본인_플레이리스트를_구독하면_400으로_응답한다() throws Exception {
+    // given
+    UUID requesterId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    willThrow(new PlayListSubscribeOwnException(
+        Map.of("playlistId", playlistId, "subscriberId", requesterId)))
+        .given(playlistService).subscribe(playlistId, requesterId);
+
+    // when & then
+    mockMvc.perform(post("/api/playlists/{playlistId}/subscription", playlistId)
+            .with(loginAs(requesterId)))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.exceptionName").value("PlayListSubscribeOwnException"));
+  }
+
+  @Test
+  @DisplayName("이미 구독한 플레이리스트를 구독하면 400으로 응답한다")
+  void 이미_구독한_플레이리스트를_구독하면_400으로_응답한다() throws Exception {
+    // given
+    UUID requesterId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    willThrow(new PlayListSubscriptionDuplicatedException(
+        Map.of("playlistId", playlistId, "subscriberId", requesterId)))
+        .given(playlistService).subscribe(playlistId, requesterId);
+
+    // when & then
+    mockMvc.perform(post("/api/playlists/{playlistId}/subscription", playlistId)
+            .with(loginAs(requesterId)))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.exceptionName").value("PlayListSubscriptionDuplicatedException"));
+  }
+
+  @Test
+  @DisplayName("구독 취소 요청이 올바르면 200으로 응답하고 서비스에 경로변수와 인증 사용자 ID를 전달한다")
+  void 구독_취소_요청이_올바르면_200을_반환한다() throws Exception {
+    // given
+    UUID requesterId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+
+    // when & then
+    mockMvc.perform(delete("/api/playlists/{playlistId}/subscription", playlistId)
+            .with(loginAs(requesterId)))
+        .andExpect(status().isOk());
+
+    verify(playlistService).unsubscribe(playlistId, requesterId);
+  }
+
+  @Test
+  @DisplayName("구독 취소 시 playlistId가 UUID 형식이 아니면 400으로 응답한다")
+  void 구독_취소_id형식이_잘못되면_400으로_응답한다() throws Exception {
+    // given
+    UUID requesterId = UUID.randomUUID();
+
+    // when & then
+    mockMvc.perform(delete("/api/playlists/{playlistId}/subscription", "not-a-uuid")
+            .with(loginAs(requesterId)))
+        .andExpect(status().isBadRequest());
+
+    verify(playlistService, never()).unsubscribe(any(), any());
+  }
+
+  @Test
+  @DisplayName("구독 취소 시 없는 플레이리스트면 404로 응답한다")
+  void 없는_플레이리스트의_구독을_취소하면_404로_응답한다() throws Exception {
+    // given
+    UUID requesterId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    willThrow(new PlayListNotFoundException(Map.of("playlistId", playlistId)))
+        .given(playlistService).unsubscribe(playlistId, requesterId);
+
+    // when & then
+    mockMvc.perform(delete("/api/playlists/{playlistId}/subscription", playlistId)
+            .with(loginAs(requesterId)))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.exceptionName").value("PlayListNotFoundException"));
+  }
+
+  @Test
+  @DisplayName("구독하지 않은 플레이리스트의 구독을 취소하면 400으로 응답한다")
+  void 구독하지_않은_플레이리스트의_구독을_취소하면_400으로_응답한다() throws Exception {
+    // given
+    UUID requesterId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    willThrow(new PlayListSubscriptionNotFoundException(
+        Map.of("playlistId", playlistId, "subscriberId", requesterId)))
+        .given(playlistService).unsubscribe(playlistId, requesterId);
+
+    // when & then
+    mockMvc.perform(delete("/api/playlists/{playlistId}/subscription", playlistId)
+            .with(loginAs(requesterId)))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.exceptionName").value("PlayListSubscriptionNotFoundException"));
+  }
 
 
 

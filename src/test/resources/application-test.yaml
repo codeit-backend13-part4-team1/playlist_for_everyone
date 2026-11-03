@@ -45,3 +45,8 @@ everyone:
   tmdb:
     base-url: https://tmdb.test/3
     access-token: test-token
+
+  sse:
+    # 일반 테스트는 SSE 구독 없이 시작한다. Redis SSE 통합 테스트에서만 명시적으로 true로 덮어쓴다.
+    subscription-enabled: false
+

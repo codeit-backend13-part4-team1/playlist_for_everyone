@@ -22,4 +22,14 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, UUID
   @Modifying(flushAutomatically = true, clearAutomatically = true)
   @Query("delete from Subscription s where s.playlistId = :playlistId")
   int deleteAllByPlaylistId(@Param("playlistId") UUID playlistId);
+
+  @Modifying(flushAutomatically = true, clearAutomatically = true)
+  @Query("delete from Subscription s "
+      + "where s.playlistId = :playlistId and s.subscriberId = :subscriberId")
+  int deleteByPlaylistIdAndSubscriberId(
+      @Param("playlistId") UUID playlistId,
+      @Param("subscriberId") UUID subscriberId);
+
+  @Query("select s.subscriberId from Subscription s where s.playlistId = :playlistId")
+  List<UUID> findSubscriberIds(@Param("playlistId") UUID playlistId);
 }

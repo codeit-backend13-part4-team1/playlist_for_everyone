@@ -4,7 +4,7 @@
 
 > **문서 기준 안내:** 아래에는 공통 기반을 처음 준비하던 시점의 설명이 일부 남아 있습니다.
 > 도메인 구현 현황과 개발용 보안 전환 설명은 최신 코드와 다를 수 있습니다.
-> 현재 SSE 연결·전송·인증·테스트는 [SSE 구현 가이드](sse/README.md)를 기준으로 확인합니다.
+> 현재 SSE 연결·Redis 분산 전송·인증·테스트는 [SSE 구현 가이드](sse/README.md), 알림 저장 후 전송은 [알림 구현 가이드](notification/README.md)를 기준으로 확인합니다.
 
 ## 현재 개발 상태
 
@@ -17,8 +17,9 @@
 | 도메인 기능 | 회원·콘텐츠·플레이리스트 등의 실제 API와 서비스 구현 전 |
 | 로컬 인프라 | Docker Compose에 PostgreSQL과 Redis 서비스 정의 |
 | 개발용 보안 | `dev` 프로필에서 전체 요청을 인증 없이 허용하고 CSRF 검사를 비활성화하는 임시 설정 |
-| SSE | 인증된 사용자의 다중 연결, 로컬 전송, 하트비트, 종료 정리 및 공통 발행 계약 구현. [SSE 구현 가이드](sse/README.md) 참고 |
-| 후속 기능 | JWT 인증, Redis 기반 캐시·세션, 배치 작업, S3 연동, WebSocket 기능 등은 별도 구현 필요. SSE는 서버 간 전송·이력 복구·연결 수 제한이 후속 범위 |
+| SSE | 인증된 사용자의 다중 연결, 하트비트, 종료 정리와 Redis Pub/Sub 분산 전송 구현. [SSE 구현 가이드](sse/README.md) 참고 |
+| 알림 전송 | 공통 알림 생성 요청 → 독립 저장·커밋 → Redis → 실제 SSE 수신 연동 구현. [알림 전송 흐름](notification/01-creation-and-delivery.md) 참고 |
+| 후속 기능 | JWT 인증, Redis 기반 캐시·세션, 배치 작업, S3 연동, WebSocket 기능 등의 설명은 위 문서 기준 안내 참고. SSE는 업무별 알림 생성 요청 변환(#45)·DM 본문 연동·Kafka·이력 복구·연결 수 제한이 후속 범위 |
 
 라이브러리 의존성과 로컬 인프라를 준비한 상태와 기능 구현 완료를 구분합니다. Redis 서비스는 Compose에 포함되어 있으며, 이를 사용하는 캐시·세션 기능은 구현 전입니다. Kafka와 Elasticsearch는 현재 Compose에 포함되어 있지 않습니다.
 
@@ -162,6 +163,9 @@ EVERYONE_REDIS_PORT=6379
 | `EVERYONE_MULTIPART_MAX_REQUEST_SIZE` | `12MB` | 파일과 폼 데이터 등을 포함한 multipart 요청 전체의 최대 크기 |
 | `EVERYONE_SSE_HEARTBEAT_INTERVAL` | `15s` | 하트비트 작업 완료 후 대기 시간. 기본값 `15s`, 0보다 커야 함 |
 | `EVERYONE_SSE_CONNECTION_TIMEOUT` | `30m` | 개별 SSE 연결 제한 시간. 기본값 `30m`, 1ms 이상이어야 함 |
+| `EVERYONE_SSE_TRANSPORT` | `redis` | SSE 브로커 전송 방식. 현재 Redis 구현체 지원 |
+| `EVERYONE_SSE_REDIS_CHANNEL` | `everyone:sse:events` | 같은 환경의 서버가 공유할 SSE 전용 채널 |
+| `EVERYONE_SSE_SUBSCRIPTION_ENABLED` | `true` | SSE 자동 구독 여부. 다른 기능의 Redis 사용까지 끄지 않음 |
 | `EVERYONE_JPA_DDL_AUTO` | `validate` | 엔티티와 DB 스키마 일치 여부 검증 |
 | `EVERYONE_JPA_FORMAT_SQL` | `true` | 개발 환경 SQL 포맷 설정 |
 | `EVERYONE_JPA_SHOW_SQL` | `false` | 개발 환경 JPA SQL 출력 설정 |
@@ -172,9 +176,11 @@ EVERYONE_REDIS_PORT=6379
 | `EVERYONE_AWS_ENDPOINT` | 빈 값 | 향후 S3 연동에 사용할 엔드포인트 설정 |
 | `EVERYONE_S3_BUCKET` | 빈 값 | 향후 S3 연동에 사용할 버킷 설정 |
 | `EVERYONE_TMDB_ACCESS_TOKEN` | 빈 값 (실행 전 설정 필요) | TMDB 인증 토큰. 실제 조회에는 유효한 토큰 필요 |
+| `EVERYONE_SPORTSDB_API_KEY` | `123` | TheSportsDB API 키. 생략하면 공개 무료 키 `123` 사용 |
 
 SSE 환경변수를 생략하면 위 기본값을 사용합니다. 개발에서는 `.env.dev`, 운영에서는 외부 환경변수로 조정합니다.
-설정 검증과 시작 실패 조건은 [SSE 설정값과 허용 범위](sse/02-delivery-heartbeat.md#설정값과-허용-범위)를 참고합니다.
+설정 검증과 시작 실패 조건은 [연결·하트비트 설정](sse/02-delivery-heartbeat.md#설정값과-허용-범위)과 [Redis 전송·구독 설정](sse/06-redis-transport.md#설정과-구독-생명주기)을 참고합니다.
+두 서버를 함께 실행하려면 [다중 서버 실행](sse/07-redis-multi-node.md), 같은 사용자의 두 연결로 이벤트를 보내려면 [실제 수신 검증](sse/08-redis-verification.md)을 따라 진행합니다.
 
 S3 관련 값은 현재 공통 설정에 선언되어 있지만 실제 S3 연동 기능은 구현 전입니다.
 
@@ -345,7 +351,10 @@ Docker Desktop 또는 Docker 엔진을 실행한 뒤 프로젝트 루트에서 �
 ./gradlew test jacocoTestReport
 ```
 
-공통 테스트는 `test` 프로필과 H2를 사용합니다. 알림 통합 테스트는 Testcontainers로 별도의 PostgreSQL 16 컨테이너를 실행하고 실제 Flyway 마이그레이션을 적용합니다. 전체 테스트와 빌드에는 Docker가 필요하며, 로컬 PostgreSQL이나 `.env.dev`는 필요하지 않습니다. 최초 실행 시 테스트용 컨테이너 이미지 다운로드가 필요할 수 있습니다.
+공통 테스트는 `test` 프로필과 H2를 사용합니다. 알림 통합 테스트는 Testcontainers로 별도의 PostgreSQL 16 컨테이너를 실행하고 실제 Flyway 마이그레이션을 적용합니다.
+SSE Redis 통합 테스트는 별도의 Redis 7.4 컨테이너로 실제 Pub/Sub을 검증합니다. 전체 테스트와 빌드에는 Docker가 필요하며, 로컬 PostgreSQL·Redis나 `.env.dev`는 필요하지 않습니다.
+`NotificationSseIntegrationTest`는 PostgreSQL과 Redis를 함께 사용하여 알림 저장부터 실제 HTTP 수신까지 확인합니다. [검증 범위와 실행 명령](notification/02-testing.md)을 참고합니다.
+최초 실행 시 테스트용 컨테이너 이미지 다운로드가 필요할 수 있습니다. 테스트 프로필은 SSE 자동 구독을 끄고, Redis SSE 통합 테스트에서만 명시적으로 활성화합니다.
 
 제목 말줄임 단위 테스트만 확인하려면 Docker 없이 다음 명령을 사용할 수 있습니다.
 
@@ -398,12 +407,16 @@ CI는 성공한 빌드의 JaCoCo XML에서 전체 LINE 수치로 SVG 배지를 �
 - 테스트 클래스와 메서드에 한글 `@DisplayName`으로 대상과 기대 결과를 설명합니다. 파라미터화 테스트는 개별 사례도 구분할 수 있게 이름을 지정합니다.
 - 공통 예외 테스트에는 [TestEveryOneException](../src/test/java/com/codeit/sb13/testsupport/exception/TestEveryOneException.java)을 사용합니다. 도메인 예외 예시의 변경이 공통 동작 테스트에 영향을 주지 않도록 분리합니다.
 - 기존 테스트는 애플리케이션 컨텍스트, 예외 응답, 검증 오류, MDC, JPA Auditing, Querydsl 조회, 비밀번호 인코더, OpenAPI 설정을 확인합니다.
-- 알림 테스트는 제목 말줄임, 입력 검증, 커밋 후 저장, 롤백·트랜잭션 외 발행 시 미저장, 저장 실패 시 원 업무 보존 및 후속 정상 저장을 확인합니다. 통합 테스트는 `TransactionTemplate`으로 실제 커밋·롤백을 수행합니다.
+- 알림 테스트는 제목 말줄임·입력 검증, 업무 커밋 후 저장, 알림 커밋 후 SSE 발행, 롤백·트랜잭션 외 발행 시 미처리를 확인합니다. `NotificationIntegrationTest`는 실제 PostgreSQL과 `TransactionTemplate`을 사용하고, SSE 발행자는 Mock으로 대체하여 저장·전송 실패 격리를 검증합니다.
 - 공통 예외 핸들러·인터셉터의 MVC 테스트는 Security 필터를 제외합니다. 이 테스트의 통과는 인증·인가 동작 검증을 의미하지 않습니다.
-- SSE MVC 테스트는 실제 보안 필터를 포함하여 인증 사용자와 ASYNC 종료 시 인증 복원을 확인합니다. 실제 HTTP 테스트는 인증 의존성을 Mock으로 대체하고, 프레임 전송과 JSON 변환 실패 시 기존 연결 유지를 검증합니다.
-- SSE 설정 테스트는 `SseConfig`만 등록하고 설정값을 직접 제공하여 바인딩을 확인합니다. 검증 범위와 실행 명령은 [SSE 테스트 가이드](sse/05-testing.md)를 참고합니다.
+- SSE MVC 테스트는 실제 보안 필터를 포함하여 인증 사용자와 ASYNC 종료 시 인증 복원을 확인합니다. 공통 `SseStreamingIntegrationTest`는 인증 의존성을 Mock으로 대체하고, 실제 HTTP 프레임과 JSON 변환 실패 시 기존 연결 유지를 검증합니다.
+- SSE 설정 테스트는 연결 설정에 `SseConfig`, 전송 설정에 `SseTransportConfig`를 사용하고 필요한 값을 직접 제공합니다.
+- SSE Redis 통합 테스트는 공통 발행 구현체, JSON 보존, 독립 컨텍스트 간 전달과 구독 연결 복구 후 새 이벤트 수신을 확인합니다. emitter를 Mock으로 사용하는 검증과 실제 HTTP 검증의 차이는 [SSE 테스트 가이드](sse/05-testing.md#redis-테스트의-범위)를 참고합니다.
 
-알림 통합 테스트는 PostgreSQL에서 테스트 프로필의 애플리케이션 컨텍스트 기동과 Flyway 마이그레이션을 확인합니다. 실제 Redis 연결과 캐시·세션 동작, Swagger 접속 및 커서 목록 API의 응답은 해당 결과에 포함되지 않습니다. 최신 결과와 수치는 각자의 코드에서 명령을 실행해 보고서로 확인합니다.
+`NotificationSseIntegrationTest`는 실제 JWT·사용자 조회·PostgreSQL·Redis·HTTP를 연결해 DTO와 이벤트 ID 보존, 다른 사용자 미전달, A에서 저장한 알림의 B 수신을 확인합니다.
+A·B는 동일 JVM의 독립 컨텍스트와 서로 다른 HTTP 포트이며, 이 검증에 로그인 API·업무별 알림 생성 요청 변환(#45)·DM 연동은 포함하지 않습니다.
+공통 Redis 전송 테스트와 알림 연동 테스트의 차이는 [알림 테스트 가이드](notification/02-testing.md)에 정리합니다.
+최신 결과와 수치는 각자의 코드에서 명령을 실행해 보고서로 확인합니다.
 
 ### TMDB API 연동
 
@@ -437,6 +450,42 @@ IntelliJ에서 `TmdbClientLiveTest`의 실행 설정에
 토큰은 수동 확인용 테스트 실행 설정에만 추가하고,
 일반 자동 테스트와 CI에는 설정하지 않습니다.
 
+### TheSportsDB API 연동
+
+리그 ID와 시즌을 기준으로 경기 목록을 조회합니다.
+DB 저장 및 Content 필드 변환은 후속 작업입니다.
+
+기본적으로 공개 무료 API 키 `123`을 사용합니다.
+다른 키를 사용할 때는 `.env.dev` 또는 실행 환경변수에
+`EVERYONE_SPORTSDB_API_KEY`를 설정합니다.
+개인 API 키는 커밋하지 않습니다.
+
+무료 API에는 요청 횟수와 반환 데이터 개수 제한이 있어,
+조회 결과가 시즌 전체 경기 목록이라고 보장할 수 없습니다.
+
+연결 제한 시간은 기본 3초, 읽기 제한 시간은 기본 10초입니다.
+
+#### 자동 테스트
+
+실제 API를 호출하지 않으며, Docker 없이 실행할 수 있습니다.
+
+```bash
+./gradlew test --tests '*SportsDbClientTest' --tests '*SportsDbClientTimeoutTest' --tests '*SportsDbPropertiesTest'
+```
+
+#### 실제 API 연결 확인
+
+macOS/Linux 터미널에서 아래 명령으로 실행합니다.
+
+```bash
+RUN_SPORTSDB_LIVE_TEST=true ./gradlew test --tests '*SportsDbClientLiveTest' --rerun-tasks
+```
+
+실제 API 연결 테스트는 공개 무료 키 `123`을 사용하며 인터넷 연결이 필요합니다.
+`RUN_SPORTSDB_LIVE_TEST=true`인 경우에만 실행되고,
+설정하지 않으면 건너뜁니다.
+일반 자동 테스트와 CI에는 이 실행 변수를 설정하지 않습니다.
+
 ## 협업과 후속 작업
 
 기능 작업에는 [이슈 템플릿](../.github/ISSUE_TEMPLATE/feature.md)을, 변경 공유에는 [PR 템플릿](../.github/PULL_REQUEST_TEMPLATE.md)을 사용합니다. PR에는 변경 이유, 실행한 테스트와 결과, 후속 작업을 기록합니다. 공통 응답이나 설정을 변경하면 관련 테스트와 이 문서도 함께 확인합니다.
@@ -450,6 +499,6 @@ IntelliJ에서 `TmdbClientLiveTest`의 실행 설정에
 - 목록 API의 커서 규칙 확정과 직렬화·페이징 테스트
 - Redis 기반 캐시·세션 기능 구현과 데이터 보관 정책 결정
 - 배치, S3, WebSocket 등 기능별 구현과 필요한 인프라 추가
-- SSE 서버 간 이벤트 전송, [공유 이력·재연결 복구 #53](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/53), [동시 연결 수 제한·모니터링 #107](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/107)
+- 업무별 알림 생성 요청 변환(#45), DM 본문 전송 연동, SSE Kafka 구현체, [공유 이력·재연결 복구 #53](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/53), [동시 연결 수 제한·모니터링 #107](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/107)
 - README 배지 자동 게시 방식 확정 및 연결
 - 배포 파이프라인 구성

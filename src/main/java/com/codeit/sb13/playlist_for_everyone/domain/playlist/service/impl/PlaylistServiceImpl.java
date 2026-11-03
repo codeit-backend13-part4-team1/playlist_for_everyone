@@ -9,6 +9,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.UserSu
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Playlist;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistContent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistSortBy;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Subscription;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistSubscribedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistSearchCondition;
@@ -22,7 +24,11 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListC
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListContentNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListForbiddenException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscribeOwnException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscriptionDuplicatedException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscriptionNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
+import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
@@ -30,6 +36,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,6 +52,9 @@ public class PlaylistServiceImpl implements PlaylistService {
   private final SubscriptionRepository subscriptionRepository;
   private final PlaylistContentRepository playlistContentRepository;
   private final ContentRepository contentRepository;
+  private final ApplicationEventPublisher eventPublisher;
+
+  private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
 
   @Override
   @Transactional
@@ -192,6 +203,63 @@ public class PlaylistServiceImpl implements PlaylistService {
     playlistRepository.touchUpdatedAt(playlistId, LocalDateTime.now());
   }
 
+  @Override
+  @Transactional
+  public void subscribe(UUID playlistId, UUID subscriberId) {
+    Playlist playlist = playlistRepository.findById(playlistId)
+        .orElseThrow(() -> new PlayListNotFoundException(
+            Map.of("playlistId", playlistId)));
+
+    if (playlist.isOwnedBy(subscriberId)) {
+      throw new PlayListSubscribeOwnException(
+          Map.of("playlistId", playlistId, "subscriberId", subscriberId));
+    }
+
+    if (subscriptionRepository.existsByPlaylistIdAndSubscriberId(playlistId, subscriberId)) {
+      throw new PlayListSubscriptionDuplicatedException(
+          Map.of("playlistId", playlistId, "subscriberId", subscriberId));
+    }
+
+    try {
+      subscriptionRepository.saveAndFlush(new Subscription(playlistId, subscriberId));
+    } catch (DataIntegrityViolationException e) {
+      if (!isUniqueViolation(e)) {
+        throw e;
+      }
+      throw new PlayListSubscriptionDuplicatedException(
+          Map.of("playlistId", playlistId, "subscriberId", subscriberId), e);
+    }
+
+    playlistRepository.increaseSubscriberCount(playlistId);
+
+    User subscriber = userRepository.findById(subscriberId)
+        .orElseThrow(() -> new UserNotFoundException(Map.of("userId", subscriberId)));
+    eventPublisher.publishEvent(new PlaylistSubscribedEvent(
+        playlistId,
+        playlist.getTitle(),
+        playlist.getOwner().getId(),
+        subscriberId,
+        subscriber.getName()));
+
+  }
+
+  @Override
+  @Transactional
+  public void unsubscribe(UUID playlistId, UUID subscriberId) {
+    if (!playlistRepository.existsById(playlistId)) {
+      throw new PlayListNotFoundException(Map.of("playlistId", playlistId));
+    }
+
+    int deleted = subscriptionRepository.deleteByPlaylistIdAndSubscriberId(
+        playlistId, subscriberId);
+    if (deleted == 0) {
+      throw new PlayListSubscriptionNotFoundException(
+          Map.of("playlistId", playlistId, "subscriberId", subscriberId));
+    }
+
+    playlistRepository.decreaseSubscriberCount(playlistId);
+  }
+
 
   //---------[헬퍼 메서드]
   private PlaylistSearchCondition toCondition(PlaylistSearchRequest request) {
@@ -221,5 +289,15 @@ public class PlaylistServiceImpl implements PlaylistService {
     User owner = playlist.getOwner();
     UserSummary userSummary = new UserSummary(owner.getId(), owner.getName(), null);
     return PlaylistResponse.from(playlist, userSummary, subscribedByMe);
+  }
+
+  private boolean isUniqueViolation(Throwable throwable) {
+    for (Throwable cause = throwable; cause != null; cause = cause.getCause()) {
+      if (cause instanceof SQLException sqlException
+          && UNIQUE_VIOLATION_SQL_STATE.equals(sqlException.getSQLState())) {
+        return true;
+      }
+    }
+    return false;
   }
 }
