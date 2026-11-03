@@ -13,7 +13,8 @@ public class TmdbContentMapper {
 
     private static final Map<Integer, String> MOVIE_GENRES = Map.of(
             28, "액션",
-            18, "드라마"
+            18, "드라마",
+            35, "코미디"
     );
 
     public CollectedContentData fromMovie(TmdbMovieResponse movie) {
