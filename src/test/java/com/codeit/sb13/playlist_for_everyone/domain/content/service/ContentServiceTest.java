@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.content.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentUpdateRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentSource;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentTag;
@@ -25,6 +26,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -353,6 +355,44 @@ public class ContentServiceTest {
         assertThat(content.getTags())
                 .extracting(ContentTag::getTag)
                 .containsExactly("로맨스");
+    }
+
+    @Test
+    @DisplayName("존재하는 콘텐츠를 단건 조회한다.")
+    void getContent_success() {
+        // given
+        Content content = Content.createAdminContent(
+                ContentType.tvSeries,
+                "너말고다른연애",
+                "KBS 드라마 입니다.",
+                "thumbnail-url"
+        );
+        content.addTag("드라마");
+
+        given(contentRepository.findById(content.getId()))
+                .willReturn(Optional.of(content));
+
+        // when
+        ContentDto dto = contentService.getById(content.getId());
+
+        // then
+        assertThat(dto.title()).isEqualTo("너말고다른연애");
+        assertThat(dto.description()).isEqualTo("KBS 드라마 입니다.");
+        assertThat(dto.tags()).contains("드라마");
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 콘텐츠를 조회하면 예외가 발생한다.")
+    void getContent_unexists() {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        given(contentRepository.findById(contentId))
+                .willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> contentService.getById(contentId))
+                .isInstanceOf(ContentNotFoundException.class);
     }
 
 }
