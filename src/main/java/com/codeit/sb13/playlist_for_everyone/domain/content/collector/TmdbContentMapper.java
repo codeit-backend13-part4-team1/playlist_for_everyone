@@ -23,10 +23,7 @@ public class TmdbContentMapper {
             throw new IllegalArgumentException("TMDB 영화 ID가 필요합니다.");
         }
 
-        String posterPath = movie.posterPath();
-        String thumbnailUrl = posterPath == null || posterPath.isBlank()
-                ? null
-                : "https://image.tmdb.org/t/p/w500" + posterPath;
+        String thumbnailUrl = toThumbnailUrl(movie.posterPath());
 
         List<String> tags = movie.genreIds() == null
                 ? List.of()
@@ -52,10 +49,7 @@ public class TmdbContentMapper {
             throw new IllegalArgumentException("TMDB TV 시리즈 ID가 필요합니다.");
         }
 
-        String posterPath = tv.posterPath();
-        String thumbnailUrl = posterPath == null || posterPath.isBlank()
-                ? null
-                : "https://image.tmdb.org/t/p/w500" + posterPath;
+        String thumbnailUrl = toThumbnailUrl(tv.posterPath());
 
         return new CollectedContentData(
                 ContentType.tvSeries,
@@ -66,6 +60,13 @@ public class TmdbContentMapper {
                 tv.id().toString(),
                 List.of()
         );
+    }
+
+    private String toThumbnailUrl(String posterPath) {
+        if (posterPath == null || posterPath.isBlank()) {
+            return null;
+        }
+        return "https://image.tmdb.org/t/p/w500" + posterPath;
     }
 
 }
