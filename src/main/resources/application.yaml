@@ -22,7 +22,12 @@ spring:
       max-file-size: ${EVERYONE_MULTIPART_MAX_FILE_SIZE:10MB}
       # 파일과 폼 데이터를 포함한 요청 전체의 최대 크기
       max-request-size: ${EVERYONE_MULTIPART_MAX_REQUEST_SIZE:12MB}
-
+  data:
+    redis:
+      # 공용 Redis 명령 응답 대기 시간. SSE 연결 유지 시간과는 별개다.
+      # 3초는 운영 지연을 측정하기 전 정한 초기값이다.
+      # 지연·타임아웃 발생 시 원인과 요청 응답 시간을 확인하고 환경별로 조정한다.
+      timeout: ${EVERYONE_REDIS_TIMEOUT:3s}
 springdoc:
   api-docs:
     # OpenAPI 명세 제공 경로

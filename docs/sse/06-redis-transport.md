@@ -81,6 +81,8 @@ Redis 설정이 없거나 채널이 빈 문자열·공백인 경우도 거부합
 실패한 경우에만 JSON을 다시 읽어 식별자를 추출하며, 읽을 수 없거나 UUID로 변환되지 않는 식별자는 `null`로 기록합니다.
 발행자·수신자의 위 로그에는 원문, `data`, 예외 메시지와 스택을 넣지 않습니다.
 HTTP 연결 전송 단계의 스택·로그 수준은 [로컬 전송 로그 기준](02-delivery-heartbeat.md#단절과-오류의-로그-기준)에 따릅니다.
+알림 호출부는 `SsePublishException`을 처리하고 알림 ID를 포함한 별도 로그를 남깁니다.
+저장된 데이터 보존과 실패 처리 범위는 [알림 전송 흐름](../notification/01-creation-and-delivery.md#실패했을-때-남는-것)을 참고합니다.
 
 ## 전달 보장과 후속 작업
 
@@ -88,7 +90,8 @@ Redis `PUBLISH`의 반환값은 구독자 수입니다. 실제 클라이언트 �
 구독 연결이 복구되면 재구독하여 **새 이벤트**를 받을 수 있지만, 연결이 끊긴 동안의 이벤트를 보관하거나 재전송하지 않습니다.
 발행 성공만으로 브라우저 수신이나 정확히 한 번 전달을 보장하지 않습니다.
 
-Kafka 구현체, 알림·DM 생성 후 발행 연동, [공유 이력·재연결 복구 #53](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/53)은 후속 작업입니다.
+알림 저장 커밋 후 이 발행 계약을 호출하는 [#51 연동](../notification/01-creation-and-delivery.md)은 구현되어 있습니다.
+업무별 알림 생성 요청 변환(#45), DM 본문 전송 연동, Kafka 구현체와 [공유 이력·재연결 복구 #53](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/53)은 후속 작업입니다.
 검증 범위는 [테스트 가이드](05-testing.md#redis-테스트의-범위), 직접 실행하는 절차는 다음 문서를 참고합니다.
 
 ---
