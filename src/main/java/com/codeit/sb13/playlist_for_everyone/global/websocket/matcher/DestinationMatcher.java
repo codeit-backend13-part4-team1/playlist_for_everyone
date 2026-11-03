@@ -30,6 +30,7 @@ public class DestinationMatcher
 
     @Override
     protected void call(Object event) {
-        publisher.publishEvent(event);
+        if(event != null)
+            publisher.publishEvent(event);
     }
 }
