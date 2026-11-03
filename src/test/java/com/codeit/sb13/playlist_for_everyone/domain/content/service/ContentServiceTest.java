@@ -361,24 +361,33 @@ public class ContentServiceTest {
     @DisplayName("존재하는 콘텐츠를 단건 조회한다.")
     void getContent_success() {
         // given
+        UUID contentId = UUID.randomUUID();
+
         Content content = Content.createAdminContent(
                 ContentType.tvSeries,
                 "너말고다른연애",
                 "KBS 드라마 입니다.",
                 "thumbnail-url"
         );
-        content.addTag("드라마");
 
-        given(contentRepository.findById(content.getId()))
+        ContentDto expected = mock(ContentDto.class);
+
+        given(contentRepository.findById(contentId))
                 .willReturn(Optional.of(content));
+        given(reviewRepository.findAverageRatingByContentId(contentId))
+                .willReturn(4.5);
+        given(reviewRepository.countByContentId(contentId))
+                .willReturn(3L);
+        given(contentMapper.toDto(content, 4.5, 3, 0L))
+                .willReturn(expected);
 
         // when
-        ContentDto dto = contentService.getById(content.getId());
+        ContentDto result = contentService.getById(contentId);
 
         // then
-        assertThat(dto.title()).isEqualTo("너말고다른연애");
-        assertThat(dto.description()).isEqualTo("KBS 드라마 입니다.");
-        assertThat(dto.tags()).contains("드라마");
+        assertThat(result).isSameAs(expected);
+        verify(contentRepository).findById(contentId);
+        verify(contentMapper).toDto(content, 4.5, 3, 0L);
     }
 
     @Test

@@ -41,6 +41,24 @@ public class ContentService {
         return contentMapper.toDto(savedContent, 0.0, 0, 0L);
     }
 
+    @Transactional(readOnly = true)
+    public ContentDto getById(UUID contentId) {
+        Content content = contentRepository.findById(contentId)
+                .orElseThrow(() -> new ContentNotFoundException(
+                        Map.of("content", contentId)
+                ));
+
+        double averageRating = reviewRepository.findAverageRatingByContentId(contentId);
+        int reviewCount = Math.toIntExact(reviewRepository.countByContentId(contentId));
+        long watcherCount = 0L; // TODO: 시청 세션 기능 연동
+
+        return contentMapper.toDto(
+                content,
+                averageRating,
+                reviewCount,
+                watcherCount);
+    }
+
     @Transactional
     public ContentDto update(UUID id, ContentUpdateRequest request, MultipartFile file) {
         Content content = contentRepository.findById(id)
