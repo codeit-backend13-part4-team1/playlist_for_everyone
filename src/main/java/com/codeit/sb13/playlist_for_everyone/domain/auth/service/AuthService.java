@@ -114,11 +114,15 @@ public class AuthService {
     }
 
     /**
-     * 전달받은 Refresh Token의 등록 정보를 삭제한다.
+     * 로그아웃 요청으로 전달받은 Refresh Token의 등록 정보를 삭제한다.
+     *
+     * 삭제된 토큰은 Redis 등록 정보가 없으므로 이후 재발그에 사용할 수 없다.
+     * 이미 등록 정보가 없는 토큰의 삭제는 저장소 계약에 따라 정상 처리한다.
      */
     public void logout(String refreshToken) {
-        // RED : 다음 단계에서 Redis 삭제를 구현한다.
-        throw new UnsupportedOperationException("로그아웃 구현 예정");
+        // Redis 삭제 실패는 호출자에게 전달한다.
+        // 삭제에 실패 했는데 로그아웃에 성공한 것처럼 처리하지 않는다.
+        refreshTokenRepository.delete(refreshToken);
     }
 
 
