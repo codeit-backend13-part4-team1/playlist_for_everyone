@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.content.controller;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
+import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
@@ -260,6 +261,42 @@ public class ContentControllerTest {
                 .andExpect(status().isBadRequest());
 
         verifyNoInteractions(contentService);
+    }
+
+    @Test
+    @DisplayName("콘텐츠 단건 조회 요청 시 200 OK와 ContentDto를 반환한다.")
+    void getContent_success() throws Exception {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        ContentDto contentDto = new ContentDto(
+                contentId,
+                ContentType.tvSeries,
+                "너 말고 다른 연애",
+                "서강준, 안은진 주연",
+                "https://example.com/thumbnail.jpg",
+                List.of("드라마", "로맨스"),
+                4.5,
+                10,
+                0L
+        );
+
+        when(contentService.getById(contentId))
+                .thenReturn(contentDto);
+
+        // when & then
+        mockMvc.perform(get("/api/contents/{contentId}", contentId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(contentId.toString()))
+                .andExpect(jsonPath("$.title").value("너 말고 다른 연애"))
+                .andExpect(jsonPath("$.description").value("서강준, 안은진 주연"))
+                .andExpect(jsonPath("$.tags[0]").value("드라마"))
+                .andExpect(jsonPath("$.tags[1]").value("로맨스"))
+                .andExpect(jsonPath("$.averageRating").value(4.5))
+                .andExpect(jsonPath("$.reviewCount").value(10))
+                .andExpect(jsonPath("$.watcherCount").value(0));
+
+        verify(contentService).getById(contentId);
     }
 
     @Test
