@@ -23,7 +23,9 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -31,6 +33,7 @@ import java.time.Duration;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
 
 @DisplayName("S3FileStorage 테스트")
@@ -116,6 +119,52 @@ public class S3FileStorageTest {
                 .isInstanceOf(FileInvalidTypeException.class);
 
         verifyNoInteractions(s3Client);
+    }
+
+    @Test
+    @DisplayName("S3 업로드 재시도 시 새로운 InputStream을 제공한다.")
+    void upload_retry_newInputStream() throws IOException {
+        // given
+        MultipartFile file = mock(MultipartFile.class);
+
+        byte[] content = "test image".getBytes(StandardCharsets.UTF_8);
+
+        given(file.isEmpty()).willReturn(false);
+        given(file.getOriginalFilename()).willReturn("test.png");
+        given(file.getSize()).willReturn((long) content.length);
+
+        given(file.getInputStream()).willAnswer(
+                invocation -> new ByteArrayInputStream(content)
+        );
+
+        // when
+        String key = s3FileStorage.upload(file);
+
+        // then
+        ArgumentCaptor<RequestBody> captor =
+                ArgumentCaptor.forClass(RequestBody.class);
+
+        verify(s3Client).putObject(
+                any(PutObjectRequest.class),
+                captor.capture()
+        );
+
+        RequestBody requestBody = captor.getValue();
+
+        InputStream first = requestBody.contentStreamProvider().newStream();
+        InputStream second = requestBody.contentStreamProvider().newStream();
+
+        try {
+            assertThat(first).isNotSameAs(second);
+            assertThat(first.readAllBytes()).isEqualTo(content);
+            assertThat(second.readAllBytes()).isEqualTo(content);
+        } finally {
+            first.close();
+            second.close();
+        }
+
+        verify(file, times(2)).getInputStream();
+        assertThat(key).isNotBlank();
     }
 
     @Test
