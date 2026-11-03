@@ -43,6 +43,16 @@ public class FileService {
         }
     }
 
+    @Transactional(readOnly = true)
+    public String getFileUrl(UUID fileId) {
+        FileInfo fileInfo = fileInfoRepository.findById(fileId)
+                .orElseThrow(() -> new FileNotFoundException(
+                        Map.of("fileId", fileId)
+                ));
+
+        return fileStorage.getFileUrl(fileInfo.getKey());
+    }
+
     @Transactional
     public void delete(UUID id) {
         FileInfo fileInfo = fileInfoRepository.findById(id)
