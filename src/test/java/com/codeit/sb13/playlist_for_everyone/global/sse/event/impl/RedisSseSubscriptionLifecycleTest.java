@@ -1,7 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.event.impl;
 
 import com.codeit.sb13.playlist_for_everyone.global.config.SseTransportConfig;
-import com.codeit.sb13.playlist_for_everyone.global.service.RedisBrokerRegister;
+import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisBrokerRegister;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseSubscription;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
