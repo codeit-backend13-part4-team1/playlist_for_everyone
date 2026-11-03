@@ -72,13 +72,26 @@ public class FileService {
     @Transactional
     public void delete(UUID id) {
         FileInfo fileInfo = fileInfoRepository.findById(id)
-                .orElseThrow(() -> new FileNotFoundException(Map.of()));
+                .orElseThrow(() -> new FileNotFoundException(Map.of("fileId", id)));
 
-        // S3 삭제
-        fileStorage.delete(fileInfo.getKey());
+        String key = fileInfo.getKey();
 
-        // FileInfo 삭제
+        // DB 파일 정보 삭제
         fileInfoRepository.delete(fileInfo);
+
+        // DB 커밋 성공 후 S3 파일 삭제
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        try {
+                            fileStorage.delete(key);
+                        } catch (RuntimeException e) {
+                            log.error("DB 삭제 후 S3 파일 삭제 실패. key={}", key, e);
+                        }
+                    }
+                }
+        );
 
     }
 

@@ -163,7 +163,7 @@ public class FileServiceTest {
     }
 
     @Test
-    @DisplayName("파일 삭제 시 S3 파일과 FileInfo를 함께 삭제한다")
+    @DisplayName("파일 삭제 후 트랜잭션 커밋 시 S3 파일도 삭제한다")
     void delete_success() {
         // given
         UUID id = UUID.randomUUID();
@@ -179,12 +179,32 @@ public class FileServiceTest {
         given(fileInfoRepository.findById(id))
                 .willReturn(Optional.of(fileInfo));
 
-        // when
-        fileService.delete(id);
+        TransactionSynchronizationManager.initSynchronization();
+        TransactionSynchronizationManager.setActualTransactionActive(true);
 
-        // then
-        verify(fileStorage).delete(key);
-        verify(fileInfoRepository).delete(fileInfo);
+        try {
+            // when
+            fileService.delete(id);
+
+            // then
+            verify(fileInfoRepository).delete(fileInfo);
+
+            // 커밋 전에는 S3 파일을 삭제하지 않음
+            verify(fileStorage, never()).delete(key);
+
+            // 트랜잭션 커밋 상황 재현
+            for (TransactionSynchronization synchronization :
+                    TransactionSynchronizationManager.getSynchronizations()) {
+                synchronization.afterCommit();
+            }
+
+            // 커밋 후 S3 파일 삭제 확인
+            verify(fileStorage).delete(key);
+
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+            TransactionSynchronizationManager.setActualTransactionActive(false);
+        }
     }
 
     @Test
