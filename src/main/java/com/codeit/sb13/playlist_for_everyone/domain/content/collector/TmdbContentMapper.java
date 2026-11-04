@@ -35,7 +35,7 @@ public class TmdbContentMapper {
         return new CollectedContentData(
                 ContentType.movie,
                 movie.title(),
-                movie.overview(),
+                movie.overview() == null ? "" : movie.overview(),
                 thumbnailUrl,
                 ContentSource.TMDB,
                 movie.id().toString(),
@@ -55,7 +55,7 @@ public class TmdbContentMapper {
         return new CollectedContentData(
                 ContentType.tvSeries,
                 tv.name(),
-                tv.overview(),
+                tv.overview() == null ? "" : tv.overview(),
                 thumbnailUrl,
                 ContentSource.TMDB,
                 tv.id().toString(),
