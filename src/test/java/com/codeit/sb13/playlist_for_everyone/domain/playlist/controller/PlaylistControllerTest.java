@@ -493,7 +493,7 @@ class PlaylistControllerTest {
   }
 
   @Test
-  @DisplayName("서비스에서 PlayListForbiddenException을 던지면 403으로 응답한다")
+  @DisplayName("서비스에서 AccessDeniedException을 던지면 403으로 응답한다")
   void 소유자가_아닌_수정_요청은_403으로_응답한다() throws Exception {
     // given
     UUID requesterId = UUID.randomUUID();
@@ -553,6 +553,22 @@ class PlaylistControllerTest {
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.exceptionName").value("PlayListNotFoundException"))
         .andExpect(jsonPath("$.details.playlistId").value(playlistId.toString()));
+  }
+
+  @Test
+  @DisplayName("서비스에서 AccessDeniedException을 던지면 403으로 응답한다")
+  void 소유자가_아닌_삭제_요청은_403으로_응답한다() throws Exception {
+    // given
+    UUID requesterId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    willThrow(new AccessDeniedException("접근 거부"))
+        .given(playlistService).deletePlaylist(playlistId, requesterId);
+
+    // when & then
+    mockMvc.perform(delete("/api/playlists/{playlistId}", playlistId)
+            .with(loginAs(requesterId)))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.exceptionName").value("AccessDeniedException"));
   }
 
   @Test
