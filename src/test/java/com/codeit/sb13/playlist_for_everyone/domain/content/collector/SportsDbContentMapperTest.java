@@ -113,4 +113,19 @@ class SportsDbContentMapperTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("TheSportsDB 경기 ID가 필요합니다.");
     }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"   "})
+    void 썸네일_주소가_없으면_null로_변환한다(String thumbnailUrl) {
+        var event = new SportsDbEventResponse(
+                "441425", "테스트 경기", "Soccer",
+                "English Premier League", "2014-2015", "2014-08-16",
+                thumbnailUrl
+        );
+
+        var data = new SportsDbContentMapper().fromEvent(event);
+
+        assertThat(data.thumbnailUrl()).isNull();
+    }
 }
