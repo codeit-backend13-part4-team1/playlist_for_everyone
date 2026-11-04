@@ -5,7 +5,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.Sports
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentSource;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 
-import java.util.List;
+import java.util.stream.Stream;
 
 public class SportsDbContentMapper {
 
@@ -18,7 +18,11 @@ public class SportsDbContentMapper {
                 event.thumbnailUrl(),
                 ContentSource.THE_SPORTS_DB,
                 event.id(),
-                List.of()
+                Stream.of(event.sport(), event.league())
+                        .filter(value -> value != null && !value.isBlank())
+                        .map(String::trim)
+                        .distinct()
+                        .toList()
         );
     }
 }
