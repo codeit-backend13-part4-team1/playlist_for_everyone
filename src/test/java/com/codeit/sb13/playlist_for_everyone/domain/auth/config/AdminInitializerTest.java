@@ -5,11 +5,14 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.DefaultApplicationArguments;
+
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
@@ -130,6 +133,74 @@ class AdminInitializerTest {
                 initializer.run(new DefaultApplicationArguments(new String[0])))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("everyone.admin.password");
+
+        verifyNoInteractions(adminInitializationService);
+    }
+
+    @ParameterizedTest
+    @MethodSource("passwordsWithinByteLimit")
+    @DisplayName("관리자 비밀번호가 UTF-8 기준 72바이트이면 초기화를 허용한다")
+    void 비밀번호가_72바이트이면_허용한다(String password) {
+        AdminProperties properties =
+                new AdminProperties(true, EMAIL, NAME, password);
+
+        AdminInitializer initializer =
+                new AdminInitializer(properties, adminInitializationService);
+
+        initializer.run(new DefaultApplicationArguments(new String[0]));
+
+        // 경계값을 허용하고, 원문을 변경하지 않은 채 서비스에 전달한다.
+        verify(adminInitializationService).initialize(EMAIL, NAME, password);
+        verifyNoMoreInteractions(adminInitializationService);
+    }
+
+    static Stream<String> passwordsWithinByteLimit() {
+        return Stream.of(
+                "a".repeat(72),   // ASCII 문자는 UTF-8 기준 1바이트다.
+                "가".repeat(24)   // '가'는 UTF-8 기준 3바이트다.
+        );
+    }
+
+    @ParameterizedTest
+    @MethodSource("passwordsExceedingByteLimit")
+    @DisplayName("관리자 비밀번호가 UTF-8 기준 72바이트를 초과하면 거절한다")
+    void 비밀번호가_72바이트를_초과하면_거절한다(String password) {
+        AdminProperties properties =
+                new AdminProperties(true, EMAIL, NAME, password);
+
+        AdminInitializer initializer =
+                new AdminInitializer(properties, adminInitializationService);
+
+        assertThatThrownBy(() ->
+                initializer.run(new DefaultApplicationArguments(new String[0])))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("everyone.admin.password")
+                .hasMessageContaining("72바이트")
+                // 설정 오류를 알려주되 비밀번호 원문은 노출하지 않는다.
+                .hasMessageNotContaining(password);
+
+        // 잘못된 설정은 계정 조회나 저장을 시작하기 전에 거절한다.
+        verifyNoInteractions(adminInitializationService);
+    }
+
+    static Stream<String> passwordsExceedingByteLimit() {
+        return Stream.of(
+                "a".repeat(73),        // ASCII 문자로 73바이트
+                "가".repeat(24) + "a"  // 25글자이지만 UTF-8 기준 73바이트
+        );
+    }
+
+    @Test
+    @DisplayName("관리자 초기화가 비활성화되면 비밀번호 바이트 제한을 검사하지 않는다")
+    void 비활성화되면_긴_비밀번호도_검사하지_않는다() {
+        AdminProperties properties =
+                new AdminProperties(false, EMAIL, NAME, "a".repeat(73));
+
+        AdminInitializer initializer =
+                new AdminInitializer(properties, adminInitializationService);
+
+        // 사용하지 않는 관리자 설정 때문에 서버 시작이 실패하면 안 된다.
+        initializer.run(new DefaultApplicationArguments(new String[0]));
 
         verifyNoInteractions(adminInitializationService);
     }
