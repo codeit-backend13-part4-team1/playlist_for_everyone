@@ -8,6 +8,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 public class ContentCollectionService {
@@ -18,6 +20,24 @@ public class ContentCollectionService {
     public Content save(CollectedContentData data) {
         if (!StringUtils.hasText(data.title())) {
             throw new IllegalArgumentException("수집한 콘텐츠에는 제목이 필요합니다.");
+        }
+
+        if (data.title().codePointCount(0, data.title().length()) > 100) {
+            throw new IllegalArgumentException("수집한 콘텐츠 제목은 100자 이하여야 합니다.");
+        }
+
+        List<String> tags = data.tags() == null
+                ? List.of()
+                : data.tags().stream()
+                  .filter(StringUtils::hasText)
+                  .map(String::strip)
+                  .distinct()
+                  .toList();
+
+        for (String tag : tags) {
+            if (tag.codePointCount(0, tag.length()) > 50) {
+                throw new IllegalArgumentException("수집한 콘텐츠 태그는 50자 이하여야 합니다.");
+            }
         }
 
         Content content = Content.createCollectedContent(
