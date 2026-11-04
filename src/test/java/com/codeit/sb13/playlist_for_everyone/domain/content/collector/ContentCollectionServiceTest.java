@@ -144,10 +144,11 @@ class ContentCollectionServiceTest {
                 .containsExactlyInAnyOrder("Soccer", "English Premier League");
     }
 
-    @Test
-    void 제목이_100자를_넘으면_저장할_수_없다() {
+    @ParameterizedTest
+    @ValueSource(strings = {"가", "😀"})
+    void 제목이_100자를_넘으면_저장할_수_없다(String character) {
         var data = new CollectedContentData(
-                ContentType.movie, "가".repeat(101), "영화 설명",
+                ContentType.movie, character.repeat(101), "영화 설명",
                 "https://example.com/poster.jpg", ContentSource.TMDB, "550",
                 List.of("액션")
         );
@@ -157,12 +158,13 @@ class ContentCollectionServiceTest {
                 .hasMessage("수집한 콘텐츠 제목은 100자 이하여야 합니다.");
     }
 
-    @Test
-    void 태그가_50자를_넘으면_저장할_수_없다() {
+    @ParameterizedTest
+    @ValueSource(strings = {"가", "😀"})
+    void 태그가_50자를_넘으면_저장할_수_없다(String character) {
         var data = new CollectedContentData(
                 ContentType.movie, "테스트 영화", "영화 설명",
                 "https://example.com/poster.jpg", ContentSource.TMDB, "550",
-                List.of("가".repeat(51))
+                List.of(character.repeat(51))
         );
 
         assertThatThrownBy(() -> service.save(data))
@@ -170,10 +172,13 @@ class ContentCollectionServiceTest {
                 .hasMessage("수집한 콘텐츠 태그는 50자 이하여야 합니다.");
     }
 
-    @Test
-    void 제목_100자와_공백을_제거한_태그_50자는_저장할_수_있다() {
-        String title = "가".repeat(100);
-        String tag = "나".repeat(50);
+    @ParameterizedTest
+    @ValueSource(strings = {"가", "😀"})
+    void 제목_100자와_공백을_제거한_태그_50자는_저장할_수_있다(
+            String character
+    ) {
+        String title = character.repeat(100);
+        String tag = character.repeat(50);
 
         var data = new CollectedContentData(
                 ContentType.movie, title, "영화 설명",
