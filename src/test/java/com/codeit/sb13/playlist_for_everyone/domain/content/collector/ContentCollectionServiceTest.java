@@ -169,4 +169,27 @@ class ContentCollectionServiceTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("수집한 콘텐츠 태그는 50자 이하여야 합니다.");
     }
+
+    @Test
+    void 제목_100자와_공백을_제거한_태그_50자는_저장할_수_있다() {
+        String title = "가".repeat(100);
+        String tag = "나".repeat(50);
+
+        var data = new CollectedContentData(
+                ContentType.movie, title, "영화 설명",
+                "https://example.com/poster.jpg", ContentSource.TMDB, "550",
+                List.of(" " + tag + " ")
+        );
+
+        Content saved = service.save(data);
+        em.flush();
+        em.clear();
+
+        Content found = em.find(Content.class, saved.getId());
+
+        assertThat(found.getTitle()).isEqualTo(title);
+        assertThat(found.getTags())
+                .extracting(ContentTag::getTag)
+                .containsExactly(tag);
+    }
 }
