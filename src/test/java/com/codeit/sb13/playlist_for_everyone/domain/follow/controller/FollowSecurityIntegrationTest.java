@@ -44,6 +44,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+/**
+ * 실제 JWT를 HTTP 요청 헤더에 넣어 보안 필터부터 서비스·PostgreSQL까지 연결해 검증한다.
+ * 필터를 끄고 서비스를 Mock으로 대체하는 FollowControllerTest와 달리 인증·소유자 인가도 실행한다.
+ *
+ * <p>테스트 전체를 트랜잭션으로 감싸지 않는다. 준비한 사용자는 FollowSaver의 REQUIRES_NEW
+ * 트랜잭션과 동시 요청 스레드에서도 조회할 수 있어야 하며, 요청이 커밋한 데이터는 직접 정리한다.
+ *
+ * <p>ApplicationEvents는 이벤트 발행 기록이다. 커밋 후 수신 여부는
+ * FollowServiceIntegrationTest의 테스트 전용 AFTER_COMMIT 리스너에서 확인한다.
+ * CSRF와 실제 알림 저장·SSE 전달은 이 테스트의 검증 범위에 포함하지 않는다.
+ */
 @RecordApplicationEvents
 @SpringBootTest(
         properties = {
@@ -54,6 +65,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 )
 @AutoConfigureMockMvc
 @Testcontainers
+// 종료된 컨테이너의 접속 정보를 가진 애플리케이션 컨텍스트가 다른 테스트에 재사용되지 않게 한다.
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @DisplayName("팔로우 JWT 인증·인가 통합 테스트")
 public class FollowSecurityIntegrationTest {
@@ -61,6 +73,7 @@ public class FollowSecurityIntegrationTest {
     @Container
     static final PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:16");
 
+    // 기본 test 프로필의 H2 접속 정보를 덮어쓴다. 스키마는 Flyway로 적용하고 JPA는 매핑을 검증한다.
     @DynamicPropertySource
     static void configurePostgres(DynamicPropertyRegistry registry){
         registry.add("spring.datasource.url", postgres::getJdbcUrl);
@@ -89,6 +102,7 @@ public class FollowSecurityIntegrationTest {
 
     @BeforeEach
     void setUp(){
+        // JWT 필터가 조회할 실제 사용자를 준비한다. 회원가입 API 동작은 이 테스트의 관심사가 아니다.
         insertUser(followerId, "팔로우하는 사용자");
         insertUser(followeeId, "팔로우받는 사용자");
         insertUser(otherFollowerId, "다른 팔로우하는 사용자");
@@ -96,6 +110,7 @@ public class FollowSecurityIntegrationTest {
 
     @AfterEach
     void cleanUp(){
+        // 요청에서 이미 커밋한 행을 지운다. FK 순서에 맞춰 이번 테스트의 관계를 먼저, 사용자를 나중에 삭제한다.
         jdbcTemplate.update("""
             DELETE FROM follows
             WHERE follower_id IN (?, ?, ?)
@@ -134,6 +149,7 @@ public class FollowSecurityIntegrationTest {
                 followeeId);
 
         result.andExpect(jsonPath("$.id").value(savedFollowId.toString()));
+        // 발행 당시 DB에서 조회한 이름과 두 사용자 ID를 확인한다. 알림 소비 성공을 확인하는 단언은 아니다.
         assertThat(applicationEvents.stream(UserFollowedEvent.class))
                 .containsExactly(new UserFollowedEvent(followerId, "팔로우하는 사용자", followeeId));
     }
@@ -872,6 +888,10 @@ public class FollowSecurityIntegrationTest {
                 .andExpect(jsonPath("$.details.followeeId").isNotEmpty());
     }
 
+    /**
+     * 두 HTTP 요청의 결과와 최종 DB 상태를 확인한다. 두 사전 조회가 모두 빈 결과가 되도록 강제하지는 않는다.
+     * 실제 UNIQUE 충돌 후 복구 경로는 FollowServiceIntegrationTest에서 별도로 검증한다.
+     */
     @Test
     @DisplayName("유효한 JWT로 같은 대상을 동시에 팔로우하면 관계 한 건만 저장하고 201과 200 응답에 동일한 관계 ID를 반환한다.")
     void follow_returnsCreatedAndOkForConcurrentRequests() throws Exception {
@@ -883,6 +903,7 @@ public class FollowSecurityIntegrationTest {
                 }
                 """.formatted(followeeId);
 
+        // 두 작업이 준비된 뒤 함께 출발시킨다. 대기 제한은 테스트의 무한 대기를 막기 위한 값이다.
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
 
@@ -933,6 +954,7 @@ public class FollowSecurityIntegrationTest {
             second.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                     .andExpect(jsonPath("$.id").value(savedFollowId));
         } finally {
+            // 준비 단계에서 실패해도 대기 중인 작업을 풀고 실행기를 종료해 다음 테스트에 스레드를 남기지 않는다.
             start.countDown();
             executor.shutdownNow();
             assertThat(executor.awaitTermination(10, TimeUnit.SECONDS))
@@ -951,6 +973,10 @@ public class FollowSecurityIntegrationTest {
                 name);
     }
 
+    /**
+     * 동일한 서명 키와 유효기간을 사용하되 발급 시각을 과거로 옮겨, 기다리지 않고 만료 토큰을 만든다.
+     * 각 테스트는 HTTP 요청 전에 ExpiredJwtException을 확인해 의도한 실패 원인인지 먼저 검증한다.
+     */
     private String createExpiredAccessToken(UUID userId){
         SecretKey signingKey = Keys.hmacShaKeyFor(Decoders.BASE64.decode(jwtProperties.secretKey()));
 
@@ -970,6 +996,7 @@ public class FollowSecurityIntegrationTest {
         followInsert(followId, followerId, followeeId);
     }
 
+    // 조회·취소 검증의 사전 관계를 직접 준비한다. 서비스 등록과 생성 이벤트 발행은 실행하지 않는다.
     private void followInsert(UUID followId, UUID followerId, UUID followeeId) {
         jdbcTemplate.update("""
             INSERT INTO follows (id, follower_id, followee_id, created_at)
@@ -977,6 +1004,10 @@ public class FollowSecurityIntegrationTest {
         """, followId, followerId, followeeId);
     }
 
+    /**
+     * 정상 토큰의 헤더·페이로드를 유지하고 서명 첫 글자만 바꾼다.
+     * 각 테스트는 SignatureException을 먼저 확인해 토큰 형식이나 만료 오류와 구분한다.
+     */
     private String createTamperedAccessToken(UUID userId){
         String validToken = jwtTokenProvider.createAccessToken(userId);
         String[] tokenParts = validToken.split("\\.");

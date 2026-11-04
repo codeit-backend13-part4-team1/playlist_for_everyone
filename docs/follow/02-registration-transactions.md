@@ -69,8 +69,15 @@ sequenceDiagram
 이름이 다른 UNIQUE, FK, NOT NULL 위반은 `FollowCreationFailedException`으로 전달합니다.
 팔로우 UNIQUE 위반이어도 재조회 결과가 없으면 같은 생성 실패 예외를 전달합니다.
 
-DB 동시 등록과 복구는 서비스 통합 테스트에서 다룹니다.
-실제 JWT를 거친 동시 HTTP 요청의 201/200 검증은 #76의 남은 작업입니다.
+## 두 통합 테스트가 확인하는 범위
+
+`FollowServiceIntegrationTest`는 실제 DB 동시 등록과 충돌 복구를 확인합니다.
+복구 테스트에서는 사전 조회 이후 경쟁 관계를 먼저 커밋하여 UNIQUE 위반을 유도합니다.
+
+`FollowSecurityIntegrationTest`는 실제 JWT를 넣은 두 HTTP 요청에서 201·200과 동일한 관계 ID,
+최종 관계 한 건을 확인합니다. 이 검증은 #76에서 완료했습니다.
+요청 시작을 맞추더라도 DB 충돌이 항상 발생하는 것은 아니므로, 충돌 복구 검증과 구분합니다.
+테스트 코드와 실행 방법은 [테스트 가이드](05-testing.md)를 참고합니다.
 
 ## 관련 코드
 

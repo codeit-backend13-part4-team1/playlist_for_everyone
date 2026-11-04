@@ -26,7 +26,9 @@ import java.util.UUID;
  * 팔로우 API의 Swagger 계약을 모은 인터페이스.
  * Principal은 서버가 주입하므로 문서 입력에서 숨기고, 실제 주입 어노테이션은 컨트롤러에 둔다.
  *
- * <p>JWT 인증은 공통 보안 필터에서, 취소 소유자 인가는 FollowGuard에서 처리한다.
+ * <p>SecurityRequirement는 OpenApiConfig의 bearerAuth를 이 인터페이스의 API 4개에 연결한다.
+ * 문서에 인증 요구사항을 표시하는 설정이며, 실제 JWT 인증은 공통 보안 필터에서,
+ * 취소 소유자 인가는 FollowGuard에서 처리한다.
  * 팔로우 API의 CSRF 연동·검증은 #114의 후속 작업이다.
  */
 @Tag(name = "팔로우", description = """

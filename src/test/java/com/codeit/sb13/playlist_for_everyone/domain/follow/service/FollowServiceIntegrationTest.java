@@ -282,6 +282,7 @@ public class FollowServiceIntegrationTest {
         TransactionTemplate otherTransaction = new TransactionTemplate(transactionManager);
         otherTransaction.setPropagationBehavior(TransactionTemplate.PROPAGATION_REQUIRES_NEW);
 
+        // 사전 조회가 끝난 뒤 경쟁 관계를 별도 트랜잭션으로 먼저 커밋해 실제 저장의 UNIQUE 충돌을 유도한다.
         doAnswer(invocation -> {
             otherTransaction.executeWithoutResult(status -> jdbcTemplate.update(
                     """
@@ -310,6 +311,7 @@ public class FollowServiceIntegrationTest {
 
         verify(followSaver).save(any(FollowCommand.class));
 
+        // save 이후 이벤트를 발행했어도 커밋이 실패하면, 발행 기록만 남고 AFTER_COMMIT 수신은 발생하지 않는다.
         assertThat(applicationEvents.stream(UserFollowedEvent.class))
                 .containsExactly(new UserFollowedEvent(followerId, "팔로우하는 사용자", followeeId));
 

@@ -3,8 +3,8 @@
 팔로우 요청의 흐름을 이해하고, 기능을 수정하거나 다른 도메인과 연결할 때 참고하는 문서입니다.
 기존 Controller → Service → Repository 구조 안에서 조회·저장·사용자 조회 역할을 컴포넌트로 분리했습니다.
 
-**기준:** 2026-11-03, #46·#47·#48의 구현과 현재 #76 브랜치의 Principal 연결을 포함합니다.
-실제 JWT를 사용하는 팔로우 HTTP 통합 검증은 아직 남아 있습니다.
+**기준:** 2026-11-04, #46·#47·#48의 구현과 #76의 JWT 인증·인가 통합 검증 및 Swagger 계약 정리를 포함합니다.
+실제 Swagger UI 화면 확인을 완료했으며, CSRF 연동·검증은 #114에서 진행합니다.
 
 ## 먼저 구분할 세 가지 ID
 
@@ -40,22 +40,22 @@ HTTP 요청 → 공통 JWT 인증 → FollowController → FollowService
 | 2 | [등록과 트랜잭션](02-registration-transactions.md) | 동시에 같은 요청이 오면 어떻게 기존 관계를 반환하나요? |
 | 3 | [조회와 취소](03-query-unfollow.md) | 조회 결과가 없거나 취소를 반복하면 어떻게 되나요? |
 | 4 | [사용자 조회와 생성 이벤트](04-follow-event.md) | 이벤트는 언제 발행되며 알림과는 어떻게 연결되나요? |
-| 5 | [테스트 읽기와 실행](05-testing.md) | Mock 테스트와 PostgreSQL 테스트가 각각 무엇을 확인하나요? |
+| 5 | [테스트 읽기와 실행](05-testing.md) | 단위·DB·JWT 통합 테스트는 각각 무엇을 확인하나요? |
 
-## 현재 구현과 남은 검증
+## 현재 구현과 후속 작업
 
 | 구분 | 현재 상태 |
 | --- | --- |
 | 등록·취소·조회 | 서비스·저장소·Guard 구현과 관련 테스트가 있음 |
 | 요청자 연결 | 컨트롤러가 `SecurityUser`의 ID를 Command에 전달 |
 | 인증·인가 경계 | 공통 필터가 인증, 서비스 Guard가 취소 소유자 판단 |
-| HTTP 보안 통합 | 실제 JWT·필터·서비스·DB를 연결한 검증은 [#76](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/76)에서 진행 |
-| Swagger | Principal 숨김 적용. Bearer 인증 설정, 설명 정리와 UI·OpenAPI 확인은 #76의 남은 작업 |
+| HTTP 보안 통합 | [#76](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/76)의 실제 JWT·필터·서비스·PostgreSQL 통합 테스트 32개 검증 완료 |
+| Swagger | Principal 숨김, Bearer 인증 연결, 응답 설명 및 생성된 OpenAPI·실제 UI 화면 확인 완료 |
 | CSRF | 현재 공통 설정에서 비활성화. 공통 기반은 [#35](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/35), 팔로우 연동·검증은 [#114](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/114) |
-| 생성 이벤트 | 신규 저장 트랜잭션에서 발행. 테스트 전용 리스너로 커밋 후 처리를 관찰 |
+| 생성 이벤트 | JWT 테스트에서 발행 값을, 서비스 통합 테스트의 전용 리스너에서 커밋 후 수신을 확인 |
 | 알림 연동 | 팔로우 이벤트를 알림 생성으로 연결하는 작업은 [#45](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/45)의 범위 |
 
-이 표는 현재 코드와 테스트의 역할을 설명합니다. 전체 빌드·실제 HTTP 통합 검증의 완료 기록은 아닙니다.
+검증 범위와 완료·후속 상태, 실행 방법은 [테스트 읽기와 실행](05-testing.md)에서 확인합니다.
 변경을 시작할 때는 [FollowService 계약](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/follow/service/FollowService.java)과 해당 주제의 테스트를 함께 확인합니다.
 
 ---

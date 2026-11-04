@@ -62,6 +62,12 @@ ID 조회는 현재 인증 사용자에 의존하지 않으며 공개 HTTP API�
 취소에서는 `UserFollowedEvent`를 발행하지 않습니다.
 취소 후 다시 등록하면 새 관계 ID가 만들어지고 신규 생성 이벤트를 발행합니다.
 
+## 검증 연결
+
+JWT 통합 테스트에서 사용자별 관계 조회, 팔로워 수, 반복 취소 204와 타인 관계 취소 403을 확인했습니다.
+내부 팔로워 ID 조회와 취소·재등록의 이벤트는 서비스 통합 테스트에서 확인합니다.
+역할별 테스트와 실행 방법은 [테스트 가이드](05-testing.md)에서 확인합니다.
+
 ## 관련 코드
 
 [조회 계약](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/follow/service/FollowService.java) ·

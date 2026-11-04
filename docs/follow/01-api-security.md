@@ -6,7 +6,8 @@
 ## API 계약
 
 공통 인증 입력은 `Authorization: Bearer <accessToken>`입니다.
-아래는 현재 코드의 응답 정책이며, 실제 JWT를 거친 통합 검증은 #76에서 진행합니다.
+아래는 현재 코드의 응답 정책입니다.
+실제 JWT를 통한 등록·취소·조회와 인증·인가 실패 응답은 `FollowSecurityIntegrationTest`에서 검증했습니다.
 
 | API | 클라이언트 입력 | 정상 응답 |
 | --- | --- | --- |
@@ -50,14 +51,14 @@ sequenceDiagram
     Controller->>Controller: Principal에서 followerId 추출
     Controller->>Service: FollowCommand(followeeId, followerId)
     Service-->>Controller: FollowResult 또는 업무 예외
-    Controller-->>Client: 상태 코드와 공통 응답
+    Controller-->>Client: 상태 코드와 응답 본문
 ```
 
 클라이언트 입력에 `followerId` 필드를 추가해 요청자를 결정하지 않습니다.
 Swagger의 `@Parameter(hidden = true)`는 Principal을 문서 입력에서 숨기는 역할이며,
 실제 주입은 컨트롤러의 `@AuthenticationPrincipal`이 담당합니다.
 
-## 오류 응답과 문서 상태
+## 오류 응답
 
 | 조건 | 현재 응답 정책 |
 | --- | --- |
@@ -72,9 +73,19 @@ Swagger의 `@Parameter(hidden = true)`는 Principal을 문서 입력에서 숨�
 필터 단계 오류는 보안 핸들러가 작성하고, 서비스·MVC 오류는 글로벌 예외 핸들러가 처리합니다.
 메서드 인가의 `AccessDeniedException` 계열에는 별도의 403 처리가 있습니다.
 
-현재 `FollowApi`의 적용 예정 설명과 일부 CSRF 이슈 표기는 아직 정리 전입니다.
-JWT·소유자 인가 설명은 실제 통합 검증 후 정리하며, CSRF 안내는 #114 완료 전까지 후속 상태로 유지합니다.
-Bearer 인증 스키마와 인증 요구사항의 OpenAPI 연결도 #76에서 확인해야 합니다.
+## Swagger 인증 연결
+
+`OpenApiConfig`에 HTTP Bearer 인증 방식인 `bearerAuth`를 정의하고,
+`FollowApi`의 `@SecurityRequirement(name = "bearerAuth")`로 팔로우 API 4개에 연결했습니다.
+스키마 정의만으로 모든 API에 인증 요구사항을 적용하지는 않습니다.
+이 연결은 Swagger의 인증 표시와 헤더 전송을 위한 설정이며, 실제 접근 제어는 공통 보안 설정이 담당합니다.
+
+JWT 인증 실패 401과 취소 소유자 인가 실패 403의 설명을 정리했으며,
+생성된 OpenAPI와 실제 Swagger UI에서 표시를 확인했습니다.
+
+CSRF 관련 403 설명은 #114에서 적용 예정임을 유지하고,
+현재 적용된 취소 소유자 인가 조건과 구분합니다.
+검증 기록과 후속 범위는 [테스트 읽기와 실행](05-testing.md)에서 확인합니다.
 
 ## 관련 코드
 
