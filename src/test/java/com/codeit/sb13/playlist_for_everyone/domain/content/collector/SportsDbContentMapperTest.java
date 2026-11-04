@@ -48,4 +48,22 @@ class SportsDbContentMapperTest {
         assertThat(data.tags())
                 .containsExactlyInAnyOrder("Soccer", "English Premier League");
     }
+
+    @Test
+    void 리그와_시즌과_날짜로_경기_설명을_만든다() {
+        var event = new SportsDbEventResponse(
+                "441425",
+                "West Ham vs Tottenham",
+                "Soccer",
+                "English Premier League",
+                "2014-2015",
+                "2014-08-16",
+                null
+        );
+
+        var data = new SportsDbContentMapper().fromEvent(event);
+
+        assertThat(data.description())
+                .isEqualTo("English Premier League / 2014-2015 / 2014-08-16");
+    }
 }
