@@ -9,10 +9,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.web.bind.annotation.CookieValue;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.web.csrf.CsrfToken;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -62,6 +60,20 @@ public class AuthController {
                 .header(HttpHeaders.SET_COOKIE, refreshCookie.toString())
                 .body(result.jwtDto());
 
+    }
+
+
+    /**
+     *  로그인 전에 사용할 CSRF 토큰을 쿠키로 전달한다.
+     *
+     *  토큰 생성과 쿠키 저장은 Spring Security가 담당하며,
+     *  응답 본문 없이 204 상태를 반환한다.
+     */
+    @GetMapping("/csrf-token")
+    public ResponseEntity<Void> issueCsrfToken(CsrfToken csrfToken) {
+        csrfToken.getToken();
+
+        return ResponseEntity.noContent().build();
     }
 
 }
