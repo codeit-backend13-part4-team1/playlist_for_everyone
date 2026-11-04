@@ -6,6 +6,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.dto.response.JwtDto;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AuthService;
+import com.codeit.sb13.playlist_for_everyone.domain.user.controller.UserController;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
@@ -21,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -38,7 +40,10 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@WebMvcTest(controllers = AuthController.class)
+@WebMvcTest(controllers = {
+        AuthController.class,
+        UserController.class
+})
 @AutoConfigureMockMvc(addFilters = true)
 @ActiveProfiles("test")
 @Import({
@@ -53,7 +58,7 @@ class CsrfSecurityTest {
     private static final String CSRF_COOKIE_NAME = "XSRF-TOKEN";
 
     private static final String CSRF_HEADER_NAME = "X-XSRF-TOKEN";
-    private static final String REFRESH_URL =  "/api/auth/refresh";
+    private static final String REFRESH_URL = "/api/auth/refresh";
 
     // 실제 JWT 검증은 서비스 테스트에서 확인한다.
     // 여기서는 보안 필터와 컨트롤러 연결을 검증하므로 테스트 문자열을 사용한다.
@@ -67,13 +72,13 @@ class CsrfSecurityTest {
     // 실제 SecurityFilterChain은 사용한다.
     // 아래 객체들은 보안 설정을 생성하는 데 필요한 의존성이다.
     @MockitoBean
-    private AuthenticationManager  authenticationManager;
+    private AuthenticationManager authenticationManager;
 
     @MockitoBean
     private JwtTokenProvider jwtTokenProvider;
 
     @MockitoBean
-    private UserService  userService;
+    private UserService userService;
 
     @MockitoBean
     private RefreshTokenRepository refreshTokenRepository;
@@ -194,7 +199,7 @@ class CsrfSecurityTest {
 
     @ParameterizedTest(name = "{0}: CSRF 쿠기가 없으면 403")
     @ValueSource(strings = {
-            "/api/auth.sign-in",
+            "/api/auth/sign-in",
             "/api/auth/refresh",
             "/api/auth/sign-out"
     })
@@ -277,10 +282,39 @@ class CsrfSecurityTest {
         assertThat(deletedRefreshCookie.getPath()).isEqualTo("/api/auth");
     }
 
+    @Test
+    @DisplayName("회원가입 요청에 CSRF 헤더가 없으면 403을 반환하고 사용자를 생성하지 않는다.")
+    void 회원가입_요청에_CSRF_헤더가_없으면_거절한다() throws Exception {
+        // 실제 발급 API에서 받은 쿠키를 사용한다.
+        Cookie csrfCookie = issueCsrfCookie();
+
+        // 입력값은 정상으로 전달하고, CSRF 헤더만 생력한다.
+        // 입력 검증 실패와 CSRF 검증 실패를 구분하기 위합이다.
+        mockMvc.perform(post("/api/users")
+                        .cookie(csrfCookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "email": "csrf-test@example.com",
+                                    "name": "테스트 사용자",
+                                    "password": "Password123!"
+                                }
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.exceptionName")
+                        .value("AccessDeniedException"))
+                .andExpect(jsonPath("$.message")
+                        .value("접근 권한이 없습니다."))
+                .andExpect(jsonPath("$.details").isEmpty());
+
+        verifyNoInteractions(userService);
+    }
+
 
     /**
      * 실제 CSRF 토큰 발급 API를 호출하고 응답 쿠키를 가져온다.
-     *
+     * <p>
      * 테스트 도구가 만든 토큰이 아닌 서버가 발급한 값을 사용한다.
      */
     private Cookie issueCsrfCookie() throws Exception {
@@ -299,7 +333,7 @@ class CsrfSecurityTest {
 
     /**
      * CSRF 검증을 통과하면 재발급 서비스가 정상 처리하는 상황을 준비한다.
-     *
+     * <p>
      * Redis 조회나 JWT 검증 자체는 이번 테스트의 대상이 아니다.
      */
     private void givenReissueSuccess() {
@@ -321,8 +355,6 @@ class CsrfSecurityTest {
         given(authService.reissue(OLD_REFRESH_TOKEN))
                 .willReturn(result);
     }
-
-
 
 
 }
