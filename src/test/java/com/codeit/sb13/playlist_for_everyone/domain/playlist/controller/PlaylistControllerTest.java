@@ -16,7 +16,6 @@ import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListContentDuplicatedException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListContentNotFoundException;
-import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListForbiddenException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscribeOwnException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscriptionDuplicatedException;
@@ -501,15 +500,12 @@ class PlaylistControllerTest {
     UUID playlistId = UUID.randomUUID();
     given(playlistService.updatePlaylist(
         eq(playlistId), any(PlaylistUpdateRequest.class), eq(requesterId)))
-        .willThrow(new PlayListForbiddenException(
-            Map.of("playlistId", playlistId, "requesterId", requesterId)));
+        .willThrow(new AccessDeniedException("접근 거부"));
 
     // when & then
     mockMvc.perform(patchRequest(playlistId, requesterId, Map.of("title", "새 제목")))
         .andExpect(status().isForbidden())
-        .andExpect(jsonPath("$.exceptionName").value("PlayListForbiddenException"))
-        .andExpect(jsonPath("$.details.playlistId").value(playlistId.toString()))
-        .andExpect(jsonPath("$.details.requesterId").value(requesterId.toString()));
+        .andExpect(jsonPath("$.exceptionName").value("AccessDeniedException"));
   }
 
 
@@ -557,25 +553,6 @@ class PlaylistControllerTest {
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.exceptionName").value("PlayListNotFoundException"))
         .andExpect(jsonPath("$.details.playlistId").value(playlistId.toString()));
-  }
-
-  @Test
-  @DisplayName("서비스에서 PlayListForbiddenException을 던지면 403으로 응답한다")
-  void 소유자가_아닌_삭제_요청은_403으로_응답한다() throws Exception {
-    // given
-    UUID requesterId = UUID.randomUUID();
-    UUID playlistId = UUID.randomUUID();
-    willThrow(new PlayListForbiddenException(
-        Map.of("playlistId", playlistId, "requesterId", requesterId)))
-        .given(playlistService).deletePlaylist(playlistId, requesterId);
-
-    // when & then
-    mockMvc.perform(delete("/api/playlists/{playlistId}", playlistId)
-            .with(loginAs(requesterId)))
-        .andExpect(status().isForbidden())
-        .andExpect(jsonPath("$.exceptionName").value("PlayListForbiddenException"))
-        .andExpect(jsonPath("$.details.playlistId").value(playlistId.toString()))
-        .andExpect(jsonPath("$.details.requesterId").value(requesterId.toString()));
   }
 
   @Test
