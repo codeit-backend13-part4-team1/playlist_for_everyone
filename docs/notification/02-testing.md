@@ -8,9 +8,9 @@
 | 테스트 | 실제로 검증하는 것 | 대체하거나 포함하지 않는 것 |
 | --- | --- | --- |
 | `NotificationCommandTest` | 제목 길이 경계, 말줄임과 이모지의 서로게이트 쌍 보존 | 생성자 직접 호출. Bean Validation·DB 검증 없음 |
-| `NotificationServiceTest` | 저장소 결과를 DTO로 복사하고 생성 이벤트 발행 요청 | 저장소·이벤트 발행자는 Mock. DB·Auditing·트랜잭션 실행 없음 |
+| `NotificationServiceTest` | 조회한 User 연결, 수신자 미존재 시 저장·발행 미호출, 저장 결과의 DTO·이벤트 구성 | 사용자 조회 컴포넌트·저장소·이벤트 발행자는 Mock. DB·Auditing·트랜잭션 실행 없음 |
 | `NotificationSseEventListenerTest` | ID·수신자·이벤트 이름·DTO 보존, 실패 처리·후속 발행·로그 | 발행자는 Mock, 리스너 직접 호출. AFTER_COMMIT 실행 시점 검증 없음 |
-| `NotificationIntegrationTest` | PostgreSQL·Flyway, 실제 커밋·롤백, 발행 요청과 실패 격리 | `SseEventPublisher`만 Mock으로 교체. Redis·HTTP 수신 검증 없음 |
+| `NotificationIntegrationTest` | 실제 사용자 조회·PostgreSQL·Flyway, 커밋·롤백, 발행 요청과 실패 격리 | `SseEventPublisher`만 Mock으로 교체. Redis·HTTP 수신 검증 없음 |
 | `NotificationSseIntegrationTest` | 실제 JWT·DB·Redis·HTTP, 알림 프레임과 서버 간 전달 | 별도 OS 프로세스·로그인 API·누락 복구 검증 없음 |
 
 테스트 코드는 [알림 테스트 패키지](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/notification)에 있습니다.
@@ -18,6 +18,7 @@
 제목·내용의 필수 값 검증은 `NotificationIntegrationTest`의 실제 서비스 호출에서 확인합니다.
 같은 `NotificationServiceTest`의 조회·삭제 사례와 JWT 검증은 [조회·인증 테스트 문서](04-query-and-security-testing.md)에서 다룹니다.
 두 트랜잭션이 같은 알림을 읽음 처리하는 과정은 [동시 삭제 검증](05-concurrent-deletion-testing.md)으로 이어집니다.
+User 연관관계의 저장·삭제·DTO 변환 검증은 [수신자 연관관계 문서](06-receiver-association.md)에서 함께 확인합니다.
 
 ## 커밋·롤백 검증 읽기
 
@@ -31,8 +32,14 @@
 | 생성 요청·생성 이벤트를 트랜잭션 밖에서 발행 | 각 AFTER_COMMIT 리스너 미실행 |
 | 알림 저장 트랜잭션 커밋 전·후 | 커밋 전 미발행, 커밋 후 한 번 발행 |
 | 알림 저장 트랜잭션 롤백 | 알림 미저장, 생성 이벤트가 등록되었어도 SSE 미발행 |
-| 알림 검증·저장 실패 | 원래 업무 커밋 유지, 이후 정상 알림은 저장·발행 |
+| 입력 검증 실패 | ConstraintViolationException 기록, 원래 업무 커밋 유지, 실패 알림 미저장·미발행 |
+| 수신자 미존재 | 실제 사용자 조회의 UserNotFoundException 기록, 원래 업무 커밋 유지, 실패 알림 미저장·미발행 |
+| 실제 DB 저장 실패 | DataIntegrityViolationException 기록, 원래 업무 커밋 유지, 실패 알림 미저장·미발행 |
 | `SsePublishException` 발생 | 업무·알림 데이터 유지, 저장 실패로 오분류하지 않음, 이후 알림은 정상 발행 |
+
+입력 검증·사용자 조회·DB 저장은 서로 다른 실패 지점이므로 각각 확인하고, 실패 뒤 정상 알림의 저장·발행도 검증합니다.
+DB 실패 사례는 존재하는 수신자와 정상 본문에 `(char) 0`을 덧붙인 값을 사용합니다.
+이는 Java의 `null`이 아닌 **NUL 문자**로, 입력 검증을 통과한 뒤 PostgreSQL 저장이 실패하도록 준비한 값입니다.
 
 커밋 전 상태를 검사하는 사례는 저장소와 생성 이벤트를 테스트 트랜잭션 안에서 직접 사용합니다.
 `save` 서비스의 `REQUIRES_NEW`는 반환 시 이미 커밋되므로, 이 방식으로 저장 트랜잭션 내부를 관찰합니다.

@@ -81,4 +81,4 @@ Docker를 실행한 뒤 프로젝트 루트에서 확인합니다. 기본 `test`
 
 ---
 
-[← 이전: 조회·인증 테스트와 Swagger 확인](04-query-and-security-testing.md) · [알림 목차](README.md) · [팀원 개발 가이드](../DEVELOPMENT.md)
+[← 이전: 조회·인증 테스트와 Swagger 확인](04-query-and-security-testing.md) · [알림 목차](README.md) · [다음: 수신자 연관관계와 사용자 조회 →](06-receiver-association.md)
