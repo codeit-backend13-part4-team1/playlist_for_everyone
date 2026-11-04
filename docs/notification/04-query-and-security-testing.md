@@ -1,19 +1,23 @@
 # 4. 조회·인증 테스트와 Swagger 확인
 
 조회·읽음 처리의 계약은 [API 흐름 문서](03-query-and-security.md)를 먼저 참고합니다.
-테스트는 **요청·응답 → DB 조회·삭제 조건 → 실제 JWT를 거친 전체 경로**로 나누어 읽습니다.
+테스트는 **요청 전달 → 서비스 판단 → DB 조회 → 동시 삭제 → JWT 요청 경로**로 나누어 읽습니다.
 
-## 세 테스트의 역할
+## 테스트별 역할
 
 | 테스트 | 검증하는 것 | 포함하지 않는 것 |
 | --- | --- | --- |
 | [NotificationControllerTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/notification/controller/NotificationControllerTest.java) | 요청 바인딩·검증, 응답 형식, Principal의 UUID를 서비스로 전달 | 필터 제외·서비스 Mock. 실제 JWT와 DB 검증 없음 |
-| [NotificationRepositoryTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/notification/repository/NotificationRepositoryTest.java) | PostgreSQL·Flyway·Querydsl로 수신자 제한, 커서 정렬·개수, 삭제 조건 검증 | 컨트롤러·서비스·JWT 호출 없음 |
+| [NotificationServiceTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/notification/service/NotificationServiceTest.java) | 조회 결과의 DTO·커서 구성, 본인·타인·미존재 알림별 삭제 호출 여부 | 저장소 Mock. 실제 잠금·DB 삭제·커밋 검증 없음 |
+| [NotificationRepositoryTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/notification/repository/NotificationRepositoryTest.java) | PostgreSQL·Flyway·Querydsl로 수신자별 목록·개수, 커서 탐색, 미존재 알림의 빈 잠금 조회 결과 검증 | 서비스의 소유자 확인·동시 삭제·JWT 호출 없음 |
+| [NotificationServiceIntegrationTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/notification/service/NotificationServiceIntegrationTest.java) | 실제 서비스·PostgreSQL과 두 트랜잭션으로 잠금 대기, 두 작업의 정상 완료와 최종 삭제 검증 | HTTP·JWT·CSRF·SSE 전송 검증 없음 |
 | [NotificationSecurityIntegrationTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/notification/controller/NotificationSecurityIntegrationTest.java) | 실제 JWT 필터·사용자 조회·서비스·PostgreSQL을 통한 조회·삭제 | MockMvc 사용. 실제 HTTP 서버·로그인 API·Redis 전송·CSRF 검증 없음 |
 
 MVC 테스트는 `SecurityContextHolder`에 인증 객체를 직접 넣어 Principal 인자 주입을 준비하고, 실행 후 정리합니다.
 이 테스트의 통과만으로 토큰 검증이 동작한다고 판단하지 않습니다.
 저장소 테스트는 `@DataJpaTest`의 기본 트랜잭션 롤백을 사용하며, 커밋 후 이벤트 전송은 [생성·전송 테스트](02-testing.md)가 확인합니다.
+저장소 테스트의 `deleteById()`와 `flush()`는 삭제 후 목록·개수·커서를 확인하기 위한 데이터 준비입니다.
+삭제 허용 여부는 서비스 단위 테스트에서, 실제 잠금과 커밋 순서는 [동시 삭제 검증](05-concurrent-deletion-testing.md)에서 확인합니다.
 
 ## 어떤 결과를 확인하는가
 
@@ -21,8 +25,11 @@ MVC 테스트는 `SecurityContextHolder`에 인증 객체를 직접 넣어 Princ
 | --- | --- |
 | MVC 입력 | 커서 날짜, UUID, 필수값, 양수 limit, 지원하는 정렬 기준·방향과 400 응답 |
 | MVC 전달 | 인증 사용자 ID와 조회 조건·삭제 ID 전달, 200·204·500 응답 형식 |
+| 서비스 읽음 처리 | 본인 알림일 때만 삭제 호출, 타인·미존재 알림은 삭제 호출 없음 |
 | 저장소 커서 | 양방향 정렬, 같은 생성시각의 ID 순서, `limit + 1`, 커서 대상 삭제 후 탐색 |
-| 저장소 수신자 | 목록·전체 개수에서 타인 제외, 본인 삭제와 타인 데이터 보존 |
+| 저장소 목록·개수 | 수신자별 조회 범위, 준비한 행을 삭제한 뒤 목록·전체 개수의 변화 |
+| 저장소 잠금 조회 | 존재하지 않는 ID에 빈 Optional 반환 |
+| 서비스 동시 삭제 | 두 번째 작업의 DB 잠금 대기, 첫 커밋 후 두 작업의 정상 완료, 최종 행 삭제 |
 | JWT 정상 요청 | 본인 목록·전체 개수, 삭제 후 목록·개수 변화, 타인 데이터 보존 |
 | JWT 반복·미존재·타인 삭제 | 모두 204·빈 본문, 삭제할 대상이 없으면 기존 데이터 유지 |
 | JWT 없음·만료·변조 | GET·DELETE 모두 401, 공통 오류 필드 확인, DELETE의 대상 행 보존 |
@@ -62,17 +69,19 @@ JWT 실패 테스트는 HTTP 상태만 확인하지 않고, DELETE 요청 전 �
 
 ## 실행과 결과 확인
 
-프로젝트 루트에서 MVC 테스트만 실행할 때는 Docker가 필요하지 않습니다.
+프로젝트 루트에서 MVC·서비스 단위 테스트를 실행할 때는 Docker가 필요하지 않습니다.
 
 ```bash
-./gradlew test --tests '*NotificationControllerTest' --no-daemon --console=plain
+./gradlew test --tests '*NotificationControllerTest' \
+  --tests '*NotificationServiceTest' --no-daemon --console=plain
 ```
 
-저장소·JWT 통합 테스트는 Docker를 실행한 뒤 확인합니다. PostgreSQL은 컨테이너가 준비하며,
+저장소·서비스 통합·JWT 통합 테스트는 Docker를 실행한 뒤 확인합니다. PostgreSQL은 컨테이너가 준비하며,
 로컬 DB·Redis·`.env.dev`는 필요하지 않습니다. 최초 실행에는 이미지 다운로드가 필요할 수 있습니다.
 
 ```bash
 ./gradlew test --tests '*NotificationRepositoryTest' \
+  --tests '*NotificationServiceIntegrationTest' \
   --tests '*NotificationSecurityIntegrationTest' --no-daemon --console=plain
 ```
 
@@ -101,4 +110,4 @@ JWT 문서 표현은 이 절차로 확인하며, 별도 문서 자동 테스트�
 
 ---
 
-[← 이전: 목록 조회·읽음 처리와 JWT 인증](03-query-and-security.md) · [알림 목차](README.md) · [팀원 개발 가이드](../DEVELOPMENT.md)
+[← 이전: 목록 조회·읽음 처리와 JWT 인증](03-query-and-security.md) · [알림 목차](README.md) · [다음: 동시 읽음 처리와 잠금 검증 →](05-concurrent-deletion-testing.md)

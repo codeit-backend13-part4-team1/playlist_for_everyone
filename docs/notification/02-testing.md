@@ -16,7 +16,8 @@
 테스트 코드는 [알림 테스트 패키지](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/notification)에 있습니다.
 각 클래스의 한글 `@DisplayName`으로 개별 시나리오를 확인할 수 있습니다.
 제목·내용의 필수 값 검증은 `NotificationIntegrationTest`의 실제 서비스 호출에서 확인합니다.
-조회·삭제와 JWT 검증은 [별도 테스트 문서](04-query-and-security-testing.md)에서 다룹니다.
+같은 `NotificationServiceTest`의 조회·삭제 사례와 JWT 검증은 [조회·인증 테스트 문서](04-query-and-security-testing.md)에서 다룹니다.
+두 트랜잭션이 같은 알림을 읽음 처리하는 과정은 [동시 삭제 검증](05-concurrent-deletion-testing.md)으로 이어집니다.
 
 ## 커밋·롤백 검증 읽기
 

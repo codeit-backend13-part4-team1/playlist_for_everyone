@@ -361,7 +361,9 @@ Docker Desktop 또는 Docker 엔진을 실행한 뒤 프로젝트 루트에서 �
 공통 테스트는 `test` 프로필과 H2를 사용합니다. 알림 통합 테스트는 Testcontainers로 별도의 PostgreSQL 16 컨테이너를 실행하고 실제 Flyway 마이그레이션을 적용합니다.
 SSE Redis 통합 테스트는 별도의 Redis 7.4 컨테이너로 실제 Pub/Sub을 검증합니다. 전체 테스트와 빌드에는 Docker가 필요하며, 로컬 PostgreSQL·Redis나 `.env.dev`는 필요하지 않습니다.
 `NotificationSseIntegrationTest`는 PostgreSQL과 Redis를 함께 사용하여 알림 저장부터 실제 HTTP 수신까지 확인합니다. [검증 범위와 실행 명령](notification/02-testing.md)을 참고합니다.
-조회·삭제는 PostgreSQL 저장소 테스트와 실제 JWT 필터를 거치는 MockMvc 통합 테스트로 확인합니다. [조회·인증 테스트 가이드](notification/04-query-and-security-testing.md)에 실행 명령과 CSRF 임시 제외 범위를 정리했습니다.
+조회·삭제는 서비스 단위 테스트, PostgreSQL 저장소·서비스 통합 테스트와 실제 JWT 필터를 거치는 MockMvc 통합 테스트로 확인합니다.
+[조회·인증 테스트 가이드](notification/04-query-and-security-testing.md)에 역할별 실행 명령과 CSRF 임시 제외 범위를 정리했습니다.
+같은 알림을 동시에 읽음 처리할 때의 DB 잠금 대기와 커밋 순서는 [동시 삭제 검증](notification/05-concurrent-deletion-testing.md)을 참고합니다.
 최초 실행 시 테스트용 컨테이너 이미지 다운로드가 필요할 수 있습니다. 테스트 프로필은 SSE 자동 구독을 끄고, Redis SSE 통합 테스트에서만 명시적으로 활성화합니다.
 
 제목 말줄임 단위 테스트만 확인하려면 Docker 없이 다음 명령을 사용할 수 있습니다.
@@ -416,7 +418,8 @@ CI는 성공한 빌드의 JaCoCo XML에서 전체 LINE 수치로 SVG 배지를 �
 - 공통 예외 테스트에는 [TestEveryOneException](../src/test/java/com/codeit/sb13/testsupport/exception/TestEveryOneException.java)을 사용합니다. 도메인 예외 예시의 변경이 공통 동작 테스트에 영향을 주지 않도록 분리합니다.
 - 기존 테스트는 애플리케이션 컨텍스트, 예외 응답, 검증 오류, MDC, JPA Auditing, Querydsl 조회, 비밀번호 인코더, OpenAPI 설정을 확인합니다.
 - 알림 테스트는 제목 말줄임·입력 검증, 업무 커밋 후 저장, 알림 커밋 후 SSE 발행, 롤백·트랜잭션 외 발행 시 미처리를 확인합니다. `NotificationIntegrationTest`는 실제 PostgreSQL과 `TransactionTemplate`을 사용하고, SSE 발행자는 Mock으로 대체하여 저장·전송 실패 격리를 검증합니다.
-- 알림 조회·삭제는 MVC·저장소·JWT 통합 테스트로 나눕니다. `NotificationSecurityIntegrationTest`는 실제 JWT·사용자 조회·서비스·PostgreSQL을 사용하여 본인 데이터 제한과 인증 실패 시 데이터 보존을 확인합니다. 이 클래스의 MockMvc 요청에서만 CSRF 검사를 임시 제외하며, 실제 CSRF 검증은 #124에서 진행합니다. [검증 범위와 Swagger 확인](notification/04-query-and-security-testing.md)을 참고합니다.
+- 알림 조회·삭제는 MVC·서비스 단위·저장소·서비스 통합·JWT 통합 테스트로 나눕니다. 서비스 단위 테스트는 소유자별 삭제 여부, 저장소 테스트는 목록·개수·커서 조회, `NotificationServiceIntegrationTest`는 실제 잠금 대기와 삭제 커밋을 확인합니다. [검증 범위와 실행 명령](notification/04-query-and-security-testing.md)을 참고합니다.
+- `NotificationSecurityIntegrationTest`는 실제 JWT·사용자 조회·서비스·PostgreSQL을 사용하여 본인 데이터 제한과 인증 실패 시 데이터 보존을 확인합니다. 이 클래스의 MockMvc 요청에서만 CSRF 검사를 임시 제외하며, 실제 CSRF 검증은 #124에서 진행합니다.
 - 공통 예외 핸들러·인터셉터의 MVC 테스트는 Security 필터를 제외합니다. 이 테스트의 통과는 인증·인가 동작 검증을 의미하지 않습니다.
 - 팔로우는 단위·MVC·PostgreSQL 저장소·서비스 통합 테스트와 실제 JWT HTTP 통합 테스트를 구분합니다. MVC 테스트의 Principal 준비는 JWT 검증을 대체하지 않습니다. [팔로우 테스트 가이드](follow/05-testing.md)에 검증 범위·실행 명령과 #76의 완료 기록을 정리했습니다.
 - SSE MVC 테스트는 실제 보안 필터를 포함하여 인증 사용자와 ASYNC 종료 시 인증 복원을 확인합니다. 공통 `SseStreamingIntegrationTest`는 인증 의존성을 Mock으로 대체하고, 실제 HTTP 프레임과 JSON 변환 실패 시 기존 연결 유지를 검증합니다.

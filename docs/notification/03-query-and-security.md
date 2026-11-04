@@ -6,19 +6,22 @@
 ## 요청자와 수신자 범위가 정해지는 곳
 
 ```mermaid
-flowchart LR
-    A[Bearer JWT 요청] --> B[공통 JWT 필터와 사용자 조회]
-    B --> C[컨트롤러: SecurityUser에서 UUID 추출]
-    C --> D[서비스: 조회 조건 또는 삭제 인자로 전달]
-    D --> E[저장소: 수신자 조건 적용]
+flowchart TD
+    A["Bearer JWT 요청"] --> B["공통 JWT 필터와 사용자 조회"]
+    B --> C["컨트롤러: SecurityUser에서 UUID 추출"]
+    C -->|목록 조회| D["서비스: 조회 조건 전달"]
+    D --> E["저장소: 수신자 조건으로 목록·개수 조회"]
+    C -->|읽음 처리| F["서비스: 알림 ID로 잠금 조회 요청"]
+    F --> G["저장소: ID 기준 비관적 잠금 조회"]
+    G --> H["서비스: 소유자 확인 후 본인 알림 삭제"]
 ```
 
 [NotificationController](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/notification/controller/NotificationController.java)는
 조회 시 `request.toCondition(user.getUserId())`, 삭제 시 `confirm(notificationId, user.getUserId())`를 호출합니다.
 서비스는 인증 컨텍스트를 다시 읽지 않습니다. 내부 호출자도 의도한 수신자 ID를 전달해야 합니다.
 
-수신자 제한은 목록·전체 개수 조회와 삭제 조건에 각각 적용합니다.
-조회 후 메모리에서 타인 데이터를 걸러 내거나, 삭제 전에 엔티티의 `isOwner`를 호출하는 흐름은 아닙니다.
+목록과 전체 개수는 저장소의 수신자 조건으로 제한합니다.
+읽음 처리는 알림 ID로 조회한 뒤 서비스가 `notification.isOwner(receiverId)`로 수신자를 확인합니다.
 
 ## 목록 조회 요청
 
@@ -76,7 +79,17 @@ Authorization: Bearer <access-token>
 
 `DELETE /api/notifications/{notificationId}`는 Bearer JWT와 함께 CSRF 검증을 통과해야 합니다.
 현재 공통 설정은 `XSRF-TOKEN` 쿠키와 `X-XSRF-TOKEN` 헤더를 사용합니다.
-저장소의 `deleteByIdAndReceiver`는 알림 ID와 인증된 수신자 ID가 함께 일치하는 행만 삭제합니다.
+
+`NotificationService.confirm()`의 처리 순서는 다음과 같습니다.
+
+1. 저장소의 `findWithPessimisticLockById(notificationId)`로 알림을 조회하고 비관적 쓰기 잠금을 획득합니다. 대상이 없으면 정상 종료합니다.
+2. 조회한 알림의 `isOwner(receiverId)`를 확인합니다. 타인의 알림이면 삭제하지 않고 정상 종료합니다.
+3. 본인 알림이면 `delete(notification)`를 호출합니다. 잠금 조회·소유자 확인·삭제 요청은 같은 트랜잭션에서 수행합니다.
+4. 해당 트랜잭션이 커밋되면 삭제가 확정되고 잠금이 해제됩니다. 롤백되면 삭제는 반영되지 않습니다.
+
+잠금 조회 조건에는 알림 ID만 사용하므로, 삭제 가능 여부는 서비스의 소유자 확인으로 결정됩니다.
+외부 트랜잭션에 참여한 경우에는 `confirm()` 반환 후에도 그 트랜잭션이 끝날 때까지 잠금이 유지됩니다.
+두 요청이 같은 알림을 삭제할 때의 대기·커밋 과정은 [동시 삭제 검증](05-concurrent-deletion-testing.md)에서 설명합니다.
 
 | JWT·CSRF 조건을 충족한 요청 | 응답 | DB 결과 |
 | --- | --- | --- |
@@ -86,6 +99,7 @@ Authorization: Bearer <access-token>
 
 204만으로 알림이 존재했거나 실제 삭제되었다고 판단할 수 없습니다.
 이 정책은 반복 요청을 허용하며, 타인의 알림 요청에 별도 403·404를 반환하지 않습니다.
+잠금 획득이나 DB 처리 중 발생한 예외는 기존 예외 처리로 전달하며, 정상 응답인 204로 바꾸지 않습니다.
 
 ## 오류와 Swagger 인증 표시
 
