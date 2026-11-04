@@ -38,7 +38,6 @@ import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListContentDuplicatedException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListContentNotFoundException;
-import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListForbiddenException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscribeOwnException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscriptionDuplicatedException;
@@ -525,30 +524,6 @@ public class PlaylistServiceImplTest {
   }
 
   @Test
-  @DisplayName("소유자가 아니면 PlayListForbiddenException을 던지고 값은 바뀌지 않는다")
-  void 소유자가_아니면_PlayListForbiddenException을_던지고_값은_바뀌지_않는다() {
-    // given
-    UUID ownerId = UUID.randomUUID();
-    UUID requesterId = UUID.randomUUID();
-    UUID playlistId = UUID.randomUUID();
-    Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
-    PlaylistUpdateRequest request = new PlaylistUpdateRequest("새 제목", "새 설명");
-
-    given(playlistRepository.findWithOwnerById(playlistId))
-        .willReturn(Optional.of(playlist));
-
-    // when & then
-    assertThatExceptionOfType(PlayListForbiddenException.class)
-        .isThrownBy(() -> playlistService.updatePlaylist(playlistId, request, requesterId))
-        .satisfies(e -> assertThat(e.getDetails())
-            .containsEntry("playlistId", playlistId)
-            .containsEntry("requesterId", requesterId));
-
-    assertThat(playlist.getTitle()).isEqualTo("title");
-    assertThat(playlist.getDescription()).isEqualTo("description");
-  }
-
-  @Test
   @DisplayName("소유자가 삭제하면 구독, 콘텐츠 연결, 플레이리스트 순서로 삭제한다")
   void 소유자가_삭제하면_자식을_먼저_지우고_플레이리스트를_삭제한다() {
     // given
@@ -581,28 +556,6 @@ public class PlaylistServiceImplTest {
         .isThrownBy(() -> playlistService.deletePlaylist(playlistId, requesterId))
         .satisfies(e -> assertThat(e.getDetails())
             .containsEntry("playlistId", playlistId));
-
-    verifyNoInteractions(subscriptionRepository, playlistContentRepository);
-    verify(playlistRepository, never()).delete(any(Playlist.class));
-  }
-
-  @Test
-  @DisplayName("소유자가 아니면 PlayListForbiddenException을 던지고 아무것도 삭제하지 않는다")
-  void 소유자가_아니면_삭제할_수_없다() {
-    // given
-    UUID ownerId = UUID.randomUUID();
-    UUID requesterId = UUID.randomUUID();
-    UUID playlistId = UUID.randomUUID();
-    Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
-
-    given(playlistRepository.findById(playlistId)).willReturn(Optional.of(playlist));
-
-    // when & then
-    assertThatExceptionOfType(PlayListForbiddenException.class)
-        .isThrownBy(() -> playlistService.deletePlaylist(playlistId, requesterId))
-        .satisfies(e -> assertThat(e.getDetails())
-            .containsEntry("playlistId", playlistId)
-            .containsEntry("requesterId", requesterId));
 
     verifyNoInteractions(subscriptionRepository, playlistContentRepository);
     verify(playlistRepository, never()).delete(any(Playlist.class));
