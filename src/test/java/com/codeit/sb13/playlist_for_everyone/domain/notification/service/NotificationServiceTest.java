@@ -25,16 +25,21 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 /**
- * 저장소·이벤트 발행자를 Mock으로 대체하여 서비스의 조회 결과 구성과 저장 후 발행 요청을 검증한다.
- * 저장 테스트의 ID·생성시각은 직접 준비하므로 JPA 생성 전략·Auditing·실제 커밋을 검증하지 않는다.
+ * 저장소·이벤트 발행자를 Mock으로 대체하여 조회 결과 구성, 생성 이벤트 발행 요청과 읽음 처리를 검증한다.
+ *
+ * <p>읽음 처리는 저장소가 반환한 알림이 본인 소유일 때만 delete를 호출하는지 확인한다.
+ * 타인의 알림이나 빈 조회 결과에서는 삭제하지 않는다. 실제 잠금 대기와 삭제 커밋은
+ * NotificationServiceIntegrationTest에서 검증한다.
+ *
+ * <p>저장 테스트의 ID·생성시각은 직접 준비하므로 JPA 생성 전략·Auditing·실제 커밋을 검증하지 않는다.
  * 해당 동작과 커밋 후 SSE 발행 시점은 NotificationIntegrationTest에서 확인한다.
  */
 @ExtendWith(MockitoExtension.class)
@@ -228,6 +233,59 @@ public class NotificationServiceTest {
                         "알림 내용",
                         NotificationLevel.INFO
                 ));
+    }
+
+    @Test
+    @DisplayName("다른 사용자의 알림을 읽음 처리 해도 삭제하지 않고 정상 종료한다.")
+    void confirmDoesNotDeleteAnotherReceiversNotification(){
+        UUID notificationId = UUID.randomUUID();
+        UUID requesterId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+
+        Notification notification = createNotification(
+                notificationId,
+                ownerId,
+                LocalDateTime.of(2026, 11, 4, 10, 0)
+        );
+
+        when(notificationRepository.findWithPessimisticLockById(notificationId))
+                .thenReturn(Optional.of(notification));
+
+        notificationService.confirm(notificationId,requesterId);
+
+        verify(notificationRepository, never()).delete(any(Notification.class));
+    }
+
+    @Test
+    @DisplayName("본인 알림을 읽음 처리하면 조회한 알림을 삭제한다.")
+    void confirmDeletesOwnNotification(){
+        UUID notificationId = UUID.randomUUID();
+        UUID receiverId = UUID.randomUUID();
+
+        Notification notification = createNotification(notificationId,
+                receiverId,
+                LocalDateTime.of(2026, 11, 4, 10, 0)
+        );
+
+        when(notificationRepository.findWithPessimisticLockById(notificationId))
+                .thenReturn(Optional.of(notification));
+
+        notificationService.confirm(notificationId, receiverId);
+
+        verify(notificationRepository).delete(notification);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 알림을 읽음 처리하면 삭제 없이 정상 종료한다.")
+    void confirmDoesNothingWhenNotificationIsMissing(){
+        UUID notificationId = UUID.randomUUID();
+        UUID receiverId = UUID.randomUUID();
+
+        when(notificationRepository.findWithPessimisticLockById(notificationId))
+                .thenReturn(Optional.empty());
+
+        notificationService.confirm(notificationId, receiverId);
+        verify(notificationRepository, never()).delete(any(Notification.class));
     }
 
 

@@ -23,8 +23,9 @@ import java.util.UUID;
 /**
  * 알림의 생성·목록 조회·읽음 처리를 조율한다.
  *
- * <p>조회·삭제는 호출자가 전달한 수신자 ID를 사용한다. HTTP 인증 정보의 추출은 컨트롤러,
- * 수신자에 따른 데이터 제한은 저장소가 담당하며, 이 서비스는 SecurityContext에 의존하지 않는다.
+ * <p>컨트롤러가 인증 정보에서 추출한 수신자 ID를 전달받아 사용한다.
+ * 목록 조회의 수신자 조건은 저장소에서 적용하고, 삭제 대상의 소유자 확인은 서비스에서 수행한다.
+ * 이 서비스는 SecurityContext에 직접 의존하지 않는다.
  */
 @Service
 @RequiredArgsConstructor
@@ -85,12 +86,20 @@ public class NotificationService {
     }
 
     /**
-     * 알림 ID와 수신자 ID가 모두 일치하는 알림을 삭제하여 읽음 처리한다.
-     * 대상이 없어도 미존재·소유권 예외를 만들지 않으므로 컨트롤러는 반복·미존재·타인 요청에
-     * 동일하게 204를 반환할 수 있다. 이 응답은 실제로 삭제된 행이 있었다는 의미는 아니다.
+     * 알림을 비관적 잠금으로 조회하고, 전달받은 수신자의 알림이면 삭제하여 읽음 처리한다.
+     *
+     * <p>클래스의 @Transactional에 따라 잠금 조회·소유자 확인·삭제 요청을 같은 트랜잭션에서 수행한다.
+     * 잠금은 해당 트랜잭션이 종료될 때 해제되며, 삭제 확정은 커밋 시점에 이루어진다.
+     * 외부 트랜잭션에 참여한 경우에는 이 메서드가 반환되어도 잠금과 미커밋 상태가 유지될 수 있다.
+     *
+     * <p>대상이 없거나 타인의 알림이면 삭제하지 않고 정상 종료하여 컨트롤러가 204를 반환하게 한다.
+     * 잠금 획득·DB 처리 중 발생한 예외는 그대로 전파한다. 204는 정상 처리 결과이며,
+     * 실제로 삭제된 행이 있었다는 의미는 아니다.
      */
     public void confirm(UUID notificationId, UUID receiverId){
-        notificationRepository.deleteByIdAndReceiver(notificationId, receiverId);
+        notificationRepository.findWithPessimisticLockById(notificationId)
+                .filter(notification -> notification.isOwner(receiverId))
+                .ifPresent(notificationRepository::delete);
     }
 
     private UUID getNextIdAfter(boolean hasNext, List<NotificationDto> data) {
