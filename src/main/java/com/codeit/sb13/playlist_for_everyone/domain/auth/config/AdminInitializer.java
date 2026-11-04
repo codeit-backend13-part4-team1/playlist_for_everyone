@@ -22,11 +22,24 @@ public class AdminInitializer implements ApplicationRunner {
             return;
         }
 
+        // DB 조회나 저장을 수행하기 전에 필수 설정을 확인한다.
+        requireText(adminProperties.email(), "everyone.admin.email");
+        requireText(adminProperties.name(), "everyone.admin.name");
+        requireText(adminProperties.password(), "everyone.admin.password");
+
         adminInitializationService.initialize(
                 adminProperties.email(),
                 adminProperties.name(),
                 adminProperties.password()
         );
+    }
+
+    private void requireText(String value, String propertyName) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalStateException(
+                    "관리자 초기화에 필요한 설정이 비어 있습니다: " + propertyName
+            );
+        }
     }
 }
 
