@@ -503,6 +503,55 @@ public class ContentControllerTest {
         );
     }
 
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("관리자가 콘텐츠 삭제를 성공하면 204를 반환한다.")
+    void deleteContent_success() throws Exception {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+
+        // when & then
+        mockMvc.perform(delete("/api/contents/{contentId}", contentId))
+                .with(csrf())
+                .andExpect(status().isNoContent());
+
+        verify(contentService).deleteById(contentId);
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("존재하지 않는 콘텐츠 삭제 요청 시 404 Not Found를 반환한다.")
+    void deleteContent_notFound() throws Exception {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        doThrow(new ContentNotFoundException())
+                .when(contentService).delete(contentId);
+
+        // when & then
+        mockMvc.perform(delete("/api/contents/{contentId}", contentId))
+                .with(csrf())
+                .andExpect(status().isNotFound());
+
+        verify(contentService).deleteById(contentId);
+    }
+
+    @Test
+    @WithMockUser(roles = "USER")
+    @DisplayName("일반 사용자가 콘텐츠 삭제 요청 시 403 Forbidden을 반환한다.")
+    void deleteContent_forbidden() throws Exception {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        // when & then
+        mockMvc.perform(delete("/api/contents/{contentId}", contentId))
+                .with(csrf())
+                .andExpect(status().isForbidden());
+
+        verify(contentService, never()).deleteById(any(UUID.class));
+    }
+
     private MockMultipartFile createJsonRequestPart(Object request) {
         return new MockMultipartFile(
                 "request",
