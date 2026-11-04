@@ -17,6 +17,10 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
+/**
+ * 저장소를 Mock으로 대체해 본인·타인·없는 관계에 대한 Guard의 판단을 확인한다.
+ * JWT 인증과 메서드 보안 프록시의 실행 여부는 이 테스트 범위에 포함하지 않는다.
+ */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("팔로우 접근 권한 검사")
 class FollowGuardTest {
