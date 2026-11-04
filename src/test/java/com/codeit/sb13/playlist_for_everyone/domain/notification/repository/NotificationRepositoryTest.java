@@ -5,9 +5,12 @@ import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.repository.
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.Notification;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.NotificationLevel;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.SortBy;
+import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -69,6 +72,9 @@ public class NotificationRepositoryTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @PersistenceContext
+    private EntityManager entityManager;
+
     @Test
     @DisplayName("지정한 수신자의 알림만 목록과 전체 개수에 포함한다.")
     void searchesAndCountsOnlyReceiverNotifications(){
@@ -80,14 +86,14 @@ public class NotificationRepositoryTest {
                 "내 알림",
                 "내 알림 내용",
                 NotificationLevel.INFO
-        )));
+        ), findReceiver(receiverId)));
 
         notificationRepository.saveAndFlush(new Notification(new NotificationCommand(
                 otherReceiverId,
                 "다른 사용자 알림",
                 "다른 알림 내용",
                 NotificationLevel.INFO
-        )));
+        ), findReceiver(otherReceiverId)));
 
         NotificationSearchCondition condition = new NotificationSearchCondition(
                 null,
@@ -522,6 +528,7 @@ public class NotificationRepositoryTest {
         notificationRepository.flush();
 
         assertThat(notificationRepository.existsById(targetId)).isFalse();
+
         assertThat(notificationRepository.search(condition))
                 .extracting(Notification::getId)
                 .containsExactly(remainingId);
@@ -570,6 +577,7 @@ public class NotificationRepositoryTest {
     }
 
 
+
     private UUID createReceiver(){
         UUID receiverId = UUID.randomUUID();
 
@@ -601,5 +609,7 @@ public class NotificationRepositoryTest {
         return notificationId;
     }
 
-
+    private User findReceiver(UUID otherReceiverId) {
+        return entityManager.find(User.class, otherReceiverId);
+    }
 }

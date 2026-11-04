@@ -24,6 +24,7 @@ import static com.codeit.sb13.playlist_for_everyone.domain.notification.entity.Q
  *
  * <p>같은 생성시각의 알림도 ID로 순서를 결정하며, 두 정렬 키는 같은 방향을 사용한다.
  * 수신자 조건은 목록과 개수 조회에 모두 적용하되, 페이지 경계는 목록 조회에만 적용한다.
+ * receiver.id로 연관 사용자의 식별자를 비교하며, 조회 조건에는 기존처럼 수신자 UUID를 전달한다.
  */
 @Slf4j
 @Repository
@@ -112,7 +113,7 @@ public class NotificationCustomRepositoryImpl implements NotificationCustomRepos
     }
 
     private BooleanExpression generateReceiverFilter(NotificationSearchCondition condition){
-        return notification.receiver.eq(condition.receiverId());
+        return notification.receiver.id.eq(condition.receiverId());
     }
 
 }

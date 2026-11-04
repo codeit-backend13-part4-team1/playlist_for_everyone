@@ -8,6 +8,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.Notifica
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.SortBy;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.event.NotificationCreatedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.repository.NotificationRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
+import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import org.junit.jupiter.api.DisplayName;
@@ -33,7 +35,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 /**
- * 저장소·이벤트 발행자를 Mock으로 대체하여 조회 결과 구성, 생성 이벤트 발행 요청과 읽음 처리를 검증한다.
+ * 사용자 조회 컴포넌트·저장소·이벤트 발행자를 Mock으로 대체하여 저장·조회·읽음 처리를 검증한다.
  *
  * <p>읽음 처리는 저장소가 반환한 알림이 본인 소유일 때만 delete를 호출하는지 확인한다.
  * 타인의 알림이나 빈 조회 결과에서는 삭제하지 않는다. 실제 잠금 대기와 삭제 커밋은
@@ -51,6 +53,9 @@ public class NotificationServiceTest {
 
     @Mock
     private ApplicationEventPublisher eventPublisher;
+
+    @Mock
+    private NotificationUserReader notificationUserReader;
 
     @Captor
     private ArgumentCaptor<NotificationCreatedEvent> eventCaptor;
@@ -100,10 +105,7 @@ public class NotificationServiceTest {
         UUID notificationId = UUID.randomUUID();
         LocalDateTime createdAt = LocalDateTime.of(2026, 10, 23, 10, 30);
 
-        Notification notification = new Notification(new NotificationCommand(receiverId, "알림 제목", "알림 내용", NotificationLevel.INFO));
-
-        ReflectionTestUtils.setField(notification, "id", notificationId);
-        ReflectionTestUtils.setField(notification, "createdAt", createdAt);
+        Notification notification = createNotification(notificationId, receiverId, createdAt);
 
         NotificationSearchCondition condition = new NotificationSearchCondition(null, null, limit, SortDirection.DESCENDING, SortBy.CREATED_AT, receiverId);
 
@@ -211,6 +213,10 @@ public class NotificationServiceTest {
         NotificationCommand command = new NotificationCommand(receiverId, "알림 제목", "알림 내용", NotificationLevel.INFO);
         Notification savedNotification = createNotification(notificationId, receiverId, createdAt);
 
+        User receiver = savedNotification.getReceiver();
+        when(notificationUserReader.getById(receiverId))
+                .thenReturn(receiver);
+
         // 저장소가 돌려준 엔티티를 기준으로 DTO를 구성하는지 확인한다. 실제 INSERT는 실행하지 않는다.
         when(notificationRepository.save(any(Notification.class)))
                 .thenReturn(savedNotification);
@@ -290,13 +296,26 @@ public class NotificationServiceTest {
 
 
 
+
     /** Mock 저장·조회 결과를 준비한다. 실제 UUID 생성이나 JPA Auditing 실행을 흉내 내는 테스트는 아니다. */
     private Notification createNotification(UUID notificationId, UUID receiverId, LocalDateTime createdAt){
-        Notification notification = new Notification(new NotificationCommand(receiverId, "알림 제목", "알림 내용", NotificationLevel.INFO));
+        Notification notification = new Notification(new NotificationCommand(receiverId, "알림 제목", "알림 내용", NotificationLevel.INFO),
+                createReceiver(receiverId));
 
         ReflectionTestUtils.setField(notification, "id", notificationId);
         ReflectionTestUtils.setField(notification, "createdAt", createdAt);
 
         return notification;
+    }
+
+    private User createReceiver(UUID receiverId){
+        User receiver = User.builder()
+                .email(receiverId + "@test.example")
+                .name("테스트 수신자")
+                .role(Role.USER)
+                .build();
+
+        ReflectionTestUtils.setField(receiver, "id", receiverId);
+        return receiver;
     }
 }

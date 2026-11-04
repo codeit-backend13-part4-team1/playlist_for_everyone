@@ -22,12 +22,15 @@ public record NotificationDto(
         NotificationLevel level
 ) {
 
-    /** 엔티티에 이미 채워진 값을 복사한다. ID·생성시각을 새로 만들거나 DB에 flush하지 않는다. */
+    /**
+     * 엔티티에 이미 채워진 값을 복사한다. ID·생성시각을 새로 만들거나 DB에 flush하지 않는다.
+     * 수신자는 getReceiverId로 UUID만 복사하여 User 엔티티를 응답이나 이벤트에 담지 않는다.
+     */
     public static NotificationDto from(Notification notification){
         return new NotificationDto(
                 notification.getId(),
                 notification.getCreatedAt(),
-                notification.getReceiver(),
+                notification.getReceiverId(),
                 notification.getTitle(),
                 notification.getContent(),
                 notification.getLevel()

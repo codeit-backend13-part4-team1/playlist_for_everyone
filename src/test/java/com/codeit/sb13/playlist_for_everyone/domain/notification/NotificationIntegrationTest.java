@@ -8,7 +8,9 @@ import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.Notifica
 import com.codeit.sb13.playlist_for_everyone.domain.notification.event.NotificationCreatedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.repository.NotificationRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationService;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationUserReader;
 import com.codeit.sb13.playlist_for_everyone.global.exception.sse.SsePublishException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEventPublisher;
 import jakarta.validation.ConstraintViolationException;
@@ -90,6 +92,9 @@ class NotificationIntegrationTest {
     private NotificationRepository notificationRepository;
 
     @Autowired
+    private NotificationUserReader notificationUserReader;
+
+    @Autowired
     private NotificationService service;
 
     @Autowired
@@ -132,7 +137,7 @@ class NotificationIntegrationTest {
         Notification saved = findOnlyNotification();
         assertThat(saved.getId()).isNotNull();
         assertThat(saved.getCreatedAt()).isNotNull();
-        assertThat(saved.getReceiver()).isEqualTo(RECEIVER_ID);
+        assertThat(saved.getReceiverId()).isEqualTo(RECEIVER_ID);
         assertThat(saved.getTitle()).isEqualTo(TITLE);
         assertThat(saved.getContent()).isEqualTo(CONTENT);
         assertThat(saved.getLevel()).isEqualTo(NotificationLevel.INFO);
@@ -250,7 +255,7 @@ class NotificationIntegrationTest {
         verifyNoInteractions(sseEventPublisher);
 
         publishAndCommit(event(RECEIVER_ID, TITLE, NotificationLevel.INFO));
-        assertThat(findOnlyNotification().getReceiver()).isEqualTo(RECEIVER_ID);
+        assertThat(findOnlyNotification().getReceiverId()).isEqualTo(RECEIVER_ID);
 
         ArgumentCaptor<SseEvent<?>> eventCaptor = ArgumentCaptor.captor();
         verify(sseEventPublisher).publish(eventCaptor.capture());
@@ -259,8 +264,8 @@ class NotificationIntegrationTest {
     }
 
     @Test
-    @DisplayName("알림 저장 실패에도 업무 커밋을 유지하고 후속 저장 알림의 SSE만 발행한다.")
-    void isolatesDatabaseFailureAndContinuesSavingNotifications(CapturedOutput output) {
+    @DisplayName("수신자가 없어도 업무 커밋을 유지하고 후속 정상 알림만 저장하여 SSE를 발행한다.")
+    void isolatesMissingReceiverFailureAndContinuesSavingNotifications(CapturedOutput output) {
         UUID missingReceiverId = UUID.randomUUID();
 
         assertThatCode(() -> transactionTemplate.executeWithoutResult(status -> {
@@ -271,11 +276,11 @@ class NotificationIntegrationTest {
         assertThat(receiverNickname()).isEqualTo("변경 후");
         assertThat(notificationRepository.count()).isZero();
         assertThat(output.getOut()).contains(
-                "알림 저장 실패. receiverId=" + missingReceiverId, "DataIntegrityViolationException");
+                "알림 저장 실패. receiverId=" + missingReceiverId, UserNotFoundException.class.getSimpleName());
 
         verifyNoInteractions(sseEventPublisher);
         publishAndCommit(event(RECEIVER_ID, TITLE, NotificationLevel.INFO));
-        assertThat(findOnlyNotification().getReceiver()).isEqualTo(RECEIVER_ID);
+        assertThat(findOnlyNotification().getReceiverId()).isEqualTo(RECEIVER_ID);
 
         ArgumentCaptor<SseEvent<?>> eventCaptor = ArgumentCaptor.captor();
         verify(sseEventPublisher).publish(eventCaptor.capture());
@@ -313,7 +318,7 @@ class NotificationIntegrationTest {
 
         assertThat(receiverNickname()).isEqualTo("변경 후");
         Notification saved = findOnlyNotification();
-        assertThat(saved.getReceiver()).isEqualTo(RECEIVER_ID);
+        assertThat(saved.getReceiverId()).isEqualTo(RECEIVER_ID);
         assertThat(saved.getTitle()).isEqualTo(TITLE);
         verify(sseEventPublisher).publish(any());
         assertThat(output.getAll())
@@ -347,13 +352,13 @@ class NotificationIntegrationTest {
         transactionTemplate.executeWithoutResult(status ->{
             NotificationCommand command = new NotificationCommand(RECEIVER_ID, TITLE, CONTENT, NotificationLevel.INFO);
 
-            Notification saved = notificationRepository.save(new Notification(command));
+            Notification saved = notificationRepository.save(new Notification(command, notificationUserReader.getById(RECEIVER_ID)));
             eventPublisher.publishEvent(new NotificationCreatedEvent(UUID.randomUUID(), NotificationDto.from(saved)));
 
             verifyNoInteractions(sseEventPublisher);
         });
 
-        assertThat(findOnlyNotification().getReceiver())
+        assertThat(findOnlyNotification().getReceiverId())
                 .isEqualTo(RECEIVER_ID);
         verify(sseEventPublisher).publish(any());
     }
@@ -364,7 +369,7 @@ class NotificationIntegrationTest {
         // 생성 이벤트가 등록되었더라도 저장 트랜잭션을 롤백하면 AFTER_COMMIT은 실행되지 않는다.
         transactionTemplate.executeWithoutResult(status ->{
             NotificationCommand command = new NotificationCommand(RECEIVER_ID, TITLE, CONTENT, NotificationLevel.INFO);
-            Notification saved = notificationRepository.save(new Notification(command));
+            Notification saved = notificationRepository.save(new Notification(command, notificationUserReader.getById(RECEIVER_ID)));
 
             eventPublisher.publishEvent(new NotificationCreatedEvent(UUID.randomUUID(), NotificationDto.from(saved)));
             status.setRollbackOnly();
@@ -373,6 +378,7 @@ class NotificationIntegrationTest {
         assertThat(notificationRepository.count()).isZero();
         verifyNoInteractions(sseEventPublisher);
     }
+
 
     private NotificationCreateRequestedEvent event(UUID receiverId, String title, NotificationLevel level) {
         return new NotificationCreateRequestedEvent(receiverId, title, CONTENT, level);
