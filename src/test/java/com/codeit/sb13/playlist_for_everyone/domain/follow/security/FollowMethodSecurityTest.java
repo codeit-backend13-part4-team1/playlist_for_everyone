@@ -14,7 +14,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Import;
 import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -27,6 +26,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
 
+/**
+ * 실제 Spring 메서드 보안 프록시가 Guard의 허용·거부 결과를 적용하는지 확인한다.
+ * Guard와 저장소는 Mock이다. 서비스에는 인증 여부 검사 책임을 두지 않으며,
+ * 미인증 HTTP 요청의 401 처리는 공통 보안 필터를 포함한 통합 테스트에서 검증한다.
+ */
 @SpringJUnitConfig(FollowMethodSecurityTest.TestConfig.class)
 @DisplayName("팔로우 메서드 인가")
 public class FollowMethodSecurityTest {
@@ -90,25 +94,6 @@ public class FollowMethodSecurityTest {
         verifyNoInteractions(userRepository, followSaver);
 
 
-    }
-
-    @Test
-    @DisplayName("인증 정보가 없으면 인증 예외가 발생하고 Guard와 서비스를 실행하지 않는다.")
-    void unfollow_rejectsWhenAuthenticationMissing(){
-        UUID followId = UUID.randomUUID();
-        UUID followerId = UUID.randomUUID();
-
-        UnFollowCommand command = new UnFollowCommand(followId, followerId);
-
-        assertThatThrownBy(()-> followService.unfollow(command))
-                .isInstanceOf(AuthenticationCredentialsNotFoundException.class);
-
-        verifyNoInteractions(
-                followGuard,
-                followRepository,
-                userRepository,
-                followSaver
-        );
     }
 
     @TestConfiguration(proxyBeanMethods = false)

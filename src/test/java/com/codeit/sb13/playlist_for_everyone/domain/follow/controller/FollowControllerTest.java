@@ -1,16 +1,19 @@
 package com.codeit.sb13.playlist_for_everyone.domain.follow.controller;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.command.FollowCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.command.UnFollowCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowDto;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowResult;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.service.FollowService;
+import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.global.config.MDCLoggingInterceptor;
 import com.codeit.sb13.playlist_for_everyone.global.config.WebMvcConfig;
 import com.codeit.sb13.playlist_for_everyone.global.exception.ApiErrorCode;
 import com.codeit.sb13.playlist_for_everyone.global.exception.follow.FollowNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.follow.FollowTargetNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.follow.SelfFollowNotAllowedException;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,6 +22,9 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -33,6 +39,10 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+/**
+ * MVC 입력 검증, Principal의 사용자 ID 전달, 상태 코드와 응답 본문을 확인한다.
+ * 서비스는 Mock이며 보안 필터는 제외한다. 실제 JWT 검증·DB 저장·Guard 적용의 통합 검증은 #76의 별도 범위다.
+ */
 @WebMvcTest(controllers = FollowController.class)
 @AutoConfigureMockMvc(addFilters = false)
 @Import({WebMvcConfig.class, MDCLoggingInterceptor.class})
@@ -45,15 +55,22 @@ class FollowControllerTest {
     @MockitoBean
     private FollowService followService;
 
+    @AfterEach
+    void clearSecurityContext(){
+        // 필터 없이 테스트가 직접 준비한 인증정보를 정리해 다음 사례에 남지 않도록 한다.
+        SecurityContextHolder.clearContext();
+    }
+
     @Test
     @DisplayName("신규 팔로우를 등록하면 201과 생성된 팔로우 정보를 반환한다.")
     void follow_returnsCreatedWhenNewFollow() throws Exception {
+
         UUID followId = UUID.randomUUID();
         UUID followeeId = UUID.randomUUID();
         UUID followerId = UUID.randomUUID();
+        setUpUserAuthentication(followerId);
 
-        // 인증 연동 전에는 서비스에 전달할 followerId를 null로 둔다.
-        FollowCommand command = new FollowCommand(followeeId, null);
+        FollowCommand command = new FollowCommand(followeeId, followerId);
         FollowDto response = new FollowDto(followId, followeeId, followerId);
         given(followService.follow(command)).willReturn(FollowResult.followCreated(response));
 
@@ -78,8 +95,9 @@ class FollowControllerTest {
         UUID existingFollowId = UUID.randomUUID();
         UUID followeeId = UUID.randomUUID();
         UUID followerId = UUID.randomUUID();
+        setUpUserAuthentication(followerId);
 
-        FollowCommand command = new FollowCommand(followeeId, null);
+        FollowCommand command = new FollowCommand(followeeId, followerId);
         FollowDto response = new FollowDto(existingFollowId, followeeId, followerId);
 
         given(followService.follow(command)).willReturn(FollowResult.alreadyFollowed(response));
@@ -131,7 +149,8 @@ class FollowControllerTest {
     @DisplayName("자기 팔로우가 거부되면 400과 공통 오류 응답을 반환한다.")
     void follow_returnsBadRequestWhenSelfFollowRejected() throws Exception {
         UUID followeeId = UUID.randomUUID();
-        FollowCommand command = new FollowCommand(followeeId, null);
+        setUpUserAuthentication(followeeId);
+        FollowCommand command = new FollowCommand(followeeId, followeeId);
 
         given(followService.follow(command)).willThrow(new SelfFollowNotAllowedException());
 
@@ -154,7 +173,9 @@ class FollowControllerTest {
     @DisplayName("팔로우 대상 사용자가 없으면 400과 대상 ID를 포함한 공통 오류 응답을 반환한다.")
     void follow_returnsBadRequestWhenFolloweeNotFound() throws Exception {
         UUID followeeId = UUID.randomUUID();
-        FollowCommand command = new FollowCommand(followeeId, null);
+        UUID followerId = UUID.randomUUID();
+        setUpUserAuthentication(followerId);
+        FollowCommand command = new FollowCommand(followeeId, followerId);
 
         given(followService.follow(command))
                 .willThrow(new  FollowTargetNotFoundException(Map.of("followeeId", followeeId)));
@@ -178,9 +199,10 @@ class FollowControllerTest {
     @DisplayName("팔로우 취소 요청을 서비스에 전달하고 본문 없이 204를 반환한다.")
     void unfollow_returnsNoContent() throws Exception {
         UUID followId = UUID.randomUUID();
+        UUID followerId = UUID.randomUUID();
+        setUpUserAuthentication(followerId);
 
-        // 인증 연동 전에는 서비스에 전달할 followerId를 null로 둔다.
-        UnFollowCommand command = new UnFollowCommand(followId, null);
+        UnFollowCommand command = new UnFollowCommand(followId, followerId);
 
         mockMvc.perform(delete("/api/follows/{followId}", followId))
                 .andExpect(status().isNoContent())
@@ -263,9 +285,9 @@ class FollowControllerTest {
         UUID followId = UUID.randomUUID();
         UUID followeeId = UUID.randomUUID();
         UUID followerId = UUID.randomUUID();
+        setUpUserAuthentication(followerId);
 
-        // 인증 연동 전에는 서비스에 전달할 followerID를 null로 둔다.
-        FollowCommand command = new FollowCommand(followeeId, null);
+        FollowCommand command = new FollowCommand(followeeId, followerId);
         FollowDto response = new FollowDto(followId, followeeId, followerId);
 
         given(followService.findFollowDto(command)).willReturn(response);
@@ -284,7 +306,9 @@ class FollowControllerTest {
     @DisplayName("팔로우 관계가 없으면 404와 대상 ID를 포함한 공통 오류 응답을 반환한다.")
     void getFollowedByMe_returnsNotFoundWhenFollowMissing() throws Exception {
         UUID followeeId = UUID.randomUUID();
-        FollowCommand command = new FollowCommand(followeeId, null);
+        UUID followerId = UUID.randomUUID();
+        setUpUserAuthentication(followerId);
+        FollowCommand command = new FollowCommand(followeeId, followerId);
 
         given(followService.findFollowDto(command))
                 .willThrow(new FollowNotFoundException(Map.of("followeeId", followeeId)));
@@ -326,5 +350,26 @@ class FollowControllerTest {
 
         verifyNoInteractions(followService);
     }
+
+
+    /**
+     * AuthenticationPrincipal 인자 해석기가 읽을 SecurityUser를 준비한다.
+     * 토큰을 발급·검증하는 절차가 아니라 컨트롤러의 요청자 ID 전달을 위한 테스트 설정이다.
+     */
+    private void setUpUserAuthentication(UUID followerId) {
+        SecurityUser principal = new SecurityUser(
+                followerId,
+                "follower@exaomple.com",
+                "",
+                Role.USER,
+                false
+        );
+        SecurityContext context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(UsernamePasswordAuthenticationToken
+                .authenticated(principal,null,principal.getAuthorities())
+        );
+        SecurityContextHolder.setContext(context);
+    }
+
 
 }

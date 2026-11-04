@@ -13,6 +13,8 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verifyNoInteractions;
 
+import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
+import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistSearchRequest;
@@ -22,6 +24,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Playlist;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistContent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistSortBy;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Subscription;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistContentAddedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistSubscribedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistRepository;
@@ -35,7 +38,6 @@ import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListContentDuplicatedException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListContentNotFoundException;
-import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListForbiddenException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscribeOwnException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscriptionDuplicatedException;
@@ -522,30 +524,6 @@ public class PlaylistServiceImplTest {
   }
 
   @Test
-  @DisplayName("소유자가 아니면 PlayListForbiddenException을 던지고 값은 바뀌지 않는다")
-  void 소유자가_아니면_PlayListForbiddenException을_던지고_값은_바뀌지_않는다() {
-    // given
-    UUID ownerId = UUID.randomUUID();
-    UUID requesterId = UUID.randomUUID();
-    UUID playlistId = UUID.randomUUID();
-    Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
-    PlaylistUpdateRequest request = new PlaylistUpdateRequest("새 제목", "새 설명");
-
-    given(playlistRepository.findWithOwnerById(playlistId))
-        .willReturn(Optional.of(playlist));
-
-    // when & then
-    assertThatExceptionOfType(PlayListForbiddenException.class)
-        .isThrownBy(() -> playlistService.updatePlaylist(playlistId, request, requesterId))
-        .satisfies(e -> assertThat(e.getDetails())
-            .containsEntry("playlistId", playlistId)
-            .containsEntry("requesterId", requesterId));
-
-    assertThat(playlist.getTitle()).isEqualTo("title");
-    assertThat(playlist.getDescription()).isEqualTo("description");
-  }
-
-  @Test
   @DisplayName("소유자가 삭제하면 구독, 콘텐츠 연결, 플레이리스트 순서로 삭제한다")
   void 소유자가_삭제하면_자식을_먼저_지우고_플레이리스트를_삭제한다() {
     // given
@@ -584,28 +562,6 @@ public class PlaylistServiceImplTest {
   }
 
   @Test
-  @DisplayName("소유자가 아니면 PlayListForbiddenException을 던지고 아무것도 삭제하지 않는다")
-  void 소유자가_아니면_삭제할_수_없다() {
-    // given
-    UUID ownerId = UUID.randomUUID();
-    UUID requesterId = UUID.randomUUID();
-    UUID playlistId = UUID.randomUUID();
-    Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
-
-    given(playlistRepository.findById(playlistId)).willReturn(Optional.of(playlist));
-
-    // when & then
-    assertThatExceptionOfType(PlayListForbiddenException.class)
-        .isThrownBy(() -> playlistService.deletePlaylist(playlistId, requesterId))
-        .satisfies(e -> assertThat(e.getDetails())
-            .containsEntry("playlistId", playlistId)
-            .containsEntry("requesterId", requesterId));
-
-    verifyNoInteractions(subscriptionRepository, playlistContentRepository);
-    verify(playlistRepository, never()).delete(any(Playlist.class));
-  }
-
-  @Test
   @DisplayName("소유자가 존재하는 콘텐츠를 추가하면 연결을 저장하고 플레이리스트 수정일을 갱신한다")
   void 소유자는_플레이리스트에_콘텐츠를_추가할_수_있다() {
     // given
@@ -616,8 +572,8 @@ public class PlaylistServiceImplTest {
 
     given(playlistRepository.findById(playlistId))
         .willReturn(Optional.of(playlist));
-    given(contentRepository.existsById(contentId))
-        .willReturn(true);
+    given(contentRepository.findById(contentId)).willReturn(Optional.of(
+        Content.createAdminContent(ContentType.movie, "콘텐츠 제목", "설명", "https://example.com/thumb.png")));
     given(playlistContentRepository
         .existsByPlaylistIdAndContentId(playlistId, contentId)).willReturn(false);
 
@@ -632,6 +588,45 @@ public class PlaylistServiceImplTest {
     verify(playlistRepository)
         .touchUpdatedAt(eq(playlistId), any(LocalDateTime.class));
   }
+
+  @Test
+  @DisplayName("콘텐츠를 추가하면 PlaylistContentAddedEvent를 발행한다")
+  void 콘텐츠를_추가하면_콘텐츠_추가_이벤트를_발행한다() {
+    //given
+    UUID ownerId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    UUID contentId = UUID.randomUUID();
+    Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
+    Content content = Content.createAdminContent(
+        ContentType.movie,
+        "콘텐츠 제목",
+        "설명",
+        "https://example.com/thumb.png");
+    ReflectionTestUtils.setField(content, "id", contentId);
+
+    given(playlistRepository.findById(playlistId))
+        .willReturn(Optional.of(playlist));
+    given(contentRepository.findById(contentId))
+        .willReturn(Optional.of(content));
+    given(playlistContentRepository.existsByPlaylistIdAndContentId(playlistId, contentId))
+        .willReturn(false);
+
+    // when
+    playlistService.addContent(playlistId, contentId, ownerId);
+
+    // then
+    ArgumentCaptor<PlaylistContentAddedEvent> captor =
+        ArgumentCaptor.forClass(PlaylistContentAddedEvent.class);
+    verify(eventPublisher).publishEvent(captor.capture());
+    PlaylistContentAddedEvent event = captor.getValue();
+    assertThat(event.playlistId()).isEqualTo(playlistId);
+    assertThat(event.playlistTitle()).isEqualTo("title");
+    assertThat(event.contentId()).isEqualTo(contentId);
+    assertThat(event.contentTitle()).isEqualTo("콘텐츠 제목");
+    assertThat(event.actorId()).isEqualTo(ownerId);
+
+  }
+
 
   @Test
   @DisplayName("없는 플레이리스트에 콘텐츠를 추가하면 PlayListNotFoundException을 던지고 아무것도 저장하지 않는다")
@@ -650,6 +645,7 @@ public class PlaylistServiceImplTest {
 
     verifyNoInteractions(contentRepository, playlistContentRepository);
     verify(playlistRepository, never()).touchUpdatedAt(any(), any());
+    verifyNoInteractions(eventPublisher);
   }
 
 
@@ -662,7 +658,7 @@ public class PlaylistServiceImplTest {
     UUID contentId = UUID.randomUUID();
     Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
     given(playlistRepository.findById(playlistId)).willReturn(Optional.of(playlist));
-    given(contentRepository.existsById(contentId)).willReturn(false);
+    given(contentRepository.findById(contentId)).willReturn(Optional.empty());
 
     // when & then
     assertThatExceptionOfType(ContentNotFoundException.class)
@@ -672,6 +668,7 @@ public class PlaylistServiceImplTest {
 
     verifyNoInteractions(playlistContentRepository);
     verify(playlistRepository, never()).touchUpdatedAt(any(), any());
+    verifyNoInteractions(eventPublisher);
   }
 
   @Test
@@ -683,7 +680,8 @@ public class PlaylistServiceImplTest {
     UUID contentId = UUID.randomUUID();
     Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
     given(playlistRepository.findById(playlistId)).willReturn(Optional.of(playlist));
-    given(contentRepository.existsById(contentId)).willReturn(true);
+    given(contentRepository.findById(contentId)).willReturn(Optional.of(
+        Content.createAdminContent(ContentType.movie, "콘텐츠 제목", "설명", "https://example.com/thumb.png")));
     given(playlistContentRepository.existsByPlaylistIdAndContentId(playlistId, contentId))
         .willReturn(true);
 
@@ -696,6 +694,7 @@ public class PlaylistServiceImplTest {
 
     verify(playlistContentRepository, never()).save(any(PlaylistContent.class));
     verify(playlistRepository, never()).touchUpdatedAt(any(), any());
+    verifyNoInteractions(eventPublisher);
   }
 
   @Test

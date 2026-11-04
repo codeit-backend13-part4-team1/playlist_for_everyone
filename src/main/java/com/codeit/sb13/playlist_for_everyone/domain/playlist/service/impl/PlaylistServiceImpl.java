@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.playlist.service.impl;
 
+import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistSearchRequest;
@@ -10,6 +11,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Playlist;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistContent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistSortBy;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Subscription;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistContentAddedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistSubscribedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistRepository;
@@ -22,7 +24,6 @@ import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListContentDuplicatedException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListContentNotFoundException;
-import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListForbiddenException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscribeOwnException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscriptionDuplicatedException;
@@ -121,6 +122,7 @@ public class PlaylistServiceImpl implements PlaylistService {
   }
 
   @Override
+  @PreAuthorize("isAuthenticated() and @playlistGuard.canModify(#playlistId, #requesterId)")
   @Transactional
   public PlaylistResponse updatePlaylist(
       UUID playlistId, PlaylistUpdateRequest request, UUID requesterId) {
@@ -130,10 +132,6 @@ public class PlaylistServiceImpl implements PlaylistService {
             Map.of("playlistId", playlistId)
         ));
 
-    if (!playlist.isOwnedBy(requesterId)) {
-      throw new PlayListForbiddenException(
-          Map.of("playlistId", playlistId, "requesterId", requesterId));
-    }
 
     playlist.update(request.title(), request.description());
 
@@ -145,6 +143,7 @@ public class PlaylistServiceImpl implements PlaylistService {
   }
 
   @Override
+  @PreAuthorize("isAuthenticated() and @playlistGuard.canModify(#playlistId, #requesterId)")
   @Transactional
   public void deletePlaylist(UUID playlistId, UUID requesterId) {
 
@@ -152,11 +151,6 @@ public class PlaylistServiceImpl implements PlaylistService {
         .orElseThrow(() -> new PlayListNotFoundException(
             Map.of("playlistId", playlistId)
         ));
-
-    if (!playlist.isOwnedBy(requesterId)) {
-      throw new PlayListForbiddenException(
-          Map.of("playlistId", playlistId, "requesterId", requesterId));
-    }
 
     subscriptionRepository.deleteAllByPlaylistId(playlistId);
     playlistContentRepository.deleteAllByPlaylistId(playlistId);
@@ -168,14 +162,13 @@ public class PlaylistServiceImpl implements PlaylistService {
   @Transactional
   public void addContent(UUID playlistId, UUID contentId, UUID requesterId) {
 
-    playlistRepository.findById(playlistId)
+    Playlist playlist = playlistRepository.findById(playlistId)
         .orElseThrow(() -> new PlayListNotFoundException(
             Map.of("playlistId", playlistId)
         ));
 
-    if (!contentRepository.existsById(contentId)) {
-      throw new ContentNotFoundException(Map.of("contentId", contentId));
-    }
+    Content content = contentRepository.findById(contentId)
+        .orElseThrow(() -> new ContentNotFoundException(Map.of("contentId", contentId)));
 
     if (playlistContentRepository.existsByPlaylistIdAndContentId(playlistId, contentId)) {
       throw new PlayListContentDuplicatedException(
@@ -184,6 +177,13 @@ public class PlaylistServiceImpl implements PlaylistService {
 
     playlistContentRepository.save(new PlaylistContent(playlistId, contentId));
     playlistRepository.touchUpdatedAt(playlistId, LocalDateTime.now());
+
+    eventPublisher.publishEvent(new PlaylistContentAddedEvent(
+        playlistId,
+        playlist.getTitle(),
+        contentId,
+        content.getTitle(),
+        requesterId));
   }
 
   @Override

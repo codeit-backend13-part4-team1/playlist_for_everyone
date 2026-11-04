@@ -2,7 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.global.sse.event.impl;
 
 import com.codeit.sb13.playlist_for_everyone.global.config.RedisConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.SseTransportConfig;
-import com.codeit.sb13.playlist_for_everyone.global.service.RedisBrokerRegister;
+import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisBrokerRegister;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Event;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEventPublisher;
