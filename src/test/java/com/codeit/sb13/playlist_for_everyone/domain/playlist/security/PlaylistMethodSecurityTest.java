@@ -5,6 +5,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.SubscriptionRepository;
@@ -54,7 +55,7 @@ class PlaylistMethodSecurityTest {
   @Test
   @WithMockUser
   @DisplayName("Guard가 거부하면 콘텐츠 추가 시 접근 거부 예외가 발생하고 서비스를 실행하지 않는다")
-  void addContent_rejectsWhenGuardDenies() {
+  void 가드가_거부하면__콘텐츠_추가가_거부() {
     UUID playlistId = UUID.randomUUID();
     UUID contentId = UUID.randomUUID();
     UUID requesterId = UUID.randomUUID();
@@ -70,8 +71,49 @@ class PlaylistMethodSecurityTest {
 
   @Test
   @WithMockUser
+  @DisplayName("Guard가 거부하면 플레이리스트 수정 시 접근 거부 예외가 발생하고 서비스를 실행하지 않는다")
+  void 가드가_거부할_경우_재생_목록_업데이트가_거부됨() {
+    // given
+      UUID playlistId = UUID.randomUUID();
+      UUID requesterId = UUID.randomUUID();
+      given(playlistGuard.canModify(playlistId, requesterId)).willReturn(false);
+
+    // when & then
+    assertThatThrownBy(() -> playlistService.updatePlaylist
+        (playlistId, new PlaylistUpdateRequest("제목", "설명"), requesterId))
+        .isInstanceOf(AccessDeniedException.class);
+
+    verify(playlistGuard).canModify(playlistId, requesterId);
+    verifyNoInteractions(playlistRepository, userRepository, subscriptionRepository,
+        playlistContentRepository, contentRepository);
+
+
+  }
+
+  @Test
+  @WithMockUser
+  @DisplayName("Guard가 거부하면 플레이리스트 삭제 시 접근 거부 예외가 발생하고 서비스를 실행하지 않는다")
+  void 가드가_거부할_경우_재생_목록_삭제가_거부됨() {
+    // given
+    UUID playlistId = UUID.randomUUID();
+    UUID requesterId = UUID.randomUUID();
+    given(playlistGuard.canModify(playlistId, requesterId)).willReturn(false);
+
+
+    // when & then
+    assertThatThrownBy(() -> playlistService.deletePlaylist(playlistId, requesterId))
+        .isInstanceOf(AccessDeniedException.class);
+
+    verify(playlistGuard).canModify(playlistId, requesterId);
+    verifyNoInteractions(playlistRepository, userRepository, subscriptionRepository,
+        playlistContentRepository, contentRepository);
+
+  }
+
+  @Test
+  @WithMockUser
   @DisplayName("Guard가 거부하면 콘텐츠 삭제 시 접근 거부 예외가 발생하고 서비스를 실행하지 않는다")
-  void removeContent_rejectsWhenGuardDenies() {
+  void 콘텐츠_삭제_시_가드가_거부하면_거부됨() {
     UUID playlistId = UUID.randomUUID();
     UUID contentId = UUID.randomUUID();
     UUID requesterId = UUID.randomUUID();
@@ -87,7 +129,7 @@ class PlaylistMethodSecurityTest {
 
   @Test
   @DisplayName("인증 정보가 없으면 인증 예외가 발생하고 Guard와 서비스를 실행하지 않는다")
-  void addContent_rejectsWhenAuthenticationMissing() {
+  void 콘텐츠_추가_시_인증_정보가_없으면_거부됨() {
     assertThatThrownBy(() -> playlistService.addContent(
         UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID()))
         .isInstanceOf(AuthenticationCredentialsNotFoundException.class);

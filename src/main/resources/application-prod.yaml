@@ -37,3 +37,6 @@ everyone:
   openapi:
     server-url: ${EVERYONE_OPENAPI_SERVER_URL}
     server-description: 운영 배포 서버
+
+  jwt:
+    refresh-cookie-secure: true

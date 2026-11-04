@@ -29,4 +29,7 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, UUID
   int deleteByPlaylistIdAndSubscriberId(
       @Param("playlistId") UUID playlistId,
       @Param("subscriberId") UUID subscriberId);
+
+  @Query("select s.subscriberId from Subscription s where s.playlistId = :playlistId")
+  List<UUID> findSubscriberIds(@Param("playlistId") UUID playlistId);
 }

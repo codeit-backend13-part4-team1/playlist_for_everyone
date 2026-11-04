@@ -30,5 +30,23 @@ public record SseEvent<T>(
         Objects.requireNonNull(eventId, "이벤트 ID는 null일 수 없습니다.");
         Objects.requireNonNull(receiverId, "수신자 ID는 null일 수 없습니다.");
         Objects.requireNonNull(eventName, "이벤트 이름은 null일 수 없습니다.");
+        if (!Event.exist(eventName)){
+            throw new IllegalArgumentException("지원하지 않는 이벤트이름 입니다. eventName=%s".formatted(eventName));
+        }
     }
+
+    /**
+     * 기존 이벤트 ID와 payload를 유지하면서 이벤트 이름을 notifications로 지정한다.
+     * 알림 도메인에서는 저장된 NotificationDto를 넘기지만, 공통 타입은 그 DTO에 의존하지 않는다.
+     * 이 팩토리는 새 ID 생성·JSON 변환·발행을 수행하지 않으며, 브라우저 data에는 payload만 전달된다.
+     */
+    public static <T> SseEvent<T> createNotificationEvent(UUID eventId, UUID receiverId, T data){
+        return new SseEvent<>(
+                eventId,
+                receiverId,
+                Event.NOTIFICATIONS.getName(),
+                data
+        );
+    }
+
 }

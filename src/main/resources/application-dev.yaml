@@ -45,3 +45,4 @@ everyone:
   jwt:
     # 로컬 개발 전용 공개 키. 운영 환경에서는 사용하지 않는다.
     secret-key: ${JWT_SECRET_KEY:bG9jYWwtZGV2LW9ubHkta2V5LTMyaXRlbS0wMDAwMDE=}
+    refresh-cookie-secure: ${JWT_REFRESH_COOKIE_SECURE:false}
