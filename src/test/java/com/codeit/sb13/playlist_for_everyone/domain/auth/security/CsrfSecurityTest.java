@@ -435,6 +435,21 @@ class CsrfSecurityTest {
                 .andExpect(handler().methodName("handle"));
     }
 
+    @Test
+    @DisplayName("최초 페이지 요청에도 XSRF-TOKEN 쿠키를 발급한다")
+    void 최초_페이지_요청에서_CSRF_쿠키를_발급한다() throws Exception {
+        // 프론트는 첫 진입 시 csrf-token API를 호출하지 않는다.
+        // spa() 설정이 일반 GET 응답에도 토큰 쿠키를 내려주는지 확인한다.
+        MvcResult result = mockMvc.perform(get("/"))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        Cookie csrfCookie = result.getResponse().getCookie(CSRF_COOKIE_NAME);
+
+        assertThat(csrfCookie).isNotNull();
+        assertThat(csrfCookie.getValue()).isNotBlank();
+    }
+
 
 
 
