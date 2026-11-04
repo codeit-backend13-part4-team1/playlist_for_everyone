@@ -33,9 +33,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(ContentController.class)
@@ -512,9 +511,9 @@ public class ContentControllerTest {
 
 
         // when & then
-        mockMvc.perform(delete("/api/contents/{contentId}", contentId))
-                .with(csrf())
-                .andExpect(status().isNoContent());
+        mockMvc.perform(delete("/api/contents/{contentId}", contentId)
+                        .with(csrf()))
+                        .andExpect(status().isNoContent());
 
         verify(contentService).deleteById(contentId);
     }
@@ -526,13 +525,13 @@ public class ContentControllerTest {
         // given
         UUID contentId = UUID.randomUUID();
 
-        doThrow(new ContentNotFoundException())
-                .when(contentService).delete(contentId);
+        doThrow(new ContentNotFoundException(Map.of("contentId", contentId)))
+                .when(contentService).deleteById(contentId);
 
         // when & then
-        mockMvc.perform(delete("/api/contents/{contentId}", contentId))
-                .with(csrf())
-                .andExpect(status().isNotFound());
+        mockMvc.perform(delete("/api/contents/{contentId}", contentId)
+                        .with(csrf()))
+                        .andExpect(status().isNotFound());
 
         verify(contentService).deleteById(contentId);
     }
@@ -545,8 +544,8 @@ public class ContentControllerTest {
         UUID contentId = UUID.randomUUID();
 
         // when & then
-        mockMvc.perform(delete("/api/contents/{contentId}", contentId))
-                .with(csrf())
+        mockMvc.perform(delete("/api/contents/{contentId}", contentId)
+                .with(csrf()))
                 .andExpect(status().isForbidden());
 
         verify(contentService, never()).deleteById(any(UUID.class));

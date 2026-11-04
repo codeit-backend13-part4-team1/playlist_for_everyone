@@ -56,4 +56,12 @@ public class ContentController implements ContentApi {
         );
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
+    @DeleteMapping("/{contentId}")
+    public ResponseEntity<Void> delete(@PathVariable UUID contentId) {
+        contentService.deleteById(contentId);
+
+        return ResponseEntity.noContent().build();
+    }
+
 }
