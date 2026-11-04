@@ -166,6 +166,9 @@ class AdminInitializationServiceIntegrationTest {
 
         ExecutorService executor = Executors.newFixedThreadPool(2);
 
+        // 종료 처리 중 발생한 오류가 본문의 실패 원인을 덮어쓰지 않도록 보존한다.
+        Throwable originalFailure = null;
+
         try {
             Future<?> first = executor.submit(() ->
                     adminInitializationService.initialize(EMAIL, NAME, PASSWORD));
@@ -173,8 +176,8 @@ class AdminInitializationServiceIntegrationTest {
             Future<?> second = executor.submit(() ->
                     adminInitializationService.initialize(EMAIL, NAME, PASSWORD));
 
-            // 작업 내부에서 예외가 전파되면 get()이 예외를 던져 테스트가 실패한다.
-            // 따라서 두 호출 모두 트랜잭션 처리를 마치고 정상 반환해야 한다.
+            // 작업 내부의 예외가 전파되면 get()에서 테스트가 실패한다.
+            // 이메일 충돌이 발생하더라도 두 호출 모두 정상 반환해야 한다.
             first.get(30, TimeUnit.SECONDS);
             second.get(30, TimeUnit.SECONDS);
 
@@ -187,16 +190,34 @@ class AdminInitializationServiceIntegrationTest {
                     PASSWORD,
                     savedAdmin.getPassword()
             )).isTrue();
+        } catch (Exception | AssertionError failure) {
+            // 작업 실행 예외와 검증 실패를 원래 형태로 전달한다.
+            originalFailure = failure;
+            throw failure;
         } finally {
-            // 실패하더라도 작업 스레드가 다음 테스트에 남지 않도록 종료한다.
             executor.shutdownNow();
 
-            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
-                throw new IllegalStateException(
-                        "관리자 초기화 테스트 작업이 종료되지 않았습니다."
-                );
+            try {
+                // 본문이 실패한 경우에도 작업 종료를 기다린다.
+                if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException(
+                            "관리자 초기화 테스트 작업이 종료되지 않았습니다."
+                    );
+                }
+            } catch (InterruptedException | RuntimeException cleanupFailure) {
+                if (cleanupFailure instanceof InterruptedException) {
+                    // 종료 대기 중 받은 인터럽트 상태를 복구한다.
+                    Thread.currentThread().interrupt();
+                }
+
+                if (originalFailure != null) {
+                    // 원래 실패를 유지하면서 종료 오류를 부가 정보로 기록한다.
+                    originalFailure.addSuppressed(cleanupFailure);
+                } else {
+                    // 본문이 성공했어도 작업 종료에 실패하면 테스트를 실패시킨다.
+                    throw cleanupFailure;
+                }
             }
         }
-    }
-
+        }
 }
