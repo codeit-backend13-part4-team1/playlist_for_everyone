@@ -5,12 +5,16 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 
+import java.nio.charset.StandardCharsets;
+
 /**
  * 서버 시작 시 관리자 초기화 서비스를 호출한다.
  * 계정 생성 여부에 대한 판단은 초기화 서비스에 위임한다
  */
 @RequiredArgsConstructor
 public class AdminInitializer implements ApplicationRunner {
+
+    private static final int MAX_PASSWORD_BYTES = 72;
 
     private final AdminProperties adminProperties;
     private final AdminInitializationService adminInitializationService;
@@ -26,6 +30,10 @@ public class AdminInitializer implements ApplicationRunner {
         requireText(adminProperties.email(), "everyone.admin.email");
         requireText(adminProperties.name(), "everyone.admin.name");
         requireText(adminProperties.password(), "everyone.admin.password");
+
+        if (adminProperties.password().getBytes(StandardCharsets.UTF_8).length > MAX_PASSWORD_BYTES) {
+            throw new IllegalStateException("everyone.admin.password는 UTF-8 기준 " + MAX_PASSWORD_BYTES + "바이트 이하여야 합니다.");
+        }
 
         adminInitializationService.initialize(
                 adminProperties.email(),
