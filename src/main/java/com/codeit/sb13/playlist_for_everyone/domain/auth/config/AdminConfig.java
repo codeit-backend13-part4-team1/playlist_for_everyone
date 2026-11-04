@@ -1,8 +1,18 @@
 package com.codeit.sb13.playlist_for_everyone.domain.auth.config;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AdminInitializationService;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration(proxyBeanMethods = false)
+@EnableConfigurationProperties(AdminProperties.class)
 public class AdminConfig{
-    // GREEN 단계에서 설정 바인딩과 AdminInitializer Bean을 등록한다.
+
+    @Bean
+    public AdminInitializer adminInitializer(AdminProperties adminProperties,
+                                             AdminInitializationService adminInitializationService) {
+
+        return new AdminInitializer(adminProperties, adminInitializationService);
+    }
 }
