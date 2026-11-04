@@ -76,6 +76,37 @@ public interface ContentApi {
     );
 
     @Operation(
+            summary = "콘텐츠 단건 조회",
+            description = """
+                콘텐츠 ID를 통해 콘텐츠 상세 정보를 조회합니다.
+                콘텐츠 정보와 함께 평균 평점, 리뷰 수, 시청자 수를 반환합니다.
+                """
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "콘텐츠 조회 성공",
+                    useReturnTypeSchema = true,
+                    content = @Content(mediaType = "application/json")
+            ),
+            @ApiResponse(
+                    responseCode = "404",
+                    description = "콘텐츠를 찾을 수 없음",
+                    content = @Content(
+                            mediaType = "application/json",
+                            schema = @Schema(implementation = ApiErrorResponse.class)
+                    )
+            )
+    })
+    ResponseEntity<ContentDto> get(
+            @Parameter(
+                    description = "조회할 콘텐츠 ID",
+                    required = true
+            )
+            @PathVariable UUID contentId
+    );
+
+    @Operation(
             summary = "[어드민] 콘텐츠 수정",
             description = """
                     관리자가 기존 콘텐츠를 수정합니다.
@@ -111,6 +142,31 @@ public interface ContentApi {
             MultipartFile file
     );
 
-
+    @Operation(
+            summary = "[어드민] 콘텐츠 삭제",
+            description = """
+                관리자가 콘텐츠 ID를 통해 콘텐츠를 삭제합니다.
+                삭제 성공 시 응답 본문 없이 204 No Content를 반환합니다.
+                """
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "204",
+                    description = "콘텐츠 삭제 성공",
+                    content = @Content
+            ),
+            @ApiResponse(
+                    responseCode = "404",
+                    description = "콘텐츠를 찾을 수 없음",
+                    content = @Content(
+                            mediaType = "application/json",
+                            schema = @Schema(implementation = ApiErrorResponse.class)
+                    )
+            )
+    })
+    ResponseEntity<Void> delete(
+            @Parameter(description = "삭제할 콘텐츠 ID", required = true)
+            @PathVariable UUID contentId
+    );
 
 }

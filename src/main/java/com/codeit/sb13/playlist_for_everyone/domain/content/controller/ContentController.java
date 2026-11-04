@@ -35,6 +35,7 @@ public class ContentController implements ContentApi {
                 .body(contentService.create(request, file));
     }
 
+    @Override
     @GetMapping("/{contentId}")
     public ResponseEntity<ContentDto> get(@PathVariable UUID contentId) {
         return ResponseEntity.ok(contentService.getById(contentId));
@@ -56,6 +57,7 @@ public class ContentController implements ContentApi {
         );
     }
 
+    @Override
     @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/{contentId}")
     public ResponseEntity<Void> delete(@PathVariable UUID contentId) {
