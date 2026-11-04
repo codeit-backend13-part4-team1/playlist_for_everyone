@@ -24,7 +24,6 @@ import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListContentDuplicatedException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListContentNotFoundException;
-import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListForbiddenException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscribeOwnException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscriptionDuplicatedException;
@@ -123,6 +122,7 @@ public class PlaylistServiceImpl implements PlaylistService {
   }
 
   @Override
+  @PreAuthorize("isAuthenticated() and @playlistGuard.canModify(#playlistId, #requesterId)")
   @Transactional
   public PlaylistResponse updatePlaylist(
       UUID playlistId, PlaylistUpdateRequest request, UUID requesterId) {
@@ -132,10 +132,6 @@ public class PlaylistServiceImpl implements PlaylistService {
             Map.of("playlistId", playlistId)
         ));
 
-    if (!playlist.isOwnedBy(requesterId)) {
-      throw new PlayListForbiddenException(
-          Map.of("playlistId", playlistId, "requesterId", requesterId));
-    }
 
     playlist.update(request.title(), request.description());
 
@@ -147,6 +143,7 @@ public class PlaylistServiceImpl implements PlaylistService {
   }
 
   @Override
+  @PreAuthorize("isAuthenticated() and @playlistGuard.canModify(#playlistId, #requesterId)")
   @Transactional
   public void deletePlaylist(UUID playlistId, UUID requesterId) {
 
@@ -154,11 +151,6 @@ public class PlaylistServiceImpl implements PlaylistService {
         .orElseThrow(() -> new PlayListNotFoundException(
             Map.of("playlistId", playlistId)
         ));
-
-    if (!playlist.isOwnedBy(requesterId)) {
-      throw new PlayListForbiddenException(
-          Map.of("playlistId", playlistId, "requesterId", requesterId));
-    }
 
     subscriptionRepository.deleteAllByPlaylistId(playlistId);
     playlistContentRepository.deleteAllByPlaylistId(playlistId);
