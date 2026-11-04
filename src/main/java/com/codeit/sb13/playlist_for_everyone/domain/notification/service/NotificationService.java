@@ -20,6 +20,12 @@ import org.springframework.validation.annotation.Validated;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * 알림의 생성·목록 조회·읽음 처리를 조율한다.
+ *
+ * <p>조회·삭제는 호출자가 전달한 수신자 ID를 사용한다. HTTP 인증 정보의 추출은 컨트롤러,
+ * 수신자에 따른 데이터 제한은 저장소가 담당하며, 이 서비스는 SecurityContext에 의존하지 않는다.
+ */
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -47,6 +53,13 @@ public class NotificationService {
         eventPublisher.publishEvent(new NotificationCreatedEvent(UUID.randomUUID(), NotificationDto.from(save)));
     }
 
+    /**
+     * 저장소의 limit + 1건 조회 결과로 다음 페이지 유무를 판단하고, 실제 반환할 항목만 DTO로 만든다.
+     *
+     * <p>totalCount는 커서 이후 남은 수가 아니라 해당 수신자의 전체 알림 수다.
+     * 다음 페이지가 있으면 반환 목록의 마지막 항목에서 시각·ID를 함께 추출하며,
+     * 마지막 페이지와 빈 목록에서는 두 커서 값 모두 null을 반환한다.
+     */
     @Transactional(readOnly = true)
     public CursorResponse<NotificationDto> getNotifications(NotificationSearchCondition condition){
 
@@ -71,6 +84,11 @@ public class NotificationService {
         ) ;
     }
 
+    /**
+     * 알림 ID와 수신자 ID가 모두 일치하는 알림을 삭제하여 읽음 처리한다.
+     * 대상이 없어도 미존재·소유권 예외를 만들지 않으므로 컨트롤러는 반복·미존재·타인 요청에
+     * 동일하게 204를 반환할 수 있다. 이 응답은 실제로 삭제된 행이 있었다는 의미는 아니다.
+     */
     public void confirm(UUID notificationId, UUID receiverId){
         notificationRepository.deleteByIdAndReceiver(notificationId, receiverId);
     }

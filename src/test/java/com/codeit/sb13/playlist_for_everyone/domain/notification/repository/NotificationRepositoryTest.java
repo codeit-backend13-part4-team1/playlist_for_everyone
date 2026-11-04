@@ -29,6 +29,13 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
+/**
+ * 실제 PostgreSQL·Flyway·Querydsl로 수신자 제한, 커서 정렬·개수와 삭제 조건을 확인한다.
+ *
+ * <p>생성시각이 같은 행의 ID 순서와 커서 대상 삭제 후 탐색도 DB에서 검증한다.
+ * 서비스·컨트롤러·JWT 필터는 호출하지 않는다. 기본 DataJpaTest 트랜잭션이
+ * 각 사례의 변경을 롤백하므로 실제 커밋 후 이벤트 전송 검증과는 구분한다.
+ */
 @DataJpaTest(properties = {
         "spring.flyway.enabled=true",
         "spring.jpa.hibernate.ddl-auto=validate"

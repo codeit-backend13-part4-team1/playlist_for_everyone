@@ -4,12 +4,12 @@
 
 > **문서 기준 안내:** 아래에는 공통 기반을 처음 준비하던 시점의 설명이 일부 남아 있습니다.
 > 도메인 구현 현황과 개발용 보안 전환 설명은 최신 코드와 다를 수 있습니다.
-> 현재 SSE 연결·Redis 분산 전송·인증·테스트는 [SSE 구현 가이드](sse/README.md), 알림 저장 후 전송은 [알림 구현 가이드](notification/README.md)를 기준으로 확인합니다.
+> 현재 SSE 연결·Redis 분산 전송·인증·테스트는 [SSE 구현 가이드](sse/README.md), 알림 생성·전송·조회·읽음 처리와 JWT 인증은 [알림 구현 가이드](notification/README.md)를 기준으로 확인합니다.
 > 팔로우 등록·취소·조회와 인증·이벤트의 구현 및 검증 범위는 [팔로우 구현 가이드](follow/README.md)를 참고합니다.
 
 ## 현재 개발 상태
 
-공통 기반 위에 도메인 기능을 추가하고 있습니다. 아래 팔로우·공통 보안 설명은 현재 코드에 맞췄으며, 다른 기능의 최신 범위는 해당 코드와 이슈를 함께 확인합니다.
+공통 기반 위에 도메인 기능을 추가하고 있습니다. 아래 팔로우·알림·공통 보안 설명은 현재 코드에 맞췄으며, 다른 기능의 최신 범위는 해당 코드와 이슈를 함께 확인합니다.
 
 | 구분 | 현재 상태 |
 | --- | --- |
@@ -17,11 +17,12 @@
 | 도메인 예외 | 공통 예외 기반 위에 도메인 오류 정의. 팔로우는 자기 팔로우·대상 미존재·관계 미존재·생성 실패 예외 사용 |
 | 팔로우 | 등록·취소·조회, 중복 복구와 생성 이벤트 구현. #76의 실제 JWT HTTP 통합 검증 및 Swagger 정리 완료 |
 | 로컬 인프라 | Docker Compose에 PostgreSQL과 Redis 서비스 정의 |
-| 공통 보안 | JWT 필터와 경로별 인증·인가 적용. 팔로우 API는 인증 필요, CSRF는 현재 비활성화 |
+| 공통 보안 | JWT 필터와 경로별 인증·인가 적용. 팔로우·알림 API는 인증 필요, 쿠키 기반 CSRF 보호 활성화 |
 | SSE | 인증된 사용자의 다중 연결, 하트비트, 종료 정리와 Redis Pub/Sub 분산 전송 구현. [SSE 구현 가이드](sse/README.md) 참고 |
 | 알림 전송 | 공통 알림 생성 요청 → 독립 저장·커밋 → Redis → 실제 SSE 수신 연동 구현. [알림 전송 흐름](notification/01-creation-and-delivery.md) 참고 |
+| 알림 조회·읽음 | JWT 사용자를 수신자 조건으로 사용하여 목록·전체 개수를 조회하고 알림 삭제로 읽음 처리. [조회·인증 흐름](notification/03-query-and-security.md) 참고 |
 | SSE·알림 후속 | 업무별 알림 생성 요청 변환(#45)·DM 본문 연동·Kafka·이력 복구·연결 수 제한 |
-| 후속 기능 | 팔로우 CSRF 연동·검증은 #114, 팔로우 이벤트의 알림 생성 연동은 #45. 다른 기능의 진행 상태는 개별 이슈 참고 |
+| 후속 기능 | 팔로우 CSRF 연동·검증은 #114, 알림 CSRF 연동·검증은 #124, 팔로우 이벤트의 알림 생성 연동은 #45. 다른 기능의 진행 상태는 개별 이슈 참고 |
 
 라이브러리 의존성과 로컬 인프라를 준비한 상태와 기능 구현 완료를 구분합니다. Redis 서비스는 Compose에 포함되어 있으며, 이를 사용하는 캐시·세션 기능은 구현 전입니다. Kafka와 Elasticsearch는 현재 Compose에 포함되어 있지 않습니다.
 
@@ -141,11 +142,11 @@ EVERYONE_REDIS_PORT=6379
 | Swagger UI | `http://localhost:8080/swagger-ui.html` |
 | OpenAPI JSON | `http://localhost:8080/v3/api-docs` |
 
-현재 [SecurityConfig](../src/main/java/com/codeit/sb13/playlist_for_everyone/global/config/SecurityConfig.java)는 프로필 제한 없이 공통 JWT 필터와 경로별 접근 정책을 적용합니다. 팔로우 API는 인증이 필요하며, `STATELESS` 정책으로 인증정보를 HTTP 세션에 저장하지 않습니다. CSRF는 현재 비활성화되어 있습니다.
+현재 [SecurityConfig](../src/main/java/com/codeit/sb13/playlist_for_everyone/global/config/SecurityConfig.java)는 프로필 제한 없이 공통 JWT 필터와 경로별 접근 정책을 적용합니다. 팔로우·알림 API는 인증이 필요하며, `STATELESS` 정책으로 인증정보를 HTTP 세션에 저장하지 않습니다. 공통 CSRF 보호는 활성화되어 있고 `XSRF-TOKEN` 쿠키와 `X-XSRF-TOKEN` 헤더를 사용합니다. 실제 알림 DELETE 요청도 CSRF 검증 대상입니다.
 
 Swagger UI와 OpenAPI 문서의 GET 조회는 `dev`가 활성화되고 `prod`는 비활성화된 경우에만 인증 없이 허용합니다. 그 외에는 공통 인증 정책을 따릅니다. Swagger 화면을 열 수 있어도 실제 팔로우 API 호출에는 인증이 필요합니다.
 
-팔로우 API는 `bearerAuth` 인증 방식과 연결되어 있으며, JWT·소유자 인가 응답 설명과 실제 Swagger UI 표시를 확인했습니다. CSRF 조건은 #114에서 적용 예정으로 구분합니다.
+팔로우 API는 `bearerAuth` 인증 방식과 연결되어 있으며, JWT·소유자 인가 응답 설명과 실제 Swagger UI 표시를 확인했습니다. 공통 CSRF 설정의 활성화와 도메인별 실제 토큰 연동·회귀 검증은 구분합니다. 팔로우 검증·Swagger 최종 계약 정리는 #114, 알림은 #124에서 진행합니다. 알림 JWT 통합 테스트는 해당 클래스의 MockMvc 요청에서만 CSRF 검사를 임시 제외하고 있습니다.
 설정은 [application.yaml](../src/main/resources/application.yaml)과 [OpenApiConfig](../src/main/java/com/codeit/sb13/playlist_for_everyone/global/config/OpenApiConfig.java), 상세 정책은 [팔로우 API 가이드](follow/01-api-security.md)를 참고합니다.
 
 ## 환경변수와 프로필
@@ -213,7 +214,7 @@ S3 관련 값은 현재 공통 설정에 선언되어 있지만 실제 S3 연동
 | --- | --- |
 | JWT·소유자 인가 | [#76](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/76)의 실제 필터·서비스·DB 통합 검증 완료 |
 | Swagger | JWT·소유자 인가 설명, Bearer 연결과 실제 UI 확인 완료 |
-| CSRF | 공통 기반 [#35](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/35), 팔로우 연동·회귀 검증 [#114](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/114) 후속 작업 |
+| CSRF | 공통 기반 [#35](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/35) 반영·활성화. 실제 토큰 연동·회귀 검증은 팔로우 [#114](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/114), 알림 [#124](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/124) 후속 작업 |
 
 검증 범위와 실행 기록은 [팔로우 테스트 가이드](follow/05-testing.md)를 참고합니다.
 `application-dev.yaml`은 로컬 개발 환경 설정으로 유지합니다. 팔로우 검증 완료가 전체 운영 보안 검토의 완료를 의미하지는 않습니다.
@@ -360,6 +361,7 @@ Docker Desktop 또는 Docker 엔진을 실행한 뒤 프로젝트 루트에서 �
 공통 테스트는 `test` 프로필과 H2를 사용합니다. 알림 통합 테스트는 Testcontainers로 별도의 PostgreSQL 16 컨테이너를 실행하고 실제 Flyway 마이그레이션을 적용합니다.
 SSE Redis 통합 테스트는 별도의 Redis 7.4 컨테이너로 실제 Pub/Sub을 검증합니다. 전체 테스트와 빌드에는 Docker가 필요하며, 로컬 PostgreSQL·Redis나 `.env.dev`는 필요하지 않습니다.
 `NotificationSseIntegrationTest`는 PostgreSQL과 Redis를 함께 사용하여 알림 저장부터 실제 HTTP 수신까지 확인합니다. [검증 범위와 실행 명령](notification/02-testing.md)을 참고합니다.
+조회·삭제는 PostgreSQL 저장소 테스트와 실제 JWT 필터를 거치는 MockMvc 통합 테스트로 확인합니다. [조회·인증 테스트 가이드](notification/04-query-and-security-testing.md)에 실행 명령과 CSRF 임시 제외 범위를 정리했습니다.
 최초 실행 시 테스트용 컨테이너 이미지 다운로드가 필요할 수 있습니다. 테스트 프로필은 SSE 자동 구독을 끄고, Redis SSE 통합 테스트에서만 명시적으로 활성화합니다.
 
 제목 말줄임 단위 테스트만 확인하려면 Docker 없이 다음 명령을 사용할 수 있습니다.
@@ -414,6 +416,7 @@ CI는 성공한 빌드의 JaCoCo XML에서 전체 LINE 수치로 SVG 배지를 �
 - 공통 예외 테스트에는 [TestEveryOneException](../src/test/java/com/codeit/sb13/testsupport/exception/TestEveryOneException.java)을 사용합니다. 도메인 예외 예시의 변경이 공통 동작 테스트에 영향을 주지 않도록 분리합니다.
 - 기존 테스트는 애플리케이션 컨텍스트, 예외 응답, 검증 오류, MDC, JPA Auditing, Querydsl 조회, 비밀번호 인코더, OpenAPI 설정을 확인합니다.
 - 알림 테스트는 제목 말줄임·입력 검증, 업무 커밋 후 저장, 알림 커밋 후 SSE 발행, 롤백·트랜잭션 외 발행 시 미처리를 확인합니다. `NotificationIntegrationTest`는 실제 PostgreSQL과 `TransactionTemplate`을 사용하고, SSE 발행자는 Mock으로 대체하여 저장·전송 실패 격리를 검증합니다.
+- 알림 조회·삭제는 MVC·저장소·JWT 통합 테스트로 나눕니다. `NotificationSecurityIntegrationTest`는 실제 JWT·사용자 조회·서비스·PostgreSQL을 사용하여 본인 데이터 제한과 인증 실패 시 데이터 보존을 확인합니다. 이 클래스의 MockMvc 요청에서만 CSRF 검사를 임시 제외하며, 실제 CSRF 검증은 #124에서 진행합니다. [검증 범위와 Swagger 확인](notification/04-query-and-security-testing.md)을 참고합니다.
 - 공통 예외 핸들러·인터셉터의 MVC 테스트는 Security 필터를 제외합니다. 이 테스트의 통과는 인증·인가 동작 검증을 의미하지 않습니다.
 - 팔로우는 단위·MVC·PostgreSQL 저장소·서비스 통합 테스트와 실제 JWT HTTP 통합 테스트를 구분합니다. MVC 테스트의 Principal 준비는 JWT 검증을 대체하지 않습니다. [팔로우 테스트 가이드](follow/05-testing.md)에 검증 범위·실행 명령과 #76의 완료 기록을 정리했습니다.
 - SSE MVC 테스트는 실제 보안 필터를 포함하여 인증 사용자와 ASYNC 종료 시 인증 복원을 확인합니다. 공통 `SseStreamingIntegrationTest`는 인증 의존성을 Mock으로 대체하고, 실제 HTTP 프레임과 JSON 변환 실패 시 기존 연결 유지를 검증합니다.
@@ -502,7 +505,7 @@ RUN_SPORTSDB_LIVE_TEST=true ./gradlew test --tests '*SportsDbClientLiveTest' --r
 다음 항목은 후속 작업으로 관리합니다.
 
 - 도메인별 API·서비스·엔티티와 PostgreSQL/Flyway 검증
-- 공통 CSRF 기반(#35), 팔로우 CSRF 연동·검증(#114)과 이벤트의 알림 생성 연동(#45)
+- 활성화된 공통 CSRF 기반을 사용하는 팔로우 연동·검증(#114), 알림 연동·검증(#124)과 이벤트의 알림 생성 연동(#45)
 - 목록 API의 커서 규칙 확정과 직렬화·페이징 테스트
 - Redis 기반 캐시·세션 기능 구현과 데이터 보관 정책 결정
 - 배치, S3, WebSocket 등 기능별 구현과 필요한 인프라 추가

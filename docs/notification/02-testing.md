@@ -1,4 +1,4 @@
-# 2. 알림 전송 테스트 읽기와 실행
+# 2. 알림 생성·전송 테스트 읽기와 실행
 
 알림 테스트는 **발행할 데이터 → 실제 커밋 경계 → Redis를 거친 HTTP 수신** 순서로 읽습니다.
 설계 흐름은 [알림 생성·저장과 SSE 전송](01-creation-and-delivery.md), 공통 SSE 테스트는 [SSE 테스트 가이드](../sse/05-testing.md)를 참고합니다.
@@ -7,6 +7,7 @@
 
 | 테스트 | 실제로 검증하는 것 | 대체하거나 포함하지 않는 것 |
 | --- | --- | --- |
+| `NotificationCommandTest` | 제목 길이 경계, 말줄임과 이모지의 서로게이트 쌍 보존 | 생성자 직접 호출. Bean Validation·DB 검증 없음 |
 | `NotificationServiceTest` | 저장소 결과를 DTO로 복사하고 생성 이벤트 발행 요청 | 저장소·이벤트 발행자는 Mock. DB·Auditing·트랜잭션 실행 없음 |
 | `NotificationSseEventListenerTest` | ID·수신자·이벤트 이름·DTO 보존, 실패 처리·후속 발행·로그 | 발행자는 Mock, 리스너 직접 호출. AFTER_COMMIT 실행 시점 검증 없음 |
 | `NotificationIntegrationTest` | PostgreSQL·Flyway, 실제 커밋·롤백, 발행 요청과 실패 격리 | `SseEventPublisher`만 Mock으로 교체. Redis·HTTP 수신 검증 없음 |
@@ -14,6 +15,8 @@
 
 테스트 코드는 [알림 테스트 패키지](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/notification)에 있습니다.
 각 클래스의 한글 `@DisplayName`으로 개별 시나리오를 확인할 수 있습니다.
+제목·내용의 필수 값 검증은 `NotificationIntegrationTest`의 실제 서비스 호출에서 확인합니다.
+조회·삭제와 JWT 검증은 [별도 테스트 문서](04-query-and-security-testing.md)에서 다룹니다.
 
 ## 커밋·롤백 검증 읽기
 
@@ -70,7 +73,8 @@ CLI 절차는 공통 전송 검증이며 알림 DB 저장이나 생성 리스너
 프로젝트 루트에서 실행합니다. 단위 테스트에는 Docker가 필요하지 않습니다.
 
 ```bash
-./gradlew test --tests '*NotificationServiceTest' \
+./gradlew test --tests '*NotificationCommandTest' \
+  --tests '*NotificationServiceTest' \
   --tests '*NotificationSseEventListenerTest' --no-daemon --console=plain
 ```
 
@@ -82,10 +86,11 @@ Docker를 실행한 뒤 실제 트랜잭션과 Redis·HTTP 통합 테스트를 �
   --tests '*NotificationSseIntegrationTest' --no-daemon --console=plain
 ```
 
-이번 연동과 관련된 네 클래스를 함께 확인하려면 다음을 사용합니다.
+생성 입력부터 실제 전송까지 위 다섯 클래스를 함께 확인하려면 다음을 사용합니다.
 
 ```bash
-./gradlew test --tests '*NotificationServiceTest' \
+./gradlew test --tests '*NotificationCommandTest' \
+  --tests '*NotificationServiceTest' \
   --tests '*NotificationSseEventListenerTest' \
   --tests '*NotificationIntegrationTest' \
   --tests '*NotificationSseIntegrationTest' --no-daemon --console=plain
@@ -97,4 +102,4 @@ Docker를 실행한 뒤 실제 트랜잭션과 Redis·HTTP 통합 테스트를 �
 
 ---
 
-[← 이전: 알림 생성·저장과 SSE 전송](01-creation-and-delivery.md) · [알림 목차](README.md) · [팀원 개발 가이드](../DEVELOPMENT.md)
+[← 이전: 알림 생성·저장과 SSE 전송](01-creation-and-delivery.md) · [알림 목차](README.md) · [다음: 목록 조회·읽음 처리와 JWT 인증 →](03-query-and-security.md)
