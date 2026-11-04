@@ -292,6 +292,15 @@ class SecurityConfigTest {
 
     }
 
+    @Test
+    @DisplayName("기본 썸네일은 로그인하지 않아도 조회할 수 있다.")
+    void 기본_썸네일은_인증_없이_조회한다() throws Exception {
+        mockMvc.perform(get("/placeholder-movie.png"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.IMAGE_PNG));
+
+        verifyNoInteractions(jwtTokenProvider, userService);
+    }
 
 
 
