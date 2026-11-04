@@ -3,9 +3,11 @@ package com.codeit.sb13.playlist_for_everyone.domain.auth.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
+import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserConstraintViolationDetector;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -47,8 +49,17 @@ public class AdminInitializationService {
                 .role(Role.ADMIN)
                 .build();
 
-        // INSERT를 즉시 실행해 DB 제약 조건 위반도 이 시점에 확인 한다.
-        userRepository.saveAndFlush(admin);
+        try {
+            // INSERT를 즉시 실행해 DB 제약 조건 위반도 이 시점에 확인 한다.
+            userRepository.saveAndFlush(admin);
+        } catch (DataIntegrityViolationException exception) {
+            if (UserConstraintViolationDetector.isEmailUniqueConstraintViolation(exception)) {
+                log.warn("[AUTH] 동일 이메일 계정이 생성되어 관리자 초기화를 건너뜁니다.");
+                return;
+            }
+            // 이메일 중복 이외의 오류는 숨기지 않고 시작 실패의 원인으로 전달한다.
+            throw exception;
+        }
 
         log.info("[AUTH] 초기 관리자 계정을 생성했습니다.");
     }
