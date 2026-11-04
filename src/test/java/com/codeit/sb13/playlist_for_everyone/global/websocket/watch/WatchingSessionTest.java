@@ -41,7 +41,6 @@ import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.co
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
 
@@ -184,23 +183,15 @@ public class WatchingSessionTest {
         String contentId = UUID.randomUUID().toString();
         String sessionId = "viewer-session-test";
 
-
-        // 세션 info 의 인증, 인가, lock 등을 변경하며 테스트 하기 위한 파라매터 생성자.
-        static Stream<Arguments> variableSessionInfoParam(){
-            return Stream.of(
-                    Arguments.of(Role.USER, true),
-                    Arguments.of(null, false)
-            );
-        }
-
         void validateReturnedObject(
                 WatchingSessionChange payload,
                 long watcherCount,
                 SessionInfo info,
-                SessionData data
+                SessionData data,
+                ChangeType type
         ){
             // payload 는 JOIN 타입을 가진다.
-            assertThat(payload.type()).isEqualTo(ChangeType.JOIN);
+            assertThat(payload.type()).isEqualTo(type);
             // 현재 사용 유저 수는 repository 반환값과 동일하다.
             assertThat(payload.watcherCount()).isEqualTo(watcherCount);
             // dto 의 id, 생성 시간은 저장된 세션 데이터와 같다.
@@ -215,100 +206,245 @@ public class WatchingSessionTest {
 //                    .isEqualTo(UUID.fromString(contentId));
         }
 
-        @Test
-        @DisplayName("Session info 를 받아와서 ViewSession 을 구독 하고, 엔티티 정보를 이용해서 세션 객체를 조립, 반환한다.")
-        void joinViewerSessionTest(){
-            long watcherCount = 10L;
-            SessionInfo info = getSessionInfo(
-                    sessionId,
-                    "test-sub-1",
-                    testDestination(contentId, WATCH_SERVICE),
-                    Role.USER
-            );
+        @Nested
+        @DisplayName("join test")
+        class JoinTest{
 
-            // 테스트용 세션 데이터 레지스터에 저장.
-            SessionData data = info.toData();
-            connectionRegistry.register(data);
+            // 세션 info 의 인증, 인가, lock 등을 변경하며 테스트 하기 위한 파라매터 생성자.
+            static Stream<Arguments> variableRoleAndLockParam(){
+                return Stream.of(
+                        Arguments.of(Role.USER, true),
+                        Arguments.of(null, false)
+                );
+            }
 
-            // 관련 로직 stub
-            userServiceLogicSet(Objects.requireNonNull(info.user()));
-            watchingSessionLogicSet(UUID.fromString(contentId), watcherCount);
+            static Stream<Arguments> variableDestinationParam(){
+                return Stream.of(
+                        Arguments.of(null),
+                        Arguments.of("/no/accept/destination/in")
+                );
+            }
 
-            WatchingSessionChange payload = watchingSession.joinViewerSession(info);
+            @Test
+            @DisplayName("Session info 를 받아와서 ViewSession 을 구독 하고, 엔티티 정보를 이용해서 세션 객체를 조립, 반환한다.")
+            void joinViewerSessionTest(){
+                long watcherCount = 10L;
+                SessionInfo info = getSessionInfo(
+                        sessionId,
+                        "test-sub-1",
+                        testDestination(contentId, WATCH_SERVICE),
+                        Role.USER
+                );
 
-            // 구독을 진행한다.
-            verify(redisTopicRegistry, times(1)).register(
-                    eq(assertionTopicAnswer(contentId, WATCH_SERVICE)),
-                    eq(sessionId),
-                    eq("test-sub-1"),
-                    any(RedisMessageListener.class)
-            );
-            validateReturnedObject(payload, watcherCount, info, data);
+                // 테스트용 세션 데이터 레지스터에 저장.
+                SessionData data = info.toData();
+                connectionRegistry.register(data);
+
+                // 관련 로직 stub
+                userServiceLogicSet(Objects.requireNonNull(info.user()));
+                watchingSessionLogicSet(UUID.fromString(contentId), watcherCount);
+
+                WatchingSessionChange payload = watchingSession.joinViewerSession(info);
+
+                // 구독을 진행한다.
+                verify(redisTopicRegistry, times(1)).register(
+                        eq(assertionTopicAnswer(contentId, WATCH_SERVICE)),
+                        eq(sessionId),
+                        eq("test-sub-1"),
+                        any(RedisMessageListener.class)
+                );
+                validateReturnedObject(payload, watcherCount, info, data,ChangeType.JOIN);
+            }
+
+            @ParameterizedTest
+            @MethodSource("variableRoleAndLockParam")
+            @DisplayName("시청 세션 입장 시, 인증이나, 인가가 없다면, 리소스 작업 시도를 하지 않고 예외를 반환한다.")
+            void exceptionTestWhenInvalidRole(Role role, boolean isLocked) {
+                Long watcherCount = 21L;
+                SessionInfo info = getSessionInfo(
+                        sessionId,
+                        "test-sub-1",
+                        testDestination(contentId, WATCH_SERVICE),
+                        role,
+                        isLocked
+                );
+
+                // 테스트용 세션 데이터 레지스터에 저장.
+                SessionData data = info.toData();
+                connectionRegistry.register(data);
+
+                watchingSessionLogicSet(UUID.fromString(contentId), watcherCount);
+
+                assertThatThrownBy(() -> watchingSession.joinViewerSession(info))
+                        .isInstanceOf(EveryOneException.class); // InvalidAuthException
+
+                // 실제 세션 저장부 및 구독은 호출되지 않음.
+                verify(watchingSessionService, times(0)).joinViewerSession(any());
+                verify(redisTopicRegistry, times(0)).register(
+                        eq(assertionTopicAnswer(contentId, WATCH_SERVICE)),
+                        eq(sessionId),
+                        eq("test-sub-1"),
+                        any(RedisMessageListener.class)
+                );
+            }
+
+            @ParameterizedTest
+            @MethodSource("variableDestinationParam")
+            @DisplayName("시청 세션 입장 시 지정된 형식의 경로가 아니면 리소스 조회를 하지 않고 예외를 반환한다.")
+            void exceptionTestWithoutAuthentication(String destination){
+                long watcherCount = 43L;
+                SessionInfo info = getSessionInfo(
+                        sessionId,
+                        "test-sub-1",
+                        destination,
+                        Role.USER
+                );
+
+                // 테스트용 세션 데이터 레지스터에 저장.
+                SessionData data = info.toData();
+                connectionRegistry.register(data);
+
+                watchingSessionLogicSet(UUID.fromString(contentId), watcherCount);
+
+                assertThatThrownBy(() -> watchingSession.joinViewerSession(info))
+                        .isInstanceOf(EveryOneException.class); // InvalidAuthException
+
+                // 실제 세션 저장부는 호출되지 않음.
+                verify(watchingSessionService, times(0)).joinViewerSession(any());
+                verify(redisTopicRegistry, times(0)).register(
+                        eq(assertionTopicAnswer(contentId, WATCH_SERVICE)),
+                        eq(sessionId),
+                        eq("test-sub-1"),
+                        any(RedisMessageListener.class)
+                );
+            }
         }
 
-        @ParameterizedTest
-        @MethodSource("variableSessionInfoParam")
-        @DisplayName("시청 세션 입장 시, 인증이나, 인가가 없다면, 리소스 작업 시도를 하지 않고 예외를 반환한다.")
-        void exceptionTestWhenInvalidRole(Role role, boolean isLocked) {
-            Long watcherCount = 21L;
-            SessionInfo info = getSessionInfo(
-                    sessionId,
-                    "test-sub-1",
-                    testDestination(contentId, WATCH_SERVICE),
-                    role,
-                    isLocked
-            );
+        @Nested
+        @DisplayName("leave test")
+        class LeaveTest{
 
-            // 테스트용 세션 데이터 레지스터에 저장.
-            SessionData data = info.toData();
-            connectionRegistry.register(data);
+            String registeredDestination = testDestination(contentId, WATCH_SERVICE);
 
-            watchingSessionLogicSet(UUID.fromString(contentId), watcherCount);
+            // 세션 info 의 인증, 인가, lock 등을 변경하며 테스트 하기 위한 파라매터 생성자.
+            static Stream<Arguments> variableRoleAndLockParam(){
+                return Stream.of(
+                        Arguments.of(Role.USER, true),
+                        Arguments.of(null, false)
+                );
+            }
 
-            assertThatThrownBy(() -> watchingSession.joinViewerSession(info))
-                    .isInstanceOf(EveryOneException.class); // InvalidAuthException
+            static Stream<Arguments> variableDestinationParam(){
+                return Stream.of(
+                        Arguments.of(null),
+                        Arguments.of("/no/accept/destination/in")
+                );
+            }
 
-            // 실제 세션 저장부 및 구독은 호출되지 않음.
-            verify(watchingSessionService, times(0)).joinViewerSession(any());
-            verify(redisTopicRegistry, times(0)).register(
-                    eq(assertionTopicAnswer(contentId, WATCH_SERVICE)),
-                    eq(sessionId),
-                    eq("test-sub-1"),
-                    any(RedisMessageListener.class)
-            );
+            @Test
+            @DisplayName("Session info 를 받아와서 ViewSession 을 구독 해제 하고, 엔티티 정보를 이용해서 세션 객체를 조립, 반환한다.")
+            void joinViewerSessionTest(){
+                long watcherCount = 10L;
+                SessionInfo info = getSessionInfo(
+                        sessionId,
+                        "test-sub-1",
+                        null,
+                        Role.USER
+                );
+
+                // 세션 레지스터에 등록 시뮬.
+                SessionData data = SessionData.builder()
+                        .session(info.session())
+                        .subscription(info.subscription())
+                        .destination(registeredDestination) // 구독 시 저장되었던 경로
+                        .principal(info.principal())
+                        .build();
+                connectionRegistry.register(data);
+
+                // 관련 로직 stub
+                userServiceLogicSet(Objects.requireNonNull(info.user()));
+                watchingSessionLogicSet(UUID.fromString(contentId), watcherCount);
+
+                WatchingSessionChange payload = watchingSession.leaveViewerSession(info);
+
+                // 구독을 진행한다.
+                verify(redisTopicRegistry, times(1)).unregister(
+                        eq(sessionId),
+                        eq("test-sub-1")
+                );
+                validateReturnedObject(payload, watcherCount, info, data,ChangeType.LEAVE);
+            }
+
+            @ParameterizedTest
+            @MethodSource("variableRoleAndLockParam")
+            @DisplayName("시청 세션 입장 시, 인증이나, 인가가 없다면, 리소스 작업 시도를 하지 않고 예외를 반환한다.")
+            void exceptionTestWhenInvalidRole(Role role, boolean isLocked) {
+                Long watcherCount = 21L;
+                SessionInfo info = getSessionInfo(
+                        sessionId,
+                        "test-sub-1",
+                        testDestination(contentId, WATCH_SERVICE),
+                        role,
+                        isLocked
+                );
+
+                // 세션 레지스터에 등록 시뮬.
+                SessionData data = SessionData.builder()
+                        .session(info.session())
+                        .subscription(info.subscription())
+                        .destination(registeredDestination) // 구독 시 저장되었던 경로
+                        .principal(info.principal())
+                        .build();
+                connectionRegistry.register(data);
+
+                watchingSessionLogicSet(UUID.fromString(contentId), watcherCount);
+
+                assertThatThrownBy(() -> watchingSession.leaveViewerSession(info))
+                        .isInstanceOf(EveryOneException.class); // InvalidAuthException
+
+                // 실제 세션 저장부 및 구독은 호출되지 않음.
+                verify(watchingSessionService, times(0)).leaveViewerSession(any());
+                verify(redisTopicRegistry, times(0)).unregister(
+                        eq(sessionId),
+                        eq("test-sub-1")
+                );
+            }
+
+            @ParameterizedTest
+            @MethodSource("variableDestinationParam")
+            @DisplayName("시청 세션 입장 시 지정된 형식의 경로가 아니면 리소스 조회를 하지 않고 예외를 반환한다.")
+            void exceptionTestWithoutAuthentication(String destination){
+                long watcherCount = 43L;
+                SessionInfo info = getSessionInfo(
+                        sessionId,
+                        "test-sub-1",
+                        destination,
+                        Role.USER
+                );
+
+                // 세션 레지스터에 등록 시뮬.
+                SessionData data = SessionData.builder()
+                        .session(info.session())
+                        .subscription(info.subscription())
+                        .destination(registeredDestination) // 구독 시 저장되었던 경로
+                        .principal(info.principal())
+                        .build();
+                connectionRegistry.register(data);
+
+                watchingSessionLogicSet(UUID.fromString(contentId), watcherCount);
+
+                assertThatThrownBy(() -> watchingSession.joinViewerSession(info))
+                        .isInstanceOf(EveryOneException.class); // InvalidAuthException
+
+                // 실제 세션 저장부는 호출되지 않음.
+                verify(watchingSessionService, times(0)).leaveViewerSession(any());
+                verify(redisTopicRegistry, times(0)).unregister(
+                        eq(sessionId),
+                        eq("test-sub-1")
+                );
+            }
+
         }
-
-        @Test
-        @DisplayName("시청 세션 입장 시 지정된 형식의 경로가 아니면 리소스 조회를 하지 않고 예외를 반환한다.")
-        void exceptionTestWithoutAuthentication(){
-            long watcherCount = 43L;
-            SessionInfo info = getSessionInfo(
-                    sessionId,
-                    "test-sub-1",
-                    testDestination(contentId, WATCH_SERVICE),
-                    Role.USER
-            );
-
-            // 테스트용 세션 데이터 레지스터에 저장.
-            SessionData data = info.toData();
-            connectionRegistry.register(data);
-
-            watchingSessionLogicSet(UUID.fromString(contentId), watcherCount);
-
-            assertThatThrownBy(() -> watchingSession.joinViewerSession(info))
-                    .isInstanceOf(EveryOneException.class); // InvalidAuthException
-
-            // 실제 세션 저장부는 호출되지 않음.
-            verify(watchingSessionService, times(0)).joinViewerSession(any());
-            verify(redisTopicRegistry, times(0)).register(
-                    eq(assertionTopicAnswer(contentId, WATCH_SERVICE)),
-                    eq(sessionId),
-                    eq("test-sub-1"),
-                    any(RedisMessageListener.class)
-            );
-        }
-
-
     }
 
 

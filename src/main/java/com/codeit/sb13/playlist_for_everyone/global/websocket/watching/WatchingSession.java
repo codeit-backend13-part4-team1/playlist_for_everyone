@@ -10,6 +10,11 @@ import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watch
 
 public class WatchingSession {
 
+
+    public String topic(SessionInfo info){
+        return null;
+    }
+
     /**
      * 세션 정보를 바탕으로, 동시 시청 채널에 참여(구독) 하고
      * 같은 경로에 대해 현재 채널 정보와, 참여한 시청자 정보 및, 시청중인 컨텐츠 정보를
