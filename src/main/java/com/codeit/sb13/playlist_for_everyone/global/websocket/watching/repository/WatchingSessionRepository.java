@@ -23,7 +23,7 @@ import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.co
 
 @Slf4j
 @Component
-public class WatcherRegistry {
+public class WatchingSessionRepository {
 
     private final Duration TTL = Duration.ofSeconds(TTL_TIMEOUT);
     private final StringRedisTemplate redis;
@@ -45,7 +45,7 @@ public class WatcherRegistry {
         }
     }
 
-    public WatcherRegistry(
+    public WatchingSessionRepository(
             StringRedisTemplate redis,
             @Qualifier("lua-script-register")
             RedisScript<Long> registerScript,

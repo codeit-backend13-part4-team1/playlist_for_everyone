@@ -9,7 +9,7 @@ import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisTopicRegi
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.ConnectionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionData;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSessionMessageListener;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.WatcherRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.WatchingSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.*;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
@@ -23,7 +23,7 @@ import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.co
 public class WatchingSessionServiceImpl implements WatchingSessionService {
 
     private final ConnectionRegistry connectionRegistry;
-    private final WatcherRegistry watcherRegistry;
+    private final WatchingSessionRepository watchingSessionRepository;
     private final RedisTopicRegistry redisTopicRegistry;
     private final UserService userService;
     private final ContentService contentService;
@@ -53,7 +53,7 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
         User user = getUserFromConnection(connection);
 
         // 연결 정보를 기반으로 redis 시청 채널 등록
-        watcherRegistry.register(
+        watchingSessionRepository.register(
                 connection.session(),
                 connection.subscription(),
                 content
@@ -94,7 +94,7 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
         WatchingSessionChange watchingSessionChange = new WatchingSessionChange(
                 ChangeType.JOIN,
                 watchingSessionDto,
-                watcherRegistry.getWatcherCount(content)
+                watchingSessionRepository.getWatcherCount(content)
         );
 
         RedisMessageDto<WatchingSessionChange> redisMessageDto = new RedisMessageDto<>(
@@ -117,10 +117,10 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
         SessionData connection = connectionRegistry.get(sessionId, subscribe);
         User user = getUserFromConnection(connection);
 
-        String content = watcherRegistry.getContent(connection.session(),connection.subscription());
+        String content = watchingSessionRepository.getContent(connection.session(),connection.subscription());
 
 
-        watcherRegistry.unregister(
+        watchingSessionRepository.unregister(
                 connection.session(),
                 connection.subscription()
         );
@@ -160,7 +160,7 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
         WatchingSessionChange watchingSessionChange = new WatchingSessionChange(
                 ChangeType.LEAVE,
                 watchingSessionDto,
-                watcherRegistry.getWatcherCount(content)
+                watchingSessionRepository.getWatcherCount(content)
         );
 
         RedisMessageDto<WatchingSessionChange> redisMessageDto = new RedisMessageDto<>(

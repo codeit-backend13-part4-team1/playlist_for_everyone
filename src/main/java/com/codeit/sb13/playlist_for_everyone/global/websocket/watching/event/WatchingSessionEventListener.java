@@ -1,6 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event;
 
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.WatcherRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.WatchingSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,7 +15,7 @@ import java.util.UUID;
 public class WatchingSessionEventListener {
 
     private final WatchingSessionService watchingSessionService;
-    private final WatcherRegistry watcherRegistry;
+    private final WatchingSessionRepository watchingSessionRepository;
 
     static private final String SUB_PREFIX = "/sub/contents/";
     static private final String CHAT_POSTFIX = "/chat";
@@ -46,7 +46,7 @@ public class WatchingSessionEventListener {
 
     @EventListener
     public void watchRefreshEvent(WatchingSessionRefreshEvent event){
-        watcherRegistry.refresh(event.session());
+        watchingSessionRepository.refresh(event.session());
     }
 
 

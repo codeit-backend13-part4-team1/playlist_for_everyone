@@ -17,9 +17,9 @@ import java.util.Objects;
 
 public class SessionInfo {
     private final String session;
-    @Nullable private final String subscription;
-    @Nullable private Principal principal;
-    @Nullable private String destination;
+    private final String subscription;
+    private Principal principal;
+    private String destination;
 
     public SessionInfo(
             Message<?> message
@@ -27,7 +27,7 @@ public class SessionInfo {
         StompHeaderAccessor accessor =
                 StompHeaderAccessor.wrap(Objects.requireNonNull(message));
 
-        this.session = Objects.requireNonNull(accessor.getSessionId());
+        this.session = accessor.getSessionId();
         this.subscription = accessor.getSubscriptionId();
         this.destination = accessor.getDestination();
         this.principal = accessor.getUser();
@@ -40,18 +40,18 @@ public class SessionInfo {
         StompHeaderAccessor accessor =
                 StompHeaderAccessor.wrap(Objects.requireNonNull(message));
 
-        this.session = Objects.requireNonNull(accessor.getSessionId());
+        this.session = accessor.getSessionId();
         this.subscription = accessor.getSubscriptionId();
         this.destination = accessor.getDestination();
         this.principal = principal;
     }
 
     // getter
-    public String session(){ return session; }
-    public String subscription(){ return subscription; }
-    public String destination(){ return destination; }
-    public Principal principal(){ return principal; }
-    public SecurityUser user(){
+    @Nullable public String session(){ return session; }
+    @Nullable public String subscription(){ return subscription; }
+    @Nullable public String destination(){ return destination; }
+    @Nullable public Principal principal(){ return principal; }
+    @Nullable public SecurityUser user(){
         if (principal instanceof Authentication authentication) {
             return (SecurityUser) authentication.getPrincipal();
         } else
@@ -59,11 +59,11 @@ public class SessionInfo {
     }
 
     // setter
-    public Principal principal(Principal principal){
+    @Nullable public Principal principal(Principal principal){
         if (principal != null) this.principal = principal;
         return this.principal;
     }
-    public String destination(String destination){
+    @Nullable public String destination(String destination){
         if (destination != null) this.destination = destination;
         return this.destination;
     }

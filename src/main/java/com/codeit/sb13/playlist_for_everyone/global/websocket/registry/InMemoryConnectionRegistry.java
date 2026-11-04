@@ -93,7 +93,7 @@ public class InMemoryConnectionRegistry implements ConnectionRegistry {
             connectionList.compute(data, (k,v) -> {
                 // 세션 id 를 기준으로 키맵에서 제거 후, 세션 등록자 삭제.
                 keyMap.remove(k.session());
-                return v;
+                return null;
             });
         } else {
             SessionData sessionKey =
