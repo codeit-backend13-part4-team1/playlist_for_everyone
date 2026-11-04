@@ -30,4 +30,22 @@ class SportsDbContentMapperTest {
         assertThat(data.thumbnailUrl())
                 .isEqualTo("https://example.com/match.jpg");
     }
+
+    @Test
+    void 종목과_리그를_태그로_변환한다() {
+        var event = new SportsDbEventResponse(
+                "441425",
+                "West Ham vs Tottenham",
+                "Soccer",
+                "English Premier League",
+                "2014-2015",
+                "2014-08-16",
+                null
+        );
+
+        var data = new SportsDbContentMapper().fromEvent(event);
+
+        assertThat(data.tags())
+                .containsExactlyInAnyOrder("Soccer", "English Premier League");
+    }
 }
