@@ -33,8 +33,7 @@ import javax.crypto.SecretKey;
 import java.time.*;
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -181,11 +180,13 @@ public class NotificationSecurityIntegrationTest {
     @DisplayName("본인 알림 삭제는 204를 반환하고 목록·전체 개수에 반영되며 다른 사용자의 알림은 유지된다.")
     void deleteNotifications_deletesOwnNotificationWithValidToken() throws Exception {
         UUID notificationId = UUID.randomUUID();
+        UUID remainingNotificationId = UUID.randomUUID();
         UUID otherNotificationId = UUID.randomUUID();
 
         LocalDateTime createdAt = getNotificationTimestamp();
 
         insertNotification(notificationId, receiverId, createdAt);
+        insertNotification(remainingNotificationId, receiverId, createdAt.minusMinutes(1));
         insertNotification(otherNotificationId, otherReceiverId, createdAt);
 
         String accessToken = jwtTokenProvider.createAccessToken(receiverId);
@@ -195,12 +196,6 @@ public class NotificationSecurityIntegrationTest {
                 .andExpect(status().isNoContent())
                 .andExpect(content().string(""));
 
-        Long remainingOwnCount = countNotificationsById(notificationId);
-        Long remainingOtherCount = countNotificationsById(otherNotificationId);
-
-        assertThat(remainingOwnCount).isZero();
-        assertThat(remainingOtherCount).isEqualTo(1L);
-
         mockMvc.perform(get("/api/notifications")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                 .param("limit", "20")
@@ -209,9 +204,15 @@ public class NotificationSecurityIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.data").isArray())
-                .andExpect(jsonPath("$.data").isEmpty())
-                .andExpect(jsonPath("$.totalCount").value(0))
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].id").value(remainingNotificationId.toString()))
+                .andExpect(jsonPath("$.data[0].receiverId").value(receiverId.toString()))
+                .andExpect(jsonPath("$.totalCount").value(1))
                 .andExpect(jsonPath("$.hasNext").value(false));
+
+        assertThat(countNotificationsById(notificationId)).isZero();
+        assertThat(countNotificationsById(remainingNotificationId)).isEqualTo(1L);
+        assertThat(countNotificationsById(otherNotificationId)).isEqualTo(1L);
     }
 
     @Test
