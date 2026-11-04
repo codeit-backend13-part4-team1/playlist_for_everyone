@@ -33,7 +33,7 @@ public class Content extends UpdatedAtEntity {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String description;
 
-    @Column(name = "thumbnail_url", nullable = false, length = 2048)
+    @Column(name = "thumbnail_url", length = 2048)
     private String thumbnailUrl;
 
     @Enumerated(EnumType.STRING)

@@ -84,4 +84,29 @@ class ContentCollectionServiceTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("수집한 콘텐츠에는 제목이 필요합니다.");
     }
+
+    @Test
+    void 썸네일이_없는_경기도_정보와_태그를_저장한다() {
+        var data = new CollectedContentData(
+                ContentType.sport, "West Ham vs Tottenham", "경기 설명",
+                null, ContentSource.THE_SPORTS_DB, "441425",
+                List.of("Soccer", "English Premier League")
+        );
+
+        Content saved = service.save(data);
+        em.flush();
+        em.clear();
+
+        Content found = em.find(Content.class, saved.getId());
+
+        assertThat(found).isNotNull();
+        assertThat(found.getThumbnailUrl()).isNull();
+        assertThat(found.getTitle()).isEqualTo("West Ham vs Tottenham");
+        assertThat(found.getType()).isEqualTo(ContentType.sport);
+        assertThat(found.getProvider()).isEqualTo(ContentSource.THE_SPORTS_DB);
+        assertThat(found.getProviderItemId()).isEqualTo("441425");
+        assertThat(found.getTags())
+                .extracting(ContentTag::getTag)
+                .containsExactlyInAnyOrder("Soccer", "English Premier League");
+    }
 }
