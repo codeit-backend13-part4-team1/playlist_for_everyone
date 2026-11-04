@@ -66,4 +66,32 @@ class SportsDbContentMapperTest {
         assertThat(data.description())
                 .isEqualTo("English Premier League / 2014-2015 / 2014-08-16");
     }
+
+    @Test
+    void 리그와_날짜가_없으면_시즌만_설명으로_사용한다() {
+        var event = new SportsDbEventResponse(
+                "441425", "테스트 경기", "Soccer",
+                null, "2014-2015", "   ", null
+        );
+
+        var data = new SportsDbContentMapper().fromEvent(event);
+
+        assertThat(data.description()).isEqualTo("2014-2015");
+        assertThat(data.tags()).containsExactly("Soccer");
+        assertThat(data.thumbnailUrl()).isNull();
+    }
+
+    @Test
+    void 선택_정보가_모두_없어도_변환할_수_있다() {
+        var event = new SportsDbEventResponse(
+                "441425", "테스트 경기",
+                null, null, null, null, null
+        );
+
+        var data = new SportsDbContentMapper().fromEvent(event);
+
+        assertThat(data.description()).isEmpty();
+        assertThat(data.tags()).isEmpty();
+        assertThat(data.thumbnailUrl()).isNull();
+    }
 }
