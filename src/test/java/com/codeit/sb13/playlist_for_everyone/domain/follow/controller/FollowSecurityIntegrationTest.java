@@ -13,10 +13,15 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.MockMvcBuilderCustomizer;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -63,6 +68,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
                 "spring.docker.compose.enabled=false"
         }
 )
+@Import(FollowSecurityIntegrationTest.CsrfDisabledTestConfig.class)
 @AutoConfigureMockMvc
 @Testcontainers
 // 종료된 컨테이너의 접속 정보를 가진 애플리케이션 컨텍스트가 다른 테스트에 재사용되지 않게 한다.
@@ -1017,5 +1023,24 @@ public class FollowSecurityIntegrationTest {
         tokenParts[2] = replacement + signature.substring(1);
 
         return String.join(".", tokenParts);
+    }
+
+    /**
+     * 이 클래스의 MockMvc 요청에서만 CSRF 검사를 제외한다.
+     * JWT 인증과 소유자 인가는 계속 검증한다.
+     *
+     * TODO(#114): CSRF 적용 후 실제 토큰을 준비하도록 테스트를 변경하고,
+     * 이 설정 클래스와 이를 연결한 @Import를 제거한다.
+     */
+    @TestConfiguration(proxyBeanMethods = false)
+    static class CsrfDisabledTestConfig{
+        @Bean
+        MockMvcBuilderCustomizer disableCsrfForFollowSecurityTests(){
+            return builder -> builder
+                    .defaultRequest(get("/").with(request ->{
+                        CsrfFilter.skipRequest(request);
+                        return request;
+                    }));
+        }
     }
 }
