@@ -4,8 +4,12 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.Sports
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentSource;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
 class SportsDbContentMapperTest {
 
@@ -93,5 +97,20 @@ class SportsDbContentMapperTest {
         assertThat(data.description()).isEmpty();
         assertThat(data.tags()).isEmpty();
         assertThat(data.thumbnailUrl()).isNull();
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"   "})
+    void 외부_경기_ID가_없으면_변환할_수_없다(String id) {
+        var event = new SportsDbEventResponse(
+                id, "테스트 경기", "Soccer",
+                "English Premier League", "2014-2015", "2014-08-16",
+                null
+        );
+
+        assertThatThrownBy(() -> new SportsDbContentMapper().fromEvent(event))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("TheSportsDB 경기 ID가 필요합니다.");
     }
 }
