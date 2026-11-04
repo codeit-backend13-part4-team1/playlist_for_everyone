@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.file.event;
 
+import com.codeit.sb13.playlist_for_everyone.global.exception.file.FileDeleteException;
 import com.codeit.sb13.playlist_for_everyone.global.file.storage.FileStorage;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -8,8 +9,11 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Map;
 import java.util.UUID;
 
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatCode;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -34,6 +38,25 @@ public class FileDeleteEventListenerTest {
         listener.handle(event);
 
         // then
+        verify(fileStorage).delete(key);
+    }
+
+    @Test
+    @DisplayName("S3 파일 삭제 실패 시 예외를 전파하지 않는다")
+    void handle_deleteFailed() {
+        // given
+        String key = "test-key.png";
+        FileDeleteEvent event = new FileDeleteEvent(key);
+
+        doThrow(new FileDeleteException(
+                Map.of("key", key),
+                new RuntimeException("S3 삭제 실패")
+        )).when(fileStorage).delete(key);
+
+        // when & then
+        assertThatCode(() -> listener.handle(event))
+                .doesNotThrowAnyException();
+
         verify(fileStorage).delete(key);
     }
 
