@@ -311,6 +311,64 @@ class CsrfSecurityTest {
         verifyNoInteractions(userService);
     }
 
+    @Test
+    @DisplayName("회원가입 요청에 CSRF 쿠키가 없으면 403을 반환한다")
+    void 회원가입_요청에_CSRF_쿠키가_없으면_거절한다() throws Exception {
+        Cookie csrfCookie = issueCsrfCookie();
+
+        // 발급받은 토큰을 헤더에만 전달한다.
+        // 비교할 CSRF 쿠키가 없으므로 요청을 거절해야 한다.
+        mockMvc.perform(post("/api/users")
+                .header(CSRF_HEADER_NAME, csrfCookie.getValue())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                            "email": "csrf-test@gmail.com",
+                            "name" : "테스트 사용자",
+                            "password": "Password123!"
+                        }
+                        """))
+                .andExpect(status().isForbidden())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.exceptionName")
+                        .value("AccessDeniedException"))
+                .andExpect(jsonPath("$.message")
+                        .value("접근 권한이 없습니다."))
+                .andExpect(jsonPath("$.details").isEmpty());
+
+        verifyNoInteractions(userService);
+    }
+
+    @Test
+    @DisplayName("회원가입 요청의 CSRF 쿠키와 헤더가 다르면 403을 반환한다.")
+    void 회원가입_요청의_CSRF_쿠키와_헤더가_다르면_거절한다() throws Exception {
+        Cookie csrfCookie = issueCsrfCookie();
+
+        // 쿠키는 정상적으로 전달하되, 헤더에는 다른 값을 넣는다.
+        String differentToken = csrfCookie.getValue() + "-changed";
+
+        mockMvc.perform(post("/api/users")
+                        .cookie(csrfCookie)
+                        .header(CSRF_HEADER_NAME, differentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                    "email": "csrf-test@gmail.com",
+                                    "name" : "테스트 사용자",
+                                    "password": "Password123!"
+                                }
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.exceptionName")
+                        .value("AccessDeniedException"))
+                .andExpect(jsonPath("$.message")
+                        .value("접근 권한이 없습니다."))
+                .andExpect(jsonPath("$.details").isEmpty());
+
+        verifyNoInteractions(userService);
+    }
+
 
     /**
      * 실제 CSRF 토큰 발급 API를 호출하고 응답 쿠키를 가져온다.
