@@ -26,7 +26,7 @@ public class FileDeleteEventListenerTest {
     @DisplayName("파일 삭제 이벤트를 처리하면 S3 파일이 삭제된다.")
     void handle_success() {
         // given
-        String key = UUID.randomUUID().toString();
+        String key = "test.png";
 
         FileDeleteEvent event = new FileDeleteEvent(key);
 
