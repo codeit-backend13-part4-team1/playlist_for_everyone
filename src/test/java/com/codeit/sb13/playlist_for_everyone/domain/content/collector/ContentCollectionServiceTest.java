@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.collector;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.CollectedContentData;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.SportsDbEventResponse;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentSource;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentTag;
@@ -103,6 +104,39 @@ class ContentCollectionServiceTest {
         assertThat(found.getThumbnailUrl()).isNull();
         assertThat(found.getTitle()).isEqualTo("West Ham vs Tottenham");
         assertThat(found.getType()).isEqualTo(ContentType.sport);
+        assertThat(found.getProvider()).isEqualTo(ContentSource.THE_SPORTS_DB);
+        assertThat(found.getProviderItemId()).isEqualTo("441425");
+        assertThat(found.getTags())
+                .extracting(ContentTag::getTag)
+                .containsExactlyInAnyOrder("Soccer", "English Premier League");
+    }
+
+    @Test
+    void 스포츠_응답을_변환해서_콘텐츠와_태그를_저장한다() {
+        var event = new SportsDbEventResponse(
+                "441425",
+                "West Ham vs Tottenham",
+                "Soccer",
+                "English Premier League",
+                "2014-2015",
+                "2014-08-16",
+                null
+        );
+
+        var data = new SportsDbContentMapper().fromEvent(event);
+
+        Content saved = service.save(data);
+        em.flush();
+        em.clear();
+
+        Content found = em.find(Content.class, saved.getId());
+
+        assertThat(found).isNotNull();
+        assertThat(found.getType()).isEqualTo(ContentType.sport);
+        assertThat(found.getTitle()).isEqualTo("West Ham vs Tottenham");
+        assertThat(found.getDescription())
+                .isEqualTo("English Premier League / 2014-2015 / 2014-08-16");
+        assertThat(found.getThumbnailUrl()).isNull();
         assertThat(found.getProvider()).isEqualTo(ContentSource.THE_SPORTS_DB);
         assertThat(found.getProviderItemId()).isEqualTo("441425");
         assertThat(found.getTags())
