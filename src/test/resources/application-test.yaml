@@ -41,6 +41,10 @@ everyone:
     # 로컬 환경변수와 관계없이 테스트에서는 고정된 기간을 사용한다.
     refresh-token-validity: 7d
 
+  admin:
+    # 일반 통합 테스트에서 초기 관리자 계정을 생성하지 않는다.
+    enabled: false
+
 
   tmdb:
     base-url: https://tmdb.test/3

@@ -55,6 +55,16 @@ everyone:
     # 기본값은 7일이며 환경 변수로 변경할 수 있다.
     refresh-token-validity: ${JWT_REFRESH_TOKEN_VALIDITY:7d}
     refresh-cookie-secure: ${JWT_REFRESH_COOKIE_SECURE:true}
+
+  admin:
+    # 명시적으로 활성화한 환경에서만 관리자 초기화를 실행한다.
+    enabled: ${EVERYONE_ADMIN_ENABLED:false}
+    # 비활성화 상태에서는 계정 정보를 입력하지 않아도 된다.
+    # 활성화했는데 값이 비어 있으면 AdminInitializer가 시작을 중단한다.
+    email: ${EVERYONE_ADMIN_EMAIL:}
+    name: ${EVERYONE_ADMIN_NAME:}
+    password: ${EVERYONE_ADMIN_PASSWORD:}
+
   tmdb:
     base-url: https://api.themoviedb.org/3
     access-token: ${EVERYONE_TMDB_ACCESS_TOKEN}
