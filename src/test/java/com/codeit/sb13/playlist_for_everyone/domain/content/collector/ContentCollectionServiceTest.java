@@ -143,4 +143,30 @@ class ContentCollectionServiceTest {
                 .extracting(ContentTag::getTag)
                 .containsExactlyInAnyOrder("Soccer", "English Premier League");
     }
+
+    @Test
+    void 제목이_100자를_넘으면_저장할_수_없다() {
+        var data = new CollectedContentData(
+                ContentType.movie, "가".repeat(101), "영화 설명",
+                "https://example.com/poster.jpg", ContentSource.TMDB, "550",
+                List.of("액션")
+        );
+
+        assertThatThrownBy(() -> service.save(data))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("수집한 콘텐츠 제목은 100자 이하여야 합니다.");
+    }
+
+    @Test
+    void 태그가_50자를_넘으면_저장할_수_없다() {
+        var data = new CollectedContentData(
+                ContentType.movie, "테스트 영화", "영화 설명",
+                "https://example.com/poster.jpg", ContentSource.TMDB, "550",
+                List.of("가".repeat(51))
+        );
+
+        assertThatThrownBy(() -> service.save(data))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("수집한 콘텐츠 태그는 50자 이하여야 합니다.");
+    }
 }
