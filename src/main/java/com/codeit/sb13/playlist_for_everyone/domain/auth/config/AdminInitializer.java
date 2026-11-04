@@ -18,7 +18,15 @@ public class AdminInitializer implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
-        // RED : 테스트로 실행 조건을 정의한 뒤 구현한다.
+        if (!adminProperties.enabled()) {
+            return;
+        }
+
+        adminInitializationService.initialize(
+                adminProperties.email(),
+                adminProperties.name(),
+                adminProperties.password()
+        );
     }
 }
 
