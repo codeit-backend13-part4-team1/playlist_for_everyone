@@ -34,6 +34,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -858,6 +859,75 @@ public class FollowSecurityIntegrationTest {
                 .andExpect(jsonPath("$.details").isMap())
                 .andExpect(jsonPath("$.details.followeeId").isArray())
                 .andExpect(jsonPath("$.details.followeeId").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("유효한 JWT로 같은 대상을 동시에 팔로우하면 관계 한 건만 저장하고 201과 200 응답에 동일한 관계 ID를 반환한다.")
+    void follow_returnsCreatedAndOkForConcurrentRequests() throws Exception {
+        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+
+        String requestBody = """
+                {
+                    "followeeId": "%s"
+                }
+                """.formatted(followeeId);
+
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+
+        Callable<ResultActions> request = () ->{
+            ready.countDown();
+
+            if (!start.await(10, TimeUnit.SECONDS)){
+                throw new IllegalStateException("동시 요청 시작 대기 시간 초과");
+            }
+            return mockMvc.perform(post("/api/follows")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(requestBody));
+        };
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        try {
+            Future<ResultActions> firstFuture = executor.submit(request);
+            Future<ResultActions> secondFuture = executor.submit(request);
+
+            assertThat(ready.await(10, TimeUnit.SECONDS))
+                    .as("두 요청이 실행 준비를 마쳐야 한다.")
+                    .isTrue();
+
+            start.countDown();
+            ResultActions first = firstFuture.get(20, TimeUnit.SECONDS);
+            ResultActions second = secondFuture.get(20, TimeUnit.SECONDS);
+
+            int firstStatus = first.andReturn().getResponse().getStatus();
+            int secondStatus = second.andReturn().getResponse().getStatus();
+            assertThat(List.of(firstStatus, secondStatus))
+                    .containsExactlyInAnyOrder(201, 200);
+
+            List<UUID> savedFollowIds = jdbcTemplate.queryForList("""
+                        SELECT id
+                        FROM follows
+                        WHERE follower_id =?
+                            AND followee_id =?
+                    """, UUID.class, followerId, followeeId);
+
+            assertThat(savedFollowIds).hasSize(1);
+            String savedFollowId = savedFollowIds.get(0).toString();
+
+            first.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                    .andExpect(jsonPath("$.id").value(savedFollowId));
+
+            second.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                    .andExpect(jsonPath("$.id").value(savedFollowId));
+        } finally {
+            start.countDown();
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(10, TimeUnit.SECONDS))
+                    .as("테스트 작업 스레드가 종료되어야 한다.")
+                    .isTrue();
+        }
     }
 
     private void insertUser(UUID userId, String name){
