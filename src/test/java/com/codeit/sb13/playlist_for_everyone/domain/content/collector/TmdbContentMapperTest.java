@@ -93,4 +93,30 @@ class TmdbContentMapperTest {
 
         assertThat(data.description()).isEmpty();
     }
+
+    @Test
+    void 영화의_애니메이션과_SF_장르도_태그로_변환한다() {
+        var movie = new TmdbMovieResponse(
+                550L, "테스트 영화", "영화 설명",
+                "/poster.jpg", List.of(16, 878)
+        );
+
+        var data = new TmdbContentMapper().fromMovie(movie);
+
+        assertThat(data.tags())
+                .containsExactlyInAnyOrder("애니메이션", "SF");
+    }
+
+    @Test
+    void TV의_애니메이션과_SF판타지_장르도_태그로_변환한다() {
+        var tv = new TmdbTvResponse(
+                550L, "테스트 시리즈", "시리즈 설명",
+                "/tv.jpg", List.of(16, 10765)
+        );
+
+        var data = new TmdbContentMapper().fromTv(tv);
+
+        assertThat(data.tags())
+                .containsExactlyInAnyOrder("애니메이션", "SF·판타지");
+    }
 }
