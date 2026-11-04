@@ -11,7 +11,6 @@ import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watch
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionEventListener;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionJoinEvent;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionLeaveEvent;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -129,22 +128,44 @@ public class WatchingSessionEventListenerTest {
         };
     }
 
-
-
-    void setTestingLogic(
-            String destination,
+    void setTestingJoinLogic(
+            String contentId,
+            String serviceType,
             boolean setTopic,
             boolean setWatchingSessionChange
     ){
         String dest = null;
         WatchingSessionChange payloadJoin = null;
-        WatchingSessionChange payloadLeave = null;
         if (setWatchingSessionChange) {
             payloadJoin = new WatchingSessionChange(
                     ChangeType.JOIN,
                     null,
                     0L
             );
+        }
+
+
+        if(setTopic) dest = assertionTopicAnswer(contentId,serviceType);
+
+        if(!setTopic || !setWatchingSessionChange) return;
+        // topic 반환 셋.
+        given(watchingSession.topic(any(SessionInfo.class)))
+                .willReturn(dest);
+        // 채널 입장 셋.
+        given(watchingSession.joinViewerSession(any(SessionInfo.class)))
+                .willReturn(payloadJoin);
+    }
+
+
+    void setTestingLeaveLogic(
+            String contentId,
+            String serviceType,
+            boolean setTopic,
+            boolean setWatchingSessionChange
+    ){
+        String dest = null;
+        WatchingSessionChange payloadLeave = null;
+        if (setWatchingSessionChange) {
             payloadLeave = new WatchingSessionChange(
                     ChangeType.LEAVE,
                     null,
@@ -152,14 +173,12 @@ public class WatchingSessionEventListenerTest {
             );
         }
 
-        if(setTopic) dest = destination;
+        if(setTopic) dest = assertionTopicAnswer(contentId,serviceType);
 
+        if(!setTopic || !setWatchingSessionChange) return;
         // topic 반환 셋.
         given(watchingSession.topic(any(SessionInfo.class)))
                 .willReturn(dest);
-        // 채널 입장 셋.
-        given(watchingSession.joinViewerSession(any(SessionInfo.class)))
-                .willReturn(payloadJoin);
         // 채널 퇴장 셋
         given(watchingSession.leaveViewerSession(any(SessionInfo.class)))
                 .willReturn(payloadLeave);
@@ -191,7 +210,7 @@ public class WatchingSessionEventListenerTest {
                         Role.USER
                 );
 
-                setTestingLogic(destination, true, true);
+                setTestingJoinLogic(contentId, WATCH_SERVICE, true, true);
 
                 // 서비스 정보를 바탕으로 메세지를 전송하는 부분 검증.
                 given(template.convertAndSend(
@@ -215,7 +234,7 @@ public class WatchingSessionEventListenerTest {
 
             @Test
             @DisplayName("WatcherSession 에서 topic 을 null 로 반환하면, 메세지를 발신하지 않음.")
-            void testWithNullReturned(){
+            void testWithNullTopicReturned(){
                 String contentId = UUID.randomUUID().toString();
                 String sessionId = "test-session-Id";
                 String destination = testDestination(contentId, WATCH_SERVICE);
@@ -226,7 +245,7 @@ public class WatchingSessionEventListenerTest {
                         Role.USER
                 );
 
-                setTestingLogic(destination, false, true);
+                setTestingJoinLogic(contentId,WATCH_SERVICE, false, true);
 
                 eventListener.watchJoinEvent(new WatchingSessionJoinEvent(info));
 
@@ -237,7 +256,7 @@ public class WatchingSessionEventListenerTest {
 
             @Test
             @DisplayName("WatcherSession 에서 data 을 null 로 반환하면, 메세지를 발신하지 않음.")
-            void testWithNullReturned(){
+            void testWithNullDataReturned(){
                 String contentId = UUID.randomUUID().toString();
                 String sessionId = "test-session-Id";
                 String destination = testDestination(contentId, WATCH_SERVICE);
@@ -248,7 +267,7 @@ public class WatchingSessionEventListenerTest {
                         Role.USER
                 );
 
-                setTestingLogic(destination, true, false);
+                setTestingJoinLogic(contentId,WATCH_SERVICE, true, false);
 
                 // 예외는 이벤트 리스너 단 에서 잡으므로, 예외는 발생하지 않음.
                 eventListener.watchJoinEvent(new WatchingSessionJoinEvent(info));
@@ -276,7 +295,7 @@ public class WatchingSessionEventListenerTest {
                         Role.USER
                 );
 
-                setTestingLogic(destination, true, true);
+                setTestingLeaveLogic(contentId,WATCH_SERVICE, true, true);
 
                 // 서비스 정보를 바탕으로 메세지를 전송하는 부분 검증.
                 given(template.convertAndSend(
@@ -299,7 +318,7 @@ public class WatchingSessionEventListenerTest {
 
             @Test
             @DisplayName("WatcherSession 에서 topic 을 null 로 반환하면, 메세지를 발신하지 않음.")
-            void testWithNullReturned(){
+            void testWithTopicNullReturned(){
                 String contentId = UUID.randomUUID().toString();
                 String sessionId = "test-session-Id";
                 String destination = testDestination(contentId, WATCH_SERVICE);
@@ -310,7 +329,7 @@ public class WatchingSessionEventListenerTest {
                         Role.USER
                 );
 
-                setTestingLogic(destination, false, true);
+                setTestingLeaveLogic(contentId,CHAT_SERVICE, false, true);
 
                 eventListener.watchLeaveEvent(new WatchingSessionLeaveEvent(info));
 
@@ -321,7 +340,7 @@ public class WatchingSessionEventListenerTest {
 
             @Test
             @DisplayName("WatcherSession 에서 data 을 null 로 반환하면, 메세지를 발신하지 않음.")
-            void testWithNullReturned(){
+            void testWithNullDataReturned(){
                 String contentId = UUID.randomUUID().toString();
                 String sessionId = "test-session-Id";
                 String destination = testDestination(contentId, WATCH_SERVICE);
@@ -332,7 +351,7 @@ public class WatchingSessionEventListenerTest {
                         Role.USER
                 );
 
-                setTestingLogic(destination, true, false);
+                setTestingLeaveLogic(contentId,CHAT_SERVICE, true, false);
 
                 // 예외는 이벤트 리스너 단 에서 잡으므로, 예외는 발생하지 않음.
                 eventListener.watchLeaveEvent(new WatchingSessionLeaveEvent(info));

@@ -4,10 +4,9 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.watch.service;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.global.exception.EveryOneException;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionData;
+import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageListener;
+import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisTopicRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.ChangeType;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.WatchingSessionChange;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.WatchingSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionServiceImpl;
@@ -21,7 +20,6 @@ import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 
-import java.util.Objects;
 import java.util.UUID;
 
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
@@ -41,6 +39,8 @@ public class WatchingSessionServiceTest {
 
     WatchingSessionService service;
     @Mock WatchingSessionRepository repository;
+    @Mock
+    RedisTopicRegistry redisTopicRegistry;
 
     /**
      * 테스트를 위한 SessionInfo 제작 매서드
@@ -129,7 +129,7 @@ public class WatchingSessionServiceTest {
     }
 
     @Test
-    @DisplayName("세션 정보를 받아서, 동시 시청 세션 Redis 구독 등록 후 topic 을 반환한다.")
+    @DisplayName("세션 정보를 받아서, redis 메세지를 전송하기 위한 topic 을 반환한다.")
     void watchTopicTest() {
         String contentId = UUID.randomUUID().toString();
         String sessionId = "topic-test-session";
@@ -183,7 +183,7 @@ public class WatchingSessionServiceTest {
         class Register{
 
             @Test
-            @DisplayName("세션 정보 - 컨텐츠ID 쌍을 기반으로, ViewerSession 을 저장할 수 있다.")
+            @DisplayName("세션 정보 - 컨텐츠ID 쌍을 기반으로, ViewerSession 을 저장할 수 있다. 이후, 메세지 전송 채널을 구독한다.")
             void registerSessionInfoPerContentTest(){
                 SessionInfo info = getSessionInfo(
                         sessionId,
@@ -195,6 +195,14 @@ public class WatchingSessionServiceTest {
                 service.joinViewerSession(info);
 
                 verify(repository,times(1)).register(any(),any(),any());
+
+                // 구독을 진행한다.
+                verify(redisTopicRegistry, times(1)).register(
+                        eq(assertionTopicAnswer(contentId, WATCH_SERVICE)),
+                        eq(sessionId),
+                        eq("test-sub-1"),
+                        any(RedisMessageListener.class)
+                );
             }
 
             @Test
@@ -210,6 +218,12 @@ public class WatchingSessionServiceTest {
                 assertThatThrownBy(() -> service.joinViewerSession(info))
                         .isInstanceOf(EveryOneException.class); // such as InvalidAuthEvent
                 verify(repository,times(0)).register(any(),any(),any());
+                verify(redisTopicRegistry, times(0)).register(
+                        eq(assertionTopicAnswer(contentId, WATCH_SERVICE)),
+                        eq(sessionId),
+                        eq("test-sub-1"),
+                        any(RedisMessageListener.class)
+                );
             }
 
             @Test
@@ -226,6 +240,12 @@ public class WatchingSessionServiceTest {
                 assertThatThrownBy(() -> service.joinViewerSession(info))
                         .isInstanceOf(EveryOneException.class); // such as UserLockedException
                 verify(repository,times(0)).register(any(),any(),any());
+                verify(redisTopicRegistry, times(0)).register(
+                        eq(assertionTopicAnswer(contentId, WATCH_SERVICE)),
+                        eq(sessionId),
+                        eq("test-sub-1"),
+                        any(RedisMessageListener.class)
+                );
             }
 
             @Test
@@ -241,6 +261,12 @@ public class WatchingSessionServiceTest {
                 assertThatThrownBy(() -> service.joinViewerSession(info))
                         .isInstanceOf(EveryOneException.class); // such as DestinationNotMatchedException
                 verify(repository,times(0)).register(any(),any(),any());
+                verify(redisTopicRegistry, times(0)).register(
+                        eq(assertionTopicAnswer(contentId, WATCH_SERVICE)),
+                        eq(sessionId),
+                        eq("test-sub-1"),
+                        any(RedisMessageListener.class)
+                );
             }
         }
 
@@ -260,6 +286,11 @@ public class WatchingSessionServiceTest {
                 service.leaveViewerSession(info);
 
                 verify(repository,times(1)).unregister(any(),any());
+                // 구독을 진행한다.
+                verify(redisTopicRegistry, times(1)).unregister(
+                        eq(sessionId),
+                        eq("test-sub-1")
+                );
             }
 
             @Test
@@ -275,6 +306,10 @@ public class WatchingSessionServiceTest {
                 assertThatThrownBy(() -> service.leaveViewerSession(info))
                         .isInstanceOf(EveryOneException.class); // such as InvalidAuthEvent
                 verify(repository,times(0)).unregister(any(),any());
+                verify(redisTopicRegistry, times(0)).unregister(
+                        eq(sessionId),
+                        eq("test-sub-1")
+                );
             }
 
             @Test
@@ -291,6 +326,10 @@ public class WatchingSessionServiceTest {
                 assertThatThrownBy(() -> service.leaveViewerSession(info))
                         .isInstanceOf(EveryOneException.class); // such as UserLockedException
                 verify(repository,times(0)).unregister(any(),any());
+                verify(redisTopicRegistry, times(0)).unregister(
+                        eq(sessionId),
+                        eq("test-sub-1")
+                );
             }
 
             @Test
@@ -306,6 +345,10 @@ public class WatchingSessionServiceTest {
                 assertThatThrownBy(() -> service.leaveViewerSession(info))
                         .isInstanceOf(EveryOneException.class); // such as DestinationNotMatchedException
                 verify(repository,times(0)).unregister(any(),any());
+                verify(redisTopicRegistry, times(0)).unregister(
+                        eq(sessionId),
+                        eq("test-sub-1")
+                );
             }
         }
     }

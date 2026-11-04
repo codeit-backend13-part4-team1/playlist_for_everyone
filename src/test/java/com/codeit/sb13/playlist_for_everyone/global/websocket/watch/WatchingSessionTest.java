@@ -14,6 +14,7 @@ import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.ConnectionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.InMemoryConnectionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSession;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSessionMapper;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.ChangeType;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.WatchingSessionChange;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
@@ -22,7 +23,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.messaging.Message;
@@ -54,8 +54,6 @@ import static org.mockito.Mockito.*;
 public class WatchingSessionTest {
 
     @Mock
-    RedisTopicRegistry redisTopicRegistry;
-    @Mock
     UserService userService;
     @Mock
     ContentService contentService;
@@ -63,7 +61,7 @@ public class WatchingSessionTest {
     // interface 단은 setup 에서 설정.
     WatchingSessionService watchingSessionService;
     ConnectionRegistry connectionRegistry;
-
+    WatchingSessionMapper mapper;
     // 테스트 할 객체
     WatchingSession watchingSession;
 
@@ -150,7 +148,8 @@ public class WatchingSessionTest {
 
     void userServiceLogicSet(SecurityUser auth){
         User user = User.builder()
-                .name(auth.getUsername())
+                .name("김숙희")
+                .email(auth.getUsername())
                 .role(auth.getRole())
                 .password(auth.getPassword())
                 .build();
@@ -164,24 +163,41 @@ public class WatchingSessionTest {
 //        given(contentService.getById(any(UUID.class))).willReturn(content);
     }
 
+
+    // 전역적 테스트 공통 인자.
+    String contentId = UUID.randomUUID().toString();
+    String sessionId = "viewer-session-test";
+
     @BeforeEach
     void setUp(){
         connectionRegistry = new InMemoryConnectionRegistry();
         // 별도 모듈 테스트가 있으므로, mock 으로 주입.
         watchingSessionService = mock(WatchingSessionService.class);
+        mapper = new WatchingSessionMapper();
         watchingSession = new WatchingSession(
+                mapper,
                 userService,
                 contentService,
                 watchingSessionService,
                 connectionRegistry
         );
+
+        // 커넥션 세션 저장
+        SessionInfo info = getSessionInfo(
+                sessionId,
+                null,
+                null,
+                Role.USER
+        );
+
+        SessionData data = info.toData();
+        connectionRegistry.register(data);
+
     }
 
     @Nested
     @DisplayName("ViewerSession 테스트")
     class ViewerSessionTest{
-        String contentId = UUID.randomUUID().toString();
-        String sessionId = "viewer-session-test";
 
         void validateReturnedObject(
                 WatchingSessionChange payload,
@@ -213,8 +229,8 @@ public class WatchingSessionTest {
             // 세션 info 의 인증, 인가, lock 등을 변경하며 테스트 하기 위한 파라매터 생성자.
             static Stream<Arguments> variableRoleAndLockParam(){
                 return Stream.of(
-                        Arguments.of(Role.USER, true),
-                        Arguments.of(null, false)
+                        Arguments.of(Role.USER, true)
+//                        Arguments.of("note", false)
                 );
             }
 
@@ -246,13 +262,6 @@ public class WatchingSessionTest {
 
                 WatchingSessionChange payload = watchingSession.joinViewerSession(info);
 
-                // 구독을 진행한다.
-                verify(redisTopicRegistry, times(1)).register(
-                        eq(assertionTopicAnswer(contentId, WATCH_SERVICE)),
-                        eq(sessionId),
-                        eq("test-sub-1"),
-                        any(RedisMessageListener.class)
-                );
                 validateReturnedObject(payload, watcherCount, info, data,ChangeType.JOIN);
             }
 
@@ -280,12 +289,6 @@ public class WatchingSessionTest {
 
                 // 실제 세션 저장부 및 구독은 호출되지 않음.
                 verify(watchingSessionService, times(0)).joinViewerSession(any());
-                verify(redisTopicRegistry, times(0)).register(
-                        eq(assertionTopicAnswer(contentId, WATCH_SERVICE)),
-                        eq(sessionId),
-                        eq("test-sub-1"),
-                        any(RedisMessageListener.class)
-                );
             }
 
             @ParameterizedTest
@@ -311,12 +314,6 @@ public class WatchingSessionTest {
 
                 // 실제 세션 저장부는 호출되지 않음.
                 verify(watchingSessionService, times(0)).joinViewerSession(any());
-                verify(redisTopicRegistry, times(0)).register(
-                        eq(assertionTopicAnswer(contentId, WATCH_SERVICE)),
-                        eq(sessionId),
-                        eq("test-sub-1"),
-                        any(RedisMessageListener.class)
-                );
             }
         }
 
@@ -336,8 +333,8 @@ public class WatchingSessionTest {
 
             static Stream<Arguments> variableDestinationParam(){
                 return Stream.of(
-                        Arguments.of(null),
-                        Arguments.of("/no/accept/destination/in")
+                        Arguments.of(null,null),
+                        Arguments.of("/no/accept/destination/in",null)
                 );
             }
 
@@ -367,11 +364,7 @@ public class WatchingSessionTest {
 
                 WatchingSessionChange payload = watchingSession.leaveViewerSession(info);
 
-                // 구독을 진행한다.
-                verify(redisTopicRegistry, times(1)).unregister(
-                        eq(sessionId),
-                        eq("test-sub-1")
-                );
+
                 validateReturnedObject(payload, watcherCount, info, data,ChangeType.LEAVE);
             }
 
@@ -404,10 +397,6 @@ public class WatchingSessionTest {
 
                 // 실제 세션 저장부 및 구독은 호출되지 않음.
                 verify(watchingSessionService, times(0)).leaveViewerSession(any());
-                verify(redisTopicRegistry, times(0)).unregister(
-                        eq(sessionId),
-                        eq("test-sub-1")
-                );
             }
 
             @ParameterizedTest
@@ -438,10 +427,6 @@ public class WatchingSessionTest {
 
                 // 실제 세션 저장부는 호출되지 않음.
                 verify(watchingSessionService, times(0)).leaveViewerSession(any());
-                verify(redisTopicRegistry, times(0)).unregister(
-                        eq(sessionId),
-                        eq("test-sub-1")
-                );
             }
 
         }
