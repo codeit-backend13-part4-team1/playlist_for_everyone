@@ -35,7 +35,7 @@ public enum ApiErrorCode {
 
     //PLAYLIST P
     PLAYLIST_NOT_FOUND("P_001", HttpStatus.NOT_FOUND, "플레이리스트를 찾을 수 없습니다."),
-    PLAYLIST_FORBIDDEN("P_002", HttpStatus.FORBIDDEN, "플레이리스트 소유자만 수정하거나 삭제할 수 있습니다."),
+    // P_002는 사용하지 않음 (소유자 검사를 PlaylistGuard로 통일하며 제거)
     PLAYLIST_CONTENT_DUPLICATED("P_003", HttpStatus.BAD_REQUEST, "이미 플레이리스트에 담긴 콘텐츠입니다."),
     PLAYLIST_CONTENT_NOT_FOUND("P_004", HttpStatus.BAD_REQUEST, "플레이리스트에 담기지 않은 콘텐츠입니다."),
     PLAYLIST_SUBSCRIBE_OWN("P_005", HttpStatus.BAD_REQUEST, "본인의 플레이리스트는 구독할 수 없습니다."),
