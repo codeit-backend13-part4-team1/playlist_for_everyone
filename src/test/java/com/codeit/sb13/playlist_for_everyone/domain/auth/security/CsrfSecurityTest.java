@@ -22,23 +22,30 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
 
 import static org.mockito.Mockito.verify;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 
 @WebMvcTest(controllers = {
         AuthController.class,
@@ -49,7 +56,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import({
         SecurityConfig.class,
         MDCLoggingInterceptor.class,
-        GlobalExceptionHandler.class
+        GlobalExceptionHandler.class,
+        CsrfSecurityTest.CsrfMethodTestController.class
 })
 @DisplayName("CSRF 토큰 발급 API 보안 연결")
 class CsrfSecurityTest {
@@ -65,6 +73,8 @@ class CsrfSecurityTest {
     private static final String OLD_REFRESH_TOKEN = "old-refresh-token";
     private static final String NEW_REFRESH_TOKEN = "new-refresh-token";
     private static final String NEW_ACCESS_TOKEN = "new-access-token";
+
+    private static final String CSRF_METHOD_TEST_URL = "/test/csrf-method";
 
     @Autowired
     private MockMvc mockMvc;
@@ -369,6 +379,64 @@ class CsrfSecurityTest {
         verifyNoInteractions(userService);
     }
 
+    @ParameterizedTest(name = "{0}: CSRF 토큰이 없으면 403")
+    @ValueSource(strings = {"POST", "PUT", "PATCH", "DELETE"})
+    @DisplayName("상태 변경 메서드는 CSRF 토큰이 없으면 거절한다.")
+    void 상태_변경_메서드는_CSRF_토큰이_필요하다(String method) throws Exception {
+        // 인증된 사용자라도 CSRF 쿠키와 헤더가 없으면 차단해야 한다.
+
+        mockMvc.perform(request(HttpMethod.valueOf(method), CSRF_METHOD_TEST_URL)
+                        .with(user("csrf-test-user").roles("USER")))
+                .andExpect(status().isForbidden())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.exceptionName")
+                        .value("AccessDeniedException"))
+                .andExpect(jsonPath("$.message")
+                        .value("접근 권한이 없습니다."));
+
+    }
+
+    @ParameterizedTest(name = "{0}: 정상 CSRF 쿠키와 헤더가 있으면 204")
+    @ValueSource(strings = {"POST", "PUT", "PATCH", "DELETE"})
+    @DisplayName("상태 변경 메서드는 정상 CSRF 토큰이 있으면 통과한다")
+    void 상태_변경_메서드는_정상_CSRF_토큰으로_통과한다(String method)
+            throws Exception {
+        Cookie csrfCookie = issueCsrfCookie();
+
+        // 서버가 발급한 실제 쿠키와 같은 값을 헤더에 전달한다.
+        mockMvc.perform(request(
+                        HttpMethod.valueOf(method),
+                        CSRF_METHOD_TEST_URL
+                )
+                        .with(user("csrf-test-user").roles("USER"))
+                        .cookie(csrfCookie)
+                        .header(CSRF_HEADER_NAME, csrfCookie.getValue()))
+                .andExpect(status().isNoContent())
+                // 보안 필터를 통과해 테스트 컨트롤러까지 도달했는지 확인한다.
+                .andExpect(handler().handlerType(CsrfMethodTestController.class))
+                .andExpect(handler().methodName("handle"));
+    }
+
+    @ParameterizedTest(name = "{0}: CSRF 토큰 없이도 204")
+    @ValueSource(strings = {"GET", "HEAD", "OPTIONS"})
+    @DisplayName("GET HEAD OPTIONS는 CSRF 토큰 없이 통과한다")
+    void 안전한_메서드는_CSRF_토큰을_요구하지_않는다(String method)
+            throws Exception {
+
+        // CSRF 쿠키와 헤더를 모두 생략한다.
+        // CSRF 검사 제외와 로그인 필요 여부는 별개의 정책이다.
+        mockMvc.perform(request(
+                        HttpMethod.valueOf(method),
+                        CSRF_METHOD_TEST_URL
+                )
+                        .with(user("csrf-test-user").roles("USER")))
+                .andExpect(status().isNoContent())
+                .andExpect(handler().handlerType(CsrfMethodTestController.class))
+                .andExpect(handler().methodName("handle"));
+    }
+
+
+
 
     /**
      * 실제 CSRF 토큰 발급 API를 호출하고 응답 쿠키를 가져온다.
@@ -413,6 +481,26 @@ class CsrfSecurityTest {
         given(authService.reissue(OLD_REFRESH_TOKEN))
                 .willReturn(result);
     }
+
+    // 테스트에서만 사용하는 컨트롤러이다.
+    // 업무 로직 없이 응답하여 CSRF 필터의 통과 여부만 확인 한다.
+    @RestController
+    static class CsrfMethodTestController {
+        @RequestMapping(path = CSRF_METHOD_TEST_URL,
+        method = {
+                RequestMethod.GET,
+                RequestMethod.HEAD,
+                RequestMethod.OPTIONS,
+                RequestMethod.POST,
+                RequestMethod.PUT,
+                RequestMethod.PATCH,
+                RequestMethod.DELETE
+        })
+        public ResponseEntity<Void> handle() {
+            return ResponseEntity.noContent().build();
+        }
+    }
+
 
 
 }
