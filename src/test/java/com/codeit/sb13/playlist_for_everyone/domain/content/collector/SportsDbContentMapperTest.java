@@ -128,4 +128,19 @@ class SportsDbContentMapperTest {
 
         assertThat(data.thumbnailUrl()).isNull();
     }
+
+    @Test
+    void 썸네일_주소가_있으면_그대로_유지한다() {
+        String thumbnailUrl = "https://example.com/image.jpg";
+
+        var event = new SportsDbEventResponse(
+                "441425", "테스트 경기", "Soccer",
+                "English Premier League", "2014-2015", "2014-08-16",
+                thumbnailUrl
+        );
+
+        var data = new SportsDbContentMapper().fromEvent(event);
+
+        assertThat(data.thumbnailUrl()).isEqualTo(thumbnailUrl);
+    }
 }

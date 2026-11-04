@@ -26,11 +26,17 @@ public class SportsDbContentMapper {
                 .map(String::trim)
                 .collect(Collectors.joining(" / "));
 
+        String thumbnailUrl = event.thumbnailUrl();
+
+        if (thumbnailUrl == null || thumbnailUrl.isBlank()) {
+            thumbnailUrl = null;
+        }
+
         return new CollectedContentData(
                 ContentType.sport,
                 event.title(),
                 description,
-                event.thumbnailUrl(),
+                thumbnailUrl,
                 ContentSource.THE_SPORTS_DB,
                 event.id(),
                 Stream.of(event.sport(), event.league())
