@@ -34,8 +34,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(ContentController.class)
 @AutoConfigureMockMvc
@@ -438,11 +437,10 @@ public class ContentControllerTest {
                         .file(createJsonRequestPart(request))
                         .with(csrf()))
                 .andExpect(status().isOk())
-                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(contentId.toString()))
                 .andExpect(jsonPath("$.title").value("기존 제목"))
                 .andExpect(jsonPath("$.description").value("기존 설명"))
-                .andExpect(jsonPath("$.tags[0]").value("로맨스"));;
+                .andExpect(jsonPath("$.tags[0]").value("로맨스"));
     }
 
     @Test
@@ -509,11 +507,11 @@ public class ContentControllerTest {
         // given
         UUID contentId = UUID.randomUUID();
 
-
         // when & then
         mockMvc.perform(delete("/api/contents/{contentId}", contentId)
                         .with(csrf()))
-                        .andExpect(status().isNoContent());
+                        .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
 
         verify(contentService).deleteById(contentId);
     }
