@@ -71,4 +71,26 @@ class TmdbContentMapperTest {
 
         assertThat(data.tags()).containsExactlyInAnyOrder("액션·모험", "드라마");
     }
+
+    @Test
+    void 영화_설명이_없으면_빈_문자열로_변환한다() {
+        var movie = new TmdbMovieResponse(
+                550L, "테스트 영화", null, "/poster.jpg", List.of()
+        );
+
+        var data = new TmdbContentMapper().fromMovie(movie);
+
+        assertThat(data.description()).isEmpty();
+    }
+
+    @Test
+    void TV_설명이_없으면_빈_문자열로_변환한다() {
+        var tv = new TmdbTvResponse(
+                550L, "테스트 시리즈", null, "/tv.jpg", List.of()
+        );
+
+        var data = new TmdbContentMapper().fromTv(tv);
+
+        assertThat(data.description()).isEmpty();
+    }
 }
