@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.auth.service;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -10,11 +11,13 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.sql.SQLException;
 import java.util.Optional;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.*;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
 
@@ -122,6 +125,76 @@ class AdminInitializationServiceTest {
         verify(userRepository).findByEmail(EMAIL);
         verify(userRepository, never()).saveAndFlush(any(User.class));
         verifyNoInteractions(passwordEncoder);
+    }
+
+    @Test
+    @DisplayName("관리자 저장 중 이메일 중복이 발생하면 예외 없이 초기화를 마친다")
+    void 저장_중_이메일이_중복되면_건너뛴다() {
+        // 조회 이후 다른 서버나 회원가입 요청이 같은 이메일을 저장할 수 있다.
+        given(userRepository.findByEmail(EMAIL))
+                .willReturn(Optional.empty());
+        given(passwordEncoder.encode(PASSWORD))
+                .willReturn(ENCODED_PASSWORD);
+
+        ConstraintViolationException constraintException =
+                new ConstraintViolationException(
+                        "이메일 유니크 제약 위반",
+                        new SQLException("duplicate key", "23505"),
+                        "UQ_USERS_EMAIL"
+                );
+
+        DataIntegrityViolationException dbException =
+                new DataIntegrityViolationException(
+                        "관리자 저장 실패",
+                        constraintException
+                );
+
+        given(userRepository.saveAndFlush(any(User.class)))
+                .willThrow(dbException);
+
+        // 예상 가능한 이메일 충돌 때문에 서버 시작이 실패하지 않아야 한다.
+        assertThatCode(() ->
+                adminInitializationService.initialize(EMAIL, NAME, PASSWORD))
+                .doesNotThrowAnyException();
+
+        // 충돌 이후 다시 저장하거나 기존 계정을 변경하지 않는다.
+        verify(userRepository).findByEmail(EMAIL);
+        verify(userRepository).saveAndFlush(any(User.class));
+        verifyNoMoreInteractions(userRepository);
+    }
+
+    @Test
+    @DisplayName("관리자 저장 중 이메일 중복이 아닌 무결성 오류는 그대로 전달한다")
+    void 이메일_중복이_아닌_무결성_오류는_그대로_전달한다() {
+        given(userRepository.findByEmail(EMAIL))
+                .willReturn(Optional.empty());
+        given(passwordEncoder.encode(PASSWORD))
+                .willReturn(ENCODED_PASSWORD);
+
+        ConstraintViolationException constraintException =
+                new ConstraintViolationException(
+                        "다른 제약 위반",
+                        new SQLException("constraint violation"),
+                        "OTHER_CONSTRAINT"
+                );
+
+        DataIntegrityViolationException dbException =
+                new DataIntegrityViolationException(
+                        "관리자 저장 실패",
+                        constraintException
+                );
+
+        given(userRepository.saveAndFlush(any(User.class)))
+                .willThrow(dbException);
+
+        // 모든 무결성 오류를 이메일 중복으로 취급하면 실제 문제를 숨기게 된다.
+        assertThatThrownBy(() ->
+                adminInitializationService.initialize(EMAIL, NAME, PASSWORD))
+                .isSameAs(dbException);
+
+        verify(userRepository).findByEmail(EMAIL);
+        verify(userRepository).saveAndFlush(any(User.class));
+        verifyNoMoreInteractions(userRepository);
     }
 
 
