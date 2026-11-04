@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.follow.controller;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtProperties;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
+import com.codeit.sb13.playlist_for_everyone.domain.follow.event.UserFollowedEvent;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
@@ -19,6 +20,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.event.ApplicationEvents;
+import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -41,6 +44,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+@RecordApplicationEvents
 @SpringBootTest(
         properties = {
                 "spring.flyway.enabled=true",
@@ -102,8 +106,8 @@ public class FollowSecurityIntegrationTest {
     }
 
     @Test
-    @DisplayName("유효한 JWT로 신규 팔로우를 요청하면 관계를 저장하고 201과 동일한 관계 정보를 반환한다.")
-    void follow_returnsCreatedWithAuthenticatedUser() throws Exception {
+    @DisplayName("유효한 JWT로 신규 팔로우를 요청하면 관계를 저장하고 201을 반환하며 생성이벤트를 한 번 발행한다.")
+    void follow_returnsCreatedWithAuthenticatedUser(ApplicationEvents applicationEvents) throws Exception {
         String accessToken = jwtTokenProvider.createAccessToken(followerId);
 
         ResultActions result = mockMvc.perform(post("/api/follows")
@@ -130,7 +134,8 @@ public class FollowSecurityIntegrationTest {
                 followeeId);
 
         result.andExpect(jsonPath("$.id").value(savedFollowId.toString()));
-
+        assertThat(applicationEvents.stream(UserFollowedEvent.class))
+                .containsExactly(new UserFollowedEvent(followerId, "팔로우하는 사용자", followeeId));
     }
 
     @Test
@@ -308,8 +313,8 @@ public class FollowSecurityIntegrationTest {
     }
 
     @Test
-    @DisplayName("JWT 없이 팔로우를 등록하면 공통 오류 응답으로 401을 반환하고 관계를 저장하지 않는다.")
-    void follow_returnsUnauthorizedWithoutJwt() throws Exception {
+    @DisplayName("JWT 없이 팔로우를 등록하면 401을 반환하고 관계 저장과 이벤트 발행이 발생하지 않는다.")
+    void follow_returnsUnauthorizedWithoutJwt(ApplicationEvents applicationEvents) throws Exception {
         mockMvc.perform(post("/api/follows")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -331,6 +336,8 @@ public class FollowSecurityIntegrationTest {
                 """, Long.class, followeeId);
 
         assertThat(savedFollowCount).isZero();
+        assertThat(applicationEvents.stream(UserFollowedEvent.class))
+                .isEmpty();
     }
 
     @Test
@@ -396,8 +403,8 @@ public class FollowSecurityIntegrationTest {
     }
 
     @Test
-    @DisplayName("만료된 JWT로 팔로우를 등록하면 공통오류 응답으로 401을 반환하고 관계를 저장하지 않는다.")
-    void follow_returnsUnauthorizedWithExpiredJwt() throws Exception {
+    @DisplayName("만료된 JWT로 팔로우를 등록하면 401을 반환하고 관계 저장과 생성 이벤트 발행이 발생하지 않는다.")
+    void follow_returnsUnauthorizedWithExpiredJwt(ApplicationEvents applicationEvents) throws Exception {
         String expiredToken = createExpiredAccessToken(followerId);
         assertThatThrownBy(()-> jwtTokenProvider.parseAccessToken(expiredToken))
                 .isInstanceOf(ExpiredJwtException.class);
@@ -424,6 +431,8 @@ public class FollowSecurityIntegrationTest {
                 """, Long.class, followeeId);
 
         assertThat(savedFollowCount).isZero();
+        assertThat(applicationEvents.stream(UserFollowedEvent.class))
+                .isEmpty();
     }
 
     @Test
@@ -505,8 +514,8 @@ public class FollowSecurityIntegrationTest {
     }
 
     @Test
-    @DisplayName("변조된 JWT로 팔로우를 등록하면 공통오류 응답으로 401을 반환하고 관계를 저장하지 않는다.")
-    void follow_returnsUnauthorizedWithTamperedJwt() throws Exception {
+    @DisplayName("변조된 JWT로 팔로우를 등록하면 401을 반환하고 관계 저장과 생성 이벤트 발행이 발생하지 않는다.")
+    void follow_returnsUnauthorizedWithTamperedJwt(ApplicationEvents applicationEvents) throws Exception {
         String tamperedToken = createTamperedAccessToken(followerId);
         assertThatThrownBy(()-> jwtTokenProvider.parseAccessToken(tamperedToken))
                 .isInstanceOf(SignatureException.class);
@@ -533,6 +542,8 @@ public class FollowSecurityIntegrationTest {
                 """, Long.class, followeeId);
 
         assertThat(saveFollowCount).isZero();
+        assertThat(applicationEvents.stream(UserFollowedEvent.class))
+                .isEmpty();
     }
 
     @Test
