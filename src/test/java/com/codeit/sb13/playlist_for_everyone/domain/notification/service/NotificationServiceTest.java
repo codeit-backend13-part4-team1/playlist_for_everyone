@@ -12,6 +12,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
+import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,15 +28,20 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 /**
  * 사용자 조회 컴포넌트·저장소·이벤트 발행자를 Mock으로 대체하여 저장·조회·읽음 처리를 검증한다.
+ *
+ * <p>저장 시 조회한 User 객체를 그대로 연결하고, 사용자가 없으면 저장소·이벤트 발행자를 호출하지 않는지 확인한다.
+ * 실제 UserService 조회와 사용자 미존재 실패의 격리는 NotificationIntegrationTest에서 검증한다.
  *
  * <p>읽음 처리는 저장소가 반환한 알림이 본인 소유일 때만 delete를 호출하는지 확인한다.
  * 타인의 알림이나 빈 조회 결과에서는 삭제하지 않는다. 실제 잠금 대기와 삭제 커밋은
@@ -204,7 +210,7 @@ public class NotificationServiceTest {
     }
 
     @Test
-    @DisplayName("알림을 저장하면 알림 정보로 생성이벤트를 한 번 발행한다.")
+    @DisplayName("조회한 수신자를 연결하여 알림을 저장하고 생성 이벤트를 한 번 발행한다.")
     void publishesCreatedEventOnceWithSavedNotification(){
         UUID notificationId = UUID.randomUUID();
         UUID receiverId = UUID.randomUUID();
@@ -222,6 +228,12 @@ public class NotificationServiceTest {
                 .thenReturn(savedNotification);
 
         notificationService.save(command);
+
+        ArgumentCaptor<Notification> notificationCaptor = ArgumentCaptor.forClass(Notification.class);
+
+        verify(notificationUserReader).getById(receiverId);
+        verify(notificationRepository).save(notificationCaptor.capture());
+        assertThat(notificationCaptor.getValue().getReceiver()).isSameAs(receiver);
 
         verify(eventPublisher).publishEvent(eventCaptor.capture());
 
@@ -294,6 +306,23 @@ public class NotificationServiceTest {
         verify(notificationRepository, never()).delete(any(Notification.class));
     }
 
+    @Test
+    @DisplayName("수신자가 없으면 예외를 전달하고 알림 저장과 생성 이벤트 발행을 호출하지 않는다.")
+    void doesNotSaveOrPublishWhenReceiverIsMissing(){
+        UUID receiverId = UUID.randomUUID();
+        NotificationCommand command = new NotificationCommand(receiverId, "알림 제목", "알림 내용", NotificationLevel.INFO);
+
+        UserNotFoundException failure = new UserNotFoundException(Map.of("userId", receiverId));
+
+        when(notificationUserReader.getById(receiverId))
+                .thenThrow(failure);
+
+        assertThatThrownBy(()-> notificationService.save(command))
+                .isSameAs(failure);
+
+        verify(notificationUserReader).getById(receiverId);
+        verifyNoInteractions(notificationRepository, eventPublisher);
+    }
 
 
 
