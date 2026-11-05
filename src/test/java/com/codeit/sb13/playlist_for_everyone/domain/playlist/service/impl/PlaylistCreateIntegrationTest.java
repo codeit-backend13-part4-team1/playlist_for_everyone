@@ -10,18 +10,24 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.PlaylistSer
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.parameters.P;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.event.ApplicationEvents;
 import org.springframework.test.context.event.RecordApplicationEvents;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -57,10 +63,14 @@ class PlaylistCreateIntegrationTest {
   @Autowired
   private ApplicationEvents applicationEvents;
 
+  @Autowired
+  private CommitEventCapture commitEventCapture;
+
   private final UUID ownerId = UUID.randomUUID();
 
   @BeforeEach
   void setUp() {
+    commitEventCapture.received.clear();
     jdbcTemplate.update(
         """
             INSERT INTO users (id, email, nickname, role, enabled, created_at)
@@ -113,4 +123,38 @@ class PlaylistCreateIntegrationTest {
     assertThat(rows).isZero();
     assertThat(applicationEvents.stream(PlaylistCreatedEvent.class).count()).isZero();
   }
-}
+
+  @Test
+  @DisplayName("생성 이벤트는 트랜잭션 커밋 후 AFTER_COMMIT 리스너에 전달된다")
+  void 생성_이벤트는_커밋_후_AFTER_COMMIT_리스너에_전달된다() {
+    // when
+    PlaylistResponse response = playlistService.create(
+        ownerId, new PlaylistCreateRequest("제목", "설명"));
+
+    // then
+    assertThat(commitEventCapture.received).hasSize(1);
+    assertThat(commitEventCapture.received.get(0).playlistId()).isEqualTo(response.id());
+  }
+
+
+
+  @TestConfiguration
+  static class CommitEventCaptureConfig {
+
+    @Bean
+    CommitEventCapture commitEventCapture() {
+      return new CommitEventCapture();
+    }
+  }
+
+  static class CommitEventCapture {
+
+    final List<PlaylistCreatedEvent> received = new CopyOnWriteArrayList<>();
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void on(PlaylistCreatedEvent event) {
+      received.add(event);
+    }
+  }
+
+  }
