@@ -289,7 +289,10 @@ public class ContentControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(contentId.toString()))
                 .andExpect(jsonPath("$.title").value("너 말고 다른 연애"))
-                .andExpect(jsonPath("$.tags[0]").value("드라마"));
+                .andExpect(jsonPath("$.tags[0]").value("드라마"))
+                .andExpect(jsonPath("$.averageRating").value(4.5))
+                .andExpect(jsonPath("$.reviewCount").value(10))
+                .andExpect(jsonPath("$.watcherCount").value(0));
 
         verify(contentService).getById(contentId);
     }
