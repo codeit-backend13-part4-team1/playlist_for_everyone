@@ -12,6 +12,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistCont
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistSortBy;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Subscription;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistContentAddedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistCreatedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistSubscribedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistRepository;
@@ -67,6 +68,13 @@ public class PlaylistServiceImpl implements PlaylistService {
     Playlist playlist = new Playlist(user, request.title(), request.description());
 
     Playlist saved = playlistRepository.save(playlist);
+
+    eventPublisher.publishEvent(new PlaylistCreatedEvent(
+        saved.getId(),
+        saved.getTitle(),
+        user.getId(),
+        user.getName()));
+
     UserSummary userSummary = new UserSummary(user.getId(), user.getName(), null);
 
     return PlaylistResponse.from(saved, userSummary, false);

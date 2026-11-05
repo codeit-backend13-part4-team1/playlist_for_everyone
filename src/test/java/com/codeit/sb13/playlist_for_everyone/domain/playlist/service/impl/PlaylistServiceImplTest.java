@@ -25,6 +25,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistCont
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistSortBy;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Subscription;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistContentAddedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistCreatedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistSubscribedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistRepository;
@@ -133,6 +134,39 @@ public class PlaylistServiceImplTest {
   }
 
   @Test
+  @DisplayName("생성에 성공하면 Play;listCreatedEvent를 발행한다")
+  void 플레이리슽_생성에_성공하면_성공_이벤트를_발행한다() {
+    // given
+    UUID ownerId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    User owner = createUser(ownerId);
+    PlaylistCreateRequest request = new PlaylistCreateRequest("제목", "설명");
+
+    given(userRepository.findById(ownerId))
+        .willReturn(Optional.of(owner));
+
+    given(playlistRepository.save(any(Playlist.class)))
+        .willAnswer(inv -> {
+          Playlist playlist = inv.getArgument(0);
+          ReflectionTestUtils.setField(playlist, "id", playlistId);
+          return playlist;
+        });
+
+    // when
+    playlistService.create(ownerId, request);
+
+    // then
+    ArgumentCaptor<PlaylistCreatedEvent> captor =
+        ArgumentCaptor.forClass(PlaylistCreatedEvent.class);
+    verify(eventPublisher).publishEvent(captor.capture());
+    PlaylistCreatedEvent event = captor.getValue();
+    assertThat(event.playlistId()).isEqualTo(playlistId);
+    assertThat(event.playlistTitle()).isEqualTo("제목");
+    assertThat(event.ownerId()).isEqualTo(ownerId);
+    assertThat(event.ownerName()).isEqualTo("tester");
+  }
+
+  @Test
   @DisplayName("생성시 소유자가 없으면 UserNotFoundException를 던진다")
   void 플레이리스트_생성시_소유자가_없으면_예외를_던지고_save는_호출되지_않는다() {
     // given
@@ -144,6 +178,7 @@ public class PlaylistServiceImplTest {
     assertThatThrownBy(() -> playlistService.create(ownerId, request))
         .isInstanceOf(UserNotFoundException.class);
     verify(playlistRepository, never()).save(any());
+    verifyNoInteractions(eventPublisher);
   }
 
   @Test
