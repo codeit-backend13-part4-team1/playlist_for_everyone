@@ -50,7 +50,8 @@ class UserControllerTest {
         UserCreateCommand command = new UserCreateCommand(
                 "test@gmail.com",
                 "테스트",
-                "password"
+                "password",
+                Role.USER
         );
 
         UserDto response = new UserDto(
@@ -136,7 +137,8 @@ class UserControllerTest {
         UserCreateCommand command = new UserCreateCommand(
                 "test@gmail.com",
                 "테스트",
-                "password"
+                "password",
+                Role.USER
         );
 
         given(userService.create(command))

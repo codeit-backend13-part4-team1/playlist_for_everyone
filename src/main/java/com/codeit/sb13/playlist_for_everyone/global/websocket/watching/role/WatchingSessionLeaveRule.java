@@ -1,6 +1,5 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.role;
 
-import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.DestinationRule;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionLeaveEvent;
@@ -15,16 +14,6 @@ public class WatchingSessionLeaveRule extends DestinationRule<WatchingSessionLea
 
     @Override
     public WatchingSessionLeaveEvent run(SessionInfo info){
-        String destination = info.destination();
-        String sessionId = info.session();
-        String subscriptionId = info.subscription();
-        SecurityUser user = info.user();
-        // todo - user 정보 추가.
-        return new WatchingSessionLeaveEvent(
-                destination,
-                sessionId,
-                subscriptionId
-//                user
-        );
+        return new WatchingSessionLeaveEvent(info);
     }
 }
