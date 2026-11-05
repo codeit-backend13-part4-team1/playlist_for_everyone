@@ -12,6 +12,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRe
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.review.repository.ReviewRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -41,6 +42,9 @@ public class ContentServiceTest {
 
     @Mock
     private ReviewRepository reviewRepository;
+
+    @Mock
+    private WatchingSessionService watchingSessionService;
 
     @Mock
     private PlaylistContentRepository playlistContentRepository;
@@ -226,13 +230,11 @@ public class ContentServiceTest {
 
         ContentDto expected = mock(ContentDto.class);
 
-        given(contentRepository.findById(contentId))
-                .willReturn(Optional.of(content));
-        given(reviewRepository.findAverageRatingByContentId(contentId))
-                .willReturn(4.5);
-        given(reviewRepository.countByContentId(contentId))
-                .willReturn(3L);
-        given(contentMapper.toDto(content, 4.5, 3, 0L))
+        given(contentRepository.findById(contentId)).willReturn(Optional.of(content));
+        given(reviewRepository.findAverageRatingByContentId(contentId)).willReturn(4.5);
+        given(reviewRepository.countByContentId(contentId)).willReturn(3L);
+        given(watchingSessionService.getCurrentViewerCount(contentId)).willReturn(3L);
+        given(contentMapper.toDto(content, 4.5, 3, 3L))
                 .willReturn(expected);
 
         // when
@@ -291,12 +293,15 @@ public class ContentServiceTest {
         when(contentRepository.findById(contentId))
                 .thenReturn(Optional.of(content));
 
-        // 리뷰 평균 평점과 리뷰 개수 설정
+        // 리뷰 평균 평점/ 리뷰 개수/ 동시 시청자 수
         when(reviewRepository.findAverageRatingByContentId(contentId))
                 .thenReturn(4.5);
 
         when(reviewRepository.countByContentId(contentId))
                 .thenReturn(3L);
+
+        when(watchingSessionService.getCurrentViewerCount(contentId))
+            .thenReturn(3L);
 
         // 수정 전 상태 확인
         assertThat(content.getTitle()).isEqualTo("너말고다른연애");
@@ -319,7 +324,7 @@ public class ContentServiceTest {
 
         verify(contentRepository).findById(contentId);
 
-        verify(contentMapper).toDto(content, 4.5, 3, 0L);
+        verify(contentMapper).toDto(content, 4.5, 3, 3L);
     }
 
     @Test
