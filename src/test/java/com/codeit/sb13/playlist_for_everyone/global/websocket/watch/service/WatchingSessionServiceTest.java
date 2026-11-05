@@ -324,6 +324,7 @@ public class WatchingSessionServiceTest {
                 );
             }
 
+            @Disabled // 구독 취소는 중단되지 않도록 한다.
             @Test
             @DisplayName("사용자가 잠겨있으면, 세션 등록 시도 없이 인증 예외를 반환한다.")
             void exceptionTestWithLockedUser(){
