@@ -47,7 +47,8 @@ class UserServiceTest {
         UserCreateCommand command = new UserCreateCommand(
                 "test@gmail.com",
                 "경석",
-                "password"
+                "password",
+                Role.USER
         );
 
         given(userRepository.existsByEmail(command.email()))
@@ -91,7 +92,8 @@ class UserServiceTest {
         UserCreateCommand command = new UserCreateCommand(
                 "test@gmail.com",
                 "테스트",
-                "password"
+                "password",
+                Role.USER
         );
 
         given(userRepository.existsByEmail(command.email()))
@@ -112,7 +114,8 @@ class UserServiceTest {
         UserCreateCommand command = new UserCreateCommand(
                 "test@gmail.com",
                 "테스트",
-                "password"
+                "password",
+                Role.USER
         );
 
         given(userRepository.existsByEmail(command.email()))
@@ -145,7 +148,8 @@ class UserServiceTest {
         UserCreateCommand command = new UserCreateCommand(
                 "test@gmail.com",
                 "테스트",
-                "password"
+                "password",
+                Role.USER
         );
 
         given(userRepository.existsByEmail(command.email()))

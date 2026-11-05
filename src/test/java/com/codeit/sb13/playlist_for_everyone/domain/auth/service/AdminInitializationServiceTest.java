@@ -1,20 +1,19 @@
 package com.codeit.sb13.playlist_for_everyone.domain.auth.service;
 
+import com.codeit.sb13.playlist_for_everyone.domain.user.dto.command.UserCreateCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
-import org.hibernate.exception.ConstraintViolationException;
+import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
+import com.codeit.sb13.playlist_for_everyone.global.exception.user.DuplicateEmailException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.security.crypto.password.PasswordEncoder;
 
-import java.sql.SQLException;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
@@ -28,44 +27,33 @@ class AdminInitializationServiceTest {
     private static final String EMAIL = "admin@example.com";
     private static final String NAME = "초기 관리자";
     private static final String PASSWORD = "AdminPassword123!";
-    private static final String ENCODED_PASSWORD = "encoded-admin-password";
 
     @Mock
     private UserRepository userRepository;
     @Mock
-    private PasswordEncoder passwordEncoder;
+    private UserService userService;
 
     @InjectMocks
     private AdminInitializationService adminInitializationService;
 
     @Test
-    @DisplayName("저장한 이메일의 계정이 없으면 ADMIN 계정을 생성한다.")
-    void 계정이_없으면_관리자를_생성한다() {
-        given(userRepository.findByEmail(EMAIL)).willReturn(Optional.empty());
-
-        given(passwordEncoder.encode(PASSWORD)).willReturn(ENCODED_PASSWORD);
+    @DisplayName("계정이 없으면 ADMIN 권한으로 공통 계정 생성 서비스를 호출한다")
+    void 계정이_없으면_ADMIN_생성을_위임한다() {
+        given(userRepository.findByEmail(EMAIL))
+                .willReturn(Optional.empty());
 
         adminInitializationService.initialize(EMAIL, NAME, PASSWORD);
 
-        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
-        verify(userRepository).saveAndFlush(captor.capture());
-
-        User savedUser = captor.getValue();
-
-        assertThat(savedUser.getEmail()).isEqualTo(EMAIL);
-        assertThat(savedUser.getName()).isEqualTo(NAME);
-        assertThat(savedUser.getRole()).isEqualTo(Role.ADMIN);
-
-        // 입력한 비밀번호 원문이 아닌 인코더의 반환값을 저장해야 한다.
-        assertThat(savedUser.getPassword()).isEqualTo(ENCODED_PASSWORD);
-        assertThat(savedUser.getPassword()).isNotEqualTo(PASSWORD);
-
-        // 새로 생성한 관리자는 잠기지 않은 상태여야 한다.
-        assertThat(savedUser.isEnabled()).isTrue();
-        assertThat(savedUser.isLocked()).isFalse();
+        // 비밀번호 원문과 ADMIN 권한을 공통 서비스에 전달한다.
+        // 실제 비밀번호 해시와 저장은 UserService의 책임이다.
+        UserCreateCommand expectedCommand =
+                new UserCreateCommand(EMAIL, NAME, PASSWORD, Role.ADMIN);
 
         verify(userRepository).findByEmail(EMAIL);
-        verify(passwordEncoder).encode(PASSWORD);
+        verify(userService).create(expectedCommand);
+
+        // 초기화 서비스가 직접 저장하거나 생성 요청을 반복하지 않는지 확인한다.
+        verifyNoMoreInteractions(userRepository, userService);
     }
 
     @Test
@@ -78,7 +66,7 @@ class AdminInitializationServiceTest {
                 .role(Role.USER)
                 .build();
 
-        // 초기화 과정에서 기존 계정의 잠금까지 풀리지 않는지 확인한다.
+        // 기존 계정이 잠겨 있어도 초기화 과정에서 해제하지 않는다.
         existingUser.lock();
 
         given(userRepository.findByEmail(EMAIL))
@@ -94,12 +82,14 @@ class AdminInitializationServiceTest {
         assertThat(existingUser.isLocked()).isTrue();
 
         verify(userRepository).findByEmail(EMAIL);
-        verify(userRepository, never()).saveAndFlush(any(User.class));
-        verifyNoInteractions(passwordEncoder);
+        verifyNoMoreInteractions(userRepository);
+
+        // 기존 USER 계정을 발견하면 생성 서비스를 호출하지 않는다.
+        verifyNoInteractions(userService);
     }
 
     @Test
-    @DisplayName("동일 이메일의 ADMIN 계정이 있으면 기존 정보를 유지한다")
+    @DisplayName("동일 이메일의 ADMIN 계정이 있으면 기존 정보와 잠금 상태를 유지한다")
     void 기존_ADMIN_계정은_변경하지_않는다() {
         User existingAdmin = User.builder()
                 .email(EMAIL)
@@ -115,6 +105,7 @@ class AdminInitializationServiceTest {
 
         adminInitializationService.initialize(EMAIL, NAME, PASSWORD);
 
+        // 새 설정값으로 기존 관리자 정보를 덮어쓰지 않는다.
         assertThat(existingAdmin.getEmail()).isEqualTo(EMAIL);
         assertThat(existingAdmin.getName()).isEqualTo("기존 관리자");
         assertThat(existingAdmin.getPassword())
@@ -123,82 +114,57 @@ class AdminInitializationServiceTest {
         assertThat(existingAdmin.isLocked()).isTrue();
 
         verify(userRepository).findByEmail(EMAIL);
-        verify(userRepository, never()).saveAndFlush(any(User.class));
-        verifyNoInteractions(passwordEncoder);
+        verifyNoMoreInteractions(userRepository);
+        verifyNoInteractions(userService);
     }
 
     @Test
-    @DisplayName("관리자 저장 중 이메일 중복이 발생하면 예외 없이 초기화를 마친다")
-    void 저장_중_이메일이_중복되면_건너뛴다() {
-        // 조회 이후 다른 서버나 회원가입 요청이 같은 이메일을 저장할 수 있다.
+    @DisplayName("계정 생성 중 이메일이 중복되면 예외 없이 초기화를 마친다")
+    void 생성_중_이메일이_중복되면_건너뛴다() {
         given(userRepository.findByEmail(EMAIL))
                 .willReturn(Optional.empty());
-        given(passwordEncoder.encode(PASSWORD))
-                .willReturn(ENCODED_PASSWORD);
 
-        ConstraintViolationException constraintException =
-                new ConstraintViolationException(
-                        "이메일 유니크 제약 위반",
-                        new SQLException("duplicate key", "23505"),
-                        "UQ_USERS_EMAIL"
-                );
+        UserCreateCommand command =
+                new UserCreateCommand(EMAIL, NAME, PASSWORD, Role.ADMIN);
 
-        DataIntegrityViolationException dbException =
-                new DataIntegrityViolationException(
-                        "관리자 저장 실패",
-                        constraintException
-                );
+        // 사전 조회 이후 다른 서버나 회원가입 요청이 먼저 계정을 만든 상황이다.
+        // 공통 서비스는 이메일 충돌을 DuplicateEmailException으로 전달한다.
+        given(userService.create(command))
+                .willThrow(new DuplicateEmailException(EMAIL));
 
-        given(userRepository.saveAndFlush(any(User.class)))
-                .willThrow(dbException);
-
-        // 예상 가능한 이메일 충돌 때문에 서버 시작이 실패하지 않아야 한다.
         assertThatCode(() ->
                 adminInitializationService.initialize(EMAIL, NAME, PASSWORD))
                 .doesNotThrowAnyException();
 
-        // 충돌 이후 다시 저장하거나 기존 계정을 변경하지 않는다.
         verify(userRepository).findByEmail(EMAIL);
-        verify(userRepository).saveAndFlush(any(User.class));
-        verifyNoMoreInteractions(userRepository);
+        verify(userService).create(command);
+
+        // 충돌 이후 재생성하거나 기존 계정을 변경하려고 시도하지 않는다.
+        verifyNoMoreInteractions(userRepository, userService);
     }
 
     @Test
-    @DisplayName("관리자 저장 중 이메일 중복이 아닌 무결성 오류는 그대로 전달한다")
+    @DisplayName("이메일 중복이 아닌 무결성 오류는 그대로 전달한다")
     void 이메일_중복이_아닌_무결성_오류는_그대로_전달한다() {
         given(userRepository.findByEmail(EMAIL))
                 .willReturn(Optional.empty());
-        given(passwordEncoder.encode(PASSWORD))
-                .willReturn(ENCODED_PASSWORD);
 
-        ConstraintViolationException constraintException =
-                new ConstraintViolationException(
-                        "다른 제약 위반",
-                        new SQLException("constraint violation"),
-                        "OTHER_CONSTRAINT"
-                );
+        UserCreateCommand command =
+                new UserCreateCommand(EMAIL, NAME, PASSWORD, Role.ADMIN);
 
-        DataIntegrityViolationException dbException =
-                new DataIntegrityViolationException(
-                        "관리자 저장 실패",
-                        constraintException
-                );
+        DataIntegrityViolationException exception =
+                new DataIntegrityViolationException("다른 제약 조건 위반");
 
-        given(userRepository.saveAndFlush(any(User.class)))
-                .willThrow(dbException);
+        given(userService.create(command))
+                .willThrow(exception);
 
-        // 모든 무결성 오류를 이메일 중복으로 취급하면 실제 문제를 숨기게 된다.
+        // 이메일 중복 이외의 저장 실패를 정상 초기화로 숨기지 않는다.
         assertThatThrownBy(() ->
                 adminInitializationService.initialize(EMAIL, NAME, PASSWORD))
-                .isSameAs(dbException);
+                .isSameAs(exception);
 
         verify(userRepository).findByEmail(EMAIL);
-        verify(userRepository).saveAndFlush(any(User.class));
-        verifyNoMoreInteractions(userRepository);
+        verify(userService).create(command);
+        verifyNoMoreInteractions(userRepository, userService);
     }
-
-
-
-
-
 }

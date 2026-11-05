@@ -2,7 +2,6 @@ package com.codeit.sb13.playlist_for_everyone.domain.user.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.command.UserCreateCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
-import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserConstraintViolationDetector;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
@@ -39,7 +38,8 @@ public class UserService {
                 .email(command.email())
                 .name(command.name())
                 .password(encodedPassword)
-                .role(Role.USER)
+                // 내부 호출자가 회원가입 또는 관리자 초기화에 맞는 권한을 지정한다.
+                .role(command.role())
                 .build();
 
         User savedUser;

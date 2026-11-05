@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.user.dto.request;
 
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.command.UserCreateCommand;
+import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.global.validation.Utf8ByteLength;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -25,7 +26,8 @@ public record UserCreateRequest(
         String password
 ) {
         public UserCreateCommand toCommand() {
-                return new UserCreateCommand(email, name, password);
+                // 일반 회원가입 계정 권한은 항상 USER로 고정한다.
+                return new UserCreateCommand(email, name, password, Role.USER);
         }
 
 }
