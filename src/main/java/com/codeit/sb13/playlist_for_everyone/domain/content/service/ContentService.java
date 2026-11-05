@@ -9,6 +9,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRe
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.review.repository.ReviewRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -24,6 +25,7 @@ public class ContentService {
 
     private final ContentRepository contentRepository;
     private final ReviewRepository reviewRepository;
+    private final WatchingSessionService watchingSessionService;
     private final PlaylistContentRepository playlistContentRepository;
     private final ContentMapper contentMapper;
 
@@ -53,7 +55,7 @@ public class ContentService {
 
         double averageRating = reviewRepository.findAverageRatingByContentId(contentId);
         int reviewCount = Math.toIntExact(reviewRepository.countByContentId(contentId));
-        long watcherCount = 0L; // TODO: 시청 세션 기능 연동
+        long watcherCount = watchingSessionService.getCurrentViewerCount(contentId);
 
         return contentMapper.toDto(
                 content,
@@ -63,9 +65,9 @@ public class ContentService {
     }
 
     @Transactional
-    public ContentDto update(UUID id, ContentUpdateRequest request, MultipartFile file) {
-        Content content = contentRepository.findById(id)
-                .orElseThrow(() -> new ContentNotFoundException(Map.of("contentId", id)));
+    public ContentDto update(UUID contentId, ContentUpdateRequest request, MultipartFile file) {
+        Content content = contentRepository.findById(contentId)
+                .orElseThrow(() -> new ContentNotFoundException(Map.of("contentId", contentId)));
 
         List<String> tags = request.tags() == null
                 ? null
@@ -81,9 +83,9 @@ public class ContentService {
                 tags
         );
 
-        double averageRating = reviewRepository.findAverageRatingByContentId(id);
-        int reviewCount = Math.toIntExact(reviewRepository.countByContentId(id));
-        long watcherCount = 0L; // TODO: 시청 세션 기능 연동
+        double averageRating = reviewRepository.findAverageRatingByContentId(contentId);
+        int reviewCount = Math.toIntExact(reviewRepository.countByContentId(contentId));
+        long watcherCount = watchingSessionService.getCurrentViewerCount(contentId);
 
         return contentMapper.toDto(
                 content,
