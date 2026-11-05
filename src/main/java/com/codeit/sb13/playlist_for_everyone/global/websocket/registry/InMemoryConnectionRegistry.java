@@ -137,7 +137,7 @@ public class InMemoryConnectionRegistry implements ConnectionRegistry {
                 container.remove(sessionId);
             } else {
                 // 세션 + 구독 == unsubscribe
-                container.compute(sessionId,(key,state) ->
+                container.computeIfPresent(sessionId,(key,state) ->
                         Objects.requireNonNull(state).unsubscribe(data));
             }
         } catch (NullPointerException e) {
