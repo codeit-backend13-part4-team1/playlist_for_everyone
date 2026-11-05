@@ -8,6 +8,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserReposito
 import com.codeit.sb13.playlist_for_everyone.global.exception.ApiErrorCode;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.DuplicateEmailException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
+import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
 import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -21,6 +23,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.sql.SQLException;
+import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -35,6 +38,9 @@ class UserServiceTest {
 
     @Mock
     private PasswordEncoder passwordEncoder;
+
+    @Mock
+    private FileService fileService;
 
     @InjectMocks
     private UserService userService;
@@ -83,6 +89,8 @@ class UserServiceTest {
         assertThat(response.role()).isEqualTo(Role.USER);
         assertThat(response.locked()).isFalse();
         assertThat(response.profileImageUrl()).isNull();
+
+        verifyNoInteractions(fileService);
     }
 
     @Test
@@ -218,5 +226,155 @@ class UserServiceTest {
                 );
 
         verify(userRepository).findById(userId);
+    }
+
+    @Test
+    @DisplayName("프로필 이미지가 없으면 URL 없이 사용자 정보를 반환한다")
+    void 프로필_이미지가_없으면_URL없이_반환한다() {
+        UUID userId = UUID.randomUUID();
+        User user = createProfileTestUser(userId);
+
+        given(userRepository.findById(userId))
+                .willReturn(Optional.of(user));
+
+        UserDto result = userService.getUserDtoById(userId);
+
+        // 기존 응답 필드가 유지되는지도 함께 확인한다.
+        assertThat(result.id()).isEqualTo(userId);
+        assertThat(result.createdAt()).isEqualTo(user.getCreatedAt());
+        assertThat(result.email()).isEqualTo(user.getEmail());
+        assertThat(result.name()).isEqualTo(user.getName());
+        assertThat(result.role()).isEqualTo(Role.USER);
+        assertThat(result.locked()).isFalse();
+        assertThat(result.profileImageUrl()).isNull();
+
+        verify(userRepository).findById(userId);
+
+        // 이미지가 없으면 불필요한 파일 조회나 URL 생성을 하지 않는다.
+        verifyNoInteractions(fileService);
+    }
+
+    @Test
+    @DisplayName("프로필 이미지가 있으면 파일 서비스의 URL을 사용자 응답에 반영한다")
+    void 프로필_이미지가_있으면_URL을_반환한다() {
+        UUID userId = UUID.randomUUID();
+        UUID fileId = UUID.randomUUID();
+
+        User user = createProfileTestUser(userId);
+        FileInfo image = createProfileTestImage(fileId);
+        user.updateProfileImage(image);
+
+        // 권한과 잠금 상태도 변환 과정에서 그대로 유지되어야 한다.
+        user.updateRole(Role.ADMIN);
+        user.lock();
+
+        String expectedUrl =
+                "https://example.com/profile.png?signature=test";
+
+        given(userRepository.findById(userId))
+                .willReturn(Optional.of(user));
+        given(fileService.getFileUrl(fileId))
+                .willReturn(expectedUrl);
+
+        UserDto result = userService.getUserDtoById(userId);
+
+        assertThat(result.id()).isEqualTo(userId);
+        assertThat(result.createdAt()).isEqualTo(user.getCreatedAt());
+        assertThat(result.email()).isEqualTo(user.getEmail());
+        assertThat(result.name()).isEqualTo(user.getName());
+        assertThat(result.role()).isEqualTo(Role.ADMIN);
+        assertThat(result.locked()).isTrue();
+        assertThat(result.profileImageUrl()).isEqualTo(expectedUrl);
+
+        // 사용자 ID가 아닌 연결된 파일 ID로 URL을 요청해야 한다.
+        verify(userRepository).findById(userId);
+        verify(fileService).getFileUrl(fileId);
+    }
+
+    @Test
+    @DisplayName("사용자 응답 조회 시 사용자가 없으면 공통 예외를 발생시킨다")
+    void 응답_조회_시_사용자가_없으면_예외가_발생한다() {
+        UUID userId = UUID.randomUUID();
+
+        given(userRepository.findById(userId))
+                .willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.getUserDtoById(userId))
+                .isInstanceOfSatisfying(
+                        UserNotFoundException.class,
+                        exception -> {
+                            assertThat(exception.getApiErrorCode())
+                                    .isEqualTo(ApiErrorCode.USER_NOT_FOUND);
+                            assertThat(exception.getDetails())
+                                    .containsEntry("userId", userId);
+                        }
+                );
+
+        verify(userRepository).findById(userId);
+        verifyNoInteractions(fileService);
+    }
+
+    @Test
+    @DisplayName("프로필 URL 생성에 실패하면 예외를 그대로 전달한다")
+    void 프로필_URL_생성_실패를_그대로_전달한다() {
+        UUID userId = UUID.randomUUID();
+        UUID fileId = UUID.randomUUID();
+
+        User user = createProfileTestUser(userId);
+        user.updateProfileImage(createProfileTestImage(fileId));
+
+        RuntimeException failure =
+                new IllegalStateException("파일 URL 생성 실패");
+
+        given(userRepository.findById(userId))
+                .willReturn(Optional.of(user));
+        given(fileService.getFileUrl(fileId))
+                .willThrow(failure);
+
+        // 이미지가 없는 정상 상태와 URL 생성 실패를 구분한다.
+        // 실패를 null로 바꾸어 숨기지 않고 원래 예외를 전달한다.
+        assertThatThrownBy(() -> userService.getUserDtoById(userId))
+                .isSameAs(failure);
+
+        verify(fileService).getFileUrl(fileId);
+    }
+
+    /**
+     * DB 없이 저장된 사용자 상태를 준비한다.
+     * ID와 생성 시각은 실제로는 영속화 과정에서 설정되는 값이다.
+     */
+    private User createProfileTestUser(UUID userId) {
+        User user = User.builder()
+                .email("profile@example.com")
+                .name("프로필 사용자")
+                .password("encoded-password")
+                .role(Role.USER)
+                .build();
+
+        ReflectionTestUtils.setField(user, "id", userId);
+        ReflectionTestUtils.setField(
+                user,
+                "createdAt",
+                LocalDateTime.of(2026, 11, 5, 12, 0)
+        );
+
+        return user;
+    }
+
+    /**
+     * 저장된 파일 정보를 가정한다.
+     * 실제 S3 업로드나 DB 저장은 수행하지 않는다.
+     */
+    private FileInfo createProfileTestImage(UUID fileId) {
+        FileInfo image = FileInfo.createS3File(
+                "profiles/test.png",
+                "profile.png",
+                "image/png",
+                1024L
+        );
+
+        ReflectionTestUtils.setField(image, "id", fileId);
+
+        return image;
     }
 }

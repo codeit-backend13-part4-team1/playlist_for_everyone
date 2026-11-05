@@ -7,6 +7,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserConstrai
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.DuplicateEmailException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
+import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -24,6 +26,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final FileService fileService;
 
     @Transactional
     public UserDto create(UserCreateCommand command) {
@@ -56,17 +59,41 @@ public class UserService {
 
         log.info("[USER] 생성 완료 userId - {}", savedUser.getId());
 
-        return new UserDto(
-                savedUser.getId(),
-                savedUser.getCreatedAt(),
-                savedUser.getEmail(),
-                savedUser.getName(),
-                null,
-                savedUser.getRole(),
-                savedUser.isLocked()
-
-        );
+        return toUserDto(savedUser);
     }
+
+    /**
+     * 프로필 이미지 URL을 포함한 사용자 응답을 조회
+     * 엔티티 조회와 응답 변환을 같은 트랜잭션 안에서 수행한다.
+     */
+    @Transactional(readOnly = true)
+    public UserDto getUserDtoById(UUID userId) {
+        User user = getById(userId);
+
+        return toUserDto(user);
+    }
+
+    private UserDto toUserDto(User user) {
+        FileInfo profileImage = user.getProfileImage();
+
+        // 이미지 없는 사용자는 기존과 동일하게 null을 반환한다.
+        String profileImageUrl = profileImage == null
+                ? null
+                : fileService.getFileUrl(profileImage.getId());
+
+        return new UserDto(
+                user.getId(),
+                user.getCreatedAt(),
+                user.getEmail(),
+                user.getName(),
+                profileImageUrl,
+                user.getRole(),
+                user.isLocked()
+        );
+
+    }
+
+
 
     /**
      * 사용자 ID로 조회하는 공통 메서드
