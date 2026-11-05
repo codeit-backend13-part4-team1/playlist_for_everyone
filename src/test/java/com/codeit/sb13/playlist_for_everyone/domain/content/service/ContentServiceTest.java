@@ -10,6 +10,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.review.repository.ReviewRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
+import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -40,6 +42,9 @@ public class ContentServiceTest {
     @Mock
     private ContentMapper contentMapper;
 
+    @Mock
+    private FileService fileService;
+
     @InjectMocks
     private ContentService contentService;
 
@@ -55,6 +60,13 @@ public class ContentServiceTest {
         );
 
         MultipartFile file = mock(MultipartFile.class);
+        FileInfo fileInfo = mock(FileInfo.class);
+        UUID fileId = UUID.randomUUID();
+        String thumbnailUrl = "https://example.com/thumbnail.jpg";
+
+        when(fileInfo.getId()).thenReturn(fileId);
+        when(fileService.upload(file)).thenReturn(fileInfo);
+        when(fileService.getFileUrl(fileId)).thenReturn(thumbnailUrl);
 
         when(contentRepository.save(any(Content.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
@@ -63,8 +75,10 @@ public class ContentServiceTest {
         contentService.create(request, file);
 
         // then
-        ArgumentCaptor<Content> captor = ArgumentCaptor.forClass(Content.class);
+        verify(fileService).upload(file);
+        verify(fileService).getFileUrl(fileId);
 
+        ArgumentCaptor<Content> captor = ArgumentCaptor.forClass(Content.class);
         verify(contentRepository).save(captor.capture());
 
         Content savedContent = captor.getValue();
@@ -73,7 +87,7 @@ public class ContentServiceTest {
         assertThat(savedContent.getTitle()).isEqualTo("너말고다른연애");
         assertThat(savedContent.getDescription()).isEqualTo("KBS 드라마 입니다.");
         assertThat(savedContent.getThumbnailUrl())
-                .isEqualTo("temporary-thumbnail-url");
+                .isEqualTo("https://example.com/thumbnail.jpg");
         assertThat(savedContent.getProvider()).isEqualTo(ContentSource.ADMIN);
 
         assertThat(savedContent.getTags())
