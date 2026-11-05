@@ -8,6 +8,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.review.repository.ReviewRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
+import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,18 +24,24 @@ public class ContentService {
     private final ContentRepository contentRepository;
     private final ReviewRepository reviewRepository;
     private final ContentMapper contentMapper;
+    private final FileService fileService;
 
     @Transactional
     public ContentDto create(ContentCreateRequest request, MultipartFile file) {
+        // S3 업로드 및 파일 정보 저장
+        FileInfo fileInfo = fileService.upload(file);
+
+        // 썸네일 URL 조회
+        String thumbnailUrl = fileService.getFileUrl(fileInfo.getId());
+
         Content content = Content.createAdminContent(
                 request.type(),
                 request.title(),
                 request.description(),
-                "temporary-thumbnail-url"   // TODO: S3 파일 업로드 연동 후 실제 URL로 변경
+                thumbnailUrl
         );
 
         List<String> tags = normalizeTags(request.tags());
-
         tags.forEach(content::addTag);
 
         Content savedContent = contentRepository.save(content);
