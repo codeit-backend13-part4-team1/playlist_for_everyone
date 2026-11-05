@@ -110,6 +110,14 @@ public class ContentServiceTest {
 
         MultipartFile file = mock(MultipartFile.class);
 
+        FileInfo fileInfo = mock(FileInfo.class);
+        UUID fileId = UUID.randomUUID();
+        String thumbnailUrl = "https://example.com/thumbnail.jpg";
+
+        when(fileInfo.getId()).thenReturn(fileId);
+        when(fileService.upload(file)).thenReturn(fileInfo);
+        when(fileService.getFileUrl(fileId)).thenReturn(thumbnailUrl);
+
         when(contentRepository.save(any(Content.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -141,6 +149,14 @@ public class ContentServiceTest {
 
         MultipartFile file = mock(MultipartFile.class);
 
+        FileInfo fileInfo = mock(FileInfo.class);
+        UUID fileId = UUID.randomUUID();
+        String thumbnailUrl = "https://example.com/thumbnail.jpg";
+
+        when(fileInfo.getId()).thenReturn(fileId);
+        when(fileService.upload(file)).thenReturn(fileInfo);
+        when(fileService.getFileUrl(fileId)).thenReturn(thumbnailUrl);
+
         when(contentRepository.save(any(Content.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -170,6 +186,14 @@ public class ContentServiceTest {
 
         MultipartFile file = mock(MultipartFile.class);
 
+        FileInfo fileInfo = mock(FileInfo.class);
+        UUID fileId = UUID.randomUUID();
+        String thumbnailUrl = "https://example.com/thumbnail.jpg";
+
+        when(fileInfo.getId()).thenReturn(fileId);
+        when(fileService.upload(file)).thenReturn(fileInfo);
+        when(fileService.getFileUrl(fileId)).thenReturn(thumbnailUrl);
+
         when(contentRepository.save(any(Content.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -197,6 +221,14 @@ public class ContentServiceTest {
         );
 
         MultipartFile file = mock(MultipartFile.class);
+
+        FileInfo fileInfo = mock(FileInfo.class);
+        UUID fileId = UUID.randomUUID();
+        String thumbnailUrl = "https://example.com/thumbnail.jpg";
+
+        when(fileInfo.getId()).thenReturn(fileId);
+        when(fileService.upload(file)).thenReturn(fileInfo);
+        when(fileService.getFileUrl(fileId)).thenReturn(thumbnailUrl);
 
         when(contentRepository.save(any(Content.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
