@@ -243,7 +243,7 @@ public class ContentServiceTest {
         // then
         assertThat(result).isSameAs(expected);
         verify(contentRepository).findById(contentId);
-        verify(contentMapper).toDto(content, 4.5, 3, 0L);
+        verify(contentMapper).toDto(content, 4.5, 3, 3L);
     }
 
     @Test
@@ -268,7 +268,7 @@ public class ContentServiceTest {
     }
 
     @Test
-    @DisplayName("콘텐츠 수정 시 제목, 설명, 태그가 변경되고 리뷰 집계가 전달된다.")
+    @DisplayName("콘텐츠 수정 시 변경 사항과 집계 정보가 반영된다.")
     void update_success() {
         // given
         UUID contentId = UUID.randomUUID();
