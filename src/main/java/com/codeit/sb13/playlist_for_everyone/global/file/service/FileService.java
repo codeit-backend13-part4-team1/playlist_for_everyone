@@ -2,10 +2,12 @@ package com.codeit.sb13.playlist_for_everyone.global.file.service;
 
 import com.codeit.sb13.playlist_for_everyone.global.exception.file.FileNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
+import com.codeit.sb13.playlist_for_everyone.global.file.event.FileDeleteEvent;
 import com.codeit.sb13.playlist_for_everyone.global.file.repository.FileInfoRepository;
 import com.codeit.sb13.playlist_for_everyone.global.file.storage.FileStorage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -22,6 +24,7 @@ public class FileService {
 
     private final FileInfoRepository fileInfoRepository;
     private final FileStorage fileStorage;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public FileInfo upload(MultipartFile file) {
@@ -79,20 +82,8 @@ public class FileService {
         // DB 파일 정보 삭제
         fileInfoRepository.delete(fileInfo);
 
-        // DB 커밋 성공 후 S3 파일 삭제
-        TransactionSynchronizationManager.registerSynchronization(
-                new TransactionSynchronization() {
-                    @Override
-                    public void afterCommit() {
-                        try {
-                            fileStorage.delete(key);
-                        } catch (RuntimeException e) {
-                            log.error("DB 삭제 후 S3 파일 삭제 실패. key={}", key, e);
-                        }
-                    }
-                }
-        );
-
+        // DB 커밋 후 S3 파일 삭제를 위한 이벤트 발행
+        eventPublisher.publishEvent(new FileDeleteEvent(key));
     }
 
 }

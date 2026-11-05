@@ -1,8 +1,7 @@
-package com.codeit.sb13.playlist_for_everyone.global.service;
+package com.codeit.sb13.playlist_for_everyone.global.file.service;
 
 import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
 import com.codeit.sb13.playlist_for_everyone.global.file.repository.FileInfoRepository;
-import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
 import com.codeit.sb13.playlist_for_everyone.global.file.storage.FileStorage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
