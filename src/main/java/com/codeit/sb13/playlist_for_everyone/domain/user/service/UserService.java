@@ -2,14 +2,13 @@ package com.codeit.sb13.playlist_for_everyone.domain.user.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.command.UserCreateCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
-import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
+import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserConstraintViolationDetector;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.DuplicateEmailException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -39,7 +38,8 @@ public class UserService {
                 .email(command.email())
                 .name(command.name())
                 .password(encodedPassword)
-                .role(Role.USER)
+                // 내부 호출자가 회원가입 또는 관리자 초기화에 맞는 권한을 지정한다.
+                .role(command.role())
                 .build();
 
         User savedUser;
@@ -47,9 +47,10 @@ public class UserService {
         try {
             savedUser = userRepository.saveAndFlush(newUser);
         } catch (DataIntegrityViolationException exception) {
-            if (isEmailUniqueViolation(exception)) {
+            if (UserConstraintViolationDetector.isEmailUniqueConstraintViolation(exception)) {
                 throw new DuplicateEmailException(command.email(), exception);
             }
+            // 이메일 중복이 아닌 오류는 원인을 숨기지 않고 그대로 전달한다.
             throw exception;
         }
 
@@ -65,20 +66,6 @@ public class UserService {
                 savedUser.isLocked()
 
         );
-    }
-
-    private boolean isEmailUniqueViolation(Throwable exception) {
-        Throwable cause = exception;
-
-        while (cause != null) {
-            if (cause instanceof ConstraintViolationException violation && "UQ_USERS_EMAIL".equalsIgnoreCase(
-                    violation.getConstraintName())) {
-                return true;
-            }
-
-            cause = cause.getCause();
-        }
-        return false;
     }
 
     /**
