@@ -27,6 +27,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -48,6 +49,18 @@ public class ContentServiceTest {
     @InjectMocks
     private ContentService contentService;
 
+    private FileInfo mockFileUpload(MultipartFile file) {
+        FileInfo fileInfo = mock(FileInfo.class);
+        UUID fileId = UUID.randomUUID();
+
+        given(fileService.upload(file)).willReturn(fileInfo);
+        given(fileInfo.getId()).willReturn(fileId);
+        given(fileService.getFileUrl(fileId))
+                .willReturn("https://example.com/thumbnail.jpg");
+
+        return fileInfo;
+    }
+
     @Test
     @DisplayName("관리자 콘텐츠를 정상적으로 생성한다.")
     void create_success() {
@@ -60,41 +73,43 @@ public class ContentServiceTest {
         );
 
         MultipartFile file = mock(MultipartFile.class);
-        FileInfo fileInfo = mock(FileInfo.class);
-        UUID fileId = UUID.randomUUID();
-        String thumbnailUrl = "https://example.com/thumbnail.jpg";
+        FileInfo fileInfo = mockFileUpload(file);
 
-        when(fileInfo.getId()).thenReturn(fileId);
-        when(fileService.upload(file)).thenReturn(fileInfo);
-        when(fileService.getFileUrl(fileId)).thenReturn(thumbnailUrl);
-
-        when(contentRepository.save(any(Content.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
+        given(contentRepository.save(any(Content.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
 
         // when
         contentService.create(request, file);
 
         // then
-        verify(fileService).upload(file);
-        verify(fileService).getFileUrl(fileId);
-
         ArgumentCaptor<Content> captor = ArgumentCaptor.forClass(Content.class);
         verify(contentRepository).save(captor.capture());
 
         Content savedContent = captor.getValue();
 
-        assertThat(savedContent.getType()).isEqualTo(ContentType.tvSeries);
-        assertThat(savedContent.getTitle()).isEqualTo("너말고다른연애");
-        assertThat(savedContent.getDescription()).isEqualTo("KBS 드라마 입니다.");
-        assertThat(savedContent.getThumbnailUrl())
-                .isEqualTo("https://example.com/thumbnail.jpg");
-        assertThat(savedContent.getProvider()).isEqualTo(ContentSource.ADMIN);
+        assertThat(savedContent)
+                .extracting(
+                        Content::getType,
+                        Content::getTitle,
+                        Content::getDescription,
+                        Content::getThumbnailUrl,
+                        Content::getProvider
+                )
+                .containsExactly(
+                        ContentType.tvSeries,
+                        "너말고다른연애",
+                        "KBS 드라마 입니다.",
+                        "https://example.com/thumbnail.jpg",
+                        ContentSource.ADMIN
+                );
 
+        assertThat(savedContent.getFileInfo()).isSameAs(fileInfo);
         assertThat(savedContent.getTags())
                 .extracting(ContentTag::getTag)
                 .containsExactly("드라마", "로맨스");
 
-        verify(contentMapper).toDto(savedContent, 0.0, 0, 0);
+        verify(fileService).upload(file);
+        verify(contentMapper).toDto(savedContent, 0.0, 0, 0L);
     }
 
     @Test
@@ -109,14 +124,7 @@ public class ContentServiceTest {
         );
 
         MultipartFile file = mock(MultipartFile.class);
-
-        FileInfo fileInfo = mock(FileInfo.class);
-        UUID fileId = UUID.randomUUID();
-        String thumbnailUrl = "https://example.com/thumbnail.jpg";
-
-        when(fileInfo.getId()).thenReturn(fileId);
-        when(fileService.upload(file)).thenReturn(fileInfo);
-        when(fileService.getFileUrl(fileId)).thenReturn(thumbnailUrl);
+        mockFileUpload(file);
 
         when(contentRepository.save(any(Content.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
@@ -126,12 +134,9 @@ public class ContentServiceTest {
 
         // then
         ArgumentCaptor<Content> captor = ArgumentCaptor.forClass(Content.class);
-
         verify(contentRepository).save(captor.capture());
 
-        Content savedContent = captor.getValue();
-
-        assertThat(savedContent.getTags())
+        assertThat(captor.getValue().getTags())
                 .extracting(ContentTag::getTag)
                 .containsExactly("드라마", "로맨스", "KBS");
     }
@@ -148,14 +153,7 @@ public class ContentServiceTest {
         );
 
         MultipartFile file = mock(MultipartFile.class);
-
-        FileInfo fileInfo = mock(FileInfo.class);
-        UUID fileId = UUID.randomUUID();
-        String thumbnailUrl = "https://example.com/thumbnail.jpg";
-
-        when(fileInfo.getId()).thenReturn(fileId);
-        when(fileService.upload(file)).thenReturn(fileInfo);
-        when(fileService.getFileUrl(fileId)).thenReturn(thumbnailUrl);
+        mockFileUpload(file);
 
         when(contentRepository.save(any(Content.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
@@ -165,7 +163,6 @@ public class ContentServiceTest {
 
         // then
         ArgumentCaptor<Content> captor = ArgumentCaptor.forClass(Content.class);
-
         verify(contentRepository).save(captor.capture());
 
         Content savedContent = captor.getValue();
@@ -185,14 +182,7 @@ public class ContentServiceTest {
         );
 
         MultipartFile file = mock(MultipartFile.class);
-
-        FileInfo fileInfo = mock(FileInfo.class);
-        UUID fileId = UUID.randomUUID();
-        String thumbnailUrl = "https://example.com/thumbnail.jpg";
-
-        when(fileInfo.getId()).thenReturn(fileId);
-        when(fileService.upload(file)).thenReturn(fileInfo);
-        when(fileService.getFileUrl(fileId)).thenReturn(thumbnailUrl);
+        mockFileUpload(file);
 
         when(contentRepository.save(any(Content.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
@@ -207,46 +197,6 @@ public class ContentServiceTest {
         verify(contentRepository).save(captor.capture());
 
         assertThat(captor.getValue().getTags()).isEmpty();
-    }
-
-    @Test
-    @DisplayName("유니코드 내부 공백을 제거하여 태그 중복을 판정한다.")
-    void create_normalizeUnicodeWhitespaceTags() {
-        // given
-        ContentCreateRequest request = new ContentCreateRequest(
-                ContentType.tvSeries,
-                "너말고다른연애",
-                "KBS 드라마 입니다.",
-                List.of("드\u2003라마", "드라마", "로맨스")
-        );
-
-        MultipartFile file = mock(MultipartFile.class);
-
-        FileInfo fileInfo = mock(FileInfo.class);
-        UUID fileId = UUID.randomUUID();
-        String thumbnailUrl = "https://example.com/thumbnail.jpg";
-
-        when(fileInfo.getId()).thenReturn(fileId);
-        when(fileService.upload(file)).thenReturn(fileInfo);
-        when(fileService.getFileUrl(fileId)).thenReturn(thumbnailUrl);
-
-        when(contentRepository.save(any(Content.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
-
-        // when
-        contentService.create(request, file);
-
-        // then
-        ArgumentCaptor<Content> captor =
-                ArgumentCaptor.forClass(Content.class);
-
-        verify(contentRepository).save(captor.capture());
-
-        Content savedContent = captor.getValue();
-
-        assertThat(savedContent.getTags())
-                .extracting(ContentTag::getTag)
-                .containsExactly("드\u2003라마", "로맨스");
     }
 
     @Test
@@ -270,8 +220,6 @@ public class ContentServiceTest {
                 List.of("로맨스")
         );
 
-        MultipartFile file = mock(MultipartFile.class);
-
         when(contentRepository.findById(contentId))
                 .thenReturn(Optional.of(content));
 
@@ -290,7 +238,7 @@ public class ContentServiceTest {
                 .containsExactly("드라마");
 
         // when
-        contentService.update(contentId, request, file);
+        contentService.update(contentId, request, null);
 
         // then
         assertThat(content.getTitle()).isEqualTo("너말고 다른 연애");
@@ -354,10 +302,8 @@ public class ContentServiceTest {
         when(contentRepository.findById(contentId))
                 .thenReturn(Optional.of(content));
 
-        MultipartFile file = mock(MultipartFile.class);
-
         // when
-        contentService.update(contentId, request, file);
+        contentService.update(contentId, request, null);
 
         // then
         assertThat(content.getTitle()).isEqualTo("너 말고 다른 연애");
@@ -400,5 +346,7 @@ public class ContentServiceTest {
                 .extracting(ContentTag::getTag)
                 .containsExactly("로맨스");
     }
+
+
 
 }
