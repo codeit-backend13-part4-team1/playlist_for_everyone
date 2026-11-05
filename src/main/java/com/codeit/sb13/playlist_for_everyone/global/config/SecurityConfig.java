@@ -174,6 +174,12 @@ public class SecurityConfig {
                             .requestMatchers(HttpMethod.GET, "/api/users")
                             .hasRole("ADMIN")
 
+                            // 사용자 권한과 계정 잠금 상태는 관리자만 변경할 수 있다.
+                            .requestMatchers(HttpMethod.PATCH,
+                                    "/api/users/{userId}/role",
+                                    "/api/users/{userId}/locked"
+                            ).hasRole("ADMIN")
+
                             // 로그인 전 프론트 페이지를 표시하기 위한 경로다.
                             .requestMatchers(
                                     HttpMethod.GET,
