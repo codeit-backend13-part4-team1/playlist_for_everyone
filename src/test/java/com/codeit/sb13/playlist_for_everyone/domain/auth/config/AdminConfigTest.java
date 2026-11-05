@@ -31,8 +31,8 @@ class AdminConfigTest {
                     );
 
     @Test
-    @DisplayName("관리자 설정을 바인딩하고 초기화 실행 객체를 등록한다")
-    void 관리자_설정과_초기화_실행_객체를_등록한다() {
+    @DisplayName("관리자 초기화를 활성화하면 설정을 바인딩하고 초기화 실행 객체를 등록한다")
+    void 활성화하면_설정과_초기화_실행_객체를_등록한다() {
         contextRunner
                 .withPropertyValues(
                         "everyone.admin.enabled=true",
@@ -61,14 +61,14 @@ class AdminConfigTest {
     }
 
     @Test
-    @DisplayName("관리자 초기화를 비활성화하면 계정 정보 없이도 설정을 등록한다")
-    void 비활성화하면_계정_정보_없이도_설정을_등록한다() {
+    @DisplayName("관리자 초기화를 비활성화하면 초기화 실행 객체를 등록하지 않는다")
+    void 비활성화하면_초기화_실행_객체를_등록하지_않는다() {
         contextRunner
                 .withPropertyValues("everyone.admin.enabled=false")
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     assertThat(context).hasSingleBean(AdminProperties.class);
-                    assertThat(context).hasSingleBean(AdminInitializer.class);
+                    assertThat(context).doesNotHaveBean(AdminInitializer.class);
 
                     AdminProperties properties =
                             context.getBean(AdminProperties.class);
@@ -80,6 +80,24 @@ class AdminConfigTest {
 
                     verifyNoInteractions(initializationService);
                 });
+    }
+
+    @Test
+    @DisplayName("관리자 초기화 활성화 설정이 없으면 초기화 실행 객체를 등록하지 않는다")
+    void 활성화_설정이_없으면_초기화_실행_객체를_등록하지_않는다() {
+        contextRunner.run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context).hasSingleBean(AdminProperties.class);
+            assertThat(context).doesNotHaveBean(AdminInitializer.class);
+
+            AdminProperties properties =
+                    context.getBean(AdminProperties.class);
+
+            // 활성화를 명시하지 않으면 기본적으로 초기화를 실행하지 않는다.
+            assertThat(properties.enabled()).isFalse();
+
+            verifyNoInteractions(initializationService);
+        });
     }
 
 }

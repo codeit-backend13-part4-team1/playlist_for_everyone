@@ -22,6 +22,7 @@ public class AdminInitializer implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
+        // 빈 등록 조건과 별개로, 직접 호출되는 경우에도 비활성화 정책을 유지한다.
         if (!adminProperties.enabled()) {
             return;
         }
