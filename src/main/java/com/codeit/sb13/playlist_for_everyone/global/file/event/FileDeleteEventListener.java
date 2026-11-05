@@ -14,6 +14,14 @@ public class FileDeleteEventListener {
 
     private final FileStorage fileStorage;
 
+    /**
+     * DB 트랜잭션 커밋 이후 S3 파일을 삭제한다.
+     *
+     * <p>S3 삭제에 실패하더라도 이미 완료된 DB 트랜잭션에
+     * 영향을 주지 않도록 예외를 기록하고 전파하지 않는다.
+     *
+     * @param event 삭제할 파일의 S3 키를 포함한 이벤트
+     */
     @TransactionalEventListener(
             phase = TransactionPhase.AFTER_COMMIT
     )
