@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket;
 
 
+import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.DestinationMatcher;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.SessionMatcher;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.ConnectionRegistry;
@@ -74,9 +75,7 @@ public class WebSocketEventListener {
     @EventListener
     public void onUnsubscribe(SessionUnsubscribeEvent event){
         SessionInfo info = new SessionInfo(event.getMessage(), event.getUser());
-        SessionData data = connectionRegistry.get(info.session(), info.subscription());
-
-        unsubscribe.run(info.wrap(data));
+        unsubscribe.run(info);
     }
 
     /**
@@ -88,9 +87,7 @@ public class WebSocketEventListener {
     @EventListener
     public void onDisconnect(SessionDisconnectEvent event){
         SessionInfo info = new SessionInfo(event.getMessage(), event.getUser());
-        SessionData data = connectionRegistry.get(info.session(), info.subscription());
-
-        disconnect.run(info.wrap(data));
+        disconnect.run(info);
     }
 
 

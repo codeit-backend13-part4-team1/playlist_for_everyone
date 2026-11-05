@@ -51,7 +51,7 @@ public enum ApiErrorCode {
     // WEBSOCKET W
     WEBSOCKET_DESTINATION_INVALID("W_001", HttpStatus.NOT_FOUND, "유효하지 않은 웹소켓 경로입니다."),
     WEBSOCKET_AUTHORIZATION_INVALID("W_002", HttpStatus.UNAUTHORIZED, "권한이 존재하지 않습니다."),
-
+    WEBSOCKET_SESSION_NOT_FOUND("W_003", HttpStatus.NOT_FOUND, "웹소켓 세션이 존재하지 않습니다."),
 
     //GLOBAL/COMMON GLB
     INVALID_REQUEST("GLB_001", HttpStatus.BAD_REQUEST, "요청 데이터가 올바르지 않습니다."),

@@ -6,6 +6,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentServi
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketDestinationInvalidException;
 import com.codeit.sb13.playlist_for_everyone.global.service.MatchRule;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionData;
@@ -73,6 +74,7 @@ public class WatchingSession {
                 Objects.requireNonNull(info.session()),
                 Objects.requireNonNull(info.subscription())
         );
+        if(session == null) throw new WebSocketSessionNotFoundException();
         SecurityUser auth = Objects.requireNonNull(session.user());
         String contentId = getContentIdFromDestination(info);
 
@@ -97,6 +99,7 @@ public class WatchingSession {
                 Objects.requireNonNull(info.session()),
                 Objects.requireNonNull(info.subscription())
         );
+        if(session == null) throw new WebSocketSessionNotFoundException();
         SecurityUser auth = Objects.requireNonNull(session.user());
 
         // unsubscribe 혹은 disconnect 프레임에서 인증, 경로정보 복원.
