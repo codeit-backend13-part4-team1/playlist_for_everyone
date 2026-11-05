@@ -45,6 +45,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Stream;
@@ -419,7 +420,17 @@ class NotificationIntegrationTest {
 
         SseEvent<?> publishedEvent = eventCaptor.getValue();
         assertThat(publishedEvent.receiverId()).isEqualTo(RECEIVER_ID);
-        assertThat(publishedEvent.data()).isEqualTo(NotificationDto.from(saved));
+        assertThat(publishedEvent.data()).isInstanceOfSatisfying(NotificationDto.class,
+                actual -> {
+                    assertThat(actual)
+                            .usingRecursiveComparison()
+                            .ignoringFields("createdAt")
+                            .isEqualTo(NotificationDto.from(saved));
+
+                    assertThat(actual.createdAt())
+                            .isCloseTo(saved.getCreatedAt(), within(1_000, ChronoUnit.NANOS));
+                });
+
     }
 
     private NotificationCreateRequestedEvent event(UUID receiverId, String title, NotificationLevel level) {
