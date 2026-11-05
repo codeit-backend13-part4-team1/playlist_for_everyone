@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.user.controller;
 
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.request.UserCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
+import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserAdministrationService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,7 @@ public class UserController {
 
 
     private final UserService userService;
+    private final UserAdministrationService userAdministrationService;
 
     @PostMapping
     public ResponseEntity<UserDto> create(@Valid @RequestBody UserCreateRequest request) {
@@ -27,5 +29,7 @@ public class UserController {
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
+
+
 
 }
