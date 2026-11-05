@@ -30,19 +30,17 @@ public class ContentService {
     public ContentDto create(ContentCreateRequest request, MultipartFile file) {
         // S3 업로드 및 파일 정보 저장
         FileInfo fileInfo = fileService.upload(file);
-
-        // 썸네일 URL 조회
         String thumbnailUrl = fileService.getFileUrl(fileInfo.getId());
 
         Content content = Content.createAdminContent(
                 request.type(),
                 request.title(),
                 request.description(),
-                thumbnailUrl
+                thumbnailUrl,
+                fileInfo
         );
 
-        List<String> tags = normalizeTags(request.tags());
-        tags.forEach(content::addTag);
+        normalizeTags(request.tags()).forEach(content::addTag);
 
         Content savedContent = contentRepository.save(content);
 

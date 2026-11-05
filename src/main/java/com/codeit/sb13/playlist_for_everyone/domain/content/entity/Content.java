@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.entity;
 
 import com.codeit.sb13.playlist_for_everyone.global.domain.UpdatedAtEntity;
+import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -18,6 +19,10 @@ import java.util.List;
                 @UniqueConstraint(
                         name = "uk_content_provider_type_item_id",
                         columnNames = {"provider", "type", "provider_item_id"}
+                ),
+                @UniqueConstraint(
+                        name = "uk_contents_file_info",
+                        columnNames = {"file_info_id"}
                 )
         }
 )
@@ -50,11 +55,16 @@ public class Content extends UpdatedAtEntity {
     )
     private List<ContentTag> tags = new ArrayList<>();
 
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "file_info_id")
+    private FileInfo fileInfo;
+
     public static Content createAdminContent(
             ContentType type,
             String title,
             String description,
-            String thumbnailUrl
+            String thumbnailUrl,
+            FileInfo fileInfo
     ) {
         Content content = new Content();
 
@@ -62,10 +72,27 @@ public class Content extends UpdatedAtEntity {
         content.title = title;
         content.description = description;
         content.thumbnailUrl = thumbnailUrl;
+        content.fileInfo = fileInfo;
         content.provider = ContentSource.ADMIN;
         content.providerItemId = null;
 
         return content;
+    }
+
+    // 기존 호출부와의 호환성을 위한 오버로딩 메서드
+    public static Content createAdminContent(
+            ContentType type,
+            String title,
+            String description,
+            String thumbnailUrl
+    ) {
+        return createAdminContent(
+                type,
+                title,
+                description,
+                thumbnailUrl,
+                null
+        );
     }
 
     /** 외부 API에서 수집한 콘텐츠 생성 */
