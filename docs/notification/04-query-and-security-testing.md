@@ -8,8 +8,8 @@
 | 테스트 | 검증하는 것 | 포함하지 않는 것 |
 | --- | --- | --- |
 | [NotificationControllerTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/notification/controller/NotificationControllerTest.java) | 요청 바인딩·검증, 응답 형식, Principal의 UUID를 서비스로 전달 | 필터 제외·서비스 Mock. 실제 JWT와 DB 검증 없음 |
-| [NotificationServiceTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/notification/service/NotificationServiceTest.java) | 조회 결과의 DTO·커서 구성, 본인·타인·미존재 알림별 삭제 호출 여부 | 저장소 Mock. 실제 잠금·DB 삭제·커밋 검증 없음 |
-| [NotificationRepositoryTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/notification/repository/NotificationRepositoryTest.java) | PostgreSQL·Flyway·Querydsl로 수신자별 목록·개수, 커서 탐색, 미존재 알림의 빈 잠금 조회 결과 검증 | 서비스의 소유자 확인·동시 삭제·JWT 호출 없음 |
+| [NotificationServiceTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/notification/service/NotificationServiceTest.java) | 조회 결과의 DTO·커서 구성, 본인·타인·미존재 알림별 삭제 호출 여부 | 사용자 조회 컴포넌트·저장소·이벤트 발행자 Mock. 실제 잠금·DB 삭제·커밋 검증 없음 |
+| [NotificationRepositoryTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/notification/repository/NotificationRepositoryTest.java) | PostgreSQL·Flyway·Querydsl 조회, 사용자 보존, DTO 변환 중 추가 SQL 여부 | 서비스의 소유자 확인·동시 삭제·JWT 호출 없음 |
 | [NotificationServiceIntegrationTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/notification/service/NotificationServiceIntegrationTest.java) | 실제 서비스·PostgreSQL과 두 트랜잭션으로 잠금 대기, 두 작업의 정상 완료와 최종 삭제 검증 | HTTP·JWT·CSRF·SSE 전송 검증 없음 |
 | [NotificationSecurityIntegrationTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/notification/controller/NotificationSecurityIntegrationTest.java) | 실제 JWT 필터·사용자 조회·서비스·PostgreSQL을 통한 조회·삭제 | MockMvc 사용. 실제 HTTP 서버·로그인 API·Redis 전송·CSRF 검증 없음 |
 
@@ -18,6 +18,8 @@ MVC 테스트는 `SecurityContextHolder`에 인증 객체를 직접 넣어 Princ
 저장소 테스트는 `@DataJpaTest`의 기본 트랜잭션 롤백을 사용하며, 커밋 후 이벤트 전송은 [생성·전송 테스트](02-testing.md)가 확인합니다.
 저장소 테스트의 `deleteById()`와 `flush()`는 삭제 후 목록·개수·커서를 확인하기 위한 데이터 준비입니다.
 삭제 허용 여부는 서비스 단위 테스트에서, 실제 잠금과 커밋 순서는 [동시 삭제 검증](05-concurrent-deletion-testing.md)에서 확인합니다.
+사용자 데이터는 JDBC로 준비하며, 저장소 테스트에 사용자 조회 서비스를 주입하지 않습니다.
+지연 로딩과 DTO 변환 구간의 SQL 측정 방법은 [수신자 연관관계 문서](06-receiver-association.md)에 정리했습니다.
 
 ## 어떤 결과를 확인하는가
 
@@ -27,7 +29,8 @@ MVC 테스트는 `SecurityContextHolder`에 인증 객체를 직접 넣어 Princ
 | MVC 전달 | 인증 사용자 ID와 조회 조건·삭제 ID 전달, 200·204·500 응답 형식 |
 | 서비스 읽음 처리 | 본인 알림일 때만 삭제 호출, 타인·미존재 알림은 삭제 호출 없음 |
 | 저장소 커서 | 양방향 정렬, 같은 생성시각의 ID 순서, `limit + 1`, 커서 대상 삭제 후 탐색 |
-| 저장소 목록·개수 | 수신자별 조회 범위, 준비한 행을 삭제한 뒤 목록·전체 개수의 변화 |
+| 저장소 목록·개수 | 수신자별 조회 범위, 삭제 후 목록·전체 개수 변화와 수신자 사용자 보존 |
+| 저장소 DTO 변환 | 미초기화 수신자에서 UUID를 복사해도 변환 중 추가 SQL이 발생하지 않음 |
 | 저장소 잠금 조회 | 존재하지 않는 ID에 빈 Optional 반환 |
 | 서비스 동시 삭제 | 두 번째 작업의 DB 잠금 대기, 첫 커밋 후 두 작업의 정상 완료, 최종 행 삭제 |
 | JWT 정상 요청 | 본인 목록·전체 개수, 삭제 후 목록·개수 변화, 타인 데이터 보존 |
