@@ -197,4 +197,39 @@ class ContentCollectionServiceTest {
                 .extracting(ContentTag::getTag)
                 .containsExactly(tag);
     }
+
+    @Test
+    void 같은_외부_콘텐츠를_다시_수집하면_기존_콘텐츠를_반환한다() {
+        var data = new CollectedContentData(
+                ContentType.movie, "테스트 영화", "영화 설명",
+                "https://example.com/poster.jpg", ContentSource.TMDB, "550",
+                List.of("액션")
+        );
+
+        Content first = service.save(data);
+        em.flush();
+        em.clear();
+
+        Content second = service.save(data);
+        em.flush();
+        em.clear();
+
+        assertThat(second.getId()).isEqualTo(first.getId());
+
+        Long count = em.createQuery(
+                        """
+                        select count(c) from Content c
+                        where c.provider = :provider
+                          and c.type = :type
+                          and c.providerItemId = :externalId
+                        """,
+                        Long.class
+                )
+                .setParameter("provider", ContentSource.TMDB)
+                .setParameter("type", ContentType.movie)
+                .setParameter("externalId", "550")
+                .getSingleResult();
+
+        assertThat(count).isEqualTo(1L);
+    }
 }
