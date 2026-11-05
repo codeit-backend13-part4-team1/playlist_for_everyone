@@ -91,3 +91,7 @@ everyone:
     redis:
       # 같은 환경의 서버는 같은 채널을 사용한다. 환경을 격리하려면 Redis 또는 채널을 구분한다.
       channel: ${EVERYONE_SSE_REDIS_CHANNEL:everyone:sse:events}
+    history:
+      key-prefix: ${EVERYONE_SSE_HISTORY_KEY_PREFIX:everyone:sse:history}
+      max-events-per-user: ${EVERYONE_SSE_HISTORY_MAX_EVENTS_PER_USER:1000}
+      retention: ${EVERYONE_SSE_HISTORY_RETENTION:10m}
