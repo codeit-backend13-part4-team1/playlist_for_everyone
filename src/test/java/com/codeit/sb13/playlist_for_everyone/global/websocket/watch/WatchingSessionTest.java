@@ -283,6 +283,7 @@ public class WatchingSessionTest {
                 SessionData data = info.toData();
                 connectionRegistry.register(data);
 
+                userServiceLogicSet(info.user());
                 assertThatThrownBy(() -> watchingSession.joinViewerSession(info))
                         .isInstanceOf(EveryOneException.class); // InvalidAuthException
 
@@ -387,6 +388,7 @@ public class WatchingSessionTest {
                         .build();
                 connectionRegistry.register(data);
 
+                userServiceLogicSet(info.user());
                 assertThatThrownBy(() -> watchingSession.leaveViewerSession(info))
                         .isInstanceOf(EveryOneException.class); // InvalidAuthException
 

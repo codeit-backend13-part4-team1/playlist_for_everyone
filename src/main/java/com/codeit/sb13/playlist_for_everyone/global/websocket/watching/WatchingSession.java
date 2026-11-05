@@ -122,11 +122,13 @@ public class WatchingSession {
             SessionInfo info,
             UUID contentId
     ){
-        if(!auth.isEnabled()) // 사용자가 잠겨있다면, 로직 방어.
-            throw new UserNotFoundException(Map.of());
-
         // 리소스 생성을 위한 조회
         User user = userService.getById(auth.getUserId());
+
+        // 최신 사용자로 조회
+        if(user.isLocked()) // 사용자가 잠겨있다면, 로직 방어.
+            throw new UserNotFoundException(Map.of());
+
         Content content = null; // todo - contentService 에서 컨텐츠 조회 매서드 작성.
 
         Watcher watcher = mapper.toWatcher(user);
