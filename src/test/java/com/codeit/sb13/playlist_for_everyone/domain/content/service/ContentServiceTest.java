@@ -347,6 +347,39 @@ public class ContentServiceTest {
                 .containsExactly("로맨스");
     }
 
+    @Test
+    @DisplayName("파일 수정 시 정상적으로 수정된다.")
+    void updateFile_success() {
+        // given
+        UUID contentId = UUID.randomUUID();
+        MultipartFile file = mock(MultipartFile.class);
+
+        FileInfo oldFileInfo = mock(FileInfo.class);
+        UUID oldFileId = UUID.randomUUID();
+        when(oldFileInfo.getId()).thenReturn(oldFileId);
+
+        Content content = Content.createAdminContent(
+                ContentType.tvSeries,
+                "너말고다른연애",
+                "KBS 드라마 입니다.",
+                fileService.getFileUrl(oldFileId)
+        );
+
+        FileInfo newFileInfo = mockFileUpload(file);
+        String newThumbnailUrl = "https://example.com/thumbnail.jpg";
+
+        when(contentRepository.findById(contentId)).thenReturn(Optional.of(content));
+
+        // when
+        contentService.update(contentId, null, file);
+
+        // then
+        assertThat(content.getThumbnailUrl()).isEqualTo(newThumbnailUrl);
+        assertThat(content.getFileInfo()).isSameAs(newFileInfo);
+
+        verify(fileService).upload(file);
+        verify(fileService).delete(oldFileId);
+    }
 
 
 }
