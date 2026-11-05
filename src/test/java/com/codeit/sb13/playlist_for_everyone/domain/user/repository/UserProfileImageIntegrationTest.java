@@ -233,6 +233,31 @@ class UserProfileImageIntegrationTest {
                 .hasStackTraceContaining("fk_users_profile_image");
     }
 
+    @Test
+    @DisplayName("기존 profiles 테이블을 제거하고 사용자와 파일 테이블은 유지한다")
+    void 기존_프로필_테이블을_제거한다() {
+        // 실제 PostgreSQL에 Flyway 마이그레이션을 적용한 결과를 확인한다.
+        // to_regclass()는 해당 테이블이 없으면 null을 반환한다.
+        String profilesTable = jdbcTemplate.queryForObject(
+                "SELECT to_regclass('public.profiles')::text",
+                String.class
+        );
+
+        String usersTable = jdbcTemplate.queryForObject(
+                "SELECT to_regclass('public.users')::text",
+                String.class
+        );
+
+        String filesTable = jdbcTemplate.queryForObject(
+                "SELECT to_regclass('public.file_infos')::text",
+                String.class
+        );
+
+        assertThat(profilesTable).isNull();
+        assertThat(usersTable).isEqualTo("users");
+        assertThat(filesTable).isEqualTo("file_infos");
+    }
+
     private User createUser(String email) {
         return User.builder()
                 .email(email)
