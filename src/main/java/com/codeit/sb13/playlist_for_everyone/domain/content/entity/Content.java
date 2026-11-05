@@ -55,6 +55,7 @@ public class Content extends UpdatedAtEntity {
     )
     private List<ContentTag> tags = new ArrayList<>();
 
+    // S3 파일 삭제 이벤트 처리를 위해 cascade 대신 FileService.delete() 사용
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "file_info_id")
     private FileInfo fileInfo;
@@ -124,7 +125,6 @@ public class Content extends UpdatedAtEntity {
     public void update(
             String title,
             String description,
-            String thumbnailUrl,
             List<String> tags
     ) {
         if (title != null) {
@@ -133,10 +133,6 @@ public class Content extends UpdatedAtEntity {
 
         if (description != null) {
             this.description = description;
-        }
-
-        if (thumbnailUrl != null) {
-            this.thumbnailUrl = thumbnailUrl;
         }
 
         if (tags != null) {
@@ -159,6 +155,11 @@ public class Content extends UpdatedAtEntity {
     public void addTag(String tag) {
         ContentTag contentTag = new ContentTag(this, tag);
         tags.add(contentTag);
+    }
+
+    public void updateThumbnail(String thumbnailUrl, FileInfo fileInfo) {
+        this.thumbnailUrl = thumbnailUrl;
+        this.fileInfo = fileInfo;
     }
 
 }

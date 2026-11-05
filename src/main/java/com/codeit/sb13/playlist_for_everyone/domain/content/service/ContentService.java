@@ -52,19 +52,33 @@ public class ContentService {
         Content content = contentRepository.findById(id)
                 .orElseThrow(() -> new ContentNotFoundException(Map.of("contentId", id)));
 
-        List<String> tags = request.tags() == null
-                ? null
-                : normalizeTags(request.tags());
+        // 제목, 설명, 태그 수정
+        if (request != null) {
+            List<String> tags = request.tags() == null
+                    ? null
+                    : normalizeTags(request.tags());
 
-        // TODO: 이미지 업로드 구현 후 새 URL 적용
-        String thumbnailUrl = null;
+            content.update(
+                    request.title(),
+                    request.description(),
+                    tags
+            );
+        }
 
-        content.update(
-                request.title(),
-                request.description(),
-                thumbnailUrl,
-                tags
-        );
+        // 파일이 전달된 경우에만 썸네일 수정
+        if (file != null && !file.isEmpty()) {
+            FileInfo oldFileInfo = content.getFileInfo();
+
+            FileInfo newFileInfo = fileService.upload(file);
+            String thumbnailUrl = fileService.getFileUrl(newFileInfo.getId());
+
+            content.updateThumbnail(thumbnailUrl, newFileInfo);
+
+            // 기존 파일 삭제
+            if (oldFileInfo != null) {
+                fileService.delete(oldFileInfo.getId());
+            }
+        }
 
         double averageRating = reviewRepository.findAverageRatingByContentId(id);
         int reviewCount = Math.toIntExact(reviewRepository.countByContentId(id));

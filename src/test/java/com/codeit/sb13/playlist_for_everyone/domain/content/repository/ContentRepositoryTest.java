@@ -171,7 +171,6 @@ public class ContentRepositoryTest {
         found.update(
                 "수정된 제목",
                 "수정된 설명",
-                null,
                 List.of("드라마", "액션")
         );
 

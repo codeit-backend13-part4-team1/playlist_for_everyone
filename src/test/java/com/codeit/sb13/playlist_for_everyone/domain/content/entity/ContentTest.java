@@ -132,14 +132,12 @@ public class ContentTest {
         content.update(
                 "수정된 인셉션",
                 "수정된 영화 설명",
-                "new-thumbnail-url",
                 List.of("액션", "스릴러")
         );
 
         // then
         assertThat(content.getTitle()).isEqualTo("수정된 인셉션");
         assertThat(content.getDescription()).isEqualTo("수정된 영화 설명");
-        assertThat(content.getThumbnailUrl()).isEqualTo("new-thumbnail-url");
 
         assertThat(content.getTags())
                 .extracting(ContentTag::getTag)
