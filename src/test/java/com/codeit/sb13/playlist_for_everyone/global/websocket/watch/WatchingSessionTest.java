@@ -410,12 +410,12 @@ public class WatchingSessionTest {
                 SessionData data = SessionData.builder()
                         .session(info.session())
                         .subscription(info.subscription())
-                        .destination(registeredDestination) // 구독 시 저장되었던 경로
+                        .destination(destination) // 구독 시 저장되었던 경로
                         .principal(info.principal())
                         .build();
                 connectionRegistry.register(data);
 
-                assertThatThrownBy(() -> watchingSession.joinViewerSession(info))
+                assertThatThrownBy(() -> watchingSession.leaveViewerSession(info))
                         .isInstanceOf(WebSocketDestinationInvalidException.class); // InvalidAuthException
 
                 // 실제 세션 저장부는 호출되지 않음.

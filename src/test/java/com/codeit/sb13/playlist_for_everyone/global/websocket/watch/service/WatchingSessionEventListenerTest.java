@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.watch.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
+import com.codeit.sb13.playlist_for_everyone.global.exception.EveryOneException;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSession;
@@ -31,6 +32,7 @@ import java.util.UUID;
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.MESSAGE_CHAT_PREFIX;
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.MESSAGE_VIEW_PREFIX;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.*;
 
 /**
@@ -247,7 +249,8 @@ public class WatchingSessionEventListenerTest {
 
                 setTestingJoinLogic(contentId,WATCH_SERVICE, false, true);
 
-                eventListener.watchJoinEvent(new WatchingSessionJoinEvent(info));
+                assertThatThrownBy(() -> eventListener.watchJoinEvent(new WatchingSessionJoinEvent(info)))
+                        .isInstanceOf(EveryOneException.class);
 
                 // 저장로직이 가기 전에 로직 종료
                 verify(watchingSession, never()).joinViewerSession(any(SessionInfo.class));
@@ -270,7 +273,8 @@ public class WatchingSessionEventListenerTest {
                 setTestingJoinLogic(contentId,WATCH_SERVICE, true, false);
 
                 // 예외는 이벤트 리스너 단 에서 잡으므로, 예외는 발생하지 않음.
-                eventListener.watchJoinEvent(new WatchingSessionJoinEvent(info));
+                assertThatThrownBy(() -> eventListener.watchJoinEvent(new WatchingSessionJoinEvent(info)))
+                        .isInstanceOf(EveryOneException.class);
 
                 // 호출 로직이 가기 전에 로직 종료
                 verify(template, never()).convertAndSend(any(String.class),any(RedisMessageDto.class));

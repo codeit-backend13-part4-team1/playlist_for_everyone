@@ -64,6 +64,10 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
         return p + q.get(0);
     }
 
+    @Override
+    public void refresh(String sessionId){
+        watchingSessionRepository.refresh(sessionId);
+    }
 
     @Override
     public void joinViewerSession(SessionInfo info) {

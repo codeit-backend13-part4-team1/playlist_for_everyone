@@ -21,6 +21,11 @@ public interface WatchingSessionService {
     String topic(SessionInfo info);
 
     /**
+     * 동시 시청 세션에 등록된 세션 정보의 수명을 갱신하는 매서드.
+     */
+    void refresh(String sessionId);
+
+    /**
      * 동시 시청의 시청 세션에 대해 사용자 세션을 등록하는 매서드.
      * @param info 세션 정보가 포함된 객체
      */

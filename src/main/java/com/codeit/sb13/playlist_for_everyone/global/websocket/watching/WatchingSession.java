@@ -36,7 +36,9 @@ public class WatchingSession {
 
     private final MatchRule VIEW_DESTINATION_PATTERN = MatchRule
             .builder()
+            .prefix(PATH_PREFIX)
             .pattern(UUID_REGEX)
+            .postfix(VIEW_POSTFIX)
             .build();
 
     private final WatchingSessionMapper mapper;
@@ -49,6 +51,14 @@ public class WatchingSession {
 
     public String topic(SessionInfo info){
         return watchingSessionService.topic(info);
+    }
+
+    /**
+     * 등록된 세션 정보의 수명을 갱신하는 매서드
+     */
+    public void refresh(SessionInfo info){
+        Objects.requireNonNull(info);
+        watchingSessionService.refresh(info.session());
     }
 
     /**
@@ -157,7 +167,7 @@ public class WatchingSession {
                 throw new NullPointerException();
             }
 
-            return VIEW_DESTINATION_PATTERN.extract(destination).get(0);
+            return extract.get(0);
         } catch (NullPointerException e) {
             throw new WebSocketDestinationInvalidException(e);
         }

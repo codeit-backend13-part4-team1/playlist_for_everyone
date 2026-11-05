@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
+import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionRegisterException;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSession;
@@ -46,8 +47,9 @@ public class WatchingSessionEventListener {
             log.error("[{}] sessionId : {}(user : {}) - 동시 시청 참여 로직 에러.",
                     this.getClass().getSimpleName(),
                     info.session(),
-                    user != null ? user.getUsername() : null,
+                    user != null ? user.getUserId() : null,
                     e);
+            throw new WebSocketSessionRegisterException();
         }
     }
 
@@ -76,13 +78,14 @@ public class WatchingSessionEventListener {
             log.error("[{}] sessionId : {}(user : {}) - 동시 시청 퇴장 로직 에러.",
                     this.getClass().getSimpleName(),
                     info.session(),
-                    user != null ? user.getUsername() : null,
+                    user != null ? user.getUserId() : null,
                     e);
         }
     }
 
     @EventListener
     public void watchRefreshEvent(WatchingSessionRefreshEvent event){
+        watchingSession.refresh(event.info());
     }
 
 

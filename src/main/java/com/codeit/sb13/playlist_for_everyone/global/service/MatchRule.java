@@ -26,7 +26,10 @@ public class MatchRule {
 
     @Override
     public String toString(){
-        return String.format("prefix: %s, postfix: %s, pattern: %s", prefix.pattern(), postfix.pattern(), pattern.pattern());
+        return String.format("prefix: %s, postfix: %s, pattern: %s",
+                prefix == null ? null : prefix.pattern(),
+                postfix == null ? null : postfix.pattern(),
+                pattern == null ? null : pattern.pattern());
     }
 
 
