@@ -386,5 +386,67 @@ public class ContentServiceTest {
         verify(fileService).delete(oldFileId);
     }
 
+    @Test
+    @DisplayName("기존 파일 정보가 없으면 새 썸네일만 등록한다.")
+    void update_thumbnail_withoutOldFile() {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        Content content = Content.createAdminContent(
+                ContentType.tvSeries,
+                "너말고다른연애",
+                "KBS 드라마 입니다.",
+                "thumbnail-url"
+        );
+
+        // 새 파일 정보
+        String newThumbnailUrl = "https://example.com/thumbnail.jpg";
+        MultipartFile file = mock(MultipartFile.class);
+        FileInfo newFileInfo = mockFileUpload(file);
+
+        when(contentRepository.findById(contentId)).thenReturn(Optional.of(content));
+
+        // when
+        contentService.update(contentId, null, file);
+
+        // then
+        assertThat(content.getThumbnailUrl()).isEqualTo(newThumbnailUrl);
+        assertThat(content.getFileInfo()).isSameAs(newFileInfo);
+
+        verify(fileService).upload(file);
+        verify(fileService, never()).delete(any());
+    }
+
+    @Test
+    @DisplayName("빈 파일을 전달하면 기존 썸네일을 유지한다.")
+    void update_thumbnail_emptyFile() {
+        // given
+        UUID contentId = UUID.randomUUID();
+        String oldThumbnailUrl = "https://example.com/old.jpg";
+
+        MultipartFile file = mock(MultipartFile.class);
+        FileInfo oldFileInfo = mock(FileInfo.class);
+
+        Content content = Content.createAdminContent(
+                ContentType.tvSeries,
+                "너말고다른연애",
+                "KBS 드라마 입니다.",
+                oldThumbnailUrl,
+                oldFileInfo
+        );
+
+        when(file.isEmpty()).thenReturn(true);
+        when(contentRepository.findById(contentId)).thenReturn(Optional.of(content));
+
+        // when
+        contentService.update(contentId, null, file);
+
+        // then
+        assertThat(content.getThumbnailUrl()).isEqualTo(oldThumbnailUrl);
+        assertThat(content.getFileInfo()).isSameAs(oldFileInfo);
+
+        verify(fileService, never()).upload(any());
+        verify(fileService, never()).delete(any());
+    }
 
 }
