@@ -29,6 +29,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -211,6 +212,60 @@ public class ContentServiceTest {
     }
 
     @Test
+    @DisplayName("존재하는 콘텐츠를 단건 조회한다.")
+    void getContent_success() {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        Content content = Content.createAdminContent(
+                ContentType.tvSeries,
+                "너말고다른연애",
+                "KBS 드라마 입니다.",
+                "thumbnail-url"
+        );
+
+        ContentDto expected = mock(ContentDto.class);
+
+        given(contentRepository.findById(contentId))
+                .willReturn(Optional.of(content));
+        given(reviewRepository.findAverageRatingByContentId(contentId))
+                .willReturn(4.5);
+        given(reviewRepository.countByContentId(contentId))
+                .willReturn(3L);
+        given(contentMapper.toDto(content, 4.5, 3, 0L))
+                .willReturn(expected);
+
+        // when
+        ContentDto result = contentService.getById(contentId);
+
+        // then
+        assertThat(result).isSameAs(expected);
+        verify(contentRepository).findById(contentId);
+        verify(contentMapper).toDto(content, 4.5, 3, 0L);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 콘텐츠를 조회하면 예외가 발생한다.")
+    void getContent_unexists() {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        given(contentRepository.findById(contentId))
+                .willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> contentService.getById(contentId))
+                .isInstanceOf(ContentNotFoundException.class)
+                .satisfies(exception -> {
+                    ContentNotFoundException e =
+                            (ContentNotFoundException) exception;
+
+                    assertThat(e.getDetails())
+                            .containsEntry("contentId", contentId);
+                });
+    }
+
+    @Test
     @DisplayName("콘텐츠 수정 시 제목, 설명, 태그가 변경되고 리뷰 집계가 전달된다.")
     void update_success() {
         // given
@@ -363,53 +418,6 @@ public class ContentServiceTest {
     }
 
     @Test
-    @DisplayName("존재하는 콘텐츠를 단건 조회한다.")
-    void getContent_success() {
-        // given
-        UUID contentId = UUID.randomUUID();
-
-        Content content = Content.createAdminContent(
-                ContentType.tvSeries,
-                "너말고다른연애",
-                "KBS 드라마 입니다.",
-                "thumbnail-url"
-        );
-
-        ContentDto expected = mock(ContentDto.class);
-
-        given(contentRepository.findById(contentId))
-                .willReturn(Optional.of(content));
-        given(reviewRepository.findAverageRatingByContentId(contentId))
-                .willReturn(4.5);
-        given(reviewRepository.countByContentId(contentId))
-                .willReturn(3L);
-        given(contentMapper.toDto(content, 4.5, 3, 0L))
-                .willReturn(expected);
-
-        // when
-        ContentDto result = contentService.getById(contentId);
-
-        // then
-        assertThat(result).isSameAs(expected);
-        verify(contentRepository).findById(contentId);
-        verify(contentMapper).toDto(content, 4.5, 3, 0L);
-    }
-
-    @Test
-    @DisplayName("존재하지 않는 콘텐츠를 조회하면 예외가 발생한다.")
-    void getContent_unexists() {
-        // given
-        UUID contentId = UUID.randomUUID();
-
-        given(contentRepository.findById(contentId))
-                .willReturn(Optional.empty());
-
-        // when & then
-        assertThatThrownBy(() -> contentService.getById(contentId))
-                .isInstanceOf(ContentNotFoundException.class);
-    }
-
-    @Test
     @DisplayName("존재하는 콘텐츠를 삭제한다.")
     void deleteById_success() {
         // given
@@ -438,6 +446,32 @@ public class ContentServiceTest {
         inOrder.verify(reviewRepository).deleteAllByContentId(contentId);
         inOrder.verify(playlistContentRepository).deleteAllByContentId(contentId);
         inOrder.verify(contentRepository).delete(content);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 콘텐츠를 삭제하면 예외가 발생한다.")
+    void deleteById_notFound() {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        given(contentRepository.findById(contentId))
+                .willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> contentService.deleteById(contentId))
+                .isInstanceOf(ContentNotFoundException.class)
+                .satisfies(exception -> {
+                    ContentNotFoundException e =
+                            (ContentNotFoundException) exception;
+
+                    assertThat(e.getDetails())
+                            .containsEntry("contentId", contentId);
+                });
+
+        then(contentRepository).should().findById(contentId);
+        then(reviewRepository).shouldHaveNoInteractions();
+        then(playlistContentRepository).shouldHaveNoInteractions();
+        then(contentRepository).should(never()).delete(any(Content.class));
     }
 
 }

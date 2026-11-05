@@ -37,7 +37,6 @@ public class ContentService {
         );
 
         List<String> tags = normalizeTags(request.tags());
-
         tags.forEach(content::addTag);
 
         Content savedContent = contentRepository.save(content);
@@ -49,7 +48,7 @@ public class ContentService {
     public ContentDto getById(UUID contentId) {
         Content content = contentRepository.findById(contentId)
                 .orElseThrow(() -> new ContentNotFoundException(
-                        Map.of("content", contentId)
+                        Map.of("contentId", contentId)
                 ));
 
         double averageRating = reviewRepository.findAverageRatingByContentId(contentId);
@@ -97,7 +96,7 @@ public class ContentService {
     public void deleteById(UUID contentId) {
         Content content = contentRepository.findById(contentId)
                 .orElseThrow(() -> new ContentNotFoundException(
-                        Map.of("content", contentId)
+                        Map.of("contentId", contentId)
                 ));
 
         int deletedReviews = reviewRepository.deleteAllByContentId(contentId);
