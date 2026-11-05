@@ -178,6 +178,7 @@ public class PlaylistServiceImplTest {
     assertThatThrownBy(() -> playlistService.create(ownerId, request))
         .isInstanceOf(UserNotFoundException.class);
     verify(playlistRepository, never()).save(any());
+    verifyNoInteractions(eventPublisher);
   }
 
   @Test
