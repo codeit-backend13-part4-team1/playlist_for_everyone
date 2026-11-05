@@ -126,7 +126,7 @@ public class WatchingSession {
         User user = userService.getById(auth.getUserId());
 
         // 최신 사용자로 조회
-        if(user.isLocked()) // 사용자가 잠겨있다면, 로직 방어.
+        if(type == ChangeType.JOIN && user.isLocked()) // 사용자가 잠겨있다면, 로직 방어.
             throw new UserNotFoundException(Map.of());
 
         Content content = null; // todo - contentService 에서 컨텐츠 조회 매서드 작성.

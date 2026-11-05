@@ -366,6 +366,7 @@ public class WatchingSessionTest {
                 validateReturnedObject(payload, watcherCount, info, data,ChangeType.LEAVE);
             }
 
+            @Disabled // 구독 취소는 중단되지 않도록 한다.
             @ParameterizedTest
             @MethodSource("variableRoleAndLockParam")
             @DisplayName("시청 세션 입장 시, 인증이나, 인가가 없다면, 리소스 작업 시도를 하지 않고 예외를 반환한다.")

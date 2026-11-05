@@ -74,6 +74,7 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
         String session = Objects.requireNonNull(info.session());
         String subscribe = Objects.requireNonNull(info.subscription());
         checkAuth(info);
+        destinationCheck(info);
 
         List<String> extract = MatchRule.extract(info.destination(),UUID_REGEX);
         if (extract.isEmpty()) throw new WebSocketDestinationInvalidException(null);
@@ -91,7 +92,7 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
     public void leaveViewerSession(SessionInfo info) {
         String session = Objects.requireNonNull(info.session());
         String subscribe = Objects.requireNonNull(info.subscription());
-        checkAuth(info);
+        destinationCheck(info);
 
         watchingSessionRepository.unregister(session,subscribe);
         topicRegistry.unregister(session, subscribe);
@@ -108,12 +109,14 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
     }
 
     private void checkAuth(SessionInfo info){
-        String destination = Objects.requireNonNull(info.destination());
         SecurityUser user = Objects.requireNonNull(info.user());
 
         if (!user.isEnabled())
             throw new WebSocketAuthInvalidException();
+    }
 
+    private void destinationCheck(SessionInfo info){
+        String destination = Objects.requireNonNull(info.destination());
         // chat 이나 view 경로가 아니면 에러 반환.
         if(!(MatchRule.check(destination,watchingSessionUrlPattern())
                 || MatchRule.check(destination,watchingChatUrlPattern())))
