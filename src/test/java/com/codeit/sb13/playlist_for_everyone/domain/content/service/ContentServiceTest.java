@@ -348,25 +348,30 @@ public class ContentServiceTest {
     }
 
     @Test
-    @DisplayName("파일 수정 시 정상적으로 수정된다.")
-    void updateFile_success() {
+    @DisplayName("썸네일 수정 시 정상적으로 수정된다.")
+    void update_thumbnail_success() {
         // given
         UUID contentId = UUID.randomUUID();
-        MultipartFile file = mock(MultipartFile.class);
+
+        // 기존 파일 정보
+        String oldThumbnailUrl = "https://example.com/old.jpg";
+        UUID oldFileId = UUID.randomUUID();
 
         FileInfo oldFileInfo = mock(FileInfo.class);
-        UUID oldFileId = UUID.randomUUID();
         when(oldFileInfo.getId()).thenReturn(oldFileId);
 
         Content content = Content.createAdminContent(
                 ContentType.tvSeries,
                 "너말고다른연애",
                 "KBS 드라마 입니다.",
-                fileService.getFileUrl(oldFileId)
+                oldThumbnailUrl,
+                oldFileInfo
         );
 
-        FileInfo newFileInfo = mockFileUpload(file);
+        // 새 파일 정보
         String newThumbnailUrl = "https://example.com/thumbnail.jpg";
+        MultipartFile file = mock(MultipartFile.class);
+        FileInfo newFileInfo = mockFileUpload(file);
 
         when(contentRepository.findById(contentId)).thenReturn(Optional.of(content));
 
