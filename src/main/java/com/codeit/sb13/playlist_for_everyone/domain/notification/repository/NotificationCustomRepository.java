@@ -7,7 +7,9 @@ import java.util.List;
 
 public interface NotificationCustomRepository {
 
+    /** 수신자의 알림을 생성시각·ID 순서로 최대 limit + 1건 조회한다. 추가 한 건은 다음 페이지 판단용이다. */
     List<Notification> search(NotificationSearchCondition condition);
 
+    /** 커서 위치를 제외하고, 같은 수신자의 전체 알림 수를 조회한다. */
     long searchCount(NotificationSearchCondition condition);
 }

@@ -8,7 +8,9 @@ import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.Notifica
 import com.codeit.sb13.playlist_for_everyone.domain.notification.event.NotificationCreatedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.repository.NotificationRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationService;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationUserReader;
 import com.codeit.sb13.playlist_for_everyone.global.exception.sse.SsePublishException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEventPublisher;
 import jakarta.validation.ConstraintViolationException;
@@ -28,6 +30,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -42,6 +45,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Stream;
@@ -55,6 +59,9 @@ import static org.mockito.Mockito.*;
  * <p>SseEventPublisher만 Mock으로 대체하므로 Redis·HTTP 수신은 이 클래스의 검증 범위가 아니다.
  * 테스트 전체를 @Transactional로 감싸지 않고 TransactionTemplate으로 커밋·롤백 시점을 제어한다.
  * 사용자 닉네임 변경은 알림 처리 실패에도 원래 업무의 커밋이 보존되는지 확인하기 위한 업무 대역이다.
+ *
+ * <p>NotificationUserReader와 UserService는 실제 빈을 사용한다. 입력 검증·사용자 조회·DB 저장의
+ * 실패 지점이 서로 다르므로 각각 업무 커밋 유지, SSE 미발행, 후속 정상 알림 처리를 검증한다.
  */
 @RecordApplicationEvents
 @SpringBootTest(properties = {
@@ -88,6 +95,9 @@ class NotificationIntegrationTest {
 
     @Autowired
     private NotificationRepository notificationRepository;
+
+    @Autowired
+    private NotificationUserReader notificationUserReader;
 
     @Autowired
     private NotificationService service;
@@ -132,7 +142,7 @@ class NotificationIntegrationTest {
         Notification saved = findOnlyNotification();
         assertThat(saved.getId()).isNotNull();
         assertThat(saved.getCreatedAt()).isNotNull();
-        assertThat(saved.getReceiver()).isEqualTo(RECEIVER_ID);
+        assertThat(saved.getReceiverId()).isEqualTo(RECEIVER_ID);
         assertThat(saved.getTitle()).isEqualTo(TITLE);
         assertThat(saved.getContent()).isEqualTo(CONTENT);
         assertThat(saved.getLevel()).isEqualTo(NotificationLevel.INFO);
@@ -250,7 +260,7 @@ class NotificationIntegrationTest {
         verifyNoInteractions(sseEventPublisher);
 
         publishAndCommit(event(RECEIVER_ID, TITLE, NotificationLevel.INFO));
-        assertThat(findOnlyNotification().getReceiver()).isEqualTo(RECEIVER_ID);
+        assertThat(findOnlyNotification().getReceiverId()).isEqualTo(RECEIVER_ID);
 
         ArgumentCaptor<SseEvent<?>> eventCaptor = ArgumentCaptor.captor();
         verify(sseEventPublisher).publish(eventCaptor.capture());
@@ -259,8 +269,8 @@ class NotificationIntegrationTest {
     }
 
     @Test
-    @DisplayName("알림 저장 실패에도 업무 커밋을 유지하고 후속 저장 알림의 SSE만 발행한다.")
-    void isolatesDatabaseFailureAndContinuesSavingNotifications(CapturedOutput output) {
+    @DisplayName("수신자가 없어도 업무 커밋을 유지하고 후속 정상 알림만 저장하여 SSE를 발행한다.")
+    void isolatesMissingReceiverFailureAndContinuesSavingNotifications(CapturedOutput output) {
         UUID missingReceiverId = UUID.randomUUID();
 
         assertThatCode(() -> transactionTemplate.executeWithoutResult(status -> {
@@ -271,11 +281,11 @@ class NotificationIntegrationTest {
         assertThat(receiverNickname()).isEqualTo("변경 후");
         assertThat(notificationRepository.count()).isZero();
         assertThat(output.getOut()).contains(
-                "알림 저장 실패. receiverId=" + missingReceiverId, "DataIntegrityViolationException");
+                "알림 저장 실패. receiverId=" + missingReceiverId, UserNotFoundException.class.getSimpleName());
 
         verifyNoInteractions(sseEventPublisher);
         publishAndCommit(event(RECEIVER_ID, TITLE, NotificationLevel.INFO));
-        assertThat(findOnlyNotification().getReceiver()).isEqualTo(RECEIVER_ID);
+        assertThat(findOnlyNotification().getReceiverId()).isEqualTo(RECEIVER_ID);
 
         ArgumentCaptor<SseEvent<?>> eventCaptor = ArgumentCaptor.captor();
         verify(sseEventPublisher).publish(eventCaptor.capture());
@@ -313,7 +323,7 @@ class NotificationIntegrationTest {
 
         assertThat(receiverNickname()).isEqualTo("변경 후");
         Notification saved = findOnlyNotification();
-        assertThat(saved.getReceiver()).isEqualTo(RECEIVER_ID);
+        assertThat(saved.getReceiverId()).isEqualTo(RECEIVER_ID);
         assertThat(saved.getTitle()).isEqualTo(TITLE);
         verify(sseEventPublisher).publish(any());
         assertThat(output.getAll())
@@ -347,13 +357,13 @@ class NotificationIntegrationTest {
         transactionTemplate.executeWithoutResult(status ->{
             NotificationCommand command = new NotificationCommand(RECEIVER_ID, TITLE, CONTENT, NotificationLevel.INFO);
 
-            Notification saved = notificationRepository.save(new Notification(command));
+            Notification saved = notificationRepository.save(new Notification(command, notificationUserReader.getById(RECEIVER_ID)));
             eventPublisher.publishEvent(new NotificationCreatedEvent(UUID.randomUUID(), NotificationDto.from(saved)));
 
             verifyNoInteractions(sseEventPublisher);
         });
 
-        assertThat(findOnlyNotification().getReceiver())
+        assertThat(findOnlyNotification().getReceiverId())
                 .isEqualTo(RECEIVER_ID);
         verify(sseEventPublisher).publish(any());
     }
@@ -364,7 +374,7 @@ class NotificationIntegrationTest {
         // 생성 이벤트가 등록되었더라도 저장 트랜잭션을 롤백하면 AFTER_COMMIT은 실행되지 않는다.
         transactionTemplate.executeWithoutResult(status ->{
             NotificationCommand command = new NotificationCommand(RECEIVER_ID, TITLE, CONTENT, NotificationLevel.INFO);
-            Notification saved = notificationRepository.save(new Notification(command));
+            Notification saved = notificationRepository.save(new Notification(command, notificationUserReader.getById(RECEIVER_ID)));
 
             eventPublisher.publishEvent(new NotificationCreatedEvent(UUID.randomUUID(), NotificationDto.from(saved)));
             status.setRollbackOnly();
@@ -372,6 +382,55 @@ class NotificationIntegrationTest {
 
         assertThat(notificationRepository.count()).isZero();
         verifyNoInteractions(sseEventPublisher);
+    }
+
+    @Test
+    @DisplayName("DB 저장 실패에도 업무 커밋을 유지하고 후속 정상 알림만 저장하여 SSE를 발행한다.")
+    void isolatesDatabaseFailureAndContinuesSavingNotifications(CapturedOutput output){
+        // Java null이 아닌 NUL 문자를 정상 본문에 덧붙여 입력 검증은 통과하고 PostgreSQL 저장은 실패하게 한다.
+        // 수신자 미존재로 저장 전에 종료되는 사례와 별도로 실제 DB 실패의 격리를 확인한다.
+        String invalidContent = CONTENT + (char) 0;
+
+        assertThatCode(()->
+                transactionTemplate.executeWithoutResult(status ->{
+                    changeReceiverNickname();
+
+                    eventPublisher.publishEvent(new NotificationCreateRequestedEvent(
+                            RECEIVER_ID,
+                            TITLE,
+                            invalidContent,
+                            NotificationLevel.INFO
+                    ));
+                })).doesNotThrowAnyException();
+
+        assertThat(output.getOut()).contains("알림 저장 실패. receiverId=" + RECEIVER_ID,
+                DataIntegrityViolationException.class.getSimpleName());
+        assertThat(receiverNickname()).isEqualTo("변경 후");
+        assertThat(notificationRepository.count()).isZero();
+        verifyNoInteractions(sseEventPublisher);
+
+        publishAndCommit(event(RECEIVER_ID, TITLE, NotificationLevel.INFO));
+        Notification saved = findOnlyNotification();
+        assertThat(saved.getReceiverId()).isEqualTo(RECEIVER_ID);
+        assertThat(saved.getContent()).isEqualTo(CONTENT);
+
+        ArgumentCaptor<SseEvent<?>> eventCaptor = ArgumentCaptor.captor();
+
+        verify(sseEventPublisher).publish(eventCaptor.capture());
+
+        SseEvent<?> publishedEvent = eventCaptor.getValue();
+        assertThat(publishedEvent.receiverId()).isEqualTo(RECEIVER_ID);
+        assertThat(publishedEvent.data()).isInstanceOfSatisfying(NotificationDto.class,
+                actual -> {
+                    assertThat(actual)
+                            .usingRecursiveComparison()
+                            .ignoringFields("createdAt")
+                            .isEqualTo(NotificationDto.from(saved));
+
+                    assertThat(actual.createdAt())
+                            .isCloseTo(saved.getCreatedAt(), within(1_000, ChronoUnit.NANOS));
+                });
+
     }
 
     private NotificationCreateRequestedEvent event(UUID receiverId, String title, NotificationLevel level) {

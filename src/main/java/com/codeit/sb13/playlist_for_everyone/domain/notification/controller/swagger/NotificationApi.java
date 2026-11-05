@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.notification.controller.swagger;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.request.NotificationSearchRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.response.NotificationDto;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.ApiErrorResponse;
@@ -11,6 +12,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springdoc.core.annotations.ParameterObject;
@@ -19,7 +21,16 @@ import org.springframework.web.bind.annotation.PathVariable;
 
 import java.util.UUID;
 
+/**
+ * 알림 API의 입력값·응답 정책과 Bearer 인증 요구사항을 문서화한다.
+ *
+ * <p>bearerAuth는 공통 OpenAPI 설정에 정의된 보안 스키마 이름이다.
+ * 이 선언은 문서 표현이며, 실제 인증은 SecurityConfig와 JWT 필터가 수행한다.
+ * 두 메서드의 SecurityUser는 서버가 주입하므로 {@code @Parameter(hidden = true)}로
+ * 요청 파라미터에서 숨긴다. 목록 조회의 수신자 ID도 클라이언트 입력으로 노출하지 않는다.
+ */
 @Tag(name = "알림", description = "알림 목록 조회 및 읽음 처리")
+@SecurityRequirement(name = "bearerAuth")
 @ApiResponses({
         @ApiResponse(
                 responseCode = "400",
@@ -31,7 +42,7 @@ import java.util.UUID;
         ),
         @ApiResponse(
                 responseCode = "401",
-                description = "인증되지 않은 요청",
+                description = "Bearer 토큰이 없거나, 만료·변조 등으로 유효하지 않은 경우",
                 content = @Content(
                         mediaType = "application/json",
                         schema = @Schema(implementation = ApiErrorResponse.class)
@@ -78,8 +89,12 @@ public interface NotificationApi {
             content = @Content(mediaType = "application/json")
     )
     ResponseEntity<CursorResponse<NotificationDto>> getNotifications(
-            @ParameterObject @Valid NotificationSearchRequest request
-    );
+            @ParameterObject
+            @Valid
+            NotificationSearchRequest request,
+            @Parameter(hidden = true)
+            SecurityUser user
+            );
 
     @Operation(
             summary = "알림 읽음 처리",
@@ -99,5 +114,9 @@ public interface NotificationApi {
                     description = "읽음 처리할 알림 ID",
                     required = true
             )
-            @PathVariable UUID notificationId);
+            @PathVariable
+            UUID notificationId,
+            @Parameter(hidden = true)
+            SecurityUser user
+    );
 }

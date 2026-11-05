@@ -33,7 +33,7 @@ public class Content extends UpdatedAtEntity {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String description;
 
-    @Column(name = "thumbnail_url", nullable = false, length = 2048)
+    @Column(name = "thumbnail_url", length = 2048)
     private String thumbnailUrl;
 
     @Enumerated(EnumType.STRING)
@@ -65,6 +65,32 @@ public class Content extends UpdatedAtEntity {
         content.provider = ContentSource.ADMIN;
         content.providerItemId = null;
 
+        return content;
+    }
+
+    /** 외부 API에서 수집한 콘텐츠 생성 */
+    public static Content createCollectedContent(
+            ContentType type,
+            String title,
+            String description,
+            String thumbnailUrl,
+            ContentSource provider,
+            String providerItemId
+    ) {
+        if (provider == null || provider == ContentSource.ADMIN) {
+            throw new IllegalArgumentException("수집한 콘텐츠에는 외부 API 출처가 필요합니다.");
+        }
+        if (providerItemId == null || providerItemId.isBlank()) {
+            throw new IllegalArgumentException("수집한 콘텐츠에는 외부 ID가 필요합니다.");
+        }
+
+        Content content = new Content();
+        content.type = type;
+        content.title = title;
+        content.description = description;
+        content.thumbnailUrl = thumbnailUrl;
+        content.provider = provider;
+        content.providerItemId = providerItemId;
         return content;
     }
 

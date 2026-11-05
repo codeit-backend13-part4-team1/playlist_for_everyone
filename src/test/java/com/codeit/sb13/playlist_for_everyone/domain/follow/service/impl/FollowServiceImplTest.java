@@ -31,6 +31,11 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
 
+/**
+ * 조회·저장 컴포넌트와 저장소를 Mock으로 대체해 서비스 정책과 예외 분기를 확인한다.
+ * UNIQUE 원인 예외도 테스트에서 구성하므로 실제 PostgreSQL 제약조건과 트랜잭션 복구는 통합 테스트가 담당한다.
+ * 직접 생성한 서비스에는 Spring의 트랜잭션·메서드 보안 프록시가 적용되지 않는다.
+ */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("팔로우 서비스")
 class FollowServiceImplTest {

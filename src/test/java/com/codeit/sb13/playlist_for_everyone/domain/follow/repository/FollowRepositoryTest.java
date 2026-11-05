@@ -28,6 +28,10 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+/**
+ * PostgreSQL 16 Testcontainers에 Flyway를 적용해 매핑·조회·FK·UNIQUE·NOT NULL 제약을 확인한다.
+ * H2로 대체하지 않으며 Docker가 필요하다. 서비스 정책이나 HTTP 인증은 이 테스트의 범위가 아니다.
+ */
 @DataJpaTest(
         showSql = false,
         properties = {

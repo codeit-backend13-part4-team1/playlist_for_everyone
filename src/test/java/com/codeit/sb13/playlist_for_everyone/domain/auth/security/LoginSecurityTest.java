@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.auth.security;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.controller.AuthController;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AuthService;
@@ -11,6 +12,7 @@ import com.codeit.sb13.playlist_for_everyone.global.config.MDCLoggingInterceptor
 import com.codeit.sb13.playlist_for_everyone.global.config.PasswordEncoderConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.SecurityAuthenticationConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.SecurityConfig;
+import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,6 +29,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import static org.mockito.Mockito.times;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -36,13 +39,14 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(
-        controllers = UserController.class,
+        // 실제 CSRF 토큰 발급 API를 테스트에 포함한다.
+        controllers = {UserController.class, AuthController.class},
         properties = {
                 // 기본값이 7일이 아니라 이 값을 성공 핸들러에 전달하는지 검증한다.
                 "everyone.jwt.refresh-token-validity=3d",
@@ -71,6 +75,10 @@ class LoginSecurityTest {
     private static final String EMAIL = "test@gmail.com";
     private static final String PASSWORD = "test=password";
     private static final String ACCESS_TOKEN = "issued-access-token";
+
+    private static final String CSRF_TOKEN_URL = "/api/auth/csrf-token";
+    private static final String CSRF_COOKIE_NAME = "XSRF-TOKEN";
+    private static final String CSRF_HEADER_NAME = "X-XSRF-TOKEN";
 
     @Autowired
     private MockMvc mockMvc;
@@ -104,20 +112,7 @@ class LoginSecurityTest {
     @Test
     @DisplayName("올바른 이메일과 비밀번호로 로그인하면 토큰과 사용자 정보를 반환한다")
     void 정상_로그인에_성공한다() throws Exception {
-        prepareSecurityUser(false);
-
-        User user = User.builder()
-                .email(EMAIL)
-                .name("테스트 사용자")
-                .password(passwordEncoder.encode(PASSWORD))
-                .role(Role.USER)
-                .build();
-        ReflectionTestUtils.setField(user, "id", USER_ID);
-        ReflectionTestUtils.setField(user, "createdAt", LocalDateTime.of(2026, 10, 28, 9, 0));
-
-        given(userService.getById(USER_ID)).willReturn(user);
-        given(jwtTokenProvider.createAccessToken(USER_ID)).willReturn(ACCESS_TOKEN);
-        given(jwtTokenProvider.createRefreshToken(USER_ID)).willReturn(REFRESH_TOKEN);
+        givenLoginSuccess();
 
         MvcResult result = mockMvc.perform(signIn(PASSWORD))
                 .andExpect(status().isOk())
@@ -199,6 +194,83 @@ class LoginSecurityTest {
         expectLoginFailure(PASSWORD);
     }
 
+    @Test
+    @DisplayName("로그인과 로그아웃 이후 CSRF 토큰을 다시 받아 재로그인한다")
+    void 로그아웃_후_CSRF_토큰을_다시_받아_로그인한다() throws Exception {
+        givenLoginSuccess();
+
+        // 1. signIn() 내부에서 실제 CSRF 발급 API를 호출한 뒤 로그인한다.
+        MvcResult loginResult = mockMvc.perform(signIn(PASSWORD))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").value(ACCESS_TOKEN))
+                .andReturn();
+
+        Cookie refreshCookie = loginResult.getResponse()
+                .getCookie("REFRESH_TOKEN");
+
+        assertThat(refreshCookie).isNotNull();
+        assertThat(refreshCookie.getValue()).isEqualTo(REFRESH_TOKEN);
+
+        // 2. 로그인 이후 사용할 CSRF 토큰을 발급 API에서 다시 받는다.
+        // 로그인 전의 토큰을 계속 사용할 수 있다고 가정하지 않는다.
+        Cookie logoutCsrfCookie = issueCsrfCookie();
+
+        // 3. 로그인 응답에서 받은 Refresh Token과 새 CSRF 토큰으로 로그아웃한다.
+        MvcResult logoutResult = mockMvc.perform(post("/api/auth/sign-out")
+                        .cookie(
+                                refreshCookie,
+                                logoutCsrfCookie
+                        )
+                        .header(
+                                CSRF_HEADER_NAME,
+                                logoutCsrfCookie.getValue()
+                        ))
+                .andExpect(status().isNoContent())
+                .andReturn();
+
+        verify(authService).logout(REFRESH_TOKEN);
+
+        // 브라우저가 Refresh Token 쿠키를 삭제하도록 응답했는지 확인한다.
+        Cookie deletedRefreshCookie = logoutResult.getResponse()
+                .getCookie("REFRESH_TOKEN");
+
+        assertThat(deletedRefreshCookie).isNotNull();
+        assertThat(deletedRefreshCookie.getMaxAge()).isZero();
+        assertThat(deletedRefreshCookie.getPath()).isEqualTo("/api/auth");
+
+        // 4. 첫 로그인 성공 후 SecurityUser의 비밀번호가 지워질 수 있다.
+        // 실제 사용자 조회처럼 비밀번호 해시를 가진 새 객체를 반환하도록 준비한다.
+        prepareSecurityUser(false);
+
+        // 5. signIn()이 CSRF 토큰을 다시 발급받고 두 번째 로그인을 요청한다.
+        // 삭제된 Refresh Token 쿠키는 다시 보내지 않는다.
+        MvcResult secondLoginResult = mockMvc.perform(signIn(PASSWORD))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").value(ACCESS_TOKEN))
+                .andReturn();
+
+        Cookie secondRefreshCookie = secondLoginResult.getResponse()
+                .getCookie("REFRESH_TOKEN");
+
+        assertThat(secondRefreshCookie).isNotNull();
+        assertThat(secondRefreshCookie.getValue()).isEqualTo(REFRESH_TOKEN);
+        assertThat(secondRefreshCookie.getMaxAge()).isPositive();
+
+        // 두 번 모두 실제 로그인 인증 과정과 토큰 저장 요청까지 도달해야 한다.
+        verify(userDetailsService, times(2)).loadUserByUsername(EMAIL);
+        verify(jwtTokenProvider, times(2)).createAccessToken(USER_ID);
+        verify(jwtTokenProvider, times(2)).createRefreshToken(USER_ID);
+
+        verify(refreshTokenRepository, times(2)).save(
+                USER_ID,
+                REFRESH_TOKEN,
+                REFRESH_TOKEN_EXPIRATION
+        );
+
+        // 재로그인 후에도 서버 세션에 인증 정보를 보관하지 않는다.
+        assertThat(secondLoginResult.getRequest().getSession(false)).isNull();
+    }
+
     private void prepareSecurityUser(boolean locked) {
         SecurityUser principal = new SecurityUser(
                 USER_ID,
@@ -213,17 +285,16 @@ class LoginSecurityTest {
                 .willReturn(principal);
     }
 
-    private MockHttpServletRequestBuilder signIn(String password) {
-        // 명세에 맞춰 JSON이 아닌 폼 파라미터로 요청한다.
-        // username에는 사용자의 이메일이 들어간다.
+    private MockHttpServletRequestBuilder signIn(String password) throws Exception {
+
+        Cookie csrfCookie = issueCsrfCookie();
+
         return post("/api/auth/sign-in")
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                 .param("username", EMAIL)
                 .param("password", password)
-
-                // 이번 테스트는 로그인 처리에 집중한다.
-                // CSRF 검증 정책은 이후에 별도로 진행한다.
-                .with(csrf());
+                .cookie(csrfCookie)
+                .header(CSRF_HEADER_NAME, csrfCookie.getValue());
     }
 
     private void expectLoginFailure(String password) throws Exception {
@@ -251,14 +322,48 @@ class LoginSecurityTest {
 
     }
 
+    /**
+     * 로그인 전에 서버가 발급한 CSRF 쿠키를 받는다.
+     *
+     * 토큰 생성과 쿠키 저장은 실제 SecurityFilterChain이 처리한다.
+     */
+    private Cookie issueCsrfCookie() throws Exception {
+        MvcResult result = mockMvc.perform(get(CSRF_TOKEN_URL))
+                .andExpect(status().isNoContent())
+                .andReturn();
 
+        Cookie csrfCookie = result.getResponse()
+                .getCookie(CSRF_COOKIE_NAME);
 
+        assertThat(csrfCookie).isNotNull();
+        assertThat(csrfCookie.getValue()).isNotBlank();
 
+        return csrfCookie;
+    }
 
+    /**
+     * 로그인 성공에 필요한 사용자 조회 결과와 토큰 발급 결과를 준비한다.
+     *
+     * AuthenticationManager와 비밀번호 검증은 실제 객체가 처리한다.
+     */
+    private void givenLoginSuccess() {
+        prepareSecurityUser(false);
 
+        User user = User.builder()
+                .email(EMAIL)
+                .name("테스트 사용자")
+                .password(passwordEncoder.encode(PASSWORD))
+                .role(Role.USER)
+                .build();
 
+        ReflectionTestUtils.setField(user, "id", USER_ID);
+        ReflectionTestUtils.setField(user, "createdAt", LocalDateTime.of(2026, 10, 28, 9, 0));
 
-
-
+        given(userService.getById(USER_ID)).willReturn(user);
+        given(jwtTokenProvider.createAccessToken(USER_ID))
+                .willReturn(ACCESS_TOKEN);
+        given(jwtTokenProvider.createRefreshToken(USER_ID))
+                .willReturn(REFRESH_TOKEN);
+    }
 
 }

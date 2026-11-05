@@ -1,4 +1,4 @@
-package com.codeit.sb13.playlist_for_everyone.global.service;
+package com.codeit.sb13.playlist_for_everyone.global.file.service;
 
 import com.codeit.sb13.playlist_for_everyone.global.file.config.S3Properties;
 import com.codeit.sb13.playlist_for_everyone.global.exception.file.FileDeleteException;

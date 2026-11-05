@@ -2,12 +2,19 @@ package com.codeit.sb13.playlist_for_everyone.domain.notification.repository;
 
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.command.NotificationCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.repository.NotificationSearchCondition;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.response.NotificationDto;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.Notification;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.NotificationLevel;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.SortBy;
+import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import org.hibernate.Hibernate;
+import org.hibernate.SessionFactory;
+import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,11 +34,25 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
 
+/**
+ * 실제 PostgreSQL·Flyway·Querydsl로 수신자별 목록·전체 개수와 커서 탐색을 확인한다.
+ *
+ * <p>생성시각이 같은 행의 ID 순서, 커서 대상 삭제 후 탐색, 삭제 후 목록·개수 변화를 검증한다.
+ * 이때 deleteById와 flush는 삭제된 상태를 준비하기 위한 테스트 코드다.
+ * 같은 삭제 사례에서 수신자 사용자가 보존되는지도 확인한다.
+ * 미존재 알림의 잠금 조회가 빈 Optional을 반환하는지도 확인한다.
+ *
+ * <p>DTO 변환 테스트는 수신자가 초기화되지 않은 상태에서 변환 전후 SQL 수를 비교한다.
+ * Hibernate 통계는 이 테스트 클래스에서만 활성화하며, 서비스 호출 없이 저장소·매핑 동작을 검증한다.
+ *
+ * <p>기본 DataJpaTest 트랜잭션이 각 사례의 변경을 롤백한다. 소유자별 삭제 여부는 서비스 테스트,
+ * 실제 잠금 대기와 커밋 결과는 NotificationServiceIntegrationTest, HTTP 응답은 JWT 통합 테스트에서 검증한다.
+ */
 @DataJpaTest(properties = {
         "spring.flyway.enabled=true",
-        "spring.jpa.hibernate.ddl-auto=validate"
+        "spring.jpa.hibernate.ddl-auto=validate",
+        "spring.jpa.properties.hibernate.generate_statistics=true"
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import({
@@ -60,6 +81,9 @@ public class NotificationRepositoryTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @PersistenceContext
+    private EntityManager entityManager;
+
     @Test
     @DisplayName("지정한 수신자의 알림만 목록과 전체 개수에 포함한다.")
     void searchesAndCountsOnlyReceiverNotifications(){
@@ -71,14 +95,14 @@ public class NotificationRepositoryTest {
                 "내 알림",
                 "내 알림 내용",
                 NotificationLevel.INFO
-        )));
+        ), findReceiver(receiverId)));
 
         notificationRepository.saveAndFlush(new Notification(new NotificationCommand(
                 otherReceiverId,
                 "다른 사용자 알림",
                 "다른 알림 내용",
                 NotificationLevel.INFO
-        )));
+        ), findReceiver(otherReceiverId)));
 
         NotificationSearchCondition condition = new NotificationSearchCondition(
                 null,
@@ -398,8 +422,7 @@ public class NotificationRepositoryTest {
         String cursor = lastReturned.getCreatedAt().toString();
         UUID idAfter = lastReturned.getId();
 
-        notificationRepository.deleteByIdAndReceiver(idAfter, receiverId);
-
+        notificationRepository.deleteById(idAfter);
         notificationRepository.flush();
 
         assertThat(notificationRepository.existsById(idAfter)).isFalse();
@@ -456,7 +479,7 @@ public class NotificationRepositoryTest {
         String cursor = lastReturned.getCreatedAt().toString();
         UUID idAfter = lastReturned.getId();
 
-        notificationRepository.deleteByIdAndReceiver(idAfter, receiverId);
+        notificationRepository.deleteById(idAfter);
         notificationRepository.flush();
 
         assertThat(notificationRepository.existsById(idAfter)).isFalse();
@@ -479,8 +502,8 @@ public class NotificationRepositoryTest {
     }
 
     @Test
-    @DisplayName("본인 알림 중 요청한 한 건만 삭제하고 나머지 알림은 유지한다.")
-    void deletesOnlyRequestedNotificationOwnedByReceiver(){
+    @DisplayName("알림 삭제 후 수신자별 목록과 전체 개수가 변경되고 사용자 정보는 유지된다.")
+    void reflectsDeletionInReceiverSearchResultsAndCount(){
         UUID receiverId = createReceiver();
         UUID otherReceiverId = createReceiver();
         LocalDateTime createdAt = LocalDateTime.of(2026, 10, 23, 10, 30);
@@ -510,10 +533,17 @@ public class NotificationRepositoryTest {
 
         assertThat(notificationRepository.searchCount(condition)).isEqualTo(2L);
 
-        notificationRepository.deleteByIdAndReceiver(targetId, receiverId);
+        notificationRepository.deleteById(targetId);
         notificationRepository.flush();
 
         assertThat(notificationRepository.existsById(targetId)).isFalse();
+
+        Long receiverCount = jdbcTemplate.queryForObject("""
+            SELECT COUNT(*) FROM users WHERE id = ?
+        """, Long.class, receiverId);
+
+        assertThat(receiverCount).isEqualTo(1L);
+
         assertThat(notificationRepository.search(condition))
                 .extracting(Notification::getId)
                 .containsExactly(remainingId);
@@ -526,151 +556,6 @@ public class NotificationRepositoryTest {
 
         assertThat(notificationRepository.searchCount(otherCondition)).isEqualTo(1L);
 
-    }
-
-    @Test
-    @DisplayName("동일한 알림을 반복 삭제해도 오류 없이 나머지 알림을 유지한다.")
-    void ignoresRepeatedDeletionAndPreservesOtherNotifications(){
-        UUID receiverId = createReceiver();
-        UUID otherReceiverId = createReceiver();
-
-        LocalDateTime createdAt = LocalDateTime.of(2026, 10, 23, 10, 30);
-        UUID targetId = insertNotification(receiverId, createdAt);
-        UUID remainingId = insertNotification(receiverId, createdAt.minusMinutes(1));
-        UUID otherId = insertNotification(otherReceiverId, createdAt);
-
-        notificationRepository.deleteByIdAndReceiver(targetId, receiverId);
-        notificationRepository.flush();
-
-        assertThat(notificationRepository.existsById(targetId)).isFalse();
-
-        assertThatCode(()->{
-            notificationRepository.deleteByIdAndReceiver(targetId, receiverId);
-            notificationRepository.flush();
-        }).doesNotThrowAnyException();
-
-        NotificationSearchCondition condition = new NotificationSearchCondition(
-                null,
-                null,
-                20,
-                SortDirection.DESCENDING,
-                SortBy.CREATED_AT,
-                receiverId
-        );
-
-        NotificationSearchCondition otherCondition = new NotificationSearchCondition(
-                null,
-                null,
-                20,
-                SortDirection.DESCENDING,
-                SortBy.CREATED_AT,
-                otherReceiverId
-        );
-
-        assertThat(notificationRepository.search(condition))
-                .extracting(Notification::getId)
-                .containsExactly(remainingId);
-        assertThat(notificationRepository.searchCount(condition))
-                .isEqualTo(1L);
-
-        assertThat(notificationRepository.search(otherCondition))
-                .extracting(Notification::getId)
-                .containsExactly(otherId);
-        assertThat(notificationRepository.searchCount(otherCondition))
-                .isEqualTo(1L);
-
-    }
-
-    @Test
-    @DisplayName("존재하지 않는 알림을 삭제해도 오류 없이 기존 알림을 유지한다.")
-    void ignoresMissingNotificationDeletionAndPreservesExistingNotifications(){
-        UUID receiverId = createReceiver();
-        UUID otherReceiverId = createReceiver();
-        LocalDateTime createdAt = LocalDateTime.of(2026, 10, 23, 10, 30);
-
-        UUID ownId = insertNotification(receiverId, createdAt);
-        UUID otherId = insertNotification(otherReceiverId, createdAt);
-        UUID missingId = UUID.randomUUID();
-
-        assertThat(notificationRepository.existsById(missingId)).isFalse();
-
-        assertThatCode(()->{
-            notificationRepository.deleteByIdAndReceiver(missingId, receiverId);
-            notificationRepository.flush();
-        }).doesNotThrowAnyException();
-
-        NotificationSearchCondition condition = new NotificationSearchCondition(
-                null,
-                null,
-                20,
-                SortDirection.DESCENDING,
-                SortBy.CREATED_AT,
-                receiverId
-        );
-
-        NotificationSearchCondition otherCondition = new NotificationSearchCondition(
-                null,
-                null,
-                20,
-                SortDirection.DESCENDING,
-                SortBy.CREATED_AT,
-                otherReceiverId
-        );
-
-        assertThat(notificationRepository.search(condition))
-                .extracting(Notification::getId)
-                .containsExactly(ownId);
-        assertThat(notificationRepository.searchCount(condition)).isEqualTo(1L);
-
-        assertThat(notificationRepository.search(otherCondition))
-                .extracting(Notification::getId)
-                .containsExactly(otherId);
-        assertThat(notificationRepository.searchCount(otherCondition)).isEqualTo(1L);
-    }
-
-    @Test
-    @DisplayName("다른 사용자의 알림을 삭제 요청해도 오류 없이 기존 알림을 유지한다.")
-    void preservesNotificationsWhenDeletingAnotherReceiversNotification(){
-        UUID receiverId = createReceiver();
-        UUID otherReceiverId = createReceiver();
-        LocalDateTime createdAt = LocalDateTime.of(2026, 10, 23, 10, 30);
-
-        UUID ownId = insertNotification(receiverId, createdAt);
-        UUID otherId = insertNotification(otherReceiverId, createdAt);
-
-        assertThatCode(()->{
-            notificationRepository.deleteByIdAndReceiver(otherId, receiverId);
-            notificationRepository.flush();
-        }).doesNotThrowAnyException();
-
-        assertThat(notificationRepository.existsById(otherId)).isTrue();
-        NotificationSearchCondition condition = new NotificationSearchCondition(
-                null,
-                null,
-                20,
-                SortDirection.DESCENDING,
-                SortBy.CREATED_AT,
-                receiverId
-        );
-
-        NotificationSearchCondition otherCondition = new NotificationSearchCondition(
-                null,
-                null,
-                20,
-                SortDirection.DESCENDING,
-                SortBy.CREATED_AT,
-                otherReceiverId
-        );
-
-        assertThat(notificationRepository.search(condition))
-                .extracting(Notification::getId)
-                .containsExactly(ownId);
-        assertThat(notificationRepository.searchCount(condition)).isEqualTo(1L);
-
-        assertThat(notificationRepository.search(otherCondition))
-                .extracting(Notification::getId)
-                .containsExactly(otherId);
-        assertThat(notificationRepository.searchCount(otherCondition)).isEqualTo(1L);
     }
 
     @Test
@@ -696,6 +581,60 @@ public class NotificationRepositoryTest {
                 .extracting(Notification::getId)
                 .containsExactly(firstId, secondId);
     }
+
+    @Test
+    @DisplayName("존재하지 않는 알림 ID로 잠금 조회하면 빈 Optional을 반환한다.")
+    void returnsEmptyWhenPessimisticLockTargetDoesNotExist(){
+
+        UUID missingId = UUID.randomUUID();
+        assertThat(notificationRepository.findWithPessimisticLockById(missingId))
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("알림을 DTO로 변환해도 수신자 조회 SQL이 추가로 발생하지 않는다.")
+    void convertsNotificationsToDtosWithoutAdditionalUserQueries(){
+        // JDBC로 준비하여 User를 영속성 컨텍스트에 미리 올리지 않는다. 사전 로딩이 추가 조회를 가릴 수 있다.
+        UUID receiverId = createReceiver();
+        LocalDateTime createdAt = LocalDateTime.of(2026, 11, 5, 10, 0);
+        insertNotification(receiverId, createdAt);
+        insertNotification(receiverId, createdAt.minusMinutes(1));
+
+        NotificationSearchCondition condition = new NotificationSearchCondition(null, null, 20, SortDirection.DESCENDING, SortBy.CREATED_AT, receiverId);
+
+        List<Notification> notifications = notificationRepository.search(condition);
+
+        assertThat(notifications).hasSize(2);
+
+        // 실제 미초기화 프록시에서 ID만 읽는 상황인지 확인한 뒤 DTO 변환을 측정한다.
+        assertThat(notifications).allSatisfy(notification ->
+                assertThat(Hibernate.isInitialized(notification.getReceiver())).isFalse()
+        );
+
+        Statistics statistics = entityManager.getEntityManagerFactory()
+                .unwrap(SessionFactory.class)
+                .getStatistics();
+
+        // 통계 비활성화로 카운터가 계속 0인 경우를 성공으로 오판하지 않도록 한다.
+        assertThat(statistics.isStatisticsEnabled()).isTrue();
+
+        // SessionFactory 전체의 누적값을 초기화하지 않고 변환 구간의 차이만 비교한다.
+        // 같은 팩토리의 다른 SQL이 측정 중 끼어들지 않는 실행을 전제로 하며, 전체 조회의 SQL 수를 보장하지 않는다.
+        long statementCountBefore = statistics.getPrepareStatementCount();
+        List<NotificationDto> dtos = notifications.stream()
+                .map(NotificationDto::from)
+                .toList();
+
+        assertThat(statistics.getPrepareStatementCount())
+                .isEqualTo(statementCountBefore);
+
+        assertThat(dtos)
+                .extracting(NotificationDto::receiverId)
+                .containsExactly(receiverId, receiverId);
+
+
+    }
+
 
     private UUID createReceiver(){
         UUID receiverId = UUID.randomUUID();
@@ -728,5 +667,7 @@ public class NotificationRepositoryTest {
         return notificationId;
     }
 
-
+    private User findReceiver(UUID otherReceiverId) {
+        return entityManager.find(User.class, otherReceiverId);
+    }
 }

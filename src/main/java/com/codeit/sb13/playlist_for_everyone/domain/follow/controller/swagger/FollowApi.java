@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.follow.controller.swagger;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.request.FollowRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowDto;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.ApiErrorResponse;
@@ -9,6 +10,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springdoc.core.annotations.ParameterObject;
@@ -20,10 +22,19 @@ import org.springframework.web.bind.annotation.RequestBody;
 import java.util.UUID;
 
 
+/**
+ * 팔로우 API의 Swagger 계약을 모은 인터페이스.
+ * Principal은 서버가 주입하므로 문서 입력에서 숨기고, 실제 주입 어노테이션은 컨트롤러에 둔다.
+ *
+ * <p>SecurityRequirement는 OpenApiConfig의 bearerAuth를 이 인터페이스의 API 4개에 연결한다.
+ * 문서에 인증 요구사항을 표시하는 설정이며, 실제 JWT 인증은 공통 보안 필터에서,
+ * 취소 소유자 인가는 FollowGuard에서 처리한다.
+ * 팔로우 API의 CSRF 연동·검증은 #114의 후속 작업이다.
+ */
 @Tag(name = "팔로우", description = """
         팔로우 등록·취소 및 조회 API입니다.\n
-        모든 팔로우 API는 최종적으로 JWT 인증을 요구합니다.\n
-        인증·인가·CSRF 적용 및 실제 보안 응답 검증은 #76 이슈에서 진행합니다.
+        모든 팔로우 API는 JWT 인증을 요구합니다.\n
+        팔로우 API의 CSRF 연동·검증은 #114 이슈에서 진행 예정입니다.
         """)
 @ApiResponses({
         @ApiResponse(
@@ -36,10 +47,7 @@ import java.util.UUID;
         ),
         @ApiResponse(
                 responseCode = "401",
-                description = """
-                        인증 정보가 없거나 JWT가 만료·변조된 요청\n
-                        (최종 계약, #76 이슈에서 적용·검증)
-                        """,
+                description = "인증 정보가 없거나 JWT가 만료·변조된 요청",
                 content = @Content(
                         mediaType = MediaType.APPLICATION_JSON_VALUE,
                         schema = @Schema(implementation = ApiErrorResponse.class)
@@ -54,6 +62,7 @@ import java.util.UUID;
                 )
         )
 })
+@SecurityRequirement(name = "bearerAuth")
 public interface FollowApi {
 
     @Operation(
@@ -85,7 +94,7 @@ public interface FollowApi {
                     responseCode = "403",
                     description = """
                             CSRF 토큰이 없거나 일치하지 않는 요청\n
-                            (최종 계약, #76 이슈에서 적용·검증)
+                            (CSRF 연동 후 적용 예정, #114 이슈에서 구현·검증)
                             """,
                     content = @Content(
                             mediaType = MediaType.APPLICATION_JSON_VALUE,
@@ -93,7 +102,9 @@ public interface FollowApi {
                     )
             )
     })
-    ResponseEntity<FollowDto> follow(@Valid @RequestBody FollowRequest request);
+    ResponseEntity<FollowDto> follow(@Valid @RequestBody FollowRequest request,
+                                     @Parameter(hidden = true)
+                                     SecurityUser user);
 
     @Operation(
             summary = "팔로우 취소",
@@ -111,8 +122,9 @@ public interface FollowApi {
             @ApiResponse(
                     responseCode = "403",
                     description = """
-                            다른 사용자의 팔로우 관계를 취소하려는 요청 또는 CSRF 토큰이 없거나 일치하지 않는 요청\n
-                            (최종 계약, #76 이슈에서 적용·검증)
+                            소유자 인가: 다른 사용자가 등록한 팔로우 관계를 취소하려는 요청\n
+                            CSRF: 토큰이 없거나 일치하지 않는 요청\n
+                            (CSRF 조건은 연동 후 적용 예정, #114 이슈에서 구현·검증)
                             """,
                     content = @Content(
                             mediaType = MediaType.APPLICATION_JSON_VALUE,
@@ -125,7 +137,9 @@ public interface FollowApi {
                     description = "취소할 팔로우 관계 ID",
                     required = true
             )
-            @PathVariable UUID followId
+            @PathVariable UUID followId,
+            @Parameter(hidden = true)
+            SecurityUser user
     );
 
     @Operation(
@@ -155,7 +169,9 @@ public interface FollowApi {
     })
     ResponseEntity<FollowDto> getFollowedByMe(
             @ParameterObject
-            @Valid FollowRequest request);
+            @Valid FollowRequest request,
+            @Parameter(hidden = true)
+            SecurityUser user);
 
     @Operation(
             summary = "팔로워 수 조회",
