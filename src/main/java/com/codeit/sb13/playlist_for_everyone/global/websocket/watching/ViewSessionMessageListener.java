@@ -1,4 +1,4 @@
-package com.codeit.sb13.playlist_for_everyone.global.websocket;
+package com.codeit.sb13.playlist_for_everyone.global.websocket.watching;
 
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageDto;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageListener;

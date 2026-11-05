@@ -49,7 +49,9 @@ public enum ApiErrorCode {
     SSE_PUBLISH_FAIL("S_001", HttpStatus.INTERNAL_SERVER_ERROR, "SSE 이벤트 발행에 실패했습니다."),
 
     // WEBSOCKET W
-    DESTINATION_INVALID("W_001", HttpStatus.NOT_FOUND, "유효하지 않은 웹소켓 경로입니다."),
+    WEBSOCKET_DESTINATION_INVALID("W_001", HttpStatus.NOT_FOUND, "유효하지 않은 웹소켓 경로입니다."),
+    WEBSOCKET_AUTHORIZATION_INVALID("W_002", HttpStatus.UNAUTHORIZED, "권한이 존재하지 않습니다."),
+
 
     //GLOBAL/COMMON GLB
     INVALID_REQUEST("GLB_001", HttpStatus.BAD_REQUEST, "요청 데이터가 올바르지 않습니다."),

@@ -6,7 +6,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentServi
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
-import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.DestinationInvalidException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketDestinationInvalidException;
 import com.codeit.sb13.playlist_for_everyone.global.service.MatchRule;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionData;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
@@ -23,7 +23,6 @@ import java.util.Objects;
 import java.util.UUID;
 
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
-import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.VIEW_POSTFIX;
 
 
 /**
@@ -37,9 +36,7 @@ public class WatchingSession {
 
     private final MatchRule VIEW_DESTINATION_PATTERN = MatchRule
             .builder()
-            .prefix(PATH_PREFIX)
             .pattern(UUID_REGEX)
-            .postfix(VIEW_POSTFIX)
             .build();
 
     private final WatchingSessionMapper mapper;
@@ -146,10 +143,10 @@ public class WatchingSession {
     private String getContentIdFromDestination(SessionInfo info){
         try{
             String destination = Objects.requireNonNull(info.destination());
-            List<String> destinationExtractContainer =
+            List<String> extract =
                     VIEW_DESTINATION_PATTERN.extract(destination);
 
-            if (destinationExtractContainer.isEmpty()) {
+            if (extract.isEmpty()) {
                 log.error("[{}] id:{}(sub:{}, dst:{}) - 컨텐츠 ID 추출 실패. - pattern:{}",
                         this.getClass().getSimpleName(),
                         info.session(),
@@ -162,7 +159,7 @@ public class WatchingSession {
 
             return VIEW_DESTINATION_PATTERN.extract(destination).get(0);
         } catch (NullPointerException e) {
-            throw new DestinationInvalidException(e);
+            throw new WebSocketDestinationInvalidException(e);
         }
     }
 

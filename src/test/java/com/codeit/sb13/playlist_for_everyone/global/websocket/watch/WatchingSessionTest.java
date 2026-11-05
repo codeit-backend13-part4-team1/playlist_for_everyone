@@ -7,7 +7,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.exception.EveryOneException;
-import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.DestinationInvalidException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketDestinationInvalidException;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionData;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.ConnectionRegistry;
@@ -307,7 +307,7 @@ public class WatchingSessionTest {
                 connectionRegistry.register(data);
 
                 assertThatThrownBy(() -> watchingSession.joinViewerSession(info))
-                        .isInstanceOf(DestinationInvalidException.class); // InvalidAuthException
+                        .isInstanceOf(WebSocketDestinationInvalidException.class); // InvalidAuthException
 
                 // 실제 세션 저장부는 호출되지 않음.
                 verify(watchingSessionService, times(0)).joinViewerSession(any());
@@ -416,7 +416,7 @@ public class WatchingSessionTest {
                 connectionRegistry.register(data);
 
                 assertThatThrownBy(() -> watchingSession.joinViewerSession(info))
-                        .isInstanceOf(DestinationInvalidException.class); // InvalidAuthException
+                        .isInstanceOf(WebSocketDestinationInvalidException.class); // InvalidAuthException
 
                 // 실제 세션 저장부는 호출되지 않음.
                 verify(watchingSessionService, times(0)).leaveViewerSession(any());

@@ -4,11 +4,11 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.watch.service;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.global.exception.EveryOneException;
-import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.DestinationInvalidException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketDestinationInvalidException;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageListener;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisTopicRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.ViewSessionMessageListener;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.ViewSessionMessageListener;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.WatchingSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionServiceImpl;
@@ -269,7 +269,7 @@ public class WatchingSessionServiceTest {
                 );
 
                 assertThatThrownBy(() -> service.joinViewerSession(info))
-                        .isInstanceOf(DestinationInvalidException.class); // such as DestinationNotMatchedException
+                        .isInstanceOf(WebSocketDestinationInvalidException.class); // such as DestinationNotMatchedException
 
                 verify(repository,times(0)).register(any(),any(),any());
                 verify(redisTopicRegistry, times(0)).register(
