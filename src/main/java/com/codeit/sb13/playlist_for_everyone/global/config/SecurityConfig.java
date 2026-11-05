@@ -180,7 +180,8 @@ public class SecurityConfig {
                                     "/",
                                     "/index.html",
                                     "/assets/**",
-                                    "/favicon.svg"
+                                    "/favicon.svg",
+                                    "/placeholder-movie.png"
                             ).permitAll()
 
                             .anyRequest().authenticated();
