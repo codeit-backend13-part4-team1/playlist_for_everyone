@@ -20,6 +20,13 @@ import org.springframework.validation.annotation.Validated;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * 알림의 생성·목록 조회·읽음 처리를 조율한다.
+ *
+ * <p>컨트롤러가 인증 정보에서 추출한 수신자 ID를 전달받아 사용한다.
+ * 목록 조회의 수신자 조건은 저장소에서 적용하고, 삭제 대상의 소유자 확인은 서비스에서 수행한다.
+ * 이 서비스는 SecurityContext에 직접 의존하지 않는다.
+ */
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -47,6 +54,13 @@ public class NotificationService {
         eventPublisher.publishEvent(new NotificationCreatedEvent(UUID.randomUUID(), NotificationDto.from(save)));
     }
 
+    /**
+     * 저장소의 limit + 1건 조회 결과로 다음 페이지 유무를 판단하고, 실제 반환할 항목만 DTO로 만든다.
+     *
+     * <p>totalCount는 커서 이후 남은 수가 아니라 해당 수신자의 전체 알림 수다.
+     * 다음 페이지가 있으면 반환 목록의 마지막 항목에서 시각·ID를 함께 추출하며,
+     * 마지막 페이지와 빈 목록에서는 두 커서 값 모두 null을 반환한다.
+     */
     @Transactional(readOnly = true)
     public CursorResponse<NotificationDto> getNotifications(NotificationSearchCondition condition){
 
@@ -71,8 +85,21 @@ public class NotificationService {
         ) ;
     }
 
+    /**
+     * 알림을 비관적 잠금으로 조회하고, 전달받은 수신자의 알림이면 삭제하여 읽음 처리한다.
+     *
+     * <p>클래스의 @Transactional에 따라 잠금 조회·소유자 확인·삭제 요청을 같은 트랜잭션에서 수행한다.
+     * 잠금은 해당 트랜잭션이 종료될 때 해제되며, 삭제 확정은 커밋 시점에 이루어진다.
+     * 외부 트랜잭션에 참여한 경우에는 이 메서드가 반환되어도 잠금과 미커밋 상태가 유지될 수 있다.
+     *
+     * <p>대상이 없거나 타인의 알림이면 삭제하지 않고 정상 종료하여 컨트롤러가 204를 반환하게 한다.
+     * 잠금 획득·DB 처리 중 발생한 예외는 그대로 전파한다. 204는 정상 처리 결과이며,
+     * 실제로 삭제된 행이 있었다는 의미는 아니다.
+     */
     public void confirm(UUID notificationId, UUID receiverId){
-        notificationRepository.deleteByIdAndReceiver(notificationId, receiverId);
+        notificationRepository.findWithPessimisticLockById(notificationId)
+                .filter(notification -> notification.isOwner(receiverId))
+                .ifPresent(notificationRepository::delete);
     }
 
     private UUID getNextIdAfter(boolean hasNext, List<NotificationDto> data) {

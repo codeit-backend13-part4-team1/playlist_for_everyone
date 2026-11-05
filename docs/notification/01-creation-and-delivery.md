@@ -18,6 +18,22 @@
 알림 목록 조회와 SSE는 같은 `NotificationDto`를 사용합니다.
 전송 리스너는 엔티티를 받거나 DB를 다시 조회하지 않고 저장 당시의 DTO를 사용합니다.
 
+코드는 [NotificationEventListener](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/notification/event/listener/NotificationEventListener.java)
+→ [NotificationService](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/notification/service/NotificationService.java)
+→ [NotificationSseEventListener](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/notification/event/listener/NotificationSseEventListener.java) 순서로 읽습니다.
+
+## 저장 입력과 제목 말줄임
+
+[NotificationCommand](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/notification/dto/command/NotificationCommand.java)는 수신자 ID·제목·내용·수준을 전달합니다.
+서비스의 `@Validated`와 `save`의 `@Valid`를 통해 수신자·수준의 null, 제목·내용의 null·공백을 검증합니다.
+Command를 직접 생성하는 것만으로 Bean Validation이 실행되지는 않습니다.
+
+제목은 생성자에서 **255 코드 포인트** 이하면 유지하고, 초과하면 앞 252개와 `...`를 남깁니다.
+UTF-16 길이 대신 코드 포인트를 기준으로 잘라 이모지의 서로게이트 쌍을 보존합니다. 본문은 말줄임하지 않습니다.
+null·공백 제목은 검증 오류를 낼 수 있도록 원래 값으로 두며, 잘라 낸 제목의 원문을 별도로 저장하지 않습니다.
+
+엔티티는 수신자를 사용자 연관관계가 아닌 UUID로 보관합니다. DB의 `receiver_id` 외래 키가 참조할 사용자는 존재해야 합니다.
+
 ## 커밋은 두 번 구분한다
 
 ```mermaid
@@ -97,4 +113,4 @@ DB의 알림은 조회할 수 있지만, 자동 재시도·공유 이벤트 이�
 
 ---
 
-[알림 목차](README.md) · [공통 SSE 가이드](../sse/README.md) · [다음: 알림 전송 테스트 →](02-testing.md)
+[알림 목차](README.md) · [공통 SSE 가이드](../sse/README.md) · [다음: 알림 생성·전송 테스트 →](02-testing.md)

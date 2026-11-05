@@ -9,6 +9,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
+/**
+ * Command 생성자의 제목 길이 처리와 이모지 보존을 확인한다.
+ * Spring 컨텍스트나 Validator를 실행하지 않으므로 서비스의 Bean Validation 검증과는 구분한다.
+ */
 @DisplayName("알림 생성 요청의 제목 말줄임")
 class NotificationCommandTest {
 

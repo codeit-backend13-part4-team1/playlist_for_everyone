@@ -1,13 +1,16 @@
 package com.codeit.sb13.playlist_for_everyone.domain.notification.controller;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.response.NotificationDto;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.NotificationLevel;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationService;
+import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.global.config.MDCLoggingInterceptor;
 import com.codeit.sb13.playlist_for_everyone.global.config.WebMvcConfig;
 import com.codeit.sb13.playlist_for_everyone.global.controller.GlobalExceptionHandler;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -17,8 +20,12 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -32,6 +39,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+/**
+ * 요청 바인딩·검증, 응답 형식과 인증 사용자 ID의 서비스 전달을 확인하는 MVC 테스트다.
+ *
+ * <p>보안 필터를 제외하고 서비스를 Mock으로 대체한다. 필요한 사례에서 SecurityUser를
+ * 직접 준비하므로 실제 JWT 검증이나 DB의 수신자 제한을 증명하지 않는다.
+ * 그 경로는 NotificationSecurityIntegrationTest가 담당한다.
+ */
 @WebMvcTest(NotificationController.class)
 @AutoConfigureMockMvc(addFilters = false)
 @Import({
@@ -49,6 +63,12 @@ public class NotificationControllerTest {
     private NotificationService notificationService;
 
     String cursor = "2026-10-23T10:30:00.123456";
+
+    @AfterEach
+    void clearSecurityContext(){
+        // 테스트 스레드에 직접 넣은 인증 정보가 다음 사례에 남지 않도록 정리한다.
+        SecurityContextHolder.clearContext();
+    }
 
     @Test
     @DisplayName("idAfter 없이 잘못된 커서를 전달하면 400과 검증 오류 본문을 반환한다.")
@@ -72,8 +92,11 @@ public class NotificationControllerTest {
     }
 
     @Test
-    @DisplayName("커서를 생략하면 첫 페이지 조회 요청을 허용하고 200을 반환한다.")
+    @DisplayName("커서를 생략하면 인증 사용자의 ID로 첫 페이지 조회 요청을 허용하고 200을 반환한다.")
     void returnsOkWhenCursorIsOmitted() throws Exception {
+        UUID receiverId = UUID.randomUUID();
+        setUpUserAuthentication(receiverId);
+
         CursorResponse<NotificationDto> response = new CursorResponse<>(
                 List.of(),
                 null,
@@ -98,16 +121,20 @@ public class NotificationControllerTest {
                 .andExpect(jsonPath("$.totalCount").value(0));
 
         verify(notificationService).getNotifications(argThat(
-                condition -> condition.cursor() == null && condition.idAfter() == null)
+                condition -> condition.receiverId().equals(receiverId)
+                        && condition.cursor() == null
+                        && condition.idAfter() == null)
         );
 
     }
 
     @Test
-    @DisplayName("정상 커서 요청은 알림 목록과 다음 페이지 정보를 JSON으로 반환하고 조회 조건에 반영한다.")
+    @DisplayName("정상 커서 요청은 인증 사용자 ID와 조회 조건을 전달하고 목록·다음 페이지 정보를 반환한다.")
     void acceptsValidCursorAndIdAfter() throws Exception {
         UUID idAfter = UUID.fromString("550e8400-e29b-41d4-a716-446655440000");
         UUID receiverId = UUID.fromString("550e8400-e29b-41d4-a716-446655440010");
+        setUpUserAuthentication(receiverId);
+
         NotificationDto first = new NotificationDto(
                 UUID.fromString("550e8400-e29b-41d4-a716-446655440001"),
                 LocalDateTime.parse("2026-10-23T10:29:00.123456"),
@@ -169,7 +196,8 @@ public class NotificationControllerTest {
 
         verify(notificationService).getNotifications(
                 argThat(condition ->
-                        cursor.equals(condition.cursor())
+                        receiverId.equals(condition.receiverId())
+                                && cursor.equals(condition.cursor())
                                 && idAfter.equals(condition.idAfter())
                                 && condition.limit() == 2
                 ));
@@ -274,15 +302,17 @@ public class NotificationControllerTest {
     }
 
     @Test
-    @DisplayName("정상 알림 ID로 삭제를 요청하면 204와 빈 본문을 반환한다.")
+    @DisplayName("정상 알림 ID와 인증 사용자 ID를 삭제서비스에 전달하고 204와 빈 본문을 반환한다.")
     void returnsNoContentWhenDeletingNotification() throws Exception {
         UUID notificationId = UUID.randomUUID();
+        UUID receiverId = UUID.randomUUID();
+        setUpUserAuthentication(receiverId);
 
         mockMvc.perform(delete("/api/notifications/{notificationId}", notificationId))
                 .andExpect(status().isNoContent())
                 .andExpect(content().string(""));
 
-        verify(notificationService).confirm(notificationId, null);
+        verify(notificationService).confirm(notificationId, receiverId);
     }
 
     @Test
@@ -291,7 +321,8 @@ public class NotificationControllerTest {
 
         mockMvc.perform(delete("/api/notifications/{notificationId}", "invalid-uuid"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.exceptionName").value("MethodArgumentTypeMismatchException"))
+                .andExpect(jsonPath("$.exceptionName")
+                        .value(MethodArgumentTypeMismatchException.class.getSimpleName()))
                 .andExpect(jsonPath("$.message").value("요청 데이터가 올바르지 않습니다."))
                 .andExpect(jsonPath("$.details").isMap())
                 .andExpect(jsonPath("$.details").isEmpty())
@@ -300,9 +331,11 @@ public class NotificationControllerTest {
     }
 
     @Test
-    @DisplayName("조회 중 예상하지 못한 예외가 발생하면 500과 공통 오류 응답을 반환한다.")
+    @DisplayName("인증된 사용자의 알림 조회 중 서비스 예외가 발생하면 500과 공통 오류 응답을 반환한다.")
     void returnsCommonErrorWhenNotificationSearchFails() throws Exception {
         String internalMessage = "DB connection failed";
+        UUID receiverId = UUID.randomUUID();
+        setUpUserAuthentication(receiverId);
 
         when(notificationService.getNotifications(any()))
                 .thenThrow(new IllegalStateException(internalMessage));
@@ -313,13 +346,24 @@ public class NotificationControllerTest {
                         .param("sortBy", "createdAt")
                 )
                 .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.exceptionName").value("IllegalStateException"))
+                .andExpect(jsonPath("$.exceptionName")
+                        .value(IllegalStateException.class.getSimpleName()))
                 .andExpect(jsonPath("$.message").value("서버 내부 오류"))
                 .andExpect(jsonPath("$.details").isMap())
                 .andExpect(jsonPath("$.details").isEmpty())
                 .andExpect(content().string(not(containsString(internalMessage))))
         ;
-        verify(notificationService).getNotifications(any());
+        verify(notificationService).getNotifications(argThat(condition ->
+                receiverId.equals(condition.receiverId())));
+    }
+
+    /** Principal 인자 주입만 준비한다. 토큰 발급이나 JWT 필터 실행을 대신하는 인증 검증은 아니다. */
+    private void setUpUserAuthentication(UUID userId){
+        SecurityUser principal = new SecurityUser(userId, "notification@example.com", "", Role.USER, false);
+        SecurityContext context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(UsernamePasswordAuthenticationToken
+                .authenticated(principal,null,principal.getAuthorities()));
+        SecurityContextHolder.setContext(context);
     }
 
 
