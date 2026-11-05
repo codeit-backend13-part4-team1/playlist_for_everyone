@@ -1,208 +1,131 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
-import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
-import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
-import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
-import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageDto;
+import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.DestinationInvalidException;
+import com.codeit.sb13.playlist_for_everyone.global.service.MatchRule;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisTopicRegistry;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.ConnectionRegistry;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionData;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSessionMessageListener;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.ViewSessionMessageListener;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.WatchingSessionRepository;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.*;
 import lombok.RequiredArgsConstructor;
-import org.jspecify.annotations.Nullable;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
+
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
+import static com.codeit.sb13.playlist_for_everyone.global.service.MatchRule.*;
+
 
 @Component
 @RequiredArgsConstructor
 public class WatchingSessionServiceImpl implements WatchingSessionService {
 
-    private final ConnectionRegistry connectionRegistry;
     private final WatchingSessionRepository watchingSessionRepository;
-    private final RedisTopicRegistry redisTopicRegistry;
-    private final UserService userService;
-    private final ContentService contentService;
+    private final RedisTopicRegistry topicRegistry;
+    private final ViewSessionMessageListener viewSessionMessageListener;
 
-    private final RedisTemplate<String, Object> redisTemplate;
+    private final MatchRule WATCHING_VIEW_PATTERN = MatchRule.builder()
+            .prefix(PATH_PREFIX)
+            .pattern(UUID_REGEX)
+            .postfix(VIEW_POSTFIX)
+            .build();
+    private final MatchRule WATCHING_CHAT_PATTERN = MatchRule.builder()
+            .prefix(PATH_PREFIX)
+            .pattern(UUID_REGEX)
+            .postfix(CHAT_POSTFIX)
+            .build();
 
-    private final WatchingSessionMessageListener watchingSessionMessageListener;
-
-    private User getUserFromConnection(SessionData connection) {
-        SecurityUser principal = connection.user();
-        return userService.getById(principal.getUserId());
-    }
-
-    // 레디스 메세지 관리자에 등록할 시청 토픽
-    private String redisMessageViewTopic(String contentId){
-        return MESSAGE_VIEW_PREFIX + contentId;
-    }
-
-    private String redisMessageChatTopic(String contentId){
-        return MESSAGE_CHAT_PREFIX + contentId;
+    enum WatchingSessionType {
+        VIEW,
+        CHAT,
+        DEFAULT
     }
 
     @Override
-    public void subscribeWatchingSession(String sessionId, String subscribe, String content) {
+    public long getCurrentViewerCount(UUID contentId){
+        return watchingSessionRepository.getWatcherCount(contentId.toString());
+    }
 
-        SessionData connection = connectionRegistry.get(sessionId, subscribe);
-        User user = getUserFromConnection(connection);
+    /**
+     * 세션 경로에 따라 채팅, 혹은 뷰어 세션을 분간하고,
+     * 해당 세션의 메세지 토픽을 반환한다.
+     * @param info 세션 정보가 포함된 객체
+     * @return redis 메세지 퍼블리싱 용 토픽.
+     * 컨텐츠 별로 구분된 토픽을 반환한다.
+     */
+    @Override
+    public String topic(SessionInfo info) {
+        String destination = Objects.requireNonNull(info.destination());
+        WatchingSessionType type = WatchingSessionType.DEFAULT;
+        if (check(destination,watchingSessionUrlPattern())) type = WatchingSessionType.VIEW;
+        if (check(destination,watchingChatUrlPattern())) type = WatchingSessionType.CHAT;
 
-        // 연결 정보를 기반으로 redis 시청 채널 등록
-        watchingSessionRepository.register(
-                connection.session(),
-                connection.subscription(),
-                content
-        );
+        return switch (type) {
+            case VIEW -> merge(MESSAGE_VIEW_PREFIX, MatchRule.extract(destination,UUID_REGEX));
+            case CHAT -> merge(MESSAGE_CHAT_PREFIX, MatchRule.extract(destination,UUID_REGEX));
+            default -> throw new DestinationInvalidException(null);
+        };
+    }
 
-        // 이후, 메세지 전송 채널 구독
-        redisTopicRegistry.register(
-                redisMessageViewTopic(content),
-                connection.session(),
-                connection.subscription(),
-                watchingSessionMessageListener
-        );
-
-        WatchContent watchContent = new WatchContent(
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
-        );
-
-        Watcher watcher = new Watcher(
-                user.getId(),
-                user.getName(),
-                null    // profile image url
-        );
-
-        WatchingSessionDto watchingSessionDto = new WatchingSessionDto(
-                connection.id(),
-                connection.createdAt(),
-                watcher,
-                watchContent
-        );
-
-        WatchingSessionChange watchingSessionChange = new WatchingSessionChange(
-                ChangeType.JOIN,
-                watchingSessionDto,
-                watchingSessionRepository.getWatcherCount(content)
-        );
-
-        RedisMessageDto<WatchingSessionChange> redisMessageDto = new RedisMessageDto<>(
-                content,
-                watchingSessionChange
-        );
+    private String merge(String p , List<String> q){
+        if (q.isEmpty()) throw new DestinationInvalidException(null);
+        return p + q.get(0);
+    }
 
 
-        // 메세지 발신.
-        redisTemplate.convertAndSend(
-                redisMessageViewTopic(content),
-                redisMessageDto);
+    @Override
+    public void joinViewerSession(SessionInfo info) {
+        String session = Objects.requireNonNull(info.session());
+        String subscribe = Objects.requireNonNull(info.subscription());
+        checkAuth(info);
 
+        List<String> items = WATCHING_VIEW_PATTERN.extract(info.destination());
+        if (items.isEmpty()) throw new DestinationInvalidException(null);
+
+        String content = items.get(0);
+
+        String topic = topic(info);
+
+        watchingSessionRepository.register(session,subscribe,content);
+        topicRegistry.register(topic, session, subscribe, viewSessionMessageListener);
+    }
+
+
+    @Override
+    public void leaveViewerSession(SessionInfo info) {
+        String session = Objects.requireNonNull(info.session());
+        String subscribe = Objects.requireNonNull(info.subscription());
+        checkAuth(info);
+
+        watchingSessionRepository.unregister(session,subscribe);
+        topicRegistry.unregister(session, subscribe);
+    }
+
+    @Override
+    public void joinChatSession(SessionInfo info) {
 
     }
 
     @Override
-    public void unsubscribeWatchingSession(String sessionId, @Nullable String subscribe) {
-
-        SessionData connection = connectionRegistry.get(sessionId, subscribe);
-        User user = getUserFromConnection(connection);
-
-        String content = watchingSessionRepository.getContent(connection.session(),connection.subscription());
-
-
-        watchingSessionRepository.unregister(
-                connection.session(),
-                connection.subscription()
-        );
-
-        // 이후, 메세지 전송 채널 구독
-        redisTopicRegistry.unregister(
-                connection.session(),
-                connection.subscription()
-        );
-
-        WatchContent watchContent = new WatchContent(
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
-        );
-
-        Watcher watcher = new Watcher(
-                user.getId(),
-                user.getName(),
-                null    // profile image url
-        );
-
-        WatchingSessionDto watchingSessionDto = new WatchingSessionDto(
-                connection.id(),
-                connection.createdAt(),
-                watcher,
-                watchContent
-        );
-
-
-        // 구독 해제 이후 데이터를 전달.
-        WatchingSessionChange watchingSessionChange = new WatchingSessionChange(
-                ChangeType.LEAVE,
-                watchingSessionDto,
-                watchingSessionRepository.getWatcherCount(content)
-        );
-
-        RedisMessageDto<WatchingSessionChange> redisMessageDto = new RedisMessageDto<>(
-                content,
-                watchingSessionChange
-        );
-
-
-        // 메세지 발신.
-        redisTemplate.convertAndSend(
-                redisMessageViewTopic(content),
-                redisMessageDto);
-
+    public void leaveChatSession(SessionInfo info) {
 
     }
 
-    @Override
-    public void subscribeChatSession(String sessionId, String subscribe, String content) {
+    private void checkAuth(SessionInfo info){
+        String destination = Objects.requireNonNull(info.destination());
+        SecurityUser user = Objects.requireNonNull(info.user());
 
-        SessionData connection = connectionRegistry.get(sessionId, subscribe);
-        User user = getUserFromConnection(connection);
+        if (!user.isEnabled())
+            throw new UserNotFoundException(null); // todo - 권한 에러로 변경?
 
-        // redis 메세지 컨테이너 구독
-        redisTopicRegistry.register(
-                redisMessageChatTopic(content),
-                connection.session(),
-                connection.subscription(),
-                watchingSessionMessageListener
-        );
+        // chat 이나 view 경로가 아니면 에러 반환.
+        if(!(MatchRule.check(destination,watchingSessionUrlPattern())
+                || MatchRule.check(destination,watchingChatUrlPattern())))
+            throw new DestinationInvalidException(null);
     }
 
-    @Override
-    public void unsubscribeChatSession(String sessionId, @Nullable String subscribe) {
-
-        SessionData connection = connectionRegistry.get(sessionId, subscribe);
-        User user = getUserFromConnection(connection);
-
-        // redis 메세지 컨테이너 구독
-        redisTopicRegistry.unregister(
-                connection.session(),
-                connection.subscription()
-        );
-    }
 
 }

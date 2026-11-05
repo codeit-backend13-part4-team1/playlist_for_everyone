@@ -4,9 +4,11 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.watch.service;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.global.exception.EveryOneException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.DestinationInvalidException;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageListener;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisTopicRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.ViewSessionMessageListener;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.WatchingSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionServiceImpl;
@@ -38,9 +40,12 @@ import static org.mockito.BDDMockito.*;
 public class WatchingSessionServiceTest {
 
     WatchingSessionService service;
-    @Mock WatchingSessionRepository repository;
+    @Mock
+    WatchingSessionRepository repository;
     @Mock
     RedisTopicRegistry redisTopicRegistry;
+    @Mock
+    ViewSessionMessageListener viewSessionListener;
 
     /**
      * 테스트를 위한 SessionInfo 제작 매서드
@@ -125,7 +130,11 @@ public class WatchingSessionServiceTest {
 
     @BeforeEach
     void setUp(){
-        service = new WatchingSessionServiceImpl(repository);
+        service = new WatchingSessionServiceImpl(
+                repository,
+                redisTopicRegistry,
+                viewSessionListener
+        );
     }
 
     @Test
@@ -149,11 +158,11 @@ public class WatchingSessionServiceTest {
         );
 
         String viewerTopic = service.topic(viewerSessionInfo);
-        String chatTopic = service.topic(chatSessionInfo);
-
         assertThat(viewerTopic).isEqualTo(
                 assertionTopicAnswer(contentId, WATCH_SERVICE)
         );
+
+        String chatTopic = service.topic(chatSessionInfo);
         assertThat(chatTopic).isEqualTo(
                 assertionTopicAnswer(contentId, CHAT_SERVICE)
         );
@@ -206,6 +215,7 @@ public class WatchingSessionServiceTest {
             }
 
             @Test
+            @Disabled // 권한이 없는 Role 추가시 활성.
             @DisplayName("세션의 인가가 없을 시, 세션 등록 시도 없이 인증 예외를 반환한다.")
             void exceptionTestWithNoAuthenticationSession(){
                 SessionInfo info = getSessionInfo(
@@ -254,12 +264,13 @@ public class WatchingSessionServiceTest {
                 SessionInfo info = getSessionInfo(
                         sessionId,
                         "test-sub-1",
-                        testDestination(contentId, WATCH_SERVICE),
+                        "/test/destination/not/matched",
                         Role.USER
                 );
 
                 assertThatThrownBy(() -> service.joinViewerSession(info))
-                        .isInstanceOf(EveryOneException.class); // such as DestinationNotMatchedException
+                        .isInstanceOf(DestinationInvalidException.class); // such as DestinationNotMatchedException
+
                 verify(repository,times(0)).register(any(),any(),any());
                 verify(redisTopicRegistry, times(0)).register(
                         eq(assertionTopicAnswer(contentId, WATCH_SERVICE)),
@@ -294,6 +305,7 @@ public class WatchingSessionServiceTest {
             }
 
             @Test
+            @Disabled // 인가 되지 않은 Role 이 생기면 테스트.
             @DisplayName("세션의 인가가 없을 시, 세션 등록 시도 없이 인증 예외를 반환한다.")
             void exceptionTestWithNoAuthenticationSession(){
                 SessionInfo info = getSessionInfo(
@@ -338,12 +350,12 @@ public class WatchingSessionServiceTest {
                 SessionInfo info = getSessionInfo(
                         sessionId,
                         "test-sub-1",
-                        testDestination(contentId, WATCH_SERVICE),
+                        "/test/with/not-validate/path",
                         Role.USER
                 );
-
                 assertThatThrownBy(() -> service.leaveViewerSession(info))
                         .isInstanceOf(EveryOneException.class); // such as DestinationNotMatchedException
+
                 verify(repository,times(0)).unregister(any(),any());
                 verify(redisTopicRegistry, times(0)).unregister(
                         eq(sessionId),

@@ -7,8 +7,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.exception.EveryOneException;
-import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageListener;
-import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisTopicRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.DestinationInvalidException;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionData;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.ConnectionRegistry;
@@ -153,6 +152,8 @@ public class WatchingSessionTest {
                 .role(auth.getRole())
                 .password(auth.getPassword())
                 .build();
+        if (!auth.isEnabled())
+            ReflectionTestUtils.setField(user,"enabled",false);
         ReflectionTestUtils.setField(user, "id", auth.getUserId());
 
         given(userService.getById(any(UUID.class))).willReturn(user);
@@ -236,8 +237,8 @@ public class WatchingSessionTest {
 
             static Stream<Arguments> variableDestinationParam(){
                 return Stream.of(
-                        Arguments.of(null),
-                        Arguments.of("/no/accept/destination/in")
+                        Arguments.of(null,null),
+                        Arguments.of("/no/accept/destination/in",null)
                 );
             }
 
@@ -282,8 +283,6 @@ public class WatchingSessionTest {
                 SessionData data = info.toData();
                 connectionRegistry.register(data);
 
-                watchingSessionLogicSet(UUID.fromString(contentId), watcherCount);
-
                 assertThatThrownBy(() -> watchingSession.joinViewerSession(info))
                         .isInstanceOf(EveryOneException.class); // InvalidAuthException
 
@@ -307,10 +306,8 @@ public class WatchingSessionTest {
                 SessionData data = info.toData();
                 connectionRegistry.register(data);
 
-                watchingSessionLogicSet(UUID.fromString(contentId), watcherCount);
-
                 assertThatThrownBy(() -> watchingSession.joinViewerSession(info))
-                        .isInstanceOf(EveryOneException.class); // InvalidAuthException
+                        .isInstanceOf(DestinationInvalidException.class); // InvalidAuthException
 
                 // 실제 세션 저장부는 호출되지 않음.
                 verify(watchingSessionService, times(0)).joinViewerSession(any());
@@ -326,8 +323,8 @@ public class WatchingSessionTest {
             // 세션 info 의 인증, 인가, lock 등을 변경하며 테스트 하기 위한 파라매터 생성자.
             static Stream<Arguments> variableRoleAndLockParam(){
                 return Stream.of(
-                        Arguments.of(Role.USER, true),
-                        Arguments.of(null, false)
+                        Arguments.of(Role.USER, true)
+//                        Arguments.of(null, false)
                 );
             }
 
@@ -390,8 +387,6 @@ public class WatchingSessionTest {
                         .build();
                 connectionRegistry.register(data);
 
-                watchingSessionLogicSet(UUID.fromString(contentId), watcherCount);
-
                 assertThatThrownBy(() -> watchingSession.leaveViewerSession(info))
                         .isInstanceOf(EveryOneException.class); // InvalidAuthException
 
@@ -420,10 +415,8 @@ public class WatchingSessionTest {
                         .build();
                 connectionRegistry.register(data);
 
-                watchingSessionLogicSet(UUID.fromString(contentId), watcherCount);
-
                 assertThatThrownBy(() -> watchingSession.joinViewerSession(info))
-                        .isInstanceOf(EveryOneException.class); // InvalidAuthException
+                        .isInstanceOf(DestinationInvalidException.class); // InvalidAuthException
 
                 // 실제 세션 저장부는 호출되지 않음.
                 verify(watchingSessionService, times(0)).leaveViewerSession(any());

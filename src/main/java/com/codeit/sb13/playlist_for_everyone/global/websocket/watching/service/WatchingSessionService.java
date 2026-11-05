@@ -1,7 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service;
 
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
-import lombok.NonNull;
 
 import java.util.UUID;
 
@@ -19,7 +18,7 @@ public interface WatchingSessionService {
      * @param info 세션 정보가 포함된 객체
      * @return 토픽 문자열
      */
-    String topic(@NonNull SessionInfo info);
+    String topic(SessionInfo info);
 
     /**
      * 동시 시청의 시청 세션에 대해 사용자 세션을 등록하는 매서드.
