@@ -5,6 +5,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentU
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
+import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentDetailProjection;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.review.repository.ReviewRepository;
@@ -48,19 +49,19 @@ public class ContentService {
 
     @Transactional(readOnly = true)
     public ContentDto getById(UUID contentId) {
-        Content content = contentRepository.findById(contentId)
+        ContentDetailProjection detail = contentRepository.findDetailById(contentId)
                 .orElseThrow(() -> new ContentNotFoundException(
                         Map.of("contentId", contentId)
                 ));
 
-        double averageRating = reviewRepository.findAverageRatingByContentId(contentId);
-        int reviewCount = Math.toIntExact(reviewRepository.countByContentId(contentId));
+        Content content = detail.getContent();
+
         long watcherCount = watchingSessionService.getCurrentViewerCount(contentId);
 
         return contentMapper.toDto(
                 content,
-                averageRating,
-                reviewCount,
+                detail.getAverageRating(),
+                Math.toIntExact(detail.getReviewCount()),
                 watcherCount);
     }
 
