@@ -8,6 +8,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentSource
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentTag;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
+import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentDetailProjection;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.review.repository.ReviewRepository;
@@ -228,13 +229,17 @@ public class ContentServiceTest {
                 "thumbnail-url"
         );
 
+        ContentDetailProjection detail = mock(ContentDetailProjection.class);
         ContentDto expected = mock(ContentDto.class);
 
-        given(contentRepository.findById(contentId)).willReturn(Optional.of(content));
-        given(reviewRepository.findAverageRatingByContentId(contentId)).willReturn(4.5);
-        given(reviewRepository.countByContentId(contentId)).willReturn(3L);
-        given(watchingSessionService.getCurrentViewerCount(contentId)).willReturn(3L);
-        given(contentMapper.toDto(content, 4.5, 3, 3L))
+        given(contentRepository.findDetailById(contentId))
+                .willReturn(Optional.of(detail));
+
+        given(detail.getContent()).willReturn(content);
+        given(detail.getAverageRating()).willReturn(4.5);
+        given(detail.getReviewCount()).willReturn(3L);
+
+        given(contentMapper.toDto(content, 4.5, 3, 0L))
                 .willReturn(expected);
 
         // when
@@ -242,8 +247,8 @@ public class ContentServiceTest {
 
         // then
         assertThat(result).isSameAs(expected);
-        verify(contentRepository).findById(contentId);
-        verify(contentMapper).toDto(content, 4.5, 3, 3L);
+        verify(contentRepository).findDetailById(contentId);
+        verify(contentMapper).toDto(content, 4.5, 3, 0L);
     }
 
     @Test
@@ -252,7 +257,7 @@ public class ContentServiceTest {
         // given
         UUID contentId = UUID.randomUUID();
 
-        given(contentRepository.findById(contentId))
+        given(contentRepository.findDetailById(contentId))
                 .willReturn(Optional.empty());
 
         // when & then
