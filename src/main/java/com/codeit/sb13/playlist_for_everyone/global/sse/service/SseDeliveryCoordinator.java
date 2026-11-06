@@ -47,12 +47,24 @@ public class SseDeliveryCoordinator {
             return;
         }
 
-        if (!state.recovered){
+        if (!state.recovered || state.delivering){
             state.pendingDelivery = true;
             return;
         }
 
-        state.lastPosition = recoveryService.recoverAfter(userId, connection, state.emitter, state.lastPosition);
+        state.delivering = true;
+
+        try {
+            do {
+                state.pendingDelivery = false;
+                state.lastPosition = recoveryService.recoverAfter(userId,
+                        connection,
+                        state.emitter,
+                        state.lastPosition);
+            } while (state.pendingDelivery);
+        } finally {
+            state.delivering = false;
+        }
     }
 
     private record ConnectionKey(
@@ -66,6 +78,7 @@ public class SseDeliveryCoordinator {
         private final SseEmitter emitter;
         private boolean recovered;
         private boolean pendingDelivery;
+        private boolean delivering;
         private SseHistoryPosition lastPosition;
 
         private ConnectionState(SseEmitter emitter){
