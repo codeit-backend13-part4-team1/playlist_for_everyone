@@ -451,9 +451,11 @@ public class ContentServiceTest {
         assertThat(content.getThumbnailUrl()).isEqualTo(newThumbnailUrl);
         assertThat(content.getFileInfo()).isSameAs(newFileInfo);
 
-        InOrder inOrder = inOrder(fileService);
+        InOrder inOrder = inOrder(fileService, contentRepository);
 
         inOrder.verify(fileService).upload(file);
+        inOrder.verify(fileService).getFileUrl(newFileInfo.getId());
+        inOrder.verify(contentRepository).flush();
         inOrder.verify(fileService).delete(oldFileId);
     }
 
@@ -563,12 +565,11 @@ public class ContentServiceTest {
                 contentRepository
         );
 
-        // TODO: 콘텐츠 삭제 시 WatchingSessionDisconnectEvent 발행 연동
         inOrder.verify(reviewRepository).deleteAllByContentId(contentId);
         inOrder.verify(playlistContentRepository).deleteAllByContentId(contentId);
-        inOrder.verify(fileService).delete(fileId);
-
         inOrder.verify(contentRepository).delete(content);
+        inOrder.verify(contentRepository).flush();
+        inOrder.verify(fileService).delete(fileId);
     }
 
     @Test

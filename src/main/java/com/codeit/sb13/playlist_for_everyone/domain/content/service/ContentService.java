@@ -94,15 +94,15 @@ public class ContentService {
         }
 
         if (file != null && !file.isEmpty()) {
-            // 기존 파일 정보 보관
             FileInfo oldFileInfo = content.getFileInfo();
 
-            // 새 파일 업로드 및 URL 조회
             FileInfo newFileInfo = fileService.upload(file);
             String newThumbnailUrl = fileService.getFileUrl(newFileInfo.getId());
 
-            // 콘텐츠 썸네일 및 파일 정보 변경
             content.updateThumbnail(newThumbnailUrl, newFileInfo);
+
+            // 변경된 외래 키를 DB에 먼저 반영
+            contentRepository.flush();
 
             // 기존 파일 삭제
             if (oldFileInfo != null) {
@@ -127,16 +127,20 @@ public class ContentService {
                         Map.of("contentId", contentId)
                 ));
 
+        // TODO: 콘텐츠 삭제 시 WatchingSessionDisconnectEvent 발행 연동
         int deletedReviews = reviewRepository.deleteAllByContentId(contentId);
         int deletedPlaylistContents = playlistContentRepository.deleteAllByContentId(contentId);
+
+        contentRepository.delete(content);
+
+        // 콘텐츠 삭제를 DB에 반영한 후 파일 정보 삭제
+        contentRepository.flush();
 
         // S3 파일 정보가 있는 경우에만 삭제
         FileInfo fileInfo = content.getFileInfo();
         if (fileInfo != null) {
             fileService.delete(fileInfo.getId());
         }
-
-        contentRepository.delete(content);
 
         log.debug(
                 "콘텐츠 삭제: contentId={}, 삭제된 리뷰={}, 삭제된 플레이리스트 연결={}",
