@@ -4,14 +4,12 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.controller.swagger.C
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
-import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -26,7 +24,6 @@ public class ContentController implements ContentApi {
 
     @Override
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ContentDto> create(
             @Valid @RequestPart("request") ContentCreateRequest request,
             @RequestPart("thumbnail") MultipartFile file
@@ -42,7 +39,6 @@ public class ContentController implements ContentApi {
     }
 
     @Override
-    @PreAuthorize("hasRole('ADMIN')")
     @PatchMapping(
             value = "/{contentId}",
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE
@@ -58,7 +54,6 @@ public class ContentController implements ContentApi {
     }
 
     @Override
-    @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/{contentId}")
     public ResponseEntity<Void> delete(@PathVariable UUID contentId) {
         contentService.deleteById(contentId);

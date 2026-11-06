@@ -174,6 +174,16 @@ public class SecurityConfig {
                             .requestMatchers(HttpMethod.GET, "/api/users")
                             .hasRole("ADMIN")
 
+                            // 콘텐츠 생성, 수정, 삭제는 관리자 권한이 필요하다.
+                            .requestMatchers(HttpMethod.POST, "/api/contents")
+                            .hasRole("ADMIN")
+
+                            .requestMatchers(HttpMethod.PATCH, "/api/contents/*")
+                            .hasRole("ADMIN")
+
+                            .requestMatchers(HttpMethod.DELETE, "/api/contents/*")
+                            .hasRole("ADMIN")
+
                             // 로그인 전 프론트 페이지를 표시하기 위한 경로다.
                             .requestMatchers(
                                     HttpMethod.GET,
