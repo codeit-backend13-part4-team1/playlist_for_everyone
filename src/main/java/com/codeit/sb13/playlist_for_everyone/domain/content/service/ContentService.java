@@ -5,12 +5,16 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentU
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
+import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentDetailProjection;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.review.repository.ReviewRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
 import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
 import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -19,10 +23,13 @@ import java.util.*;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ContentService {
 
     private final ContentRepository contentRepository;
     private final ReviewRepository reviewRepository;
+    private final WatchingSessionService watchingSessionService;
+    private final PlaylistContentRepository playlistContentRepository;
     private final ContentMapper contentMapper;
     private final FileService fileService;
 
@@ -47,10 +54,31 @@ public class ContentService {
         return contentMapper.toDto(savedContent, 0.0, 0, 0L);
     }
 
+    @Transactional(readOnly = true)
+    public ContentDto getById(UUID contentId) {
+        ContentDetailProjection detail = contentRepository.findDetailById(contentId)
+                .orElseThrow(() -> new ContentNotFoundException(
+                        Map.of("contentId", contentId)
+                ));
+        Content content = detail.getContent();
+
+        long watcherCount = watchingSessionService.getCurrentViewerCount(contentId);
+
+        return contentMapper.toDto(
+                content,
+                detail.getAverageRating(),
+                Math.toIntExact(detail.getReviewCount()),
+                watcherCount);
+    }
+
     @Transactional
-    public ContentDto update(UUID id, ContentUpdateRequest request, MultipartFile file) {
-        Content content = contentRepository.findById(id)
-                .orElseThrow(() -> new ContentNotFoundException(Map.of("contentId", id)));
+    public ContentDto update(UUID contentId, ContentUpdateRequest request, MultipartFile file) {
+        ContentDetailProjection detail = contentRepository.findDetailById(contentId)
+                .orElseThrow(() -> new ContentNotFoundException(
+                        Map.of("contentId", contentId)
+                ));
+
+        Content content = detail.getContent();
 
         // 제목, 설명, 태그 수정
         if (request != null) {
@@ -65,14 +93,16 @@ public class ContentService {
             );
         }
 
-        // 파일이 전달된 경우에만 썸네일 수정
         if (file != null && !file.isEmpty()) {
+            // 기존 파일 정보 보관
             FileInfo oldFileInfo = content.getFileInfo();
 
+            // 새 파일 업로드 및 URL 조회
             FileInfo newFileInfo = fileService.upload(file);
-            String thumbnailUrl = fileService.getFileUrl(newFileInfo.getId());
+            String newThumbnailUrl = fileService.getFileUrl(newFileInfo.getId());
 
-            content.updateThumbnail(thumbnailUrl, newFileInfo);
+            // 콘텐츠 썸네일 및 파일 정보 변경
+            content.updateThumbnail(newThumbnailUrl, newFileInfo);
 
             // 기존 파일 삭제
             if (oldFileInfo != null) {
@@ -80,15 +110,32 @@ public class ContentService {
             }
         }
 
-        double averageRating = reviewRepository.findAverageRatingByContentId(id);
-        int reviewCount = Math.toIntExact(reviewRepository.countByContentId(id));
-        long watcherCount = 0L; // TODO: 시청 세션 기능 연동
+        long watcherCount = watchingSessionService.getCurrentViewerCount(contentId);
 
         return contentMapper.toDto(
                 content,
-                averageRating,
-                reviewCount,
-                watcherCount);
+                detail.getAverageRating(),
+                Math.toIntExact(detail.getReviewCount()),
+                watcherCount
+        );
+    }
+
+    @Transactional
+    public void deleteById(UUID contentId) {
+        Content content = contentRepository.findById(contentId)
+                .orElseThrow(() -> new ContentNotFoundException(
+                        Map.of("contentId", contentId)
+                ));
+
+        int deletedReviews = reviewRepository.deleteAllByContentId(contentId);
+        int deletedPlaylistContents = playlistContentRepository.deleteAllByContentId(contentId);
+
+        contentRepository.delete(content);
+
+        log.debug(
+                "콘텐츠 삭제: contentId={}, 삭제된 리뷰={}, 삭제된 플레이리스트 연결={}",
+                contentId, deletedReviews, deletedPlaylistContents
+        );
     }
 
     // 태그 중복 검사

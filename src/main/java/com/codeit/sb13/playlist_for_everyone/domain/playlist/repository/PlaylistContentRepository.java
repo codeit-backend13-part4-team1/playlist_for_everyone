@@ -19,5 +19,8 @@ public interface PlaylistContentRepository extends JpaRepository<PlaylistContent
   @Query("delete from PlaylistContent pc where pc.playlistId = :playlistId and pc.contentId = :contentId")
   int deleteByPlaylistIdAndContentId(@Param("playlistId") UUID playlistId, @Param("contentId") UUID contentId);
 
+  @Modifying(flushAutomatically = true)
+  @Query("delete from PlaylistContent pc where pc.contentId = :contentId")
+  int deleteAllByContentId(@Param("contentId") UUID contentId);
 
 }

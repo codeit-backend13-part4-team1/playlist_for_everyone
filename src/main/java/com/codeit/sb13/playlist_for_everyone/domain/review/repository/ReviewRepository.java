@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.review.repository;
 
 import com.codeit.sb13.playlist_for_everyone.domain.review.entity.Review;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
 import java.util.List;
@@ -17,5 +18,9 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
     double findAverageRatingByContentId(UUID contentId);
 
     long countByContentId(UUID contentId);
+
+    @Modifying(flushAutomatically = true)
+    @Query("DELETE FROM Review r WHERE r.content.id = :contentId")
+    int deleteAllByContentId(UUID contentId);
 
 }
