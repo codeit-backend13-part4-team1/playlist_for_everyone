@@ -3,7 +3,6 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketAuthInvalidException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketDestinationInvalidException;
-import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketIllegalArgvException;
 import com.codeit.sb13.playlist_for_everyone.global.service.MatchRule;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisTopicRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
@@ -14,11 +13,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
-
+import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WebSocketUtils.check;
 
 @Component
 @RequiredArgsConstructor
@@ -140,14 +138,5 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
                 || MatchRule.check(destination,watchingChatUrlPattern())))
             throw new WebSocketDestinationInvalidException();
     }
-
-    private <T> T check(T o){
-        try {
-            return Objects.requireNonNull(o);
-        } catch (NullPointerException e) {
-            throw new WebSocketIllegalArgvException(e);
-        }
-    }
-
 
 }

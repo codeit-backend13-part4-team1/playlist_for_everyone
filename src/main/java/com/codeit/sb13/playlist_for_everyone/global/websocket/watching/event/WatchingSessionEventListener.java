@@ -20,6 +20,7 @@ import org.springframework.stereotype.Component;
 import java.util.Objects;
 
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
+import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WebSocketUtils.check;
 
 @Slf4j
 @Component
@@ -40,12 +41,11 @@ public class WatchingSessionEventListener {
     public void watchJoinEvent(WatchingSessionJoinEvent event){
         SessionInfo info = event.info();
         try {
-            Objects.requireNonNull(info.destination());
+            check(info.destination());
 
-            String topic = Objects.requireNonNull(watchingSession.topic(info));
+            String topic = check(watchingSession.topic(info));
 
-            WatchingSessionChange data = Objects
-                    .requireNonNull(watchingSession.joinViewerSession(event.info()));
+            WatchingSessionChange data = check(watchingSession.joinViewerSession(event.info()));
 
             RedisMessageDto<WatchingSessionChange> message = new RedisMessageDto<>(info.destination(), data);
 
@@ -71,9 +71,9 @@ public class WatchingSessionEventListener {
     public void watchLeaveEvent(WatchingSessionLeaveEvent event){
         SessionInfo info = event.info();
         try {
-            Objects.requireNonNull(info.destination());
+            check(info.destination());
 
-            String topic = Objects.requireNonNull(watchingSession.topic(info));
+            String topic = check(watchingSession.topic(info));
 
             WatchingSessionChange data = Objects
                     .requireNonNull(watchingSession.leaveViewerSession(event.info()));
@@ -100,20 +100,20 @@ public class WatchingSessionEventListener {
 
     @EventListener
     public void chatJoinEvent(WatchingChatJoinEvent event){
-        SessionInfo info = Objects.requireNonNull(event.info());
+        SessionInfo info = check(event.info());
         watchingSession.joinChatSession(info);
     }
 
     @EventListener
     public void chatLeaveEvent(WatchingChatLeaveEvent event){
-        SessionInfo info = Objects.requireNonNull(event.info());
+        SessionInfo info = check(event.info());
         watchingSession.leaveChatSession(info);
     }
 
     @EventListener
     public void chatSendEvent(WatchingChatSendEvent event){
         try {
-            SessionInfo info = Objects.requireNonNull(event.info());
+            SessionInfo info = check(event.info());
             String payload = event.message();
             String topic = watchingSession.topic(info);
             MatchRule contentRule =

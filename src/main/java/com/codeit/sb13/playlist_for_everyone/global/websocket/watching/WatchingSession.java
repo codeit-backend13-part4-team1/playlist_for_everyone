@@ -9,7 +9,6 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.mapper.UserSummaryMappe
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketAuthInvalidException;
-import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketIllegalArgvException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketDestinationInvalidException;
 import com.codeit.sb13.playlist_for_everyone.global.service.MatchRule;
@@ -29,7 +28,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
-
+import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WebSocketUtils.check;
 
 /**
  * 동시 시청 도메인의 서비스를 큰 틀로 담당하는 클래스.
@@ -227,15 +226,6 @@ public class WatchingSession {
             return extract.get(0);
         } catch (NullPointerException e) {
             throw new WebSocketDestinationInvalidException(e);
-        }
-    }
-
-
-    private <T> T check(T obj){
-        try {
-            return Objects.requireNonNull(obj);
-        } catch (NullPointerException e) {
-            throw new WebSocketIllegalArgvException(e);
         }
     }
 
