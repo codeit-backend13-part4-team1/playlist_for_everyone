@@ -61,13 +61,7 @@ public class ContentCollectionService {
             return existing;
         }
 
-        if (data.tags() != null) {
-            data.tags().stream()
-                    .filter(StringUtils::hasText)
-                    .map(String::strip)
-                    .distinct()
-                    .forEach(content::addTag);
-        }
+        tags.forEach(content::addTag);
 
         return contentRepository.save(content);
     }
