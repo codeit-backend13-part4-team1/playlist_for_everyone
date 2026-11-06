@@ -1,5 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.event;
 
+import tools.jackson.databind.JsonNode;
+
 import java.util.Objects;
 import java.util.UUID;
 
@@ -47,6 +49,10 @@ public record SseEvent<T>(
                 Event.NOTIFICATIONS.getName(),
                 data
         );
+    }
+
+    public SseEvent<JsonNode> toHistoryData(JsonNode data){
+        return new SseEvent<>(eventId, receiverId, eventName, data);
     }
 
 }

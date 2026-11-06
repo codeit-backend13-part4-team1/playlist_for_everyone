@@ -6,6 +6,7 @@ import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEventPublisher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -31,6 +32,7 @@ import tools.jackson.databind.ObjectMapper;
         name = "transport",
         havingValue = "redis"
 )
+@Qualifier("sseTransportPublisher")
 @Slf4j
 public class RedisSseEventPublisher implements SseEventPublisher {
 
