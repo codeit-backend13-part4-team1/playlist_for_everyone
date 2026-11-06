@@ -78,17 +78,8 @@ public class SseConnectionService {
         return emitter;
     }
 
-    /**
-     * onError 콜백에서 연결을 정리한 뒤 원인에 따라 로그를 남긴다.
-     * Spring이 클라이언트 단절로 식별한 예외만 DEBUG로 기록하여 반복되는 단절 로그를 줄인다.
-     * 모든 I/O 예외를 단절로 취급하지 않으며, 나머지는 원인 추적을 위해 ERROR에 스택을 남긴다.
-     */
-    private void logSseConnectionIssue(UUID userId, Throwable e, Connection connection) {
-        if (DisconnectedClientHelper.isClientDisconnectedException(e)){
-            log.debug("SSE 클라이언트 단절로 연결을 정리했습니다. userId={}, connectionId={}", userId, connection.id());
-            return;
-        }
-        log.error("SSE 연결 오류로 연결을 정리했습니다. userId={}, connectionId={}", userId, connection.id(), e);
+    public SseEmitter connect(UUID userId, UUID lastEventId){
+        return connect(userId);
     }
 
     /**
@@ -128,5 +119,18 @@ public class SseConnectionService {
         if (e instanceof IllegalStateException illegalState){
             throw illegalState;
         }
+    }
+
+    /**
+     * onError 콜백에서 연결을 정리한 뒤 원인에 따라 로그를 남긴다.
+     * Spring이 클라이언트 단절로 식별한 예외만 DEBUG로 기록하여 반복되는 단절 로그를 줄인다.
+     * 모든 I/O 예외를 단절로 취급하지 않으며, 나머지는 원인 추적을 위해 ERROR에 스택을 남긴다.
+     */
+    private void logSseConnectionIssue(UUID userId, Throwable e, Connection connection) {
+        if (DisconnectedClientHelper.isClientDisconnectedException(e)){
+            log.debug("SSE 클라이언트 단절로 연결을 정리했습니다. userId={}, connectionId={}", userId, connection.id());
+            return;
+        }
+        log.error("SSE 연결 오류로 연결을 정리했습니다. userId={}, connectionId={}", userId, connection.id(), e);
     }
 }
