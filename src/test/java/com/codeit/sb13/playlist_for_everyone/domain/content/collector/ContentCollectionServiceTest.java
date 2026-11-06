@@ -232,4 +232,35 @@ class ContentCollectionServiceTest {
 
         assertThat(count).isEqualTo(1L);
     }
+
+    @Test
+    void 외부_ID가_같아도_타입이_다르면_각각_저장한다() {
+        var movie = new CollectedContentData(
+                ContentType.movie, "테스트 영화", "영화 설명",
+                null, ContentSource.TMDB, "550",
+                List.of("액션")
+        );
+
+        var tv = new CollectedContentData(
+                ContentType.tvSeries, "테스트 드라마", "드라마 설명",
+                null, ContentSource.TMDB, "550",
+                List.of("드라마")
+        );
+
+        Content savedMovie = service.save(movie);
+        em.flush();
+        em.clear();
+
+        Content savedTv = service.save(tv);
+        em.flush();
+        em.clear();
+
+        assertThat(savedMovie.getId()).isNotEqualTo(savedTv.getId());
+
+        Content foundMovie = em.find(Content.class, savedMovie.getId());
+        Content foundTv = em.find(Content.class, savedTv.getId());
+
+        assertThat(foundMovie.getType()).isEqualTo(ContentType.movie);
+        assertThat(foundTv.getType()).isEqualTo(ContentType.tvSeries);
+    }
 }
