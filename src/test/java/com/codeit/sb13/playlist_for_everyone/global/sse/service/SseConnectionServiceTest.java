@@ -8,9 +8,11 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.MockedConstruction;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
@@ -39,6 +41,9 @@ class SseConnectionServiceTest {
 
     @Mock
     private SseEmitterRepository repository;
+
+    @Mock
+    private SseRecoveryService recoveryService;
 
     private SseConnectionService service;
 
@@ -475,6 +480,118 @@ class SseConnectionServiceTest {
         verify(repository).delete(firstUserId, sameUserConnection);
         verify(repository).delete(secondUserId, otherUserConnection);
         verify(repository, times(3)).delete(any(), any());
+
+    }
+
+    @Test
+    @DisplayName("연결을 등록한 뒤 동일한 연결과 마지막 이벤트 ID로 복구를 요청한다.")
+    void connectRequestRecoveryAfterRegistration(){
+        UUID userId = UUID.randomUUID();
+        UUID lastEventId = UUID.randomUUID();
+
+        ArgumentCaptor<Connection> connectionCaptor = ArgumentCaptor.forClass(Connection.class);
+        SseEmitter emitter = service.connect(userId, lastEventId);
+
+        InOrder inOrder = inOrder(repository, recoveryService);
+
+        inOrder.verify(repository)
+                .save(eq(userId), connectionCaptor.capture(), same(emitter));
+
+        inOrder.verify(recoveryService)
+                .recover(eq(userId), eq(connectionCaptor.getValue()), same(emitter), eq(lastEventId));
+    }
+
+    @Test
+    @DisplayName("마지막 이벤트 ID가 없어도 등록한 연결의 복구를 요청한다.")
+    void connectRequestRecoveryWithoutLastEventId(){
+        UUID userId = UUID.randomUUID();
+
+        ArgumentCaptor<Connection> connectionCaptor = ArgumentCaptor.forClass(Connection.class);
+
+        SseEmitter emitter = service.connect(userId, null);
+
+        verify(repository)
+                .save(eq(userId), connectionCaptor.capture(), same(emitter));
+
+        verify(recoveryService)
+                .recover(eq(userId), eq(connectionCaptor.getValue()), same(emitter), isNull());
+    }
+
+    @Test
+    @DisplayName("복구 이력 조회에 실패하면 등록한 연결을 삭제하고 원래 예외를 전달한다.")
+    void recoveryLookupFailureDeletesRegisteredConnection(){
+        UUID userId = UUID.randomUUID();
+        UUID lastEventId = UUID.randomUUID();
+
+        DataAccessResourceFailureException failure = new DataAccessResourceFailureException("테스트용 이력 조회 실패");
+
+        ArgumentCaptor<Connection> connectionCaptor = ArgumentCaptor.forClass(Connection.class);
+
+        doThrow(failure)
+                .when(recoveryService)
+                .recover(eq(userId), any(Connection.class), any(SseEmitter.class), eq(lastEventId));
+
+        assertThatThrownBy(() -> service.connect(userId, lastEventId))
+                .isSameAs(failure);
+
+        verify(repository)
+                .save(eq(userId), connectionCaptor.capture(), any(SseEmitter.class));
+
+        verify(repository).delete(userId, connectionCaptor.getValue());
+        verify(repository, times(1)).delete(any(),any());
+    }
+
+    @Test
+    @DisplayName("복구 전송 중 I/O 오류가 발생하면 등록한 연결을 삭제하고 원래 예외를 전달한다.")
+    void recoveryIoFailureDeletesRegisteredConnection(){
+        UUID userId = UUID.randomUUID();
+        UUID lastEventId = UUID.randomUUID();
+
+        UncheckedIOException failure = new UncheckedIOException("SSE 복구 이벤트 전송에 실패했습니다.", new IOException("테스트용 복구 전송 실패"));
+
+        ArgumentCaptor<Connection> connectionCaptor = ArgumentCaptor.forClass(Connection.class);
+
+        doThrow(failure)
+                .when(recoveryService)
+                .recover(
+                        eq(userId),
+                        any(Connection.class),
+                        any(SseEmitter.class),
+                        eq(lastEventId)
+                );
+
+        assertThatThrownBy(()-> service.connect(userId, lastEventId))
+                .isSameAs(failure);
+
+        verify(repository).save(eq(userId), connectionCaptor.capture(), any(SseEmitter.class));
+        verify(repository).delete(userId, connectionCaptor.getValue());
+        verify(repository, times(1)).delete(any(),any());
+    }
+
+    @Test
+    @DisplayName("복구 전송 중 상태 예외가 발생하면 등록한 연결을 삭제하고 원래 예외를 전달한다.")
+    void recoveryIllegalStateFailureDeletesRegisteredConnection(){
+        UUID userId = UUID.randomUUID();
+        UUID lastEventId = UUID.randomUUID();
+
+        IllegalStateException failure = new IllegalStateException("테스트용 복구 전송 상태 오류");
+        ArgumentCaptor<Connection> connectionCaptor = ArgumentCaptor.forClass(Connection.class);
+
+        doThrow(failure)
+                .when(recoveryService)
+                .recover(
+                        eq(userId),
+                        any(Connection.class),
+                        any(SseEmitter.class),
+                        eq(lastEventId)
+                );
+
+        assertThatThrownBy(() -> service.connect(userId, lastEventId))
+                .isSameAs(failure);
+
+        verify(repository).save(eq(userId), connectionCaptor.capture(), any(SseEmitter.class));
+        verify(repository).delete(userId, connectionCaptor.getValue());
+        verify(repository, times(1)).delete(any(), any());
 
     }
 }
