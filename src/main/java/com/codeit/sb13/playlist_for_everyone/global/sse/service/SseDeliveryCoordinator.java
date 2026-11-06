@@ -29,6 +29,10 @@ public class SseDeliveryCoordinator {
         if (state == null) return;
         state.lastPosition = recoveryService.recover(userId, connection, state.emitter, lastEventId);
         state.recovered = true;
+        if (state.pendingDelivery){
+            state.pendingDelivery = false;
+            requestDelivery(userId, connection);
+        }
     }
 
     public void remove(UUID userId, Connection connection){
@@ -39,7 +43,12 @@ public class SseDeliveryCoordinator {
     public void requestDelivery(UUID userId, Connection connection){
         ConnectionKey key = new ConnectionKey(userId, connection);
         ConnectionState state = connectionStates.get(key);
-        if (state == null || !state.recovered){
+        if (state == null){
+            return;
+        }
+
+        if (!state.recovered){
+            state.pendingDelivery = true;
             return;
         }
 
@@ -56,6 +65,7 @@ public class SseDeliveryCoordinator {
     private static class ConnectionState {
         private final SseEmitter emitter;
         private boolean recovered;
+        private boolean pendingDelivery;
         private SseHistoryPosition lastPosition;
 
         private ConnectionState(SseEmitter emitter){
