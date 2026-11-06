@@ -116,29 +116,31 @@ public class WatchingSessionEventListener {
             SessionInfo info = Objects.requireNonNull(event.info());
             String payload = event.message();
             String topic = watchingSession.topic(info);
+            MatchRule contentRule =
+                    MatchRule.builder()
+                            .origin(info.destination())
+                            .prefix("/pub/contents/")
+                            .pattern(UUID_REGEX)
+                            .postfix(CHAT_POSTFIX)
+                            .build();
 
-            boolean destinationCheck = MatchRule.check(
-                    info.destination(),
-                    "/pub/contents/",
-                    UUID_REGEX,
-                    CHAT_POSTFIX
-            );
-
-            if (!destinationCheck) throw new WebSocketDestinationInvalidException();
+            if (!contentRule.check()) throw new WebSocketDestinationInvalidException();
+            String destination = PATH_PREFIX + contentRule.extract().get(0) + CHAT_POSTFIX;
 
             ContentChatDto chat = watchingSession.getContentChatDto(info, payload);
 
             RedisMessageDto<ContentChatDto> message = new RedisMessageDto<>(
-                    info.destination(),
+                    destination,
                     chat
             );
 
             redisTemplate.convertAndSend(topic, message);
         } catch (RuntimeException e) {
             log.error("[{}] 메세지 전송 실패.",
-                    getClass().getSimpleName()
+                    getClass().getSimpleName(),
+                    e
             );
-            // todo - message send exception 작성.
+            // todo - message send exception 작성. 핸들링 때문에 에러를 그대로 반환 안 하고, 여기에서 에러처리 역시 고심.
             throw new WebSocketSessionNotFoundException();
         }
 

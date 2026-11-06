@@ -2,7 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.watching;
 
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageDto;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageListener;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.WatchingSessionChange;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatDto;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -34,12 +34,12 @@ public class ChatSessionMessageListener extends RedisMessageListener {
 
     @Override
     public void run(Object data){
-        RedisMessageDto<WatchingSessionChange> dto =
-                (RedisMessageDto<WatchingSessionChange>) Objects.requireNonNull(data);
+        RedisMessageDto<ContentChatDto> dto =
+                (RedisMessageDto<ContentChatDto>) Objects.requireNonNull(data);
 
         // 경로는 발신 경로 그대로.
         String destination = dto.destination();
-        WatchingSessionChange change = dto.data();
+        ContentChatDto change = dto.data();
 
         // 메세지로 발신.
         message.convertAndSend(destination, change);

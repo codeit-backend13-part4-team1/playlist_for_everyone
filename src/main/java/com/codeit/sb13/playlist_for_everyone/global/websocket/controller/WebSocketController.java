@@ -19,7 +19,7 @@ public class WebSocketController {
 
     private final ApplicationEventPublisher eventPublisher;
     @MessageMapping("/contents/{contentId}/chat")
-    @PreAuthorize("hasRole('USER') && #authentication.principal.enabled")
+    @PreAuthorize("hasRole('USER') && authentication.principal.enabled")
     public void contentChatReceive(
             Message<?> message,
             ContentChatSendRequest payload

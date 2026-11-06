@@ -230,6 +230,7 @@ public class WatchingSession {
         }
     }
 
+
     private <T> T check(T obj){
         try {
             return Objects.requireNonNull(obj);

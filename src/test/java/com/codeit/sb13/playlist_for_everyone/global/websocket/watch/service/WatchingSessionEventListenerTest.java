@@ -373,7 +373,7 @@ public class WatchingSessionEventListenerTest {
         String sessionId = "test-session";
         String subscriptionId = "test-subscription";
         String contentId = UUID.randomUUID().toString();
-        String destination = testDestination(contentId, CHAT_SERVICE);
+        String destination = "/pub/contents/" + contentId + "/chat";
 
         @Nested
         @DisplayName("Join 테스트")
@@ -432,13 +432,14 @@ public class WatchingSessionEventListenerTest {
                         Role.USER
                 );
 
-                String topic = assertionTopicAnswer(destination, CHAT_SERVICE);
+                String topic = assertionTopicAnswer(contentId, CHAT_SERVICE);
 
                 // user, message
                 ContentChatDto chat = new ContentChatDto(null, message);
 
                 // destination, payload
-                RedisMessageDto<ContentChatDto> dto = new RedisMessageDto<>(destination, chat);
+                String targetDestination = testDestination(contentId,CHAT_SERVICE);
+                RedisMessageDto<ContentChatDto> dto = new RedisMessageDto<>(targetDestination, chat);
 
                 given(watchingSession.topic(info)).willReturn(topic);
                 given(watchingSession.getContentChatDto(info, message)).willReturn(chat);
