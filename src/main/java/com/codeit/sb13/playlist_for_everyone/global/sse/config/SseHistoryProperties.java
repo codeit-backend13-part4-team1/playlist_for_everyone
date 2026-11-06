@@ -45,4 +45,8 @@ public record SseHistoryProperties(
             throw new IllegalArgumentException("SSE 이력 보관기간은 1밀리초 이상이어야 합니다.");
         }
     }
+
+    public String retentionMillisString(){
+        return  Long.toString(retention.toMillis());
+    }
 }
