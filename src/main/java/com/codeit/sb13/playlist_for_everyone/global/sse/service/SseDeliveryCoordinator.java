@@ -34,6 +34,10 @@ public class SseDeliveryCoordinator {
         registeredEmitters.remove(key);
     }
 
+    public void requestDelivery(UUID userId, Connection connection){
+
+    }
+
     private record ConnectionKey(UUID userId, Connection connection){
 
     }

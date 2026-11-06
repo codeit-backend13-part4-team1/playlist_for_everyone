@@ -1,16 +1,19 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.service;
 
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
+import com.codeit.sb13.playlist_for_everyone.global.sse.history.SseHistoryPosition;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -92,4 +95,157 @@ class SseDeliveryCoordinatorTest {
 
         verifyNoMoreInteractions(recoveryService);
     }
+
+    @Test
+    @DisplayName("복구가 완료된 위치부터 해당 연결의 후속 전송을 요청한다.")
+    void requestsDeliveryAfterRecoveredPosition(){
+        SseHistoryPosition upperBound = createHistoryPosition();
+
+        when(recoveryService.recover(userId, connection, emitter, lastEventId))
+                .thenReturn(upperBound);
+
+        coordinator.register(userId, connection, emitter);
+        coordinator.recover(userId, connection, lastEventId);
+        coordinator.requestDelivery(userId, connection);
+
+        verify(recoveryService).recoverAfter(eq(userId), eq(connection), same(emitter), eq(upperBound));
+    }
+
+    @Test
+    @DisplayName("복구 완료 위치가 null이어도 해당 연결의 후속 전송을 요청한다.")
+    void requestsDeliveryWhenRecoveredPositionIsNull(){
+        when(recoveryService.recover(userId, connection, emitter, lastEventId))
+                .thenReturn(null);
+
+        coordinator.register(userId, connection, emitter);
+        coordinator.recover(userId, connection, lastEventId);
+        coordinator.requestDelivery(userId, connection);
+
+        verify(recoveryService)
+                .recoverAfter(eq(userId), eq(connection), same(emitter), isNull());
+    }
+
+    @Test
+    @DisplayName("후속 전송이 반환한 위치를 다음 전송 요청의 기준으로 사용한다.")
+    void usesUpdatedPositionForNextDeliveryRequest(){
+        SseHistoryPosition upperBound = createHistoryPosition();
+        SseHistoryPosition nextPosition = createHistoryPosition("1000-1");
+
+        when(recoveryService.recover(userId, connection, emitter,lastEventId))
+                .thenReturn(upperBound);
+
+        when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
+                .thenReturn(nextPosition);
+
+        when(recoveryService.recoverAfter(userId, connection, emitter, nextPosition))
+                .thenReturn(nextPosition);
+
+        coordinator.register(userId, connection, emitter);
+        coordinator.recover(userId, connection, lastEventId);
+
+        coordinator.requestDelivery(userId, connection);
+        coordinator.requestDelivery(userId, connection);
+
+        ArgumentCaptor<SseHistoryPosition> positionCaptor = ArgumentCaptor.forClass(SseHistoryPosition.class);
+        verify(recoveryService, times(2)).recoverAfter(
+                eq(userId),
+                eq(connection),
+                same(emitter),
+                positionCaptor.capture()
+        );
+
+        assertThat(positionCaptor.getAllValues())
+                .containsExactly(upperBound, nextPosition);
+    }
+
+    @Test
+    @DisplayName("같은 사용자의 두 연결은 후속 전송위치를 독립적으로 관리한다.")
+    void maintainsIndependentDeliveryPositionsForConnectionOfSameUser(){
+        Connection secondConnection = Connection.create();
+        SseEmitter secondEmitter = mock(SseEmitter.class);
+        UUID secondLastEventId = UUID.randomUUID();
+
+        SseHistoryPosition firstPosition = createHistoryPosition();
+        SseHistoryPosition firstNextPosition = createHistoryPosition("1000-1");
+        SseHistoryPosition secondPosition = createHistoryPosition("2000-0");
+
+        when(recoveryService.recover(userId, connection, emitter, lastEventId))
+                .thenReturn(firstPosition);
+
+        when(recoveryService.recover(userId, secondConnection, secondEmitter, secondLastEventId))
+                .thenReturn(secondPosition);
+        when(recoveryService.recoverAfter(userId, connection, emitter, firstPosition))
+                .thenReturn(firstNextPosition);
+        when(recoveryService.recoverAfter(userId, secondConnection, secondEmitter, secondPosition))
+                .thenReturn(secondPosition);
+
+        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, secondConnection, secondEmitter);
+
+        coordinator.recover(userId, connection,lastEventId);
+        coordinator.recover(userId, secondConnection, secondLastEventId);
+
+        coordinator.requestDelivery(userId, connection);
+        coordinator.requestDelivery(userId, secondConnection);
+
+        verify(recoveryService).recoverAfter(eq(userId), eq(connection), same(emitter), eq(firstPosition));
+        verify(recoveryService).recoverAfter(eq(userId), eq(secondConnection), same(secondEmitter), eq(secondPosition));
+
+    }
+
+    @Test
+    @DisplayName("연결 등록 후 복구를 시작하기 전에는 후속 전송을 즉시 실행하지 않는다.")
+    void doesNotDeliverBeforeRecoveryStarts(){
+        coordinator.register(userId, connection, emitter);
+        coordinator.requestDelivery(userId, connection);
+
+        verifyNoInteractions(recoveryService);
+    }
+
+    @Test
+    @DisplayName("제거한 연결은 후속 전송하지 않고 같은 사용자의 다른 연결은 전송한다.")
+    void doesNotDeliverToRemovedConnectionAndKeepsOtherConnection(){
+        Connection secondConnection = Connection.create();
+        SseEmitter secondEmitter = mock(SseEmitter.class);
+        UUID secondLastEventId = UUID.randomUUID();
+
+        SseHistoryPosition firstPosition = createHistoryPosition();
+        SseHistoryPosition secondPosition = createHistoryPosition("2000-0");
+
+        when(recoveryService.recover(userId, connection, emitter, lastEventId))
+                .thenReturn(firstPosition);
+
+        when(recoveryService.recover(userId, secondConnection, secondEmitter, secondLastEventId))
+                .thenReturn(secondPosition);
+
+        when(recoveryService.recoverAfter(userId, secondConnection, secondEmitter, secondPosition))
+                .thenReturn(secondPosition);
+
+        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, secondConnection, secondEmitter);
+
+        coordinator.recover(userId, connection, lastEventId);
+        coordinator.recover(userId, secondConnection, secondLastEventId);
+
+        coordinator.remove(userId, connection);
+
+        coordinator.requestDelivery(userId, connection);
+        coordinator.requestDelivery(userId, secondConnection);
+
+        verify(recoveryService, never() )
+                .recoverAfter(eq(userId), eq(connection), any(), any());
+
+        verify(recoveryService)
+                .recoverAfter(eq(userId), eq(secondConnection), same(secondEmitter), eq(secondPosition));
+
+    }
+
+    private SseHistoryPosition createHistoryPosition(String position) {
+        return new SseHistoryPosition(position);
+    }
+
+    private SseHistoryPosition createHistoryPosition() {
+        return createHistoryPosition("1000-0");
+    }
+
 }
