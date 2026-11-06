@@ -532,16 +532,21 @@ public class ContentServiceTest {
     }
 
     @Test
-    @DisplayName("존재하는 콘텐츠를 삭제한다.")
+    @DisplayName("콘텐츠 삭제 시 연결된 리뷰, 파일, 플레이리스트콘텐츠도 삭제한다.")
     void deleteById_success() {
         // given
         UUID contentId = UUID.randomUUID();
+        UUID fileId = UUID.randomUUID();
+
+        FileInfo fileInfo = mock(FileInfo.class);
+        given(fileInfo.getId()).willReturn(fileId);
 
         Content content = Content.createAdminContent(
                 ContentType.tvSeries,
                 "너말고다른연애",
                 "KBS 드라마 입니다.",
-                "thumbnail-url"
+                "thumbnail-url",
+                fileInfo
         );
 
         given(contentRepository.findById(contentId))
@@ -554,11 +559,15 @@ public class ContentServiceTest {
         InOrder inOrder = inOrder(
                 reviewRepository,
                 playlistContentRepository,
+                fileService,
                 contentRepository
         );
 
+        // TODO: 콘텐츠 삭제 시 WatchingSessionDisconnectEvent 발행 연동
         inOrder.verify(reviewRepository).deleteAllByContentId(contentId);
         inOrder.verify(playlistContentRepository).deleteAllByContentId(contentId);
+        inOrder.verify(fileService).delete(fileId);
+
         inOrder.verify(contentRepository).delete(content);
     }
 
@@ -586,6 +595,39 @@ public class ContentServiceTest {
         then(reviewRepository).shouldHaveNoInteractions();
         then(playlistContentRepository).shouldHaveNoInteractions();
         then(contentRepository).should(never()).delete(any(Content.class));
+    }
+
+    @Test
+    @DisplayName("파일 정보가 없는 콘텐츠도 정상적으로 삭제한다.")
+    void deleteById_withoutFile() {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        Content content = Content.createAdminContent(
+                ContentType.tvSeries,
+                "너말고다른연애",
+                "KBS 드라마 입니다.",
+                "thumbnail-url"
+        );
+
+        given(contentRepository.findById(contentId))
+                .willReturn(Optional.of(content));
+
+        // when
+        contentService.deleteById(contentId);
+
+        // then
+        InOrder inOrder = inOrder(
+                reviewRepository,
+                playlistContentRepository,
+                contentRepository
+        );
+
+        inOrder.verify(reviewRepository).deleteAllByContentId(contentId);
+        inOrder.verify(playlistContentRepository).deleteAllByContentId(contentId);
+        inOrder.verify(contentRepository).delete(content);
+
+        verify(fileService, never()).delete(any());
     }
 
 }
