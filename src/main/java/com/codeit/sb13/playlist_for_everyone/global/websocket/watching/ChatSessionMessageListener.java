@@ -1,12 +1,16 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching;
 
+import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageDto;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageListener;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.WatchingSessionChange;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.serializer.GenericJacksonJsonRedisSerializer;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
+
+import java.util.Objects;
 
 /**
  * 채팅 관련 redis 메세지를 처리하는 리스너.
@@ -29,9 +33,16 @@ public class ChatSessionMessageListener extends RedisMessageListener {
     }
 
     @Override
-    public void run(Object object){
+    public void run(Object data){
+        RedisMessageDto<WatchingSessionChange> dto =
+                (RedisMessageDto<WatchingSessionChange>) Objects.requireNonNull(data);
 
+        // 경로는 발신 경로 그대로.
+        String destination = dto.destination();
+        WatchingSessionChange change = dto.data();
 
+        // 메세지로 발신.
+        message.convertAndSend(destination, change);
     }
 
 }

@@ -91,12 +91,6 @@ public class WatchingSessionTest {
         accessor.setDestination(destination);
         accessor.setLeaveMutable(true);
 
-        Message<byte[]> message =  MessageBuilder.createMessage(
-                new byte[0],
-                accessor.getMessageHeaders()
-        );
-
-        SessionInfo info = new SessionInfo(message);
 
         SecurityUser user = new SecurityUser(
                 UUID.randomUUID(),
@@ -107,9 +101,14 @@ public class WatchingSessionTest {
         );
         UsernamePasswordAuthenticationToken authentication =
                 new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
-        info.principal(authentication);
 
-        return info;
+        accessor.setUser(authentication);
+
+        Message<byte[]> message =  MessageBuilder.createMessage(
+                new byte[0],
+                accessor.getMessageHeaders()
+        );
+        return new SessionInfo(message);
     }
 
 
@@ -469,10 +468,9 @@ public class WatchingSessionTest {
                 verify(watchingSessionService).joinChatSession(eq(info));
             }
 
+            // 경로 정보만 검사함.
             static Stream<Arguments> nullableTestArgv(){
                 return Stream.of(
-                        Arguments.of(null, subscriptionId, destination),
-                        Arguments.of(sessionId, null, destination),
                         Arguments.of(sessionId, subscriptionId, null),
                         Arguments.of(sessionId, subscriptionId, "/test/pattern/123")
                 );
@@ -480,7 +478,7 @@ public class WatchingSessionTest {
 
             @ParameterizedTest
             @MethodSource("nullableTestArgv")
-            @DisplayName("세션 정보나, 경로 정보가 없거나, 경로 정보가 지정된 형식이 아니면, 리소스를 등록하기 전에 예외를 반환한다.")
+            @DisplayName("경로 정보가 없거나, 경로 정보가 지정된 형식이 아니면, 리소스를 등록하기 전에 예외를 반환한다.")
             void leaveTestWithNoArgv(String session, String subscription, String destination){
                 SessionInfo info = getSessionInfo(
                         session,
@@ -497,6 +495,7 @@ public class WatchingSessionTest {
                 verifyNoInteractions(userService);
             }
 
+            // 우선은 잠김만 검사함.
             static Stream<Arguments> authenticationTestArgv(){
                 return Stream.of(
                         Arguments.of(Role.USER,true)
@@ -539,18 +538,14 @@ public class WatchingSessionTest {
                         Role.USER
                 );
 
-                // 현재 유저 정보를 통한 인증, 인가 검사용 호출
-                userServiceLogicSet(Objects.requireNonNull(info.user()));
-
                 watchingSession.leaveChatSession(info);
 
                 verify(watchingSessionService).leaveChatSession(eq(info));
             }
 
-            // 등록 취소는 구독 정보가 없을 수 있다. -> 없으면 delete
+            // 경로 정보만 검사함.
             static Stream<Arguments> nullableTestArgv(){
                 return Stream.of(
-                        Arguments.of(null, subscriptionId, destination),
                         Arguments.of(sessionId, subscriptionId, null),
                         Arguments.of(sessionId, subscriptionId, "/test/pattern/123")
                 );

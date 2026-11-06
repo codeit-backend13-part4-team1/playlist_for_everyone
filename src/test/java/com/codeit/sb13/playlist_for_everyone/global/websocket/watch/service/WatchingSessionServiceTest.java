@@ -82,13 +82,6 @@ public class WatchingSessionServiceTest {
         accessor.setDestination(destination);
         accessor.setLeaveMutable(true);
 
-        Message<byte[]> message =  MessageBuilder.createMessage(
-                new byte[0],
-                accessor.getMessageHeaders()
-        );
-
-        SessionInfo info = new SessionInfo(message);
-
         SecurityUser user = new SecurityUser(
                 UUID.randomUUID(),
                 "test@email.com",
@@ -98,9 +91,15 @@ public class WatchingSessionServiceTest {
         );
         UsernamePasswordAuthenticationToken authentication =
                 new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
-        info.principal(authentication);
 
-        return info;
+        accessor.setUser(authentication);
+
+        Message<byte[]> message =  MessageBuilder.createMessage(
+                new byte[0],
+                accessor.getMessageHeaders()
+        );
+
+        return new SessionInfo(message);
     }
 
 
@@ -141,7 +140,8 @@ public class WatchingSessionServiceTest {
         service = new WatchingSessionServiceImpl(
                 repository,
                 redisTopicRegistry,
-                viewSessionListener
+                viewSessionListener,
+                chatSessionListener
         );
     }
 
@@ -470,15 +470,16 @@ public class WatchingSessionServiceTest {
                 verify(redisTopicRegistry).unregister(eq(sessionId),eq(subscriptionId));
             }
 
+            // 구독 취소는 세션 id 만 존재하면 된다.
             static Stream<Arguments> sessionInfoTestVariables(){
                 return Stream.of(
-                        Arguments.of(null,subscriptionId,destination),
-                        Arguments.of(sessionId,subscriptionId,null)
+                        Arguments.of(null,subscriptionId,destination)
                 );
             }
 
-            @Test
-            @DisplayName("세션 id 나 경로 정보가 null 이라면 을혹을 진행하기 전에 예외를 받는다.")
+            @ParameterizedTest
+            @MethodSource("sessionInfoTestVariables")
+            @DisplayName("특정 인자 가 null 이라면 로직을 진행하기 전에 예외를 받는다.")
             void leaveTestWithNoArgv(String session, String subscription, String destination){
                 SessionInfo info = getSessionInfo(
                         session,

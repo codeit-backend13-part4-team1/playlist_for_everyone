@@ -1,10 +1,17 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
+import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
+import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
+import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketDestinationInvalidException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionRegisterException;
+import com.codeit.sb13.playlist_for_everyone.global.service.MatchRule;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSession;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatDto;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.WatchingSessionChange;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -14,11 +21,15 @@ import org.springframework.stereotype.Component;
 
 import java.util.Objects;
 
+import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
+
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class WatchingSessionEventListener {
 
+
+    private final UserService userService;
     private final WatchingSession watchingSession;
     private final RedisTemplate<String, Object> redisTemplate;
 
@@ -91,14 +102,65 @@ public class WatchingSessionEventListener {
 
     @EventListener
     public void chatJoinEvent(WatchingChatJoinEvent event){
+        SessionInfo info = Objects.requireNonNull(event.info());
+        watchingSession.joinChatSession(info);
     }
 
     @EventListener
     public void chatLeaveEvent(WatchingChatLeaveEvent event){
+        SessionInfo info = Objects.requireNonNull(event.info());
+        watchingSession.leaveChatSession(info);
     }
 
     @EventListener
     public void chatSendEvent(WatchingChatSendEvent event){
+        try {
+            SessionInfo info = Objects.requireNonNull(event.info());
+            String payload = event.message();
+            String topic = watchingSession.topic(info);
+
+            boolean destinationCheck = MatchRule.check(
+                    info.destination(),
+                    "/pub/contents/",
+                    UUID_REGEX,
+                    CHAT_POSTFIX
+            );
+
+            if (!destinationCheck) throw new WebSocketDestinationInvalidException();
+
+
+            // 하단부는 watchingSession 에서 제작 할 수 도.
+            SecurityUser securityUser = info.user();
+//        User user = userService.getById(securityUser.getUserId());
+
+
+
+            // todo - 요구사항 파악 후, user.getProfileUrl 부분 작성.
+            ContentChatDto chat = new ContentChatDto(
+//                new UserSummary(
+//                        user.getId(),
+//                        user.getName(),
+////                        user.getProfileImage().
+//                        null // profile Image url 체크 후 테스트
+//                ),
+                    null,
+                    payload
+            );
+
+            RedisMessageDto<ContentChatDto> message = new RedisMessageDto<>(
+                    info.destination(),
+                    chat
+            );
+
+            redisTemplate.convertAndSend(topic, message);
+        } catch (RuntimeException e) {
+            log.error("[{}] 메세지 전송 실패.",
+                    getClass().getSimpleName()
+            );
+            // todo - message send exception 작성.
+            throw new WebSocketSessionNotFoundException();
+        }
+
     }
 
 }

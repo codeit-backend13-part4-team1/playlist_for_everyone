@@ -7,6 +7,7 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.EveryOneException;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSession;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.ChangeType;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.WatchingSessionChange;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.*;
@@ -83,13 +84,6 @@ public class WatchingSessionEventListenerTest {
         accessor.setDestination(destination);
         accessor.setLeaveMutable(true);
 
-        Message<byte[]> message =  MessageBuilder.createMessage(
-                new byte[0],
-                accessor.getMessageHeaders()
-        );
-
-        SessionInfo info = new SessionInfo(message);
-
         SecurityUser user = new SecurityUser(
                 UUID.randomUUID(),
                 "test@email.com",
@@ -99,9 +93,15 @@ public class WatchingSessionEventListenerTest {
         );
         UsernamePasswordAuthenticationToken authentication =
                 new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
-        info.principal(authentication);
 
-        return info;
+        accessor.setUser(authentication);
+
+        Message<byte[]> message =  MessageBuilder.createMessage(
+                new byte[0],
+                accessor.getMessageHeaders()
+        );
+
+        return new SessionInfo(message);
     }
 
 
@@ -434,7 +434,11 @@ public class WatchingSessionEventListenerTest {
 
                 String topic = assertionTopicAnswer(destination, CHAT_SERVICE);
 
-                RedisMessageDto<String> dto = new RedisMessageDto<>(destination, message);
+                // user, message
+                ContentChatDto chat = new ContentChatDto(null, message);
+
+                // destination, payload
+                RedisMessageDto<ContentChatDto> dto = new RedisMessageDto<>(destination, chat);
 
                 given(watchingSession.topic(info)).willReturn(topic);
 

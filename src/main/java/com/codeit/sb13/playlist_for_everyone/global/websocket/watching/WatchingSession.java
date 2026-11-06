@@ -6,6 +6,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentServi
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketAuthInvalidException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketIllegalArgvException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketDestinationInvalidException;
 import com.codeit.sb13.playlist_for_everyone.global.service.MatchRule;
@@ -71,11 +73,11 @@ public class WatchingSession {
      */
     public WatchingSessionChange joinViewerSession(SessionInfo info){
         SessionData session = connectionRegistry.get(
-                Objects.requireNonNull(info.session()),
-                Objects.requireNonNull(info.subscription())
+                check(info.session()),
+                check(info.subscription())
         );
         if(session == null) throw new WebSocketSessionNotFoundException();
-        SecurityUser auth = Objects.requireNonNull(session.user());
+        SecurityUser auth = check(session.user());
         String contentId = getContentIdFromDestination(info);
 
         return getWatchingSessionChange(
@@ -96,11 +98,11 @@ public class WatchingSession {
      */
     public WatchingSessionChange leaveViewerSession(SessionInfo info){
         SessionData session = connectionRegistry.get(
-                Objects.requireNonNull(info.session()),
-                Objects.requireNonNull(info.subscription())
+                check(info.session()),
+                check(info.subscription())
         );
         if(session == null) throw new WebSocketSessionNotFoundException();
-        SecurityUser auth = Objects.requireNonNull(session.user());
+        SecurityUser auth = check(session.user());
 
         // unsubscribe 혹은 disconnect 프레임에서 인증, 경로정보 복원.
         info.wrap(session);
@@ -120,7 +122,14 @@ public class WatchingSession {
      * @param info 세션 정보.
      */
     public void joinChatSession(SessionInfo info){
+        check(info.destination());
+        getContentIdFromDestination(info);
 
+        SecurityUser auth = check(info.user());
+        User user = userService.getById(auth.getUserId());
+        if (user.isLocked()) throw new WebSocketAuthInvalidException();
+
+        watchingSessionService.joinChatSession(info);
     }
 
 
@@ -129,7 +138,10 @@ public class WatchingSession {
      * @param info 세션 정보.
      */
     public void leaveChatSession(SessionInfo info){
+        check(info.destination());
+        getContentIdFromDestination(info);
 
+        watchingSessionService.leaveChatSession(info);
     }
 
 
@@ -176,7 +188,7 @@ public class WatchingSession {
 
     private String getContentIdFromDestination(SessionInfo info){
         try{
-            String destination = Objects.requireNonNull(info.destination());
+            String destination = check(info.destination());
             List<String> extract =
                     VIEW_DESTINATION_PATTERN.extract(destination);
 
@@ -194,6 +206,14 @@ public class WatchingSession {
             return extract.get(0);
         } catch (NullPointerException e) {
             throw new WebSocketDestinationInvalidException(e);
+        }
+    }
+
+    private <T> T check(T obj){
+        try {
+            return Objects.requireNonNull(obj);
+        } catch (NullPointerException e) {
+            throw new WebSocketIllegalArgvException(e);
         }
     }
 
