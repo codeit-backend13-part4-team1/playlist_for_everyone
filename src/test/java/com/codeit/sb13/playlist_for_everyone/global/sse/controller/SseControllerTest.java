@@ -181,7 +181,7 @@ class SseControllerTest {
 
         emitter.send(SseEmitter.event().comment("connected"));
 
-        given(sseConnectionService.connect(userId)).willReturn(emitter);
+        given(sseConnectionService.connect(userId, null)).willReturn(emitter);
 
         try{
             mockMvc.perform(get("/api/sse")
@@ -192,8 +192,8 @@ class SseControllerTest {
                     .andExpect(request().asyncStarted())
                     .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM));
 
-            verify(sseConnectionService).connect(userId);
-            verify(sseConnectionService, never()).connect(otherUserId);
+            verify(sseConnectionService).connect(userId, null);
+            verify(sseConnectionService, never()).connect(otherUserId, null);
         } finally {
             emitter.complete();
         }
@@ -218,7 +218,7 @@ class SseControllerTest {
         SseEmitter emitter = new SseEmitter(30_000L);
 
         emitter.send(SseEmitter.event().comment("connected"));
-        given(sseConnectionService.connect(userId)).willReturn(emitter);
+        given(sseConnectionService.connect(userId, null)).willReturn(emitter);
 
         try {
             MvcResult result = mockMvc.perform(get("/api/sse")
@@ -233,7 +233,7 @@ class SseControllerTest {
             mockMvc.perform(asyncDispatch(result))
                     .andExpect(status().isOk())
                     .andExpect(request().asyncNotStarted());
-            verify(sseConnectionService).connect(userId);
+            verify(sseConnectionService).connect(userId, null);
         } finally {
             emitter.complete();
         }

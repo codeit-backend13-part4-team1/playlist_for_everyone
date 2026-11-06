@@ -42,7 +42,7 @@ public class SseController {
     @GetMapping(produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter connect(@RequestParam(value = "lastEventId", required = false) UUID lastEventId,
                               @AuthenticationPrincipal SecurityUser user){
-        return sseConnectionService.connect(user.getUserId());
+        return sseConnectionService.connect(user.getUserId(), lastEventId);
 
     }
 }
