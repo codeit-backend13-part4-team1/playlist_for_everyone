@@ -1,6 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watch;
 
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.WatcherRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.WatchingSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatcherScriptConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.*;
@@ -25,7 +25,7 @@ import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.co
 @Slf4j
 @DisplayName("동시 시청 세션 저장소 테스트")
 @Testcontainers
-public class WatcherRegistryTest {
+public class WatchingSessionRepositoryTest {
 
     @Container
     static final GenericContainer<?> redis =
@@ -37,14 +37,14 @@ public class WatcherRegistryTest {
 
     private WatcherScriptConfig redisScriptConfig = new WatcherScriptConfig();
 
-    private WatcherRegistry watcherRegistry;
+    private WatchingSessionRepository watchingSessionRepository;
 
     @BeforeEach
     void setup(){
         factory = new LettuceConnectionFactory(redis.getHost(), redis.getMappedPort(6379));
         factory.afterPropertiesSet();
         template = new StringRedisTemplate(factory);
-        watcherRegistry = new WatcherRegistry(
+        watchingSessionRepository = new WatchingSessionRepository(
                 template,
                 redisScriptConfig.watcherRegisterScript(),
                 redisScriptConfig.watcherUnregisterScript(),
@@ -54,7 +54,7 @@ public class WatcherRegistryTest {
         );
 
         // 테스트용 타임아웃 세팅 ( 3초 )
-        ReflectionTestUtils.setField(watcherRegistry, "TTL", Duration.ofSeconds(3));
+        ReflectionTestUtils.setField(watchingSessionRepository, "TTL", Duration.ofSeconds(3));
 
         log.info("[WatcherRegistryTest] 테스트 세팅 완료");
     }
@@ -108,12 +108,12 @@ public class WatcherRegistryTest {
         String sessionId = "a56s72D43D";
         String subscriptionId = "sub-1";
 
-        watcherRegistry.register(sessionId, subscriptionId, contentId);
+        watchingSessionRepository.register(sessionId, subscriptionId, contentId);
 
         assertThat(checkContainedChannelIdInList(sessionId, contentId)).isTrue();
         assertThat(checkContainedSessionIdInList(contentId, subscriptionKey(sessionId,subscriptionId))).isTrue();
 
-        watcherRegistry.unregister(sessionId, subscriptionId);
+        watchingSessionRepository.unregister(sessionId, subscriptionId);
 
         assertThat(checkContainedChannelIdInList(sessionId, contentId)).isFalse();
         assertThat(checkContainedSessionIdInList(contentId, subscriptionKey(sessionId,subscriptionId))).isFalse();
@@ -132,13 +132,13 @@ public class WatcherRegistryTest {
         String session3 = "af1s72D9eD";
         String subscriptionId3 = "sub-3";
 
-        watcherRegistry.register(session1, subscriptionId1, contentId);
-        watcherRegistry.register(session2, subscriptionId2, contentId);
-        watcherRegistry.register(session3, subscriptionId3, contentId);
+        watchingSessionRepository.register(session1, subscriptionId1, contentId);
+        watchingSessionRepository.register(session2, subscriptionId2, contentId);
+        watchingSessionRepository.register(session3, subscriptionId3, contentId);
 
 
-        log.info("[WatcherRegistryTest] 세션 수 조회 - {}", watcherRegistry.getWatcherCount(contentId));
-        assertThat(watcherRegistry.getWatcherCount(contentId)).isEqualTo(3L);
+        log.info("[WatcherRegistryTest] 세션 수 조회 - {}", watchingSessionRepository.getWatcherCount(contentId));
+        assertThat(watchingSessionRepository.getWatcherCount(contentId)).isEqualTo(3L);
     }
 
     @Test
@@ -152,8 +152,8 @@ public class WatcherRegistryTest {
         String session2 = "asdhfjsdfhkw";
         String subscription2 = "sub-2";
 
-        watcherRegistry.register(session1, subscription1, content1);
-        watcherRegistry.register(session2, subscription2, content2);
+        watchingSessionRepository.register(session1, subscription1, content1);
+        watchingSessionRepository.register(session2, subscription2, content2);
 
         log.info("[WatcherRegistryTest] 세션 등록 완료");
 
@@ -164,7 +164,7 @@ public class WatcherRegistryTest {
         do {
             try {
                 Thread.sleep(1000);
-                watcherRegistry.refresh(session1);
+                watchingSessionRepository.refresh(session1);
                 log.info("[WatcherRegistryTest] 컨텐츠 갱신 완료");
                 now = Instant.now();
                 duration = Duration.between(start, now);
@@ -175,8 +175,8 @@ public class WatcherRegistryTest {
             }
         } while (duration.toSeconds() < 5);
 
-        assertThat(watcherRegistry.getWatcherCount(content1)).isEqualTo(1L);
-        assertThat(watcherRegistry.getWatcherCount(content2)).isEqualTo(0L);
+        assertThat(watchingSessionRepository.getWatcherCount(content1)).isEqualTo(1L);
+        assertThat(watchingSessionRepository.getWatcherCount(content2)).isEqualTo(0L);
 
     }
 
@@ -189,11 +189,11 @@ public class WatcherRegistryTest {
         String session = "sdfsdf";
         String subscribe = "sub-1";
 
-        watcherRegistry.register(session, subscribe, content);
+        watchingSessionRepository.register(session, subscribe, content);
 
-        watcherRegistry.delete(session);
+        watchingSessionRepository.delete(session);
 
-        assertThat(watcherRegistry.getWatcherCount(content)).isEqualTo(0L);
+        assertThat(watchingSessionRepository.getWatcherCount(content)).isEqualTo(0L);
         assertThat(checkContainedChannelIdInList(session,content)).isFalse();
     }
 

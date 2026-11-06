@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.registry.connection;
 
+import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionRegisterException;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.InMemoryConnectionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionData;
 import org.junit.jupiter.api.DisplayName;
@@ -50,7 +51,7 @@ public class InMemoryConnectionRegistryTest {
         InMemoryConnectionRegistry registry = new InMemoryConnectionRegistry();
 
         assertThatThrownBy(() -> registry.register("test-session","sub-1",null))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(WebSocketSessionRegisterException.class);
     }
 
     @Test

@@ -8,6 +8,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
+import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.time.LocalDateTime;
@@ -57,6 +58,37 @@ public class PlaylistRepositoryTest {
     assertThat(Hibernate.isInitialized(found.get().getOwner())).isTrue();
     assertThat(found.get().getOwner().getName()).isEqualTo("tester");
   }
+
+  @Test
+  @DisplayName("id로 조회하면 소유자의 프로필 이미지도 함께 로딩된다")
+  void id로_조회하면_소유자의_프로필_이미지도_함께_로딩된다() {
+    // given
+    FileInfo fileInfo = FileInfo.createS3File(
+        "profile/owner.png", "owner.png", "image/png", 1024L);
+    em.persist(fileInfo);
+
+    User owner = User.builder()
+        .email("owner-image@test.com")
+        .name("tester")
+        .role(Role.USER)
+        .build();
+    owner.updateProfileImage(fileInfo);
+    userRepository.save(owner);
+
+    Playlist saved = playlistRepository.save(new Playlist(owner, "제목", "설명"));
+    em.flush();
+    em.clear();
+
+    // when
+    Optional<Playlist> found = playlistRepository.findWithOwnerById(saved.getId());
+
+    // then
+    assertThat(found).isPresent();
+    FileInfo profileImage = found.get().getOwner().getProfileImage();
+    assertThat(profileImage).isNotNull();
+    assertThat(Hibernate.isInitialized(profileImage)).isTrue();
+  }
+
 
   @Test
   @DisplayName("없는 id로 조회하면 빈 결과를 반환한다")
