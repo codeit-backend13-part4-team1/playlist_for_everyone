@@ -3,10 +3,13 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.watch;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
+import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
+import com.codeit.sb13.playlist_for_everyone.domain.user.mapper.UserSummaryMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.exception.EveryOneException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketAuthInvalidException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketDestinationInvalidException;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionData;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
@@ -57,6 +60,8 @@ public class WatchingSessionTest {
     UserService userService;
     @Mock
     ContentService contentService;
+    @Mock
+    UserSummaryMapper userSummaryMapper;
 
     // interface 단은 setup 에서 설정.
     WatchingSessionService watchingSessionService;
@@ -146,6 +151,10 @@ public class WatchingSessionTest {
     }
 
     void userServiceLogicSet(SecurityUser auth){
+        userServiceLogicSet(auth,false);
+    }
+
+    void userServiceLogicSet(SecurityUser auth, boolean setSummary){
         User user = User.builder()
                 .name("김숙희")
                 .email(auth.getUsername())
@@ -157,6 +166,12 @@ public class WatchingSessionTest {
         ReflectionTestUtils.setField(user, "id", auth.getUserId());
 
         given(userService.getById(any(UUID.class))).willReturn(user);
+        if (setSummary)
+            given(userSummaryMapper.toSummary(eq(user))).willReturn(new UserSummary(
+                    user.getId(),
+                    user.getName(),
+                    null
+        ));
     }
 
     // todo - ContentService 에서 컨텐츠를 조회하는 매서드가 생기면 활성화.
@@ -180,7 +195,8 @@ public class WatchingSessionTest {
                 userService,
                 contentService,
                 watchingSessionService,
-                connectionRegistry
+                connectionRegistry,
+                userSummaryMapper
         );
 
         // 커넥션 세션 저장
@@ -308,7 +324,7 @@ public class WatchingSessionTest {
                 connectionRegistry.register(data);
 
                 assertThatThrownBy(() -> watchingSession.joinViewerSession(info))
-                        .isInstanceOf(WebSocketDestinationInvalidException.class); // InvalidAuthException
+                        .isInstanceOf(EveryOneException.class); // InvalidAuthException
 
                 // 실제 세션 저장부는 호출되지 않음.
                 verify(watchingSessionService, times(0)).joinViewerSession(any());
@@ -419,7 +435,7 @@ public class WatchingSessionTest {
                 connectionRegistry.register(data);
 
                 assertThatThrownBy(() -> watchingSession.leaveViewerSession(info))
-                        .isInstanceOf(WebSocketDestinationInvalidException.class); // InvalidAuthException
+                        .isInstanceOf(EveryOneException.class); // InvalidAuthException
 
                 // 실제 세션 저장부는 호출되지 않음.
                 verify(watchingSessionService, times(0)).leaveViewerSession(any());
@@ -588,12 +604,30 @@ public class WatchingSessionTest {
                 );
                 String content = "content";
 
-                userServiceLogicSet(info.user());
+                userServiceLogicSet(info.user(),true);
 
                 ContentChatDto chat = watchingSession.getContentChatDto(info, content);
 
                 assertThat(chat.content()).isEqualTo(content);
                 assertThat(chat.sender()).isNotNull();
+            }
+
+            @Test
+            @DisplayName("유저가 잠긴 유저라면, 예외를 던진다.")
+            void exceptionTestWithLockedUser(){
+                SessionInfo info = getSessionInfo(
+                        sessionId,
+                        subscriptionId,
+                        destination,
+                        Role.USER,
+                        true
+                );
+                String content = "content";
+
+                userServiceLogicSet(info.user());
+
+                assertThatThrownBy(() -> watchingSession.getContentChatDto(info, content))
+                        .isInstanceOf(WebSocketAuthInvalidException.class);
             }
 
         }

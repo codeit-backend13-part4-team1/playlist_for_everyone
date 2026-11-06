@@ -3,7 +3,9 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.watching;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
+import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
+import com.codeit.sb13.playlist_for_everyone.domain.user.mapper.UserSummaryMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketAuthInvalidException;
@@ -51,7 +53,7 @@ public class WatchingSession {
     private final ContentService contentService;
     private final WatchingSessionService watchingSessionService;
     private final ConnectionRegistry connectionRegistry;
-
+    private final UserSummaryMapper userSummaryMapper;
 
     public String topic(SessionInfo info){
         return watchingSessionService.topic(info);
@@ -151,17 +153,15 @@ public class WatchingSession {
      * @param content 보내질 메세지.
      */
     public ContentChatDto getContentChatDto(SessionInfo info, String content){
+        SecurityUser auth = check(info.user());
 
-//        User user = userService.getById();
-//
-//        if (user.isLocked()) throw new WebSocketAuthInvalidException();
-//
-//        UserSummary summary = new UserSummary(
-//                user
-//        );
+        User user = userService.getById(auth.getUserId());
 
+        // 유저 락 정보 확인.
+        if (user.isLocked()) throw new WebSocketAuthInvalidException();
 
-        return null;
+        UserSummary userSummary = userSummaryMapper.toSummary(user);
+        return new ContentChatDto(userSummary,content);
     }
 
 

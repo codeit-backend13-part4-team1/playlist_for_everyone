@@ -1,7 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
-import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketDestinationInvalidException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionNotFoundException;
@@ -11,7 +10,6 @@ import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageDt
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSession;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatDto;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.WatchingSessionChange;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
