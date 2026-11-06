@@ -42,8 +42,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(UserController.class)
@@ -302,7 +301,46 @@ class SecurityConfigTest {
         verifyNoInteractions(jwtTokenProvider, userService);
     }
 
+    @Test
+    @DisplayName("일반 사용자는 콘텐츠를 생성할 수 없다.")
+    void 일반_사용자의_콘텐츠_생성을_거절한다() throws Exception {
+        // given
+        prepareAuthenticatedUser(Role.USER);
 
+        // when & then
+        mockMvc.perform(post("/api/contents")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN)
+                        .with(csrf()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("일반 사용자는 콘텐츠를 수정할 수 없다.")
+    void 일반_사용자의_콘텐츠_수정을_거절한다() throws Exception {
+        // given
+        prepareAuthenticatedUser(Role.USER);
+        UUID contentId = UUID.randomUUID();
+
+        // when & then
+        mockMvc.perform(patch("/api/contents/{contentId}", contentId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN)
+                        .with(csrf()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("일반 사용자는 콘텐츠를 삭제할 수 없다.")
+    void 일반_사용자의_콘텐츠_삭제를_거절한다() throws Exception {
+        // given
+        prepareAuthenticatedUser(Role.USER);
+        UUID contentId = UUID.randomUUID();
+
+        // when & then
+        mockMvc.perform(delete("/api/contents/{contentId}", contentId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN)
+                        .with(csrf()))
+                .andExpect(status().isForbidden());
+    }
 
 
 }

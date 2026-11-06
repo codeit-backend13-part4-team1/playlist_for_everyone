@@ -3,16 +3,12 @@ package com.codeit.sb13.playlist_for_everyone.domain.content.controller;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
-import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
 import org.mockito.ArgumentCaptor;
-import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpMethod;
-import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.test.context.support.WithMockUser;
 import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
@@ -38,7 +34,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(ContentController.class)
 @AutoConfigureMockMvc
-@Import(ContentControllerTest.MethodSecurityTestConfig.class)
 @DisplayName("ContentController 테스트")
 public class ContentControllerTest {
 
@@ -50,11 +45,6 @@ public class ContentControllerTest {
 
     @MockitoBean
     private ContentService contentService;
-
-    @TestConfiguration
-    @EnableMethodSecurity(proxyTargetClass = true)
-    static class MethodSecurityTestConfig {
-    }
 
     @Test
     @WithMockUser(roles = "ADMIN")
@@ -116,42 +106,6 @@ public class ContentControllerTest {
         assertThat(capturedRequest.title()).isEqualTo("너말고다른연애");
         assertThat(capturedRequest.description()).isEqualTo("KBS 드라마 입니다.");
         assertThat(capturedRequest.tags()).containsExactly("드라마", "로맨스");
-    }
-
-    @Test
-    @WithMockUser(roles = "USER")
-    @DisplayName("일반 사용자는 콘텐츠를 생성할 수 없다.")
-    void create_forbidden() throws Exception {
-        // given
-        ContentCreateRequest request = new ContentCreateRequest(
-                ContentType.movie,
-                "테스트 영화",
-                "테스트 설명",
-                List.of("액션")
-        );
-
-        MockMultipartFile requestPart = new MockMultipartFile(
-                "request",
-                "",
-                MediaType.APPLICATION_JSON_VALUE,
-                objectMapper.writeValueAsBytes(request)
-        );
-
-        MockMultipartFile thumbnail = new MockMultipartFile(
-                "thumbnail",
-                "test.jpg",
-                MediaType.IMAGE_JPEG_VALUE,
-                "image".getBytes()
-        );
-
-        // when & then
-        mockMvc.perform(multipart("/api/contents")
-                        .file(requestPart)
-                        .file(thumbnail)
-                        .with(csrf()))
-                .andExpect(status().isForbidden());
-
-        verifyNoInteractions(contentService);
     }
 
     @Test
@@ -376,35 +330,6 @@ public class ContentControllerTest {
     }
 
     @Test
-    @WithMockUser(roles = "USER")
-    @DisplayName("일반 사용자는 콘텐츠를 수정할 수 없다.")
-    void update_forbidden() throws Exception {
-        // given
-        UUID contentId = UUID.randomUUID();
-
-        ContentUpdateRequest request = new ContentUpdateRequest(
-                "수정된 제목",
-                "수정된 설명",
-                List.of("드라마")
-        );
-
-        MockMultipartFile requestPart = new MockMultipartFile(
-                "request",
-                "",
-                MediaType.APPLICATION_JSON_VALUE,
-                objectMapper.writeValueAsBytes(request)
-        );
-
-        // when & then
-        mockMvc.perform(multipart(HttpMethod.PATCH, "/api/contents/{contentId}", contentId)
-                        .file(requestPart)
-                        .with(csrf()))
-                .andExpect(status().isForbidden());
-
-        verifyNoInteractions(contentService);
-    }
-
-    @Test
     @WithMockUser(roles = "ADMIN")
     @DisplayName("수정 시 제목과 설명이 없어도 정상적으로 수정된다.")
     void update_withoutTitleAndDescription() throws Exception {
@@ -535,21 +460,6 @@ public class ContentControllerTest {
                         .andExpect(status().isNotFound());
 
         verify(contentService).deleteById(contentId);
-    }
-
-    @Test
-    @WithMockUser(roles = "USER")
-    @DisplayName("일반 사용자가 콘텐츠 삭제 요청 시 403 Forbidden을 반환한다.")
-    void deleteContent_forbidden() throws Exception {
-        // given
-        UUID contentId = UUID.randomUUID();
-
-        // when & then
-        mockMvc.perform(delete("/api/contents/{contentId}", contentId)
-                .with(csrf()))
-                .andExpect(status().isForbidden());
-
-        verify(contentService, never()).deleteById(any(UUID.class));
     }
 
     private MockMultipartFile createJsonRequestPart(Object request) {
