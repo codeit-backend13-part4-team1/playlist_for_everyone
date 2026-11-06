@@ -4,6 +4,9 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentSource;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentTag;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
+import com.codeit.sb13.playlist_for_everyone.domain.review.entity.Review;
+import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
+import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
 import jakarta.persistence.EntityManager;
@@ -12,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
@@ -45,7 +49,7 @@ public class ContentRepositoryTest {
     private ContentRepository contentRepository;
 
     @Autowired
-    private EntityManager em;
+    private TestEntityManager em;
 
     private Content createContent(
             ContentType type,
@@ -59,6 +63,26 @@ public class ContentRepositoryTest {
                 description,
                 thumbnailUrl
         );
+    }
+
+    private User createAuthor(int number) {
+        User author = User.builder()
+                .email("test" + number + "@example.com")
+                .name("테스트 사용자" + number)
+                .password("encodedPassword")
+                .role(Role.USER)
+                .build();
+
+        return em.persistFlushFind(author);
+    }
+
+    private Review createReview(Content content, User author, String text, double rating) {
+        return Review.builder()
+                .content(content)
+                .author(author)
+                .text(text)
+                .rating(rating)
+                .build();
     }
 
     @Test
@@ -143,6 +167,45 @@ public class ContentRepositoryTest {
                 .orElseThrow();
 
         assertThat(found.getTags()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("콘텐츠 단건 조회 시 평균 평점과 리뷰 수를 함께 반환한다.")
+    void findDetailById_withReviews() {
+        // given
+        // 콘텐츠 저장
+        Content content = createContent(
+                ContentType.tvSeries,
+                "너말고다른연애",
+                "KBS 드라마 입니다.",
+                "thumbnail-url"
+        );
+        Content savedContent = contentRepository.save(content);
+
+        // 사용자 저장
+        User author1 = createAuthor(1);
+        User author2 = createAuthor(2);
+
+        // 리뷰 저장
+        Review review1 = createReview(content, author1, "재밌어요!", 4.5);
+        Review review2 = createReview(content, author2, "정말 좋아요!", 5.0);
+
+        em.persist(review1);
+        em.persist(review2);
+
+        // when
+        ContentDetailProjection result = contentRepository
+                .findDetailById(savedContent.getId())
+                .orElseThrow();
+
+        // then
+        assertThat(result.getContent().getId())
+                .isEqualTo(savedContent.getId());
+        assertThat(result.getAverageRating())
+                .isEqualTo(4.75);
+        assertThat(result.getReviewCount())
+                .isEqualTo(2L);
+
     }
 
     @Test
