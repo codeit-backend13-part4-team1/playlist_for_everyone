@@ -173,12 +173,22 @@ public class SecurityConfig {
                             // 사용자 목록 조회는 관리자 권한이 필요하다.
                             .requestMatchers(HttpMethod.GET, "/api/users")
                             .hasRole("ADMIN")
-
+                      
                             // 사용자 권한과 계정 잠금 상태는 관리자만 변경할 수 있다.
                             .requestMatchers(HttpMethod.PATCH,
                                     "/api/users/{userId}/role",
                                     "/api/users/{userId}/locked"
                             ).hasRole("ADMIN")
+                      
+                            // 콘텐츠 생성, 수정, 삭제는 관리자 권한이 필요하다.
+                            .requestMatchers(HttpMethod.POST, "/api/contents")
+                            .hasRole("ADMIN")
+
+                            .requestMatchers(HttpMethod.PATCH, "/api/contents/*")
+                            .hasRole("ADMIN")
+
+                            .requestMatchers(HttpMethod.DELETE, "/api/contents/*")
+                            .hasRole("ADMIN")
 
                             // 로그인 전 프론트 페이지를 표시하기 위한 경로다.
                             .requestMatchers(

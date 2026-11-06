@@ -1,7 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.review.repository;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
-import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentSource;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.review.entity.Review;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
@@ -10,13 +9,11 @@ import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
 
@@ -25,7 +22,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DataJpaTest
 @Import({
-        QueryDslConfig.class
+        QueryDslConfig.class,
+        JpaAuditingConfig.class
 })
 @DisplayName("Review 레포지토리")
 public class ReviewRepositoryTest {
@@ -58,26 +56,24 @@ public class ReviewRepositoryTest {
         return em.persistFlushFind(author);
     }
 
+    private Review createReview(Content content, User author, String text, double rating) {
+        return Review.builder()
+                .content(content)
+                .author(author)
+                .text(text)
+                .rating(rating)
+                .build();
+    }
+
     @Test
     @DisplayName("동일한 콘텐츠에 동일한 사용자가 리뷰를 중복 등록할 수 없다")
-    void duplicateReview() {
+    void duplicate_review() {
         // given
         Content content = createAndPersistContent(1);
         User author = createAuthor(1);
 
-        Review review1 = Review.builder()
-                .content(content)
-                .author(author)
-                .text("재밌어요!")
-                .rating(4.5)
-                .build();
-
-        Review review2 = Review.builder()
-                .content(content)
-                .author(author)
-                .text("정말 좋아요!")
-                .rating(5.0)
-                .build();
+        Review review1 = createReview(content, author, "재밌어요!", 4.5);
+        Review review2 = createReview(content, author, "정말 좋아요!", 5.0);
 
         // when
         reviewRepository.saveAndFlush(review1);
@@ -90,37 +86,17 @@ public class ReviewRepositoryTest {
 
     @Test
     @DisplayName("서로 다른 사용자는 동일한 콘텐츠에 리뷰를 등록할 수 있다")
-    void saveReviewsByDifferentAuthors() {
+    void save_reviews_ByDifferentAuthors() {
         // given
         Content content = createAndPersistContent(1);
         User author1 = createAuthor(1);
-
-        User author2 = User.builder()
-                .email("test2@example.com")
-                .name("테스트 사용자 2")
-                .password("encodedPassword")
-                .role(Role.USER)
-                .build();
-
-        em.persistAndFlush(author2);
-
-        Review review1 = Review.builder()
-                .content(content)
-                .author(author1)
-                .text("재밌어요!")
-                .rating(4.5)
-                .build();
-
-        Review review2 = Review.builder()
-                .content(content)
-                .author(author2)
-                .text("정말 좋아요!")
-                .rating(5.0)
-                .build();
+        User author2 = createAuthor(2);
 
         // when
-        reviewRepository.saveAndFlush(review1);
-        reviewRepository.saveAndFlush(review2);
+        reviewRepository.saveAllAndFlush(List.of(
+                createReview(content, author1, "재밌어요", 5.0),
+                createReview(content, author2, "볼만해요", 4.0)
+        ));
 
         // then
         assertThat(reviewRepository.count()).isEqualTo(2);
@@ -128,29 +104,17 @@ public class ReviewRepositoryTest {
 
     @Test
     @DisplayName("동일한 사용자는 서로 다른 콘텐츠에 리뷰를 등록할 수 있다")
-    void saveReviewsForDifferentContents() {
+    void save_reviews_for_differentContents() {
         // given
         Content content1 = createAndPersistContent(1);
         Content content2 = createAndPersistContent(2);
         User author = createAuthor(1);
 
-        Review review1 = Review.builder()
-                .content(content1)
-                .author(author)
-                .text("첫 번째 영화 재밌어요!")
-                .rating(4.5)
-                .build();
-
-        Review review2 = Review.builder()
-                .content(content2)
-                .author(author)
-                .text("두 번째 영화도 좋아요!")
-                .rating(5.0)
-                .build();
-
         // when
-        reviewRepository.saveAndFlush(review1);
-        reviewRepository.saveAndFlush(review2);
+        reviewRepository.saveAllAndFlush(List.of(
+                createReview(content1, author, "재밌어요", 5.0),
+                createReview(content2, author, "볼만해요", 4.0)
+        ));
 
         // then
         assertThat(reviewRepository.count()).isEqualTo(2);
@@ -165,28 +129,11 @@ public class ReviewRepositoryTest {
         User author2 = createAuthor(2);
         User author3 = createAuthor(3);
 
-        Review review1 = Review.builder()
-                .content(content)
-                .author(author1)
-                .text("그냥 그런듯")
-                .rating(3.0)
-                .build();
-
-        Review review2 = Review.builder()
-                .content(content)
-                .author(author2)
-                .text("낫 밷 ~")
-                .rating(4.0)
-                .build();
-
-        Review review3 = Review.builder()
-                .content(content)
-                .author(author3)
-                .text("존 잼 입 니 다 강 추")
-                .rating(5.0)
-                .build();
-
-        reviewRepository.saveAllAndFlush(List.of(review1, review2, review3));
+        reviewRepository.saveAllAndFlush(List.of(
+                createReview(content, author1, "재밌어요", 5.0),
+                createReview(content, author2, "볼만해요", 4.0),
+                createReview(content, author3, "그냥 그래요", 3.0)
+        ));
 
         // when
         double averageRating =
@@ -220,28 +167,11 @@ public class ReviewRepositoryTest {
         User author1 = createAuthor(1);
         User author2 = createAuthor(2);
 
-        Review review1 = Review.builder()
-                .content(content1)
-                .author(author1)
-                .text("재밌어요")
-                .rating(5.0)
-                .build();
-
-        Review review2 = Review.builder()
-                .content(content1)
-                .author(author2)
-                .text("볼만해요")
-                .rating(4.0)
-                .build();
-
-        Review review3 = Review.builder()
-                .content(content2)
-                .author(author2)
-                .text("그냥 그래요")
-                .rating(3.0)
-                .build();
-
-        reviewRepository.saveAllAndFlush(List.of(review1, review2, review3));
+        reviewRepository.saveAllAndFlush(List.of(
+                createReview(content1, author1, "재밌어요", 5.0),
+                createReview(content1, author2, "볼만해요", 4.0),
+                createReview(content2, author2, "그냥 그래요", 3.0)
+        ));
 
         // when
         long count1 = reviewRepository.countByContentId(content1.getId());
@@ -263,6 +193,37 @@ public class ReviewRepositoryTest {
 
         // then
         assertThat(count).isZero();
+    }
+
+    @Test
+    @DisplayName("콘텐츠가 삭제되면 해당 콘텐츠의 모든 리뷰가 삭제된다.")
+    void delete_ByContentId() {
+        // given
+        Content content = createAndPersistContent(1);
+        Content otherContent = createAndPersistContent(2);
+
+        User author1 = createAuthor(1);
+        User author2 = createAuthor(2);
+        User author3 = createAuthor(3);
+
+        Review otherReview = createReview(otherContent, author2, "그냥 그래요", 3.0);
+
+        reviewRepository.saveAllAndFlush(List.of(
+                createReview(content, author1, "재밌어요", 5.0),
+                createReview(content, author2, "볼만해요", 4.0),
+                createReview(content, author3, "그냥 그래요", 3.0),
+                otherReview
+        ));
+
+        // when
+        int deleted = reviewRepository.deleteAllByContentId(content.getId());
+
+        em.clear();
+
+        // then
+        assertThat(deleted).isEqualTo(3);
+        assertThat(reviewRepository.count()).isEqualTo(1);
+        assertThat(reviewRepository.existsById(otherReview.getId())).isTrue();
     }
 
 }
