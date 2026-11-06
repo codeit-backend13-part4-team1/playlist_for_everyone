@@ -44,6 +44,8 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListS
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscriptionDuplicatedException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscriptionNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
+import com.codeit.sb13.playlist_for_everyone.global.file.storage.FileStorage;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -83,6 +85,9 @@ public class PlaylistServiceImplTest {
 
   @InjectMocks
   private PlaylistServiceImpl playlistService;
+
+  @Mock
+  private FileStorage fileStorage;
 
   @Test
   @DisplayName("요청한 값과 소유자 ID로 플레이리스트를 저장한다.")
@@ -1016,6 +1021,78 @@ public class PlaylistServiceImplTest {
     assertThat(event.subscriberName()).isEqualTo("tester");
   }
 
+  @Test
+  @DisplayName("생성 응답의 소유자에 프로필 이미지 URL이 담긴다")
+  void 플레이리스트_생성_응답의_소유자에_프로필_이미지_URL이_담긴다() {
+    // given
+    UUID ownerId = UUID.randomUUID();
+    User owner = createUserWithProfileImage(ownerId, "profile/owner.png");
+    given(userRepository.findById(ownerId)).willReturn(Optional.of(owner));
+    given(playlistRepository.save(any(Playlist.class)))
+        .willAnswer(invocation -> invocation.getArgument(0));
+    given(fileStorage.getFileUrl("profile/owner.png"))
+        .willReturn("https://cdn.test/profile/owner.png");
+
+    // when
+    PlaylistResponse response = playlistService.create(
+        ownerId, new PlaylistCreateRequest("제목", "설명"));
+
+    // then
+    assertThat(response.owner().profileImageUrl())
+        .isEqualTo("https://cdn.test/profile/owner.png");
+  }
+
+  @Test
+  @DisplayName("단건 조회 응답의 소유자에 프로필 이미지 URL이 담긴다")
+  void 단건_조회_응답의_소유자에_프로필_이미지_URL이_담긴다() {
+    // given
+    UUID ownerId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    UUID requesterId = UUID.randomUUID();
+    User owner = createUserWithProfileImage(ownerId, "profile/owner.png");
+    Playlist playlist = createPlaylist(owner, playlistId);
+    given(playlistRepository.findWithOwnerById(playlistId))
+        .willReturn(Optional.of(playlist));
+    given(fileStorage.getFileUrl("profile/owner.png"))
+        .willReturn("https://cdn.test/profile/owner.png");
+
+    // when
+    PlaylistResponse response = playlistService.getPlaylist(playlistId, requesterId);
+
+    // then
+    assertThat(response.owner().profileImageUrl())
+        .isEqualTo("https://cdn.test/profile/owner.png");
+  }
+
+  @Test
+  @DisplayName("목록 조회 응답의 소유자에 프로필 이미지 URL이 담기고 이미지가 없으면 null이다")
+  void 목록_조회_응답의_소유자에_프로필_이미지_URL이_담긴다() {
+    // given
+    UUID requesterId = UUID.randomUUID();
+    User withImage = createUserWithProfileImage(UUID.randomUUID(), "profile/owner.png");
+    User withoutImage = createUser(UUID.randomUUID());
+    Playlist first = createPlaylist(withImage, UUID.randomUUID());
+    Playlist second = createPlaylist(withoutImage, UUID.randomUUID());
+    PlaylistSearchRequest request =
+        createSearchRequest(2, PlaylistSortBy.UPDATED_AT, SortDirection.DESCENDING);
+
+    given(playlistRepository.search(any(PlaylistSearchCondition.class)))
+        .willReturn(List.of(first, second));
+    given(playlistRepository.count(any(PlaylistSearchCondition.class))).willReturn(2L);
+    given(subscriptionRepository.findSubscribedPlaylistIds(eq(requesterId), anyCollection()))
+        .willReturn(List.of());
+    given(fileStorage.getFileUrl("profile/owner.png"))
+        .willReturn("https://cdn.test/profile/owner.png");
+
+    // when
+    CursorResponse<PlaylistResponse> response = playlistService.getPlaylists(request, requesterId);
+
+    // then
+    assertThat(response.data())
+        .extracting(playlistResponse -> playlistResponse.owner().profileImageUrl())
+        .containsExactly("https://cdn.test/profile/owner.png", null);
+  }
+
 
 
   //-----------[헬퍼 메서드]
@@ -1054,5 +1131,11 @@ public class PlaylistServiceImplTest {
     ReflectionTestUtils.setField(playlist, "updatedAt", updatedAt);
     ReflectionTestUtils.setField(playlist, "subscriberCount", subscriberCount);
     return playlist;
+  }
+
+  private User createUserWithProfileImage(UUID userId, String fileKey) {
+    User user = createUser(userId);
+    user.updateProfileImage(FileInfo.createS3File(fileKey, "profile.png", "image/png", 1024L));
+    return user;
   }
 }
