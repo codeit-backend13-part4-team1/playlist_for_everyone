@@ -3,10 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.global.sse.service;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Event;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
-import com.codeit.sb13.playlist_for_everyone.global.sse.history.SseHistoryEntry;
-import com.codeit.sb13.playlist_for_everyone.global.sse.history.SseHistoryPosition;
-import com.codeit.sb13.playlist_for_everyone.global.sse.history.SseHistorySnapshot;
-import com.codeit.sb13.playlist_for_everyone.global.sse.history.SseHistoryStore;
+import com.codeit.sb13.playlist_for_everyone.global.sse.history.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -256,6 +253,102 @@ class SseRecoveryServiceTest {
 
     }
 
+    @Test
+    @DisplayName("지정한 위치 이후 이력을 조회하고 결과가 비어 있으면 기존 위치를 반환한다.")
+    void readsHistoryAfterPositionAndKeepsPositionWhenEmpty() throws IOException {
+        SseHistoryPosition afterPosition = createHistoryPosition();
+        when(historyStore.readAfter(userId, afterPosition))
+                .thenReturn(new SseHistoryReadResult(false, List.of()));
+
+        SseHistoryPosition result = service.recoverAfter(userId, connection, emitter, afterPosition);
+
+        verify(historyStore).readAfter(userId, afterPosition);
+        assertThat(result).isEqualTo(afterPosition);
+        verify(emitter, never()).send(any(SseEmitter.SseEventBuilder.class));
+    }
+
+    @Test
+    @DisplayName("기준 위치가 null이어도 이력을 조회하고 결과가 비어 있으면 null을 반환한다.")
+    void readsHistoryWithoutPositionAndReturnsNullWhenEmpty() throws IOException {
+        when(historyStore.readAfter(userId, null))
+                .thenReturn(new SseHistoryReadResult(false, List.of()));
+
+        SseHistoryPosition result = service.recoverAfter(userId, connection, emitter, null);
+
+        verify(historyStore).readAfter(userId, null);
+        assertThat(result).isNull();
+        verify(emitter, never()).send(any(SseEmitter.SseEventBuilder.class));
+    }
+
+    @Test
+    @DisplayName("후속 이벤트를 조회 순서대로 전송하고 마지막 이벤트의 저장 위치를 반환한다.")
+    void sendsFollowingEventsInOrderAndReturnsLastPosition() throws IOException {
+        SseHistoryPosition afterPosition = createHistoryPosition();
+
+        SseEvent<JsonNode> firstEvent = SseEvent.createNotificationEvent(
+                UUID.fromString("00000000-0000-0000-0000-000000000002"),
+                userId,
+                jsonMapper.readTree("""
+                        {"message": "첫 번째 후속 알림"}
+                        """)
+        );
+
+        SseEvent<JsonNode> secondEvent = SseEvent.createNotificationEvent(
+                UUID.fromString("00000000-0000-0000-0000-000000000001"),
+                userId,
+                jsonMapper.readTree("""
+                        {"message": "두 번째 후속 알림"}
+                        """)
+        );
+
+        SseHistoryEntry firstEntry = new SseHistoryEntry(createHistoryPosition("1000-1"), firstEvent);
+        SseHistoryEntry secondEntry = new SseHistoryEntry(createHistoryPosition("1000-2"), secondEvent);
+
+        when(historyStore.readAfter(userId, afterPosition))
+                .thenReturn(new SseHistoryReadResult(false, List.of(firstEntry, secondEntry)));
+
+        SseHistoryPosition result = service.recoverAfter(userId, connection, emitter, afterPosition);
+        verify(historyStore).readAfter(userId, afterPosition);
+
+        ArgumentCaptor<SseEmitter.SseEventBuilder> eventCaptor = ArgumentCaptor.forClass(SseEmitter.SseEventBuilder.class);
+        verify(emitter, times(2)).send(eventCaptor.capture());
+
+        List<SseEmitter.SseEventBuilder> sentEvents = eventCaptor.getAllValues();
+        assertSentEvent(sentEvents.get(0), firstEvent);
+        assertSentEvent(sentEvents.get(1), secondEvent);
+        assertThat(result).isEqualTo(secondEntry.position());
+    }
+
+    @Test
+    @DisplayName("후속 이력의 유실이 감지되면 이벤트를 전송하지 않고 예외를 전달한다.")
+    void throwsIllegalStateExceptionWithoutSendingWhenHistoryGapDetected() throws IOException {
+        SseHistoryPosition afterPosition = createHistoryPosition();
+
+        when(historyStore.readAfter(userId, afterPosition))
+                .thenReturn(new SseHistoryReadResult(true, List.of()));
+
+        assertThatThrownBy(() -> service.recoverAfter(userId, connection, emitter, afterPosition))
+                .isInstanceOf(IllegalStateException.class);
+
+        verify(historyStore).readAfter(userId, afterPosition);
+        verify(emitter, never()).send(any(SseEmitter.SseEventBuilder.class));
+
+    }
+
+    @Test
+    @DisplayName("후속 이력 조회에 실패하면 원래 예외를 전달하고 이벤트를 전송하지 않는다.")
+    void propagatesFollowingHistoryFailureWithoutSendingEvents() throws IOException {
+        SseHistoryPosition afterPosition = createHistoryPosition();
+        DataAccessResourceFailureException failure = new DataAccessResourceFailureException("테스트용 후속 이력 조회 실패");
+
+        when(historyStore.readAfter(userId, afterPosition)).thenThrow(failure);
+
+        assertThatThrownBy(() -> service.recoverAfter(userId, connection, emitter, afterPosition))
+                .isSameAs(failure);
+
+        verify(historyStore).readAfter(userId, afterPosition);
+        verify(emitter, never()).send(any(SseEmitter.SseEventBuilder.class));
+    }
 
     private void assertSentEvent(SseEmitter.SseEventBuilder builder,
                                  SseEvent<JsonNode> expected){

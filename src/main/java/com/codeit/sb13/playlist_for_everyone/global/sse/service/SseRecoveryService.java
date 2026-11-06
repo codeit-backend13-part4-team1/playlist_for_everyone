@@ -46,4 +46,13 @@ public class SseRecoveryService {
         return snapshot.upperBound();
     }
 
+    public SseHistoryPosition recoverAfter(
+            UUID userId,
+            Connection connection,
+            SseEmitter emitter,
+            SseHistoryPosition afterPosition
+    ){
+        return null;
+    }
+
 }
