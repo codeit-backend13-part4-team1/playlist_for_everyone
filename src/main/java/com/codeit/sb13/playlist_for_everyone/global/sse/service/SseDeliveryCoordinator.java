@@ -56,6 +56,10 @@ public class SseDeliveryCoordinator {
 
         try {
             do {
+                if (connectionStates.get(key) != state){
+                    return;
+                }
+
                 state.pendingDelivery = false;
                 state.lastPosition = recoveryService.recoverAfter(userId,
                         connection,
