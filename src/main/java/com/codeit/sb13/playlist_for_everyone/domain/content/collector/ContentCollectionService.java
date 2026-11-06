@@ -49,6 +49,18 @@ public class ContentCollectionService {
                 data.providerItemId()
         );
 
+        Content existing = contentRepository
+                .findByProviderAndTypeAndProviderItemId(
+                        data.provider(),
+                        data.type(),
+                        data.providerItemId()
+                )
+                .orElse(null);
+
+        if (existing != null) {
+            return existing;
+        }
+
         if (data.tags() != null) {
             data.tags().stream()
                     .filter(StringUtils::hasText)
