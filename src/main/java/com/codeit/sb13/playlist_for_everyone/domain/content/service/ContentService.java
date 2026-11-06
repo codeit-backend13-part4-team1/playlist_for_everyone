@@ -130,6 +130,12 @@ public class ContentService {
         int deletedReviews = reviewRepository.deleteAllByContentId(contentId);
         int deletedPlaylistContents = playlistContentRepository.deleteAllByContentId(contentId);
 
+        // S3 파일 정보가 있는 경우에만 삭제
+        FileInfo fileInfo = content.getFileInfo();
+        if (fileInfo != null) {
+            fileService.delete(fileInfo.getId());
+        }
+
         contentRepository.delete(content);
 
         log.debug(
