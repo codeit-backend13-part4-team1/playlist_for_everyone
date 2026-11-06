@@ -263,4 +263,71 @@ class ContentCollectionServiceTest {
         assertThat(foundMovie.getType()).isEqualTo(ContentType.movie);
         assertThat(foundTv.getType()).isEqualTo(ContentType.tvSeries);
     }
+
+    @Test
+    void 같은_콘텐츠를_재수집해도_기존_정보와_태그를_유지한다() {
+        var original = new CollectedContentData(
+                ContentType.movie, "기존 제목", "기존 설명",
+                "https://example.com/original.jpg", ContentSource.TMDB, "550",
+                List.of("액션")
+        );
+
+        Content first = service.save(original);
+        em.flush();
+        em.clear();
+
+        var recollected = new CollectedContentData(
+                ContentType.movie, "새 제목", "새 설명",
+                "https://example.com/new.jpg", ContentSource.TMDB, "550",
+                List.of("드라마", "코미디")
+        );
+
+        Content second = service.save(recollected);
+        em.flush();
+        em.clear();
+
+        assertThat(second.getId()).isEqualTo(first.getId());
+
+        Content found = em.find(Content.class, first.getId());
+
+        assertThat(found.getTitle()).isEqualTo("기존 제목");
+        assertThat(found.getDescription()).isEqualTo("기존 설명");
+        assertThat(found.getThumbnailUrl())
+                .isEqualTo("https://example.com/original.jpg");
+        assertThat(found.getTags())
+                .extracting(ContentTag::getTag)
+                .containsExactly("액션");
+    }
+
+    @Test
+    void 외부_ID와_타입이_같아도_출처가_다르면_각각_저장한다() {
+        var tmdbData = new CollectedContentData(
+                ContentType.movie, "첫 번째 콘텐츠", "설명",
+                null, ContentSource.TMDB, "550",
+                List.of()
+        );
+
+        var sportsDbData = new CollectedContentData(
+                ContentType.movie, "두 번째 콘텐츠", "설명",
+                null, ContentSource.THE_SPORTS_DB, "550",
+                List.of()
+        );
+
+        Content first = service.save(tmdbData);
+        em.flush();
+        em.clear();
+
+        Content second = service.save(sportsDbData);
+        em.flush();
+        em.clear();
+
+        assertThat(first.getId()).isNotEqualTo(second.getId());
+
+        Content foundFirst = em.find(Content.class, first.getId());
+        Content foundSecond = em.find(Content.class, second.getId());
+
+        assertThat(foundFirst.getProvider()).isEqualTo(ContentSource.TMDB);
+        assertThat(foundSecond.getProvider())
+                .isEqualTo(ContentSource.THE_SPORTS_DB);
+    }
 }
