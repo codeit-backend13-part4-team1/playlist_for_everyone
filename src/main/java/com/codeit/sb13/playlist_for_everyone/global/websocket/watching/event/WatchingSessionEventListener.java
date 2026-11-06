@@ -128,24 +128,7 @@ public class WatchingSessionEventListener {
 
             if (!destinationCheck) throw new WebSocketDestinationInvalidException();
 
-
-            // 하단부는 watchingSession 에서 제작 할 수 도.
-            SecurityUser securityUser = info.user();
-//        User user = userService.getById(securityUser.getUserId());
-
-
-
-            // todo - 요구사항 파악 후, user.getProfileUrl 부분 작성.
-            ContentChatDto chat = new ContentChatDto(
-//                new UserSummary(
-//                        user.getId(),
-//                        user.getName(),
-////                        user.getProfileImage().
-//                        null // profile Image url 체크 후 테스트
-//                ),
-                    null,
-                    payload
-            );
+            ContentChatDto chat = watchingSession.getContentChatDto(info, payload);
 
             RedisMessageDto<ContentChatDto> message = new RedisMessageDto<>(
                     info.destination(),

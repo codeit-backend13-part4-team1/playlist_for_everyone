@@ -14,6 +14,7 @@ import com.codeit.sb13.playlist_for_everyone.global.service.MatchRule;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionData;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.ConnectionRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.*;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
 import lombok.RequiredArgsConstructor;
@@ -143,6 +144,26 @@ public class WatchingSession {
 
         watchingSessionService.leaveChatSession(info);
     }
+
+    /**
+     * 유저 id 와 채팅 내용을 바탕으로 채팅 메세지 객체를 조립한다.
+     * @param info 세션 정보..
+     * @param content 보내질 메세지.
+     */
+    public ContentChatDto getContentChatDto(SessionInfo info, String content){
+
+//        User user = userService.getById();
+//
+//        if (user.isLocked()) throw new WebSocketAuthInvalidException();
+//
+//        UserSummary summary = new UserSummary(
+//                user
+//        );
+
+
+        return null;
+    }
+
 
 
 

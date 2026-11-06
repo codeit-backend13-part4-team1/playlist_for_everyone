@@ -441,6 +441,7 @@ public class WatchingSessionEventListenerTest {
                 RedisMessageDto<ContentChatDto> dto = new RedisMessageDto<>(destination, chat);
 
                 given(watchingSession.topic(info)).willReturn(topic);
+                given(watchingSession.getContentChatDto(info, message)).willReturn(chat);
 
                 eventListener.chatSendEvent(new WatchingChatSendEvent(info, message));
 

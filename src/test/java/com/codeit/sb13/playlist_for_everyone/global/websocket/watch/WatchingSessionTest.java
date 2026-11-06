@@ -14,6 +14,7 @@ import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.Connectio
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.InMemoryConnectionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSession;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSessionMapper;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.ChangeType;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.WatchingSessionChange;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
@@ -571,6 +572,31 @@ public class WatchingSessionTest {
             }
         }
 
+
+        @Nested
+        @DisplayName("send 객체 조립 기능 검사.")
+        class Send{
+
+            @Test
+            @DisplayName("send 로 보낼 메세지 객체를 조립한다.")
+            void testGettingChatDto(){
+                SessionInfo info = getSessionInfo(
+                        sessionId,
+                        subscriptionId,
+                        destination,
+                        Role.USER
+                );
+                String content = "content";
+
+                userServiceLogicSet(info.user());
+
+                ContentChatDto chat = watchingSession.getContentChatDto(info, content);
+
+                assertThat(chat.content()).isEqualTo(content);
+                assertThat(chat.sender()).isNotNull();
+            }
+
+        }
 
     }
 

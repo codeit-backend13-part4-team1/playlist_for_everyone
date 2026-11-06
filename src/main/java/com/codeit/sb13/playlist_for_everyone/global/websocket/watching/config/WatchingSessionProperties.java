@@ -1,8 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config;
 
 
-import com.codeit.sb13.playlist_for_everyone.global.service.MatchRule;
-
 import java.util.regex.Pattern;
 
 /**
