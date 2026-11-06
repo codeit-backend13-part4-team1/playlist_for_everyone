@@ -53,7 +53,6 @@ public class ContentService {
                 .orElseThrow(() -> new ContentNotFoundException(
                         Map.of("contentId", contentId)
                 ));
-
         Content content = detail.getContent();
 
         long watcherCount = watchingSessionService.getCurrentViewerCount(contentId);
@@ -67,8 +66,11 @@ public class ContentService {
 
     @Transactional
     public ContentDto update(UUID contentId, ContentUpdateRequest request, MultipartFile file) {
-        Content content = contentRepository.findById(contentId)
-                .orElseThrow(() -> new ContentNotFoundException(Map.of("contentId", contentId)));
+        ContentDetailProjection detail = contentRepository.findDetailById(contentId)
+                .orElseThrow(() -> new ContentNotFoundException(
+                        Map.of("contentId", contentId)
+                ));
+        Content content = detail.getContent();
 
         List<String> tags = request.tags() == null
                 ? null
@@ -76,7 +78,6 @@ public class ContentService {
 
         // TODO: 이미지 업로드 구현 후 새 URL 적용
         String thumbnailUrl = null;
-
         content.update(
                 request.title(),
                 request.description(),
@@ -84,14 +85,12 @@ public class ContentService {
                 tags
         );
 
-        double averageRating = reviewRepository.findAverageRatingByContentId(contentId);
-        int reviewCount = Math.toIntExact(reviewRepository.countByContentId(contentId));
         long watcherCount = watchingSessionService.getCurrentViewerCount(contentId);
 
         return contentMapper.toDto(
                 content,
-                averageRating,
-                reviewCount,
+                detail.getAverageRating(),
+                Math.toIntExact(detail.getReviewCount()),
                 watcherCount);
     }
 

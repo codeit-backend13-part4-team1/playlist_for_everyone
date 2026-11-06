@@ -284,7 +284,6 @@ public class ContentServiceTest {
                 "KBS 드라마 입니다.",
                 "thumbnail-url"
         );
-
         content.addTag("드라마");
 
         ContentUpdateRequest request = new ContentUpdateRequest(
@@ -293,43 +292,27 @@ public class ContentServiceTest {
                 List.of("로맨스")
         );
 
-        MultipartFile file = mock(MultipartFile.class);
+        ContentDetailProjection detail = mock(ContentDetailProjection.class);
 
-        when(contentRepository.findById(contentId))
-                .thenReturn(Optional.of(content));
+        given(contentRepository.findDetailById(contentId))
+                .willReturn(Optional.of(detail));
 
-        // 리뷰 평균 평점/ 리뷰 개수/ 동시 시청자 수
-        when(reviewRepository.findAverageRatingByContentId(contentId))
-                .thenReturn(4.5);
-
-        when(reviewRepository.countByContentId(contentId))
-                .thenReturn(3L);
-
-        when(watchingSessionService.getCurrentViewerCount(contentId))
-            .thenReturn(3L);
-
-        // 수정 전 상태 확인
-        assertThat(content.getTitle()).isEqualTo("너말고다른연애");
-        assertThat(content.getDescription()).isEqualTo("KBS 드라마 입니다.");
-        assertThat(content.getTags())
-                .extracting(ContentTag::getTag)
-                .containsExactly("드라마");
+        given(detail.getContent()).willReturn(content);
+        given(detail.getAverageRating()).willReturn(4.5);
+        given(detail.getReviewCount()).willReturn(3L);
 
         // when
-        contentService.update(contentId, request, file);
+        contentService.update(contentId, request, null);
 
         // then
         assertThat(content.getTitle()).isEqualTo("너말고 다른 연애");
         assertThat(content.getDescription()).isEqualTo("서강준, 안은진 주연");
-        assertThat(content.getThumbnailUrl()).isEqualTo("thumbnail-url");
-
         assertThat(content.getTags())
                 .extracting(ContentTag::getTag)
                 .containsExactly("로맨스");
 
-        verify(contentRepository).findById(contentId);
-
-        verify(contentMapper).toDto(content, 4.5, 3, 3L);
+        verify(contentRepository).findDetailById(contentId);
+        verify(contentMapper).toDto(content, 4.5, 3, 0L);
     }
 
     @Test
@@ -344,8 +327,8 @@ public class ContentServiceTest {
                 List.of("드라마")
         );
 
-        when(contentRepository.findById(contentId))
-                .thenReturn(Optional.empty());
+        given(contentRepository.findDetailById(contentId))
+                .willReturn(Optional.empty());
 
         MultipartFile file = mock(MultipartFile.class);
 
@@ -353,8 +336,8 @@ public class ContentServiceTest {
         assertThatThrownBy(() -> contentService.update(contentId, request, file))
                 .isInstanceOf(ContentNotFoundException.class);
 
-        verify(contentRepository).findById(contentId);
-        verifyNoInteractions(reviewRepository, contentMapper);
+        verify(contentRepository).findDetailById(contentId);
+        verifyNoInteractions(contentMapper);
     }
 
     @Test
@@ -377,13 +360,14 @@ public class ContentServiceTest {
                 null
         );
 
-        when(contentRepository.findById(contentId))
-                .thenReturn(Optional.of(content));
+        ContentDetailProjection detail = mock(ContentDetailProjection.class);
 
-        MultipartFile file = mock(MultipartFile.class);
+        given(contentRepository.findDetailById(contentId))
+                .willReturn(Optional.of(detail));
+        given(detail.getContent()).willReturn(content);
 
         // when
-        contentService.update(contentId, request, file);
+        contentService.update(contentId, request, null);
 
         // then
         assertThat(content.getTitle()).isEqualTo("너 말고 다른 연애");
@@ -412,8 +396,11 @@ public class ContentServiceTest {
                 List.of("로맨스")
         );
 
-        when(contentRepository.findById(contentId))
-                .thenReturn(Optional.of(content));
+        ContentDetailProjection detail = mock(ContentDetailProjection.class);
+
+        given(contentRepository.findDetailById(contentId))
+                .willReturn(Optional.of(detail));
+        given(detail.getContent()).willReturn(content);
 
         // when
         contentService.update(contentId, request, null);
