@@ -13,6 +13,7 @@ import com.codeit.sb13.playlist_for_everyone.global.config.MDCLoggingInterceptor
 import com.codeit.sb13.playlist_for_everyone.global.config.SecurityConfig;
 import com.codeit.sb13.playlist_for_everyone.global.controller.GlobalExceptionHandler;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.DuplicateEmailException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -32,13 +33,12 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.http.HttpHeaders;
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.stream.Stream;
 import java.util.UUID;
 
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -377,6 +377,105 @@ class UserControllerTest {
 
         verifyNoInteractions(userAdministrationService);
     }
+
+
+    @Test
+    @DisplayName("권한 변경 대상 사용자가 없으면 404와 사용자 ID를 반환한다.")
+    void 권한_변경_대상이_없으면_404를_반환한다() throws Exception {
+        // 요청자는 정상적인 관리자다
+        // 인증 실패가 아니라 변경 대상 사용자가 없는 상황을 검증한다.
+        prepareAuthenticatedUser(Role.ADMIN);
+
+
+        doThrow(new UserNotFoundException(
+                Map.of("userId", TARGET_USER_ID)
+        )).when(userAdministrationService).updateRole(TARGET_USER_ID, Role.ADMIN);
+
+        mockMvc.perform(patch("/api/users/{userId}/role", TARGET_USER_ID)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN)
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {"role": "ADMIN"}
+                            """))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_JSON))
+                // 공통 예외 처리기가 서비스 예외를 올바른 응답으로 변환하는지 확인한다.
+                .andExpect(jsonPath("$.exceptionName")
+                        .value("UserNotFoundException"))
+                .andExpect(jsonPath("$.details.userId")
+                        .value(TARGET_USER_ID.toString()));
+
+        verify(userAdministrationService)
+                .updateRole(TARGET_USER_ID, Role.ADMIN);
+        verifyNoMoreInteractions(userAdministrationService);
+    }
+
+    @Test
+    @DisplayName("잠금 변경 대상 사용자가 없으면 404와 사용자 ID를 반환한다")
+    void 잠금_변경_대상이_없으면_404를_반환한다() throws Exception {
+        prepareAuthenticatedUser(Role.ADMIN);
+
+        // 잠금 변경 서비스에서도 사용자 없음 예외를 동일한 응답으로 처리해야 한다.
+        doThrow(new UserNotFoundException(
+                Map.of("userId", TARGET_USER_ID)
+        )).when(userAdministrationService)
+                .updateLocked(TARGET_USER_ID, true);
+
+        mockMvc.perform(patch("/api/users/{userId}/locked", TARGET_USER_ID)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN)
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {"locked": true}
+                            """))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.exceptionName")
+                        .value("UserNotFoundException"))
+                .andExpect(jsonPath("$.details.userId")
+                        .value(TARGET_USER_ID.toString()));
+
+        verify(userAdministrationService)
+                .updateLocked(TARGET_USER_ID, true);
+        verifyNoMoreInteractions(userAdministrationService);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "role, ADMIN",
+            "locked, true"
+    })
+    @DisplayName("사용자 ID가 UUID 형식이 아니면 400을 반환한다")
+    void 사용자_ID_형식이_잘못되면_400을_반환한다(
+            String field,
+            String value
+    ) throws Exception {
+        // 인증과 CSRF 검증을 통과시켜 UUID 변환 실패를 확인한다.
+        prepareAuthenticatedUser(Role.ADMIN);
+
+        mockMvc.perform(patch(
+                        "/api/users/{userId}/" + field,
+                        "not-a-uuid"
+                )
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN)
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody(field, value)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.exceptionName")
+                        .value("MethodArgumentTypeMismatchException"));
+
+        // UUID로 변환하지 못했으므로 변경 로직은 실행되면 안 된다.
+        // 인증 과정에서 호출되는 userService와는 구분한다.
+        verifyNoInteractions(userAdministrationService);
+    }
+
+
 
     static Stream<String> tooLongPasswords() {
         return Stream.of(
