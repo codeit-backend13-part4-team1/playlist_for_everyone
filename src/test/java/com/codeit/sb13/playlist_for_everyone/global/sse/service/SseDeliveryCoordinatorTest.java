@@ -424,6 +424,56 @@ class SseDeliveryCoordinatorTest {
         verifyNoMoreInteractions(recoveryService);
     }
 
+    @Test
+    @DisplayName("후속 전송 중 연결이 제거되면 보류한 요청을 실행하지 않는다.")
+    void stopsPendingDeliveryWhenConnectionIsRemovedDuringDelivery(){
+        SseHistoryPosition upperBound = createHistoryPosition();
+        SseHistoryPosition nextPosition = createHistoryPosition("1000-1");
+
+        when(recoveryService.recover(userId, connection,emitter, lastEventId))
+                .thenReturn(upperBound);
+        when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
+                .thenAnswer(invocation ->{
+                    coordinator.requestDelivery(userId, connection);
+                    coordinator.remove(userId, connection);
+                    return nextPosition;
+                });
+
+        coordinator.register(userId, connection, emitter);
+        coordinator.recover(userId, connection, lastEventId);
+        coordinator.requestDelivery(userId, connection);
+        coordinator.requestDelivery(userId, connection);
+
+        verify(recoveryService)
+                .recover(userId, connection, emitter, lastEventId);
+        verify(recoveryService)
+                .recoverAfter(eq(userId), eq(connection), same(emitter), eq(upperBound));
+        verifyNoMoreInteractions(recoveryService);
+    }
+
+    @Test
+    @DisplayName("초기 복구 중 연결이 제거되면 복구 완료 후 보류한 요청을 실행하지 않는다.")
+    void  stopsPendingDeliveryWhenConnectionIsRemovedDuringRecovery(){
+        SseHistoryPosition upperBound = createHistoryPosition();
+
+        when(recoveryService.recover(userId, connection, emitter, lastEventId))
+                .thenAnswer(invocation -> {
+                    coordinator.requestDelivery(userId, connection);
+                    coordinator.remove(userId, connection);
+                    return upperBound;
+                });
+
+        coordinator.register(userId, connection, emitter);
+        coordinator.recover(userId, connection, lastEventId);
+        coordinator.requestDelivery(userId, connection);
+
+        verify(recoveryService)
+                .recover(eq(userId), eq(connection), same(emitter), eq(lastEventId));
+        verify(recoveryService, never())
+                .recoverAfter(any(), any(), any(), any());
+        verifyNoMoreInteractions(recoveryService);
+    }
+
     private SseHistoryPosition createHistoryPosition(String position) {
         return new SseHistoryPosition(position);
     }
