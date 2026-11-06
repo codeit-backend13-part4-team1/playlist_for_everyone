@@ -12,14 +12,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpStatus;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.AuthenticationManager;
 
@@ -31,8 +29,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(ContentAuthorizationTest.TestController.class)
-@AutoConfigureMockMvc(addFilters = true)
-@Import(SecurityConfig.class)
+@AutoConfigureMockMvc
+@Import({
+        SecurityConfig.class,
+        ContentAuthorizationTest.TestController.class
+})
 @ActiveProfiles("test")
 @DisplayName("콘텐츠 생성, 수정, 삭제 권한 테스트")
 public class ContentAuthorizationTest {
@@ -81,6 +82,7 @@ public class ContentAuthorizationTest {
     static class TestController {
 
         @PostMapping("/api/contents")
+        @ResponseStatus(HttpStatus.CREATED)
         public void create() {
         }
 
@@ -89,6 +91,7 @@ public class ContentAuthorizationTest {
         }
 
         @DeleteMapping("/api/contents/{contentId}")
+        @ResponseStatus(HttpStatus.NO_CONTENT)
         public void delete() {
         }
     }
@@ -96,8 +99,10 @@ public class ContentAuthorizationTest {
     @Test
     @DisplayName("일반 사용자는 콘텐츠를 생성할 수 없다.")
     void 일반_사용자의_콘텐츠_생성을_거절한다() throws Exception {
+        // given
         prepareAuthenticatedUser(Role.USER);
 
+        // when & then
         mockMvc.perform(post("/api/contents")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN)
                         .with(csrf()))
@@ -105,11 +110,26 @@ public class ContentAuthorizationTest {
     }
 
     @Test
+    @DisplayName("관리자는 콘텐츠를 생성할 수 있다.")
+    void 관리자의_콘텐츠_생성을_허용한다() throws Exception {
+        // given
+        prepareAuthenticatedUser(Role.ADMIN);
+
+        // when & then
+        mockMvc.perform(post("/api/contents")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN)
+                        .with(csrf()))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
     @DisplayName("일반 사용자는 콘텐츠를 수정할 수 없다.")
     void 일반_사용자의_콘텐츠_수정을_거절한다() throws Exception {
+        // given
         prepareAuthenticatedUser(Role.USER);
         UUID contentId = UUID.randomUUID();
 
+        // when & then
         mockMvc.perform(patch("/api/contents/{contentId}", contentId)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN)
                         .with(csrf()))
@@ -117,15 +137,45 @@ public class ContentAuthorizationTest {
     }
 
     @Test
+    @DisplayName("관리자는 콘텐츠를 수정할 수 있다.")
+    void 관리자의_콘텐츠_수정을_허용한다() throws Exception {
+        // given
+        prepareAuthenticatedUser(Role.ADMIN);
+        UUID contentId = UUID.randomUUID();
+
+        // when & then
+        mockMvc.perform(patch("/api/contents/{contentId}", contentId)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN)
+                    .with(csrf()))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     @DisplayName("일반 사용자는 콘텐츠를 삭제할 수 없다.")
     void 일반_사용자의_콘텐츠_삭제를_거절한다() throws Exception {
+        // given
         prepareAuthenticatedUser(Role.USER);
         UUID contentId = UUID.randomUUID();
 
+        // when & then
         mockMvc.perform(delete("/api/contents/{contentId}", contentId)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN)
                         .with(csrf()))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("관리자는 콘텐츠를 삭제할 수 있다.")
+    void 관리자의_콘텐츠_삭제를_허용한다() throws Exception {
+        // given
+        prepareAuthenticatedUser(Role.ADMIN);
+        UUID contentId = UUID.randomUUID();
+
+        // when & then
+        mockMvc.perform(delete("/api/contents/{contentId}", contentId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN)
+                        .with(csrf()))
+                .andExpect(status().isNoContent());
     }
 
 }
