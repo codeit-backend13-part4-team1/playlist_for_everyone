@@ -38,6 +38,7 @@ public class SseConnectionService {
 
     private final SseEmitterRepository sseEmitterRepository;
     private final SseProperties sseProperties;
+    private final SseRecoveryService recoveryService;
 
     /**
      * 새 연결을 등록하고, 응답 시작을 위한 ID 없는 주석을 준비한다.
@@ -47,7 +48,7 @@ public class SseConnectionService {
      * @throws UncheckedIOException 초기 send 호출에서 I/O 예외가 발생한 경우. 원인을 보존한다
      * @throws IllegalStateException 초기 send 호출에서 emitter 상태 예외가 발생한 경우
      */
-    public SseEmitter connect(UUID userId){
+    public SseEmitter connect(UUID userId, UUID lastEventId){
         Connection connection = Connection.create();
         SseEmitter emitter = new SseEmitter(sseProperties.connectionTimeout().toMillis());
         // 여기서는 콜백을 등록할 뿐 실행하지 않는다. 실제 완료/타임아웃/오류 시 MVC가 호출한다.
@@ -72,14 +73,15 @@ public class SseConnectionService {
             // 컨트롤러 반환 전에는 MVC의 전송 handler가 없어 데이터가 버퍼에 보관될 수 있다.
             // 반환 후 MVC가 emitter를 초기화하면 보관한 주석을 실제 응답에 쓰고 응답을 시작한다.
             emitter.send(SseEmitter.event().comment("connected"));
-        } catch (IOException | IllegalStateException e) {
+            recoveryService.recover(userId, connection, emitter, lastEventId);
+        } catch (IOException | RuntimeException e) {
             handleConnectionError(userId, e, connection);
         }
         return emitter;
     }
 
-    public SseEmitter connect(UUID userId, UUID lastEventId){
-        return connect(userId);
+    public SseEmitter connect(UUID userId){
+        return connect(userId, null);
     }
 
     /**
@@ -116,8 +118,8 @@ public class SseConnectionService {
         if (e instanceof IOException io){
             throw new UncheckedIOException("SSE 초기 주석 전송에 실패했습니다.", io);
         }
-        if (e instanceof IllegalStateException illegalState){
-            throw illegalState;
+        if (e instanceof RuntimeException runtimeException){
+            throw runtimeException;
         }
     }
 

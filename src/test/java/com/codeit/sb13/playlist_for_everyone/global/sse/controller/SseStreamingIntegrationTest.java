@@ -15,6 +15,7 @@ import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRep
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.impl.InMemorySseEmitterRepository;
 import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseConnectionService;
 import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseDeliveryService;
+import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseRecoveryService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -118,6 +119,9 @@ public class SseStreamingIntegrationTest {
     // SecurityConfig가 로그아웃 핸들러를 생성할 때 필요한 의존성이다.
     @MockitoBean
     private AuthService authService;
+
+    @MockitoBean
+    private SseRecoveryService recoveryService;
 
 
     @Test

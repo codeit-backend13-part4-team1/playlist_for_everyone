@@ -53,7 +53,7 @@ class SseConnectionServiceTest {
                 Duration.ofSeconds(15),
                 Duration.ofMinutes(30)
         );
-        service = new SseConnectionService(repository, properties);
+        service = new SseConnectionService(repository, properties, recoveryService);
     }
 
     @Test
@@ -81,7 +81,7 @@ class SseConnectionServiceTest {
                 connectionTimeout
         );
         SseConnectionService serviceWithCustomTimeout =
-                new SseConnectionService(repository, properties);
+                new SseConnectionService(repository, properties, recoveryService);
 
         SseEmitter emitter = serviceWithCustomTimeout.connect(UUID.randomUUID());
 
