@@ -2,18 +2,23 @@ package com.codeit.sb13.playlist_for_everyone.domain.content.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentUpdateRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentSource;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentTag;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
+import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentDetailProjection;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.review.repository.ReviewRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -25,6 +30,8 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -36,6 +43,12 @@ public class ContentServiceTest {
 
     @Mock
     private ReviewRepository reviewRepository;
+
+    @Mock
+    private WatchingSessionService watchingSessionService;
+
+    @Mock
+    private PlaylistContentRepository playlistContentRepository;
 
     @Mock
     private ContentMapper contentMapper;
@@ -204,8 +217,8 @@ public class ContentServiceTest {
     }
 
     @Test
-    @DisplayName("콘텐츠 수정 시 제목, 설명, 태그가 변경되고 리뷰 집계가 전달된다.")
-    void update_success() {
+    @DisplayName("존재하는 콘텐츠를 단건 조회한다.")
+    void getContent_success() {
         // given
         UUID contentId = UUID.randomUUID();
 
@@ -216,6 +229,61 @@ public class ContentServiceTest {
                 "thumbnail-url"
         );
 
+        ContentDetailProjection detail = mock(ContentDetailProjection.class);
+        ContentDto expected = mock(ContentDto.class);
+
+        given(contentRepository.findDetailById(contentId))
+                .willReturn(Optional.of(detail));
+
+        given(detail.getContent()).willReturn(content);
+        given(detail.getAverageRating()).willReturn(4.5);
+        given(detail.getReviewCount()).willReturn(3L);
+
+        given(contentMapper.toDto(content, 4.5, 3, 0L))
+                .willReturn(expected);
+
+        // when
+        ContentDto result = contentService.getById(contentId);
+
+        // then
+        assertThat(result).isSameAs(expected);
+        verify(contentRepository).findDetailById(contentId);
+        verify(contentMapper).toDto(content, 4.5, 3, 0L);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 콘텐츠를 조회하면 예외가 발생한다.")
+    void getContent_unexists() {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        given(contentRepository.findDetailById(contentId))
+                .willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> contentService.getById(contentId))
+                .isInstanceOf(ContentNotFoundException.class)
+                .satisfies(exception -> {
+                    ContentNotFoundException e =
+                            (ContentNotFoundException) exception;
+
+                    assertThat(e.getDetails())
+                            .containsEntry("contentId", contentId);
+                });
+    }
+
+    @Test
+    @DisplayName("콘텐츠 수정 시 변경 사항과 집계 정보가 반영된다.")
+    void update_success() {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        Content content = Content.createAdminContent(
+                ContentType.tvSeries,
+                "너말고다른연애",
+                "KBS 드라마 입니다.",
+                "thumbnail-url"
+        );
         content.addTag("드라마");
 
         ContentUpdateRequest request = new ContentUpdateRequest(
@@ -224,39 +292,26 @@ public class ContentServiceTest {
                 List.of("로맨스")
         );
 
-        MultipartFile file = mock(MultipartFile.class);
+        ContentDetailProjection detail = mock(ContentDetailProjection.class);
 
-        when(contentRepository.findById(contentId))
-                .thenReturn(Optional.of(content));
+        given(contentRepository.findDetailById(contentId))
+                .willReturn(Optional.of(detail));
 
-        // 리뷰 평균 평점과 리뷰 개수 설정
-        when(reviewRepository.findAverageRatingByContentId(contentId))
-                .thenReturn(4.5);
-
-        when(reviewRepository.countByContentId(contentId))
-                .thenReturn(3L);
-
-        // 수정 전 상태 확인
-        assertThat(content.getTitle()).isEqualTo("너말고다른연애");
-        assertThat(content.getDescription()).isEqualTo("KBS 드라마 입니다.");
-        assertThat(content.getTags())
-                .extracting(ContentTag::getTag)
-                .containsExactly("드라마");
+        given(detail.getContent()).willReturn(content);
+        given(detail.getAverageRating()).willReturn(4.5);
+        given(detail.getReviewCount()).willReturn(3L);
 
         // when
-        contentService.update(contentId, request, file);
+        contentService.update(contentId, request, null);
 
         // then
         assertThat(content.getTitle()).isEqualTo("너말고 다른 연애");
         assertThat(content.getDescription()).isEqualTo("서강준, 안은진 주연");
-        assertThat(content.getThumbnailUrl()).isEqualTo("thumbnail-url");
-
         assertThat(content.getTags())
                 .extracting(ContentTag::getTag)
                 .containsExactly("로맨스");
 
-        verify(contentRepository).findById(contentId);
-
+        verify(contentRepository).findDetailById(contentId);
         verify(contentMapper).toDto(content, 4.5, 3, 0L);
     }
 
@@ -272,8 +327,8 @@ public class ContentServiceTest {
                 List.of("드라마")
         );
 
-        when(contentRepository.findById(contentId))
-                .thenReturn(Optional.empty());
+        given(contentRepository.findDetailById(contentId))
+                .willReturn(Optional.empty());
 
         MultipartFile file = mock(MultipartFile.class);
 
@@ -281,8 +336,8 @@ public class ContentServiceTest {
         assertThatThrownBy(() -> contentService.update(contentId, request, file))
                 .isInstanceOf(ContentNotFoundException.class);
 
-        verify(contentRepository).findById(contentId);
-        verifyNoInteractions(reviewRepository, contentMapper);
+        verify(contentRepository).findDetailById(contentId);
+        verifyNoInteractions(contentMapper);
     }
 
     @Test
@@ -305,13 +360,14 @@ public class ContentServiceTest {
                 null
         );
 
-        when(contentRepository.findById(contentId))
-                .thenReturn(Optional.of(content));
+        ContentDetailProjection detail = mock(ContentDetailProjection.class);
 
-        MultipartFile file = mock(MultipartFile.class);
+        given(contentRepository.findDetailById(contentId))
+                .willReturn(Optional.of(detail));
+        given(detail.getContent()).willReturn(content);
 
         // when
-        contentService.update(contentId, request, file);
+        contentService.update(contentId, request, null);
 
         // then
         assertThat(content.getTitle()).isEqualTo("너 말고 다른 연애");
@@ -340,8 +396,11 @@ public class ContentServiceTest {
                 List.of("로맨스")
         );
 
-        when(contentRepository.findById(contentId))
-                .thenReturn(Optional.of(content));
+        ContentDetailProjection detail = mock(ContentDetailProjection.class);
+
+        given(contentRepository.findDetailById(contentId))
+                .willReturn(Optional.of(detail));
+        given(detail.getContent()).willReturn(content);
 
         // when
         contentService.update(contentId, request, null);
@@ -353,6 +412,63 @@ public class ContentServiceTest {
         assertThat(content.getTags())
                 .extracting(ContentTag::getTag)
                 .containsExactly("로맨스");
+    }
+
+    @Test
+    @DisplayName("존재하는 콘텐츠를 삭제한다.")
+    void deleteById_success() {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        Content content = Content.createAdminContent(
+                ContentType.tvSeries,
+                "너말고다른연애",
+                "KBS 드라마 입니다.",
+                "thumbnail-url"
+        );
+
+        given(contentRepository.findById(contentId))
+                .willReturn(Optional.of(content));
+
+        // when
+        contentService.deleteById(contentId);
+
+        // then
+        InOrder inOrder = inOrder(
+                reviewRepository,
+                playlistContentRepository,
+                contentRepository
+        );
+
+        inOrder.verify(reviewRepository).deleteAllByContentId(contentId);
+        inOrder.verify(playlistContentRepository).deleteAllByContentId(contentId);
+        inOrder.verify(contentRepository).delete(content);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 콘텐츠를 삭제하면 예외가 발생한다.")
+    void deleteById_notFound() {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        given(contentRepository.findById(contentId))
+                .willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> contentService.deleteById(contentId))
+                .isInstanceOf(ContentNotFoundException.class)
+                .satisfies(exception -> {
+                    ContentNotFoundException e =
+                            (ContentNotFoundException) exception;
+
+                    assertThat(e.getDetails())
+                            .containsEntry("contentId", contentId);
+                });
+
+        then(contentRepository).should().findById(contentId);
+        then(reviewRepository).shouldHaveNoInteractions();
+        then(playlistContentRepository).shouldHaveNoInteractions();
+        then(contentRepository).should(never()).delete(any(Content.class));
     }
 
 }
