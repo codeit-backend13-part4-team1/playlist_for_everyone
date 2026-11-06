@@ -9,11 +9,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -238,6 +240,94 @@ class SseDeliveryCoordinatorTest {
         verify(recoveryService)
                 .recoverAfter(eq(userId), eq(secondConnection), same(secondEmitter), eq(secondPosition));
 
+    }
+
+    @Test
+    @DisplayName("복구 전에 받은 전송 요청은 복구 완료 후 해당 위치부터 처리한다.")
+    void deliversPendingRequestAfterRecoveryCompletes(){
+        SseHistoryPosition upperBound = createHistoryPosition();
+
+        when(recoveryService.recover(userId, connection, emitter, lastEventId))
+                .thenReturn(upperBound);
+        when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
+                .thenReturn(upperBound);
+
+        coordinator.register(userId, connection, emitter);
+        coordinator.requestDelivery(userId, connection);
+
+        verifyNoInteractions(recoveryService);
+
+        coordinator.recover(userId, connection, lastEventId);
+
+        verify(recoveryService)
+                .recoverAfter(eq(userId), eq(connection), same(emitter), eq(upperBound));
+    }
+
+    @Test
+    @DisplayName("복구 전에 받은 여러 전송 요청은 복구 완료 후 한 번으로 합쳐 처리한다.")
+    void coalescesRequestsBeforeRecoveryIntoSingleDelivery(){
+        SseHistoryPosition upperBound = createHistoryPosition();
+
+        when(recoveryService.recover(userId, connection, emitter, lastEventId))
+                .thenReturn(upperBound);
+        when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
+                .thenReturn(upperBound);
+
+        coordinator.register(userId, connection, emitter);
+
+        coordinator.requestDelivery(userId, connection);
+        coordinator.requestDelivery(userId, connection);
+        coordinator.requestDelivery(userId, connection);
+
+        verifyNoInteractions(recoveryService);
+
+        coordinator.recover(userId, connection, lastEventId);
+        verify(recoveryService).recover(userId, connection, emitter, lastEventId);
+        verify(recoveryService).recoverAfter(eq(userId), eq(connection), same(emitter), eq(upperBound));
+        verifyNoMoreInteractions(recoveryService);
+    }
+
+    @Test
+    @DisplayName("복구 진행 중 받은 전송 요청은 복구 완료 후 처리한다.")
+    void deliversRequestReceivedDuringRecoveryAfterCompletion(){
+        SseHistoryPosition upperBound = createHistoryPosition();
+
+        when(recoveryService.recover(userId, connection, emitter, lastEventId))
+                .thenAnswer(invocation ->{
+                    coordinator.requestDelivery(userId, connection);
+                    verify(recoveryService, never())
+                            .recoverAfter(any(), any(),any(),any());
+
+                    return upperBound;
+                });
+
+        when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
+                .thenReturn(upperBound);
+
+        coordinator.register(userId, connection, emitter);
+        coordinator.recover(userId, connection, lastEventId);
+
+        verify(recoveryService)
+                .recoverAfter(eq(userId), eq(connection), same(emitter), eq(upperBound));
+    }
+
+    @Test
+    @DisplayName("복구가 실패하면 보류한 전송 요청을 실행하지 않고 원래 예외를 전달한다.")
+    void propagatesRecoveryFailureWithoutDeliveringPendingRequest(){
+        DataAccessResourceFailureException failure = new DataAccessResourceFailureException("테스트용 스냅샷 복구 실패");
+
+        when(recoveryService.recover(userId, connection, emitter, lastEventId))
+                .thenThrow(failure);
+
+        coordinator.register(userId, connection, emitter);
+        coordinator.requestDelivery(userId, connection);
+
+        assertThatThrownBy(() -> coordinator.recover(userId, connection, lastEventId))
+                .isSameAs(failure);
+
+        verify(recoveryService)
+                .recover(userId, connection, emitter, lastEventId);
+        verify(recoveryService, never()).recoverAfter(any(), any(), any(), any());
     }
 
     private SseHistoryPosition createHistoryPosition(String position) {
