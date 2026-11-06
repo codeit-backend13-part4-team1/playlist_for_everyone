@@ -6,6 +6,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentSource;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentTag;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
+import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
 import jakarta.persistence.EntityManager;
@@ -19,14 +20,24 @@ import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabas
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
+import static org.mockito.Mockito.doAnswer;
 
 @DataJpaTest(properties = {
         "spring.flyway.enabled=true",
@@ -47,6 +58,9 @@ class ContentCollectionServiceTest {
 
     @Autowired
     private EntityManager em;
+
+    @MockitoSpyBean
+    private ContentRepository contentRepository;
 
     @Test
     void 수집한_영화와_태그를_함께_저장한다() {
@@ -329,5 +343,128 @@ class ContentCollectionServiceTest {
         assertThat(foundFirst.getProvider()).isEqualTo(ContentSource.TMDB);
         assertThat(foundSecond.getProvider())
                 .isEqualTo(ContentSource.THE_SPORTS_DB);
+    }
+
+    @Test
+    void DB는_동일한_출처와_타입과_외부_ID의_중복을_허용하지_않는다() {
+        Content first = Content.createCollectedContent(
+                ContentType.movie, "첫 번째 제목", "설명",
+                null, ContentSource.TMDB, "550"
+        );
+
+        em.persist(first);
+        em.flush();
+
+        Content duplicate = Content.createCollectedContent(
+                ContentType.movie, "두 번째 제목", "설명",
+                null, ContentSource.TMDB, "550"
+        );
+
+        em.persist(duplicate);
+
+        assertThatThrownBy(() -> em.flush())
+                .isInstanceOf(
+                        org.hibernate.exception.ConstraintViolationException.class
+                )
+                .satisfies(exception -> {
+                    var violation =
+                            (org.hibernate.exception.ConstraintViolationException) exception;
+
+                    assertThat(violation.getConstraintName())
+                            .isEqualTo("uk_content_provider_type_item_id");
+                });
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void 같은_콘텐츠를_동시에_수집해도_하나만_저장한다() throws Exception {
+        String externalId = UUID.randomUUID().toString();
+
+        var data = new CollectedContentData(
+                ContentType.movie, "동시 수집 영화", "영화 설명",
+                null, ContentSource.TMDB, externalId,
+                List.of("액션")
+        );
+
+        var barrier = new CyclicBarrier(2);
+        var lookupCount = new AtomicInteger();
+
+        // 두 요청이 모두 조회를 끝낸 뒤 저장하도록 맞춘다.
+        doAnswer(invocation -> {
+            var result = em.createQuery(
+                            """
+                            select c from Content c
+                            where c.provider = :provider
+                              and c.type = :type
+                              and c.providerItemId = :externalId
+                            """,
+                            Content.class
+                    )
+                    .setParameter("provider", ContentSource.TMDB)
+                    .setParameter("type", ContentType.movie)
+                    .setParameter("externalId", externalId)
+                    .getResultList()
+                    .stream()
+                    .findFirst();
+
+            if (lookupCount.incrementAndGet() <= 2) {
+                barrier.await(5, TimeUnit.SECONDS);
+            }
+
+            return result;
+        }).when(contentRepository).findByProviderAndTypeAndProviderItemId(
+                ContentSource.TMDB,
+                ContentType.movie,
+                externalId
+        );
+
+        var executor = Executors.newFixedThreadPool(2);
+
+        try {
+            Callable<Content> saveTask = () -> service.save(data);
+
+            var results = executor.invokeAll(
+                    List.of(saveTask, saveTask),
+                    20,
+                    TimeUnit.SECONDS
+            );
+
+            Content first = results.get(0).get();
+            Content second = results.get(1).get();
+
+            assertThat(first.getId()).isEqualTo(second.getId());
+
+            Long count = em.createQuery(
+                            """
+                            select count(c) from Content c
+                            where c.provider = :provider
+                              and c.type = :type
+                              and c.providerItemId = :externalId
+                            """,
+                            Long.class
+                    )
+                    .setParameter("provider", ContentSource.TMDB)
+                    .setParameter("type", ContentType.movie)
+                    .setParameter("externalId", externalId)
+                    .getSingleResult();
+
+            assertThat(count).isEqualTo(1L);
+        } finally {
+            executor.shutdownNow();
+
+            boolean terminated = executor.awaitTermination(
+                    10, TimeUnit.SECONDS
+            );
+            assertThat(terminated).isTrue();
+
+            // 별도 요청에서 저장한 데이터는 직접 정리한다.
+            contentRepository.findByProviderAndTypeAndProviderItemId(
+                    ContentSource.TMDB,
+                    ContentType.movie,
+                    externalId
+            ).ifPresent(content ->
+                    contentRepository.deleteById(content.getId())
+            );
+        }
     }
 }
