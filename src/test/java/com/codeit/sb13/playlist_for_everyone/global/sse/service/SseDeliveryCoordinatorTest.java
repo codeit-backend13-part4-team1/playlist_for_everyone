@@ -330,6 +330,100 @@ class SseDeliveryCoordinatorTest {
         verify(recoveryService, never()).recoverAfter(any(), any(), any(), any());
     }
 
+    @Test
+    @DisplayName("후속 전송 중 받은 요청은 현재 전송 완료 후 갱신된 위치부터 처리한다.")
+    void deliversRequestReceivedDuringDeliveryAfterCurrentDeliveryCompletes(){
+        SseHistoryPosition upperBound = createHistoryPosition();
+        SseHistoryPosition nextPosition = createHistoryPosition("1000-1");
+
+        when(recoveryService.recover(userId, connection, emitter, lastEventId))
+                .thenReturn(upperBound);
+        when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
+                .thenAnswer(invocation -> {
+                    coordinator.requestDelivery(userId, connection);
+                    verify(recoveryService, times(1))
+                            .recoverAfter(any(), any(), any(), any());
+                    return nextPosition;
+                })
+                .thenReturn(nextPosition);
+
+        when(recoveryService.recoverAfter(userId, connection, emitter, nextPosition))
+                .thenReturn(nextPosition);
+
+        coordinator.register(userId, connection, emitter);
+        coordinator.recover(userId, connection, lastEventId);
+        coordinator.requestDelivery(userId, connection);
+        ArgumentCaptor<SseHistoryPosition> positionCaptor = ArgumentCaptor.forClass(SseHistoryPosition.class);
+
+        verify(recoveryService, times(2))
+                .recoverAfter(eq(userId), eq(connection), same(emitter), positionCaptor.capture());
+        assertThat(positionCaptor.getAllValues())
+                .containsExactly(upperBound, nextPosition);
+    }
+
+    @Test
+    @DisplayName("후속 전송 중 받은 여러 요청은 현재 전송 완료 후 한 번으로 합쳐 처리한다.")
+    void coalescesRequestsDuringDeliveryIntoSingleFollowingDelivery(){
+        SseHistoryPosition upperBound = createHistoryPosition();
+        SseHistoryPosition nextPosition = createHistoryPosition("1000-1");
+
+        when(recoveryService.recover(userId, connection, emitter, lastEventId))
+                .thenReturn(upperBound);
+        when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
+                .thenAnswer(invocation -> {
+                    coordinator.requestDelivery(userId, connection);
+                    coordinator.requestDelivery(userId, connection);
+                    coordinator.requestDelivery(userId, connection);
+                    verify(recoveryService, times(1))
+                            .recoverAfter(any(), any(), any(), any());
+                    return nextPosition;
+                })
+                .thenReturn(nextPosition);
+
+        when(recoveryService. recoverAfter(userId, connection, emitter, nextPosition))
+                .thenReturn(nextPosition);
+
+        coordinator.register(userId, connection, emitter);
+        coordinator.recover(userId, connection, lastEventId);
+        coordinator.requestDelivery(userId, connection);
+
+        verify(recoveryService)
+                .recover(userId, connection, emitter, lastEventId);
+        verify(recoveryService)
+                .recoverAfter(eq(userId), eq(connection), same(emitter), eq(upperBound));
+        verify(recoveryService)
+                .recoverAfter(eq(userId), eq(connection), same(emitter),eq(nextPosition));
+        verifyNoMoreInteractions(recoveryService);
+    }
+
+    @Test
+    @DisplayName("후속 전송이 실패하면 보류한 요청을 실행하지 않고 원래 예외를 전달한다.")
+    void propagatesDeliveryFailureWithoutDeliveringPendingRequest(){
+        SseHistoryPosition upperBound = createHistoryPosition();
+        DataAccessResourceFailureException failure = new DataAccessResourceFailureException("테스트용 후속 이력 조회 실패");
+
+        when(recoveryService.recover(userId, connection, emitter, lastEventId))
+                .thenReturn(upperBound);
+        when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
+                .thenAnswer(invocation -> {
+                    coordinator.requestDelivery(userId, connection);
+                    throw failure;
+                })
+                .thenReturn(upperBound);
+
+        coordinator.register(userId, connection, emitter);
+        coordinator.recover(userId, connection, lastEventId);
+
+        assertThatThrownBy(() -> coordinator.requestDelivery(userId, connection))
+                .isSameAs(failure);
+
+        verify(recoveryService)
+                .recover(userId, connection, emitter, lastEventId);
+        verify(recoveryService)
+                .recoverAfter(eq(userId), eq(connection), same(emitter), eq(upperBound));
+        verifyNoMoreInteractions(recoveryService);
+    }
+
     private SseHistoryPosition createHistoryPosition(String position) {
         return new SseHistoryPosition(position);
     }
