@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.impl;
 import static com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.QPlaylist.playlist;
 import static com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.QSubscription.subscription;
 import static com.codeit.sb13.playlist_for_everyone.domain.user.entity.QUser.user;
+import static com.codeit.sb13.playlist_for_everyone.global.file.entity.QFileInfo.fileInfo;
 
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Playlist;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistCustomRepository;
@@ -28,6 +29,7 @@ public class PlaylistCustomRepositoryImpl implements PlaylistCustomRepository {
     return queryFactory
         .selectFrom(playlist)
         .join(playlist.owner, user).fetchJoin()
+        .leftJoin(user.profileImage, fileInfo).fetchJoin()
         .where(filters(condition))
         .where(cursorCondition(condition))
         .orderBy(orderSpecifiers(condition))

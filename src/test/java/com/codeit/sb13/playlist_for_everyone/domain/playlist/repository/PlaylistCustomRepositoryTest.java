@@ -353,6 +353,33 @@ class PlaylistCustomRepositoryTest {
   }
 
   @Test
+  @DisplayName("프로필 이미지가 없는 소유자의 플레이리스트도 조회된다")
+  void 프로필_이미지가_없는_소유자의_플레이리스트도_조회된다() {
+    // given
+    User withImage = saveUserWithProfileImage("with@test.com");
+    User withoutImage = saveUser("without@test.com");
+    savePlaylistWithDescription(withImage, "p1", "설명");
+    savePlaylistWithDescription(withoutImage, "p2", "설명");
+    em.flush();
+    em.clear();
+
+    PlaylistSearchCondition condition = new PlaylistSearchCondition(
+        null, null, null,
+        null, null,
+        10, PlaylistSortBy.UPDATED_AT, SortDirection.DESCENDING);
+
+    // when
+    List<Playlist> result = playlistRepository.search(condition);
+
+    // then
+    assertThat(result).hasSize(2);
+    assertThat(result)
+        .filteredOn(playlist -> playlist.getTitle().equals("p2"))
+        .singleElement()
+        .satisfies(playlist -> assertThat(playlist.getOwner().getProfileImage()).isNull());
+  }
+
+  @Test
   @DisplayName("updatedAt 오름차순에서 커서 이후의 플레이리스트만 조회한다")
   void updatedAt_오름차순에서_커서_이후의_플레이리스트만_조회한다() {
     // given
