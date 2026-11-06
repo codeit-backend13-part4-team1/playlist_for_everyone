@@ -12,6 +12,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistCont
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistSortBy;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Subscription;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistContentAddedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistCreatedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistSubscribedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistRepository;
@@ -29,6 +30,8 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListS
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscriptionDuplicatedException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscriptionNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
+import com.codeit.sb13.playlist_for_everyone.global.file.storage.FileStorage;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.HashSet;
@@ -54,6 +57,7 @@ public class PlaylistServiceImpl implements PlaylistService {
   private final PlaylistContentRepository playlistContentRepository;
   private final ContentRepository contentRepository;
   private final ApplicationEventPublisher eventPublisher;
+  private final FileStorage fileStorage;
 
   private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
 
@@ -67,7 +71,14 @@ public class PlaylistServiceImpl implements PlaylistService {
     Playlist playlist = new Playlist(user, request.title(), request.description());
 
     Playlist saved = playlistRepository.save(playlist);
-    UserSummary userSummary = new UserSummary(user.getId(), user.getName(), null);
+
+    eventPublisher.publishEvent(new PlaylistCreatedEvent(
+        saved.getId(),
+        saved.getTitle(),
+        user.getId(),
+        user.getName()));
+
+    UserSummary userSummary = toUserSummary(user);
 
     return PlaylistResponse.from(saved, userSummary, false);
     // 방금 생성된 플레이리스트라 구독 정보가 없으므로 항상 false이다.
@@ -86,7 +97,7 @@ public class PlaylistServiceImpl implements PlaylistService {
     boolean subscribedByMe = subscriptionRepository
         .existsByPlaylistIdAndSubscriberId(playlistId, requesterId);
 
-    UserSummary userSummary = new UserSummary(owner.getId(), owner.getName(), null);
+    UserSummary userSummary = toUserSummary(owner);
 
     return PlaylistResponse.from(playlist, userSummary, subscribedByMe);
   }
@@ -287,7 +298,7 @@ public class PlaylistServiceImpl implements PlaylistService {
 
   private PlaylistResponse toResponse(Playlist playlist, boolean subscribedByMe) {
     User owner = playlist.getOwner();
-    UserSummary userSummary = new UserSummary(owner.getId(), owner.getName(), null);
+    UserSummary userSummary = toUserSummary(owner);
     return PlaylistResponse.from(playlist, userSummary, subscribedByMe);
   }
 
@@ -300,4 +311,13 @@ public class PlaylistServiceImpl implements PlaylistService {
     }
     return false;
   }
+
+  private UserSummary toUserSummary(User owner) {
+    FileInfo profileImage = owner.getProfileImage();
+    String profileImageUrl = profileImage == null
+        ? null
+        : fileStorage.getFileUrl(profileImage.getKey());
+    return new UserSummary(owner.getId(), owner.getName(), profileImageUrl);
+  }
+
 }

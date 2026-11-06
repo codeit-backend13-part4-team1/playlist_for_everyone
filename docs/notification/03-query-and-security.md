@@ -20,7 +20,7 @@ flowchart TD
 조회 시 `request.toCondition(user.getUserId())`, 삭제 시 `confirm(notificationId, user.getUserId())`를 호출합니다.
 서비스는 인증 컨텍스트를 다시 읽지 않습니다. 내부 호출자도 의도한 수신자 ID를 전달해야 합니다.
 
-목록과 전체 개수는 저장소의 수신자 조건으로 제한합니다.
+목록과 전체 개수는 저장소의 `receiver.id` 조건으로 제한하며, 조회 조건에는 수신자 UUID를 전달합니다.
 읽음 처리는 알림 ID로 조회한 뒤 서비스가 `notification.isOwner(receiverId)`로 수신자를 확인합니다.
 
 ## 목록 조회 요청
@@ -90,6 +90,8 @@ Authorization: Bearer <access-token>
 잠금 조회 조건에는 알림 ID만 사용하므로, 삭제 가능 여부는 서비스의 소유자 확인으로 결정됩니다.
 외부 트랜잭션에 참여한 경우에는 `confirm()` 반환 후에도 그 트랜잭션이 끝날 때까지 잠금이 유지됩니다.
 두 요청이 같은 알림을 삭제할 때의 대기·커밋 과정은 [동시 삭제 검증](05-concurrent-deletion-testing.md)에서 설명합니다.
+`receiver` 연관관계에는 cascade가 없어 알림을 삭제해도 사용자는 유지됩니다.
+사용자 보존과 UUID 응답 계약은 [수신자 연관관계 문서](06-receiver-association.md)를 참고합니다.
 
 | JWT·CSRF 조건을 충족한 요청 | 응답 | DB 결과 |
 | --- | --- | --- |

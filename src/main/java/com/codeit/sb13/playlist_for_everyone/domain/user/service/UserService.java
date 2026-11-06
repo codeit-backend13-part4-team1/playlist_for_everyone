@@ -2,14 +2,15 @@ package com.codeit.sb13.playlist_for_everyone.domain.user.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.command.UserCreateCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
-import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
+import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserConstraintViolationDetector;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.DuplicateEmailException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
+import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -25,6 +26,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final FileService fileService;
 
     @Transactional
     public UserDto create(UserCreateCommand command) {
@@ -39,7 +41,8 @@ public class UserService {
                 .email(command.email())
                 .name(command.name())
                 .password(encodedPassword)
-                .role(Role.USER)
+                // 내부 호출자가 회원가입 또는 관리자 초기화에 맞는 권한을 지정한다.
+                .role(command.role())
                 .build();
 
         User savedUser;
@@ -47,39 +50,50 @@ public class UserService {
         try {
             savedUser = userRepository.saveAndFlush(newUser);
         } catch (DataIntegrityViolationException exception) {
-            if (isEmailUniqueViolation(exception)) {
+            if (UserConstraintViolationDetector.isEmailUniqueConstraintViolation(exception)) {
                 throw new DuplicateEmailException(command.email(), exception);
             }
+            // 이메일 중복이 아닌 오류는 원인을 숨기지 않고 그대로 전달한다.
             throw exception;
         }
 
         log.info("[USER] 생성 완료 userId - {}", savedUser.getId());
 
+        return toUserDto(savedUser);
+    }
+
+    /**
+     * 프로필 이미지 URL을 포함한 사용자 응답을 조회
+     * 엔티티 조회와 응답 변환을 같은 트랜잭션 안에서 수행한다.
+     */
+    @Transactional(readOnly = true)
+    public UserDto getUserDtoById(UUID userId) {
+        User user = getById(userId);
+
+        return toUserDto(user);
+    }
+
+    private UserDto toUserDto(User user) {
+        FileInfo profileImage = user.getProfileImage();
+
+        // 이미지 없는 사용자는 기존과 동일하게 null을 반환한다.
+        String profileImageUrl = profileImage == null
+                ? null
+                : fileService.getFileUrl(profileImage.getId());
+
         return new UserDto(
-                savedUser.getId(),
-                savedUser.getCreatedAt(),
-                savedUser.getEmail(),
-                savedUser.getName(),
-                null,
-                savedUser.getRole(),
-                savedUser.isLocked()
-
+                user.getId(),
+                user.getCreatedAt(),
+                user.getEmail(),
+                user.getName(),
+                profileImageUrl,
+                user.getRole(),
+                user.isLocked()
         );
+
     }
 
-    private boolean isEmailUniqueViolation(Throwable exception) {
-        Throwable cause = exception;
 
-        while (cause != null) {
-            if (cause instanceof ConstraintViolationException violation && "UQ_USERS_EMAIL".equalsIgnoreCase(
-                    violation.getConstraintName())) {
-                return true;
-            }
-
-            cause = cause.getCause();
-        }
-        return false;
-    }
 
     /**
      * 사용자 ID로 조회하는 공통 메서드

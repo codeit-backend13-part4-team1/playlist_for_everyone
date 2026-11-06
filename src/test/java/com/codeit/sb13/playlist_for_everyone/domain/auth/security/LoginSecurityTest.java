@@ -5,6 +5,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AuthService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.controller.UserController;
+import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
@@ -285,6 +286,33 @@ class LoginSecurityTest {
                 .willReturn(principal);
     }
 
+    @Test
+    @DisplayName("실제 로그인 필터 경로에서도 프로필 이미지 URL을 반환한다")
+    void 로그인_필터를_통해_프로필_이미지_URL을_반환한다() throws Exception {
+        String profileImageUrl =
+                "https://example.com/profile.png?signature=test";
+
+        givenLoginSuccess(profileImageUrl);
+
+        // signIn()은 실제 CSRF 발급 API를 호출한 뒤 로그인 요청을 만든다.
+        mockMvc.perform(signIn(PASSWORD))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").value(ACCESS_TOKEN))
+                .andExpect(jsonPath("$.userDto.id").value(USER_ID.toString()))
+                .andExpect(jsonPath("$.userDto.profileImageUrl")
+                        .value(profileImageUrl))
+                .andExpect(jsonPath("$.userDto.password").doesNotExist())
+                .andExpect(jsonPath("$.refreshToken").doesNotExist());
+
+        // SecurityConfig에 연결된 성공 핸들러가 DTO 조회 경로를 사용하는지 확인한다.
+        verify(userService).getUserDtoById(USER_ID);
+        verify(refreshTokenRepository).save(
+                USER_ID,
+                REFRESH_TOKEN,
+                REFRESH_TOKEN_EXPIRATION
+        );
+    }
+
     private MockHttpServletRequestBuilder signIn(String password) throws Exception {
 
         Cookie csrfCookie = issueCsrfCookie();
@@ -346,20 +374,32 @@ class LoginSecurityTest {
      *
      * AuthenticationManager와 비밀번호 검증은 실제 객체가 처리한다.
      */
+    /**
+     * 기존 로그인 테스트는 이미지가 없는 사용자를 기본으로 사용한다.
+     */
     private void givenLoginSuccess() {
+        givenLoginSuccess(null);
+    }
+
+    /**
+     * 실제 인증 과정에 사용할 principal과 성공 응답용 DTO를 준비한다.
+     * 비밀번호 검증은 실제 AuthenticationManager와 PasswordEncoder가 수행한다.
+     */
+    private void givenLoginSuccess(String profileImageUrl) {
         prepareSecurityUser(false);
 
-        User user = User.builder()
-                .email(EMAIL)
-                .name("테스트 사용자")
-                .password(passwordEncoder.encode(PASSWORD))
-                .role(Role.USER)
-                .build();
+        UserDto userDto = new UserDto(
+                USER_ID,
+                LocalDateTime.of(2026, 10, 28, 9, 0),
+                EMAIL,
+                "테스트 사용자",
+                profileImageUrl,
+                Role.USER,
+                false
+        );
 
-        ReflectionTestUtils.setField(user, "id", USER_ID);
-        ReflectionTestUtils.setField(user, "createdAt", LocalDateTime.of(2026, 10, 28, 9, 0));
-
-        given(userService.getById(USER_ID)).willReturn(user);
+        given(userService.getUserDtoById(USER_ID))
+                .willReturn(userDto);
         given(jwtTokenProvider.createAccessToken(USER_ID))
                 .willReturn(ACCESS_TOKEN);
         given(jwtTokenProvider.createRefreshToken(USER_ID))

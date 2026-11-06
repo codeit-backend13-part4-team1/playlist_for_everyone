@@ -25,6 +25,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistCont
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistSortBy;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Subscription;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistContentAddedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistCreatedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistSubscribedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistRepository;
@@ -43,6 +44,8 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListS
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscriptionDuplicatedException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscriptionNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
+import com.codeit.sb13.playlist_for_everyone.global.file.storage.FileStorage;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -82,6 +85,9 @@ public class PlaylistServiceImplTest {
 
   @InjectMocks
   private PlaylistServiceImpl playlistService;
+
+  @Mock
+  private FileStorage fileStorage;
 
   @Test
   @DisplayName("요청한 값과 소유자 ID로 플레이리스트를 저장한다.")
@@ -133,6 +139,39 @@ public class PlaylistServiceImplTest {
   }
 
   @Test
+  @DisplayName("생성에 성공하면 Play;listCreatedEvent를 발행한다")
+  void 플레이리슽_생성에_성공하면_성공_이벤트를_발행한다() {
+    // given
+    UUID ownerId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    User owner = createUser(ownerId);
+    PlaylistCreateRequest request = new PlaylistCreateRequest("제목", "설명");
+
+    given(userRepository.findById(ownerId))
+        .willReturn(Optional.of(owner));
+
+    given(playlistRepository.save(any(Playlist.class)))
+        .willAnswer(inv -> {
+          Playlist playlist = inv.getArgument(0);
+          ReflectionTestUtils.setField(playlist, "id", playlistId);
+          return playlist;
+        });
+
+    // when
+    playlistService.create(ownerId, request);
+
+    // then
+    ArgumentCaptor<PlaylistCreatedEvent> captor =
+        ArgumentCaptor.forClass(PlaylistCreatedEvent.class);
+    verify(eventPublisher).publishEvent(captor.capture());
+    PlaylistCreatedEvent event = captor.getValue();
+    assertThat(event.playlistId()).isEqualTo(playlistId);
+    assertThat(event.playlistTitle()).isEqualTo("제목");
+    assertThat(event.ownerId()).isEqualTo(ownerId);
+    assertThat(event.ownerName()).isEqualTo("tester");
+  }
+
+  @Test
   @DisplayName("생성시 소유자가 없으면 UserNotFoundException를 던진다")
   void 플레이리스트_생성시_소유자가_없으면_예외를_던지고_save는_호출되지_않는다() {
     // given
@@ -144,6 +183,7 @@ public class PlaylistServiceImplTest {
     assertThatThrownBy(() -> playlistService.create(ownerId, request))
         .isInstanceOf(UserNotFoundException.class);
     verify(playlistRepository, never()).save(any());
+    verifyNoInteractions(eventPublisher);
   }
 
   @Test
@@ -981,6 +1021,78 @@ public class PlaylistServiceImplTest {
     assertThat(event.subscriberName()).isEqualTo("tester");
   }
 
+  @Test
+  @DisplayName("생성 응답의 소유자에 프로필 이미지 URL이 담긴다")
+  void 플레이리스트_생성_응답의_소유자에_프로필_이미지_URL이_담긴다() {
+    // given
+    UUID ownerId = UUID.randomUUID();
+    User owner = createUserWithProfileImage(ownerId, "profile/owner.png");
+    given(userRepository.findById(ownerId)).willReturn(Optional.of(owner));
+    given(playlistRepository.save(any(Playlist.class)))
+        .willAnswer(invocation -> invocation.getArgument(0));
+    given(fileStorage.getFileUrl("profile/owner.png"))
+        .willReturn("https://cdn.test/profile/owner.png");
+
+    // when
+    PlaylistResponse response = playlistService.create(
+        ownerId, new PlaylistCreateRequest("제목", "설명"));
+
+    // then
+    assertThat(response.owner().profileImageUrl())
+        .isEqualTo("https://cdn.test/profile/owner.png");
+  }
+
+  @Test
+  @DisplayName("단건 조회 응답의 소유자에 프로필 이미지 URL이 담긴다")
+  void 단건_조회_응답의_소유자에_프로필_이미지_URL이_담긴다() {
+    // given
+    UUID ownerId = UUID.randomUUID();
+    UUID playlistId = UUID.randomUUID();
+    UUID requesterId = UUID.randomUUID();
+    User owner = createUserWithProfileImage(ownerId, "profile/owner.png");
+    Playlist playlist = createPlaylist(owner, playlistId);
+    given(playlistRepository.findWithOwnerById(playlistId))
+        .willReturn(Optional.of(playlist));
+    given(fileStorage.getFileUrl("profile/owner.png"))
+        .willReturn("https://cdn.test/profile/owner.png");
+
+    // when
+    PlaylistResponse response = playlistService.getPlaylist(playlistId, requesterId);
+
+    // then
+    assertThat(response.owner().profileImageUrl())
+        .isEqualTo("https://cdn.test/profile/owner.png");
+  }
+
+  @Test
+  @DisplayName("목록 조회 응답의 소유자에 프로필 이미지 URL이 담기고 이미지가 없으면 null이다")
+  void 목록_조회_응답의_소유자에_프로필_이미지_URL이_담긴다() {
+    // given
+    UUID requesterId = UUID.randomUUID();
+    User withImage = createUserWithProfileImage(UUID.randomUUID(), "profile/owner.png");
+    User withoutImage = createUser(UUID.randomUUID());
+    Playlist first = createPlaylist(withImage, UUID.randomUUID());
+    Playlist second = createPlaylist(withoutImage, UUID.randomUUID());
+    PlaylistSearchRequest request =
+        createSearchRequest(2, PlaylistSortBy.UPDATED_AT, SortDirection.DESCENDING);
+
+    given(playlistRepository.search(any(PlaylistSearchCondition.class)))
+        .willReturn(List.of(first, second));
+    given(playlistRepository.count(any(PlaylistSearchCondition.class))).willReturn(2L);
+    given(subscriptionRepository.findSubscribedPlaylistIds(eq(requesterId), anyCollection()))
+        .willReturn(List.of());
+    given(fileStorage.getFileUrl("profile/owner.png"))
+        .willReturn("https://cdn.test/profile/owner.png");
+
+    // when
+    CursorResponse<PlaylistResponse> response = playlistService.getPlaylists(request, requesterId);
+
+    // then
+    assertThat(response.data())
+        .extracting(playlistResponse -> playlistResponse.owner().profileImageUrl())
+        .containsExactly("https://cdn.test/profile/owner.png", null);
+  }
+
 
 
   //-----------[헬퍼 메서드]
@@ -1019,5 +1131,11 @@ public class PlaylistServiceImplTest {
     ReflectionTestUtils.setField(playlist, "updatedAt", updatedAt);
     ReflectionTestUtils.setField(playlist, "subscriberCount", subscriberCount);
     return playlist;
+  }
+
+  private User createUserWithProfileImage(UUID userId, String fileKey) {
+    User user = createUser(userId);
+    user.updateProfileImage(FileInfo.createS3File(fileKey, "profile.png", "image/png", 1024L));
+    return user;
   }
 }

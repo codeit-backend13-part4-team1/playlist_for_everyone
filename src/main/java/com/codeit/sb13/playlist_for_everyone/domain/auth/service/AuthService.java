@@ -6,7 +6,6 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtProperties;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
-import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import io.jsonwebtoken.JwtException;
@@ -47,9 +46,9 @@ public class AuthService {
             throw new BadCredentialsException("유효하지 않은 인증 정보입니다.");
         }
 
-        User user = findUserForReissue(userId);
+        UserDto userDto = findUserForReissue(userId);
 
-        if (user.isLocked()) {
+        if (userDto.locked()) {
             throw new BadCredentialsException(
                     "유효하지 않은 인증 정보 입니다."
             );
@@ -58,15 +57,6 @@ public class AuthService {
         String newAccessToken = jwtTokenProvider.createAccessToken(userId);
         String newRefreshToken = jwtTokenProvider.createRefreshToken(userId);
 
-        UserDto userDto = new UserDto(
-                user.getId(),
-                user.getCreatedAt(),
-                user.getEmail(),
-                user.getName(),
-                null, // 프로필 이미지 연동 전에는 null처리
-                user.getRole(),
-                user.isLocked()
-        );
 
         TokenReissueResult result = new TokenReissueResult(
                 new JwtDto(userDto, newAccessToken),
@@ -102,9 +92,9 @@ public class AuthService {
     /**
      * 사용자 미존재를 일반 사용자 조회의 404가 아닌 인증 실패로 처리한다.
      */
-    private User findUserForReissue(UUID userId) {
+    private UserDto findUserForReissue(UUID userId) {
         try {
-            return userService.getById(userId);
+            return userService.getUserDtoById(userId);
         } catch (UserNotFoundException exception) {
             throw new BadCredentialsException(
                     "유효하지 않은 인증 정보 입니다.",

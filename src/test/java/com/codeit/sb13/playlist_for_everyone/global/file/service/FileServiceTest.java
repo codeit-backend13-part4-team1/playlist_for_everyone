@@ -1,26 +1,31 @@
-package com.codeit.sb13.playlist_for_everyone.global.service;
+package com.codeit.sb13.playlist_for_everyone.global.file.service;
 
+import com.codeit.sb13.playlist_for_everyone.global.exception.file.FileDeleteException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.file.FileNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
+import com.codeit.sb13.playlist_for_everyone.global.file.event.FileDeleteEvent;
+import com.codeit.sb13.playlist_for_everyone.global.file.event.FileDeleteEventListener;
 import com.codeit.sb13.playlist_for_everyone.global.file.repository.FileInfoRepository;
 import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
 import com.codeit.sb13.playlist_for_everyone.global.file.storage.FileStorage;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
@@ -34,6 +39,12 @@ public class FileServiceTest {
 
     @Mock
     private FileStorage fileStorage;
+
+    @Mock
+    private FileDeleteEventListener listener;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private FileService fileService;
@@ -163,8 +174,8 @@ public class FileServiceTest {
     }
 
     @Test
-    @DisplayName("파일 삭제 후 트랜잭션 커밋 시 S3 파일도 삭제한다")
-    void delete_success() {
+    @DisplayName("파일 삭제 시 DB 파일 정보를 삭제하고 S3 삭제 이벤트를 발행한다.")
+    void delete_publishesEvent() {
         // given
         UUID id = UUID.randomUUID();
         String key = "test-key.png";
@@ -176,39 +187,27 @@ public class FileServiceTest {
                 40L
         );
 
-        given(fileInfoRepository.findById(id))
-                .willReturn(Optional.of(fileInfo));
+        given(fileInfoRepository.findById(id)).willReturn(Optional.of(fileInfo));
 
-        TransactionSynchronizationManager.initSynchronization();
-        TransactionSynchronizationManager.setActualTransactionActive(true);
+        // when
+        fileService.delete(id);
 
-        try {
-            // when
-            fileService.delete(id);
+        // then
+        verify(fileInfoRepository).delete(fileInfo);
 
-            // then
-            verify(fileInfoRepository).delete(fileInfo);
+        // 이벤트 객체 캡처
+        ArgumentCaptor<FileDeleteEvent> captor =
+                ArgumentCaptor.forClass(FileDeleteEvent.class);
 
-            // 커밋 전에는 S3 파일을 삭제하지 않음
-            verify(fileStorage, never()).delete(key);
+        // 발행한 이벤트 캡처
+        verify(eventPublisher).publishEvent(captor.capture());
 
-            // 트랜잭션 커밋 상황 재현
-            for (TransactionSynchronization synchronization :
-                    TransactionSynchronizationManager.getSynchronizations()) {
-                synchronization.afterCommit();
-            }
-
-            // 커밋 후 S3 파일 삭제 확인
-            verify(fileStorage).delete(key);
-
-        } finally {
-            TransactionSynchronizationManager.clearSynchronization();
-            TransactionSynchronizationManager.setActualTransactionActive(false);
-        }
+        // 이벤트에 담긴 key 검증
+        assertThat(captor.getValue().key()).isEqualTo(key);
     }
 
     @Test
-    @DisplayName("존재하지 않는 파일 삭제 시 FileNotFoundException이 발생한다")
+    @DisplayName("존재하지 않는 파일 삭제 시 예외가 발생하고 삭제 이벤트를 발행하지 않는다.")
     void delete_fileNotFound() {
         // given
         UUID id = UUID.randomUUID();
@@ -219,8 +218,8 @@ public class FileServiceTest {
         assertThatThrownBy(() -> fileService.delete(id))
                 .isInstanceOf(FileNotFoundException.class);
 
-        verify(fileStorage, never()).delete(anyString());
         verify(fileInfoRepository, never()).delete(any(FileInfo.class));
+        verifyNoInteractions(eventPublisher);
     }
 
 }

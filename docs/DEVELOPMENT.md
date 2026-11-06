@@ -20,6 +20,7 @@
 | 공통 보안 | JWT 필터와 경로별 인증·인가 적용. 팔로우·알림 API는 인증 필요, 쿠키 기반 CSRF 보호 활성화 |
 | SSE | 인증된 사용자의 다중 연결, 하트비트, 종료 정리와 Redis Pub/Sub 분산 전송 구현. [SSE 구현 가이드](sse/README.md) 참고 |
 | 알림 전송 | 공통 알림 생성 요청 → 독립 저장·커밋 → Redis → 실제 SSE 수신 연동 구현. [알림 전송 흐름](notification/01-creation-and-delivery.md) 참고 |
+| 알림 수신자 | 사용자 조회 컴포넌트를 통해 User 연관관계로 저장. 요청·응답의 수신자 UUID 계약 유지. [연관관계와 검증](notification/06-receiver-association.md) 참고 |
 | 알림 조회·읽음 | JWT 사용자를 수신자 조건으로 사용하여 목록·전체 개수를 조회하고 알림 삭제로 읽음 처리. [조회·인증 흐름](notification/03-query-and-security.md) 참고 |
 | SSE·알림 후속 | 업무별 알림 생성 요청 변환(#45)·DM 본문 연동·Kafka·이력 복구·연결 수 제한 |
 | 후속 기능 | 팔로우 CSRF 연동·검증은 #114, 알림 CSRF 연동·검증은 #124, 팔로우 이벤트의 알림 생성 연동은 #45. 다른 기능의 진행 상태는 개별 이슈 참고 |
@@ -364,6 +365,7 @@ SSE Redis 통합 테스트는 별도의 Redis 7.4 컨테이너로 실제 Pub/Sub
 조회·삭제는 서비스 단위 테스트, PostgreSQL 저장소·서비스 통합 테스트와 실제 JWT 필터를 거치는 MockMvc 통합 테스트로 확인합니다.
 [조회·인증 테스트 가이드](notification/04-query-and-security-testing.md)에 역할별 실행 명령과 CSRF 임시 제외 범위를 정리했습니다.
 같은 알림을 동시에 읽음 처리할 때의 DB 잠금 대기와 커밋 순서는 [동시 삭제 검증](notification/05-concurrent-deletion-testing.md)을 참고합니다.
+수신자 미존재 처리·삭제 후 사용자 보존·DTO 변환 중 추가 SQL 검증은 [수신자 연관관계 가이드](notification/06-receiver-association.md)를 참고합니다.
 최초 실행 시 테스트용 컨테이너 이미지 다운로드가 필요할 수 있습니다. 테스트 프로필은 SSE 자동 구독을 끄고, Redis SSE 통합 테스트에서만 명시적으로 활성화합니다.
 
 제목 말줄임 단위 테스트만 확인하려면 Docker 없이 다음 명령을 사용할 수 있습니다.

@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.dto.TokenReissueResult;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtProperties;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
@@ -55,9 +56,6 @@ class AuthServiceTest {
     @Mock
     private UserService userService;
 
-    @Mock
-    private User user;
-
     private AuthService authService;
 
     @BeforeEach
@@ -80,18 +78,10 @@ class AuthServiceTest {
     @Test
     @DisplayName("유효한 Refresh Token을 교체하고 새 토큰 쌍과 사용자 정보를 반환한다")
     void 정상_재발급에_성공한다() {
-        givenRegisteredToken();
+        UserDto expectedUserDto = createUserDto(null, false);
+
+        givenRegisteredToken(expectedUserDto);
         givenNewTokens();
-
-        LocalDateTime createAt = LocalDateTime.of(2026, 10, 30, 10, 0);
-
-
-        given(user.getId()).willReturn(USER_ID);
-        given(user.getCreatedAt()).willReturn(createAt);
-        given(user.getEmail()).willReturn("user@gmail.com");
-        given(user.getName()).willReturn("테스트 사용자");
-        given(user.getRole()).willReturn(Role.USER);
-
 
         given(refreshTokenRepository.rotate(
                 USER_ID,
@@ -105,13 +95,13 @@ class AuthServiceTest {
         assertThat(result.jwtDto().accessToken()).isEqualTo(NEW_ACCESS_TOKEN);
         assertThat(result.refreshToken()).isEqualTo(NEW_REFRESH_TOKEN);
 
-        assertThat(result.jwtDto().userDto().id()).isEqualTo(USER_ID);
-        assertThat(result.jwtDto().userDto().createdAt()).isEqualTo(createAt);
-        assertThat(result.jwtDto().userDto().email()).isEqualTo("user@gmail.com");
-        assertThat(result.jwtDto().userDto().name()).isEqualTo("테스트 사용자");
-        assertThat(result.jwtDto().userDto().role()).isEqualTo(Role.USER);
+        // record의 동등성 비교로 사용자 응답의 모든 필드를 함께 확인한다.
+        assertThat(result.jwtDto().userDto()).isEqualTo(expectedUserDto);
+        assertThat(result.jwtDto().userDto().profileImageUrl()).isNull();
 
-        // 원자적 교체 메서드를 사용
+        verify(userService).getUserDtoById(USER_ID);
+
+        // 기존 토큰을 새 토큰으로 원자적으로 교체해야 한다.
         verify(refreshTokenRepository).rotate(
                 USER_ID,
                 OLD_REFRESH_TOKEN,
@@ -119,9 +109,9 @@ class AuthServiceTest {
                 REFRESH_VALIDITY
         );
 
-        // save와 delete를 따로 호출하면 동시 요청을 안전하게 처리할 수 없다.
+        // 개별 저장·삭제로 원자적 교체를 우회하지 않는다.
         verify(refreshTokenRepository, never())
-                .save(any(),anyString(),any());
+                .save(any(), anyString(), any());
         verify(refreshTokenRepository, never()).delete(anyString());
     }
 
@@ -178,7 +168,7 @@ class AuthServiceTest {
                 .willReturn(USER_ID);
         given(refreshTokenRepository.findUserId(OLD_REFRESH_TOKEN))
                 .willReturn(Optional.of(USER_ID));
-        given(userService.getById(USER_ID))
+        given(userService.getUserDtoById(USER_ID))
                 .willThrow(new UserNotFoundException(
                         Map.of("userId", USER_ID)
                 ));
@@ -193,8 +183,8 @@ class AuthServiceTest {
     @Test
     @DisplayName("잠긴 사용자의 재발급을 거절한다")
     void 잠긴_사용자를_거절한다() {
-        givenRegisteredToken();
-        given(user.isLocked()).willReturn(true);
+        // 엔티티 Mock 대신 DTO의 잠금 상태를 사용한다.
+        givenRegisteredToken(createUserDto(null, true));
 
         assertThatThrownBy(() -> authService.reissue(OLD_REFRESH_TOKEN))
                 .isInstanceOf(BadCredentialsException.class);
@@ -258,17 +248,98 @@ class AuthServiceTest {
                 .isSameAs(exception);
     }
 
+    @Test
+    @DisplayName("재발급 응답에 사용자 DTO의 프로필 이미지 URL을 포함한다")
+    void 재발급_응답에_프로필_이미지_URL을_포함한다() {
+        String profileImageUrl =
+                "https://example.com/profile.png?signature=renewed";
 
-    /**
-     * JWT와 Redis에 동일한 사용자가 등록된 상황을 준비한다.
-     */
-    private void givenRegisteredToken() {
+        UserDto expectedUserDto = createUserDto(profileImageUrl, false);
+
+        givenRegisteredToken(expectedUserDto);
+        givenNewTokens();
+
+        given(refreshTokenRepository.rotate(
+                USER_ID,
+                OLD_REFRESH_TOKEN,
+                NEW_REFRESH_TOKEN,
+                REFRESH_VALIDITY
+        )).willReturn(true);
+
+        TokenReissueResult result = authService.reissue(OLD_REFRESH_TOKEN);
+
+        // 조회한 DTO를 반환하면서 URL을 누락하거나 null로 덮어쓰면 안 된다.
+        assertThat(result.jwtDto().userDto()).isEqualTo(expectedUserDto);
+        assertThat(result.jwtDto().userDto().profileImageUrl())
+                .isEqualTo(profileImageUrl);
+
+        verify(userService).getUserDtoById(USER_ID);
+        verify(refreshTokenRepository).rotate(
+                USER_ID,
+                OLD_REFRESH_TOKEN,
+                NEW_REFRESH_TOKEN,
+                REFRESH_VALIDITY
+        );
+    }
+
+    @Test
+    @DisplayName("사용자 DTO 조회에 실패하면 새 토큰 발급과 기존 토큰 교체를 수행하지 않는다")
+    void 사용자_DTO_조회_실패시_기존_토큰을_교체하지_않는다() {
         given(jwtTokenProvider.parseRefreshToken(OLD_REFRESH_TOKEN))
                 .willReturn(USER_ID);
         given(refreshTokenRepository.findUserId(OLD_REFRESH_TOKEN))
                 .willReturn(Optional.of(USER_ID));
-        given(userService.getById(USER_ID))
-                .willReturn(user);
+
+        IllegalStateException failure =
+                new IllegalStateException("프로필 이미지 URL 생성 실패");
+
+        given(userService.getUserDtoById(USER_ID))
+                .willThrow(failure);
+
+        // 사용자 미존재와 달리 URL 생성 장애는 인증 실패로 변환하지 않는다.
+        assertThatThrownBy(() -> authService.reissue(OLD_REFRESH_TOKEN))
+                .isSameAs(failure);
+
+        // 응답 준비 실패로 기존 Refresh Token까지 사용할 수 없게 만들면 안 된다.
+        verifyNoTokenIssueOrRotation();
+        verify(refreshTokenRepository, never())
+                .save(any(), anyString(), any());
+        verify(refreshTokenRepository, never()).delete(anyString());
+    }
+
+
+    /**
+     * 이미지가 없고 잠기지 않은 사용자의 재발급 상황을 준비한다.
+     */
+    private void givenRegisteredToken() {
+        givenRegisteredToken(createUserDto(null, false));
+    }
+
+    /**
+     * JWT와 Redis의 사용자 ID가 일치하고, 응답용 DTO를 조회한 상황을 준비한다.
+     */
+    private void givenRegisteredToken(UserDto userDto) {
+        given(jwtTokenProvider.parseRefreshToken(OLD_REFRESH_TOKEN))
+                .willReturn(USER_ID);
+        given(refreshTokenRepository.findUserId(OLD_REFRESH_TOKEN))
+                .willReturn(Optional.of(USER_ID));
+        given(userService.getUserDtoById(USER_ID))
+                .willReturn(userDto);
+    }
+
+    /**
+     * DTO는 실제 객체를 사용하여 URL과 잠금 상태를 명시한다.
+     */
+    private UserDto createUserDto(String profileImageUrl, boolean locked) {
+        return new UserDto(
+                USER_ID,
+                LocalDateTime.of(2026, 10, 30, 10, 0),
+                "user@gmail.com",
+                "테스트 사용자",
+                profileImageUrl,
+                Role.USER,
+                locked
+        );
     }
 
     private void givenNewTokens() {

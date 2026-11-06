@@ -5,10 +5,14 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentU
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
+import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentDetailProjection;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.review.repository.ReviewRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -17,10 +21,13 @@ import java.util.*;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ContentService {
 
     private final ContentRepository contentRepository;
     private final ReviewRepository reviewRepository;
+    private final WatchingSessionService watchingSessionService;
+    private final PlaylistContentRepository playlistContentRepository;
     private final ContentMapper contentMapper;
 
     @Transactional
@@ -33,7 +40,6 @@ public class ContentService {
         );
 
         List<String> tags = normalizeTags(request.tags());
-
         tags.forEach(content::addTag);
 
         Content savedContent = contentRepository.save(content);
@@ -41,10 +47,30 @@ public class ContentService {
         return contentMapper.toDto(savedContent, 0.0, 0, 0L);
     }
 
+    @Transactional(readOnly = true)
+    public ContentDto getById(UUID contentId) {
+        ContentDetailProjection detail = contentRepository.findDetailById(contentId)
+                .orElseThrow(() -> new ContentNotFoundException(
+                        Map.of("contentId", contentId)
+                ));
+        Content content = detail.getContent();
+
+        long watcherCount = watchingSessionService.getCurrentViewerCount(contentId);
+
+        return contentMapper.toDto(
+                content,
+                detail.getAverageRating(),
+                Math.toIntExact(detail.getReviewCount()),
+                watcherCount);
+    }
+
     @Transactional
-    public ContentDto update(UUID id, ContentUpdateRequest request, MultipartFile file) {
-        Content content = contentRepository.findById(id)
-                .orElseThrow(() -> new ContentNotFoundException(Map.of("contentId", id)));
+    public ContentDto update(UUID contentId, ContentUpdateRequest request, MultipartFile file) {
+        ContentDetailProjection detail = contentRepository.findDetailById(contentId)
+                .orElseThrow(() -> new ContentNotFoundException(
+                        Map.of("contentId", contentId)
+                ));
+        Content content = detail.getContent();
 
         List<String> tags = request.tags() == null
                 ? null
@@ -52,7 +78,6 @@ public class ContentService {
 
         // TODO: 이미지 업로드 구현 후 새 URL 적용
         String thumbnailUrl = null;
-
         content.update(
                 request.title(),
                 request.description(),
@@ -60,15 +85,31 @@ public class ContentService {
                 tags
         );
 
-        double averageRating = reviewRepository.findAverageRatingByContentId(id);
-        int reviewCount = Math.toIntExact(reviewRepository.countByContentId(id));
-        long watcherCount = 0L; // TODO: 시청 세션 기능 연동
+        long watcherCount = watchingSessionService.getCurrentViewerCount(contentId);
 
         return contentMapper.toDto(
                 content,
-                averageRating,
-                reviewCount,
+                detail.getAverageRating(),
+                Math.toIntExact(detail.getReviewCount()),
                 watcherCount);
+    }
+
+    @Transactional
+    public void deleteById(UUID contentId) {
+        Content content = contentRepository.findById(contentId)
+                .orElseThrow(() -> new ContentNotFoundException(
+                        Map.of("contentId", contentId)
+                ));
+
+        int deletedReviews = reviewRepository.deleteAllByContentId(contentId);
+        int deletedPlaylistContents = playlistContentRepository.deleteAllByContentId(contentId);
+
+        contentRepository.delete(content);
+
+        log.debug(
+                "콘텐츠 삭제: contentId={}, 삭제된 리뷰={}, 삭제된 플레이리스트 연결={}",
+                contentId, deletedReviews, deletedPlaylistContents
+        );
     }
 
     // 태그 중복 검사

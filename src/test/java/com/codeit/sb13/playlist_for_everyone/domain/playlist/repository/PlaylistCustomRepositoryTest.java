@@ -11,6 +11,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserReposito
 import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
+import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
 import jakarta.persistence.EntityManager;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -322,6 +323,61 @@ class PlaylistCustomRepositoryTest {
     assertThat(result).allSatisfy(playlist ->
         assertThat(Hibernate.isInitialized(playlist.getOwner())).isTrue());
   }
+  
+  @Test
+  @DisplayName("조회한 플레이리스트 소유자의 프로필 이미지를 함께 가져온다")
+  void 조회한_플레이리스트_소유자의_프로필_이미지를_함께_가져온다 () {
+    // given
+    User owner1 = saveUserWithProfileImage("owner1@test.com");
+    User owner2 = saveUserWithProfileImage("owner2@test.com");
+    savePlaylistWithDescription(owner1, "p1", "설명");
+    savePlaylistWithDescription(owner2, "p2", "설명");
+    em.flush();
+    em.clear();
+
+    PlaylistSearchCondition condition = new PlaylistSearchCondition(
+        null, null, null,
+        null, null,
+        10, PlaylistSortBy.UPDATED_AT, SortDirection.DESCENDING);
+
+    // when
+    List<Playlist> result = playlistRepository.search(condition);
+
+    // then
+    assertThat(result).hasSize(2);
+    assertThat(result).allSatisfy(playlist -> {
+      FileInfo profileImage = playlist.getOwner().getProfileImage();
+      assertThat(profileImage).isNotNull();
+      assertThat(Hibernate.isInitialized(profileImage)).isTrue();
+    });
+  }
+
+  @Test
+  @DisplayName("프로필 이미지가 없는 소유자의 플레이리스트도 조회된다")
+  void 프로필_이미지가_없는_소유자의_플레이리스트도_조회된다() {
+    // given
+    User withImage = saveUserWithProfileImage("with@test.com");
+    User withoutImage = saveUser("without@test.com");
+    savePlaylistWithDescription(withImage, "p1", "설명");
+    savePlaylistWithDescription(withoutImage, "p2", "설명");
+    em.flush();
+    em.clear();
+
+    PlaylistSearchCondition condition = new PlaylistSearchCondition(
+        null, null, null,
+        null, null,
+        10, PlaylistSortBy.UPDATED_AT, SortDirection.DESCENDING);
+
+    // when
+    List<Playlist> result = playlistRepository.search(condition);
+
+    // then
+    assertThat(result).hasSize(2);
+    assertThat(result)
+        .filteredOn(playlist -> playlist.getTitle().equals("p2"))
+        .singleElement()
+        .satisfies(playlist -> assertThat(playlist.getOwner().getProfileImage()).isNull());
+  }
 
   @Test
   @DisplayName("updatedAt 오름차순에서 커서 이후의 플레이리스트만 조회한다")
@@ -354,6 +410,20 @@ class PlaylistCustomRepositoryTest {
         .name("tester")
         .role(Role.USER)
         .build());
+  }
+
+  private User saveUserWithProfileImage(String email) {
+    FileInfo fileInfo = FileInfo.createS3File(
+        "profile/" + email, "profile.png", "image/png", 1024L);
+    em.persist(fileInfo);
+
+    User user = User.builder()
+        .email(email)
+        .name("tester")
+        .role(Role.USER)
+        .build();
+    user.updateProfileImage(fileInfo);
+    return userRepository.save(user);
   }
 
   private Playlist savePlaylist(User owner, String title, LocalDateTime updatedAt) {

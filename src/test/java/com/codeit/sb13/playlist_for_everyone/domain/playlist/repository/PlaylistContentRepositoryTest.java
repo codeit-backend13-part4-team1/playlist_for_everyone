@@ -171,4 +171,32 @@ class PlaylistContentRepositoryTest {
         .extracting(PlaylistContent::getId)
         .containsExactly(existing.getId());
   }
+
+  @Test
+  @DisplayName("콘텐츠 ID로 연결된 플레이리스트 콘텐츠를 모두 삭제한다.")
+  void 콘텐츠_ID로_연결된_플레이리스트_콘텐츠를_모두_삭제한다() {
+    // given
+    UUID contentId = UUID.randomUUID();
+    UUID playlistId1 = UUID.randomUUID();
+    UUID playlistId2 = UUID.randomUUID();
+
+    PlaylistContent pc1 = playlistContentRepository.saveAndFlush(
+            new PlaylistContent(playlistId1, contentId));
+
+    PlaylistContent pc2 = playlistContentRepository.saveAndFlush(
+            new PlaylistContent(playlistId2, contentId));
+
+    PlaylistContent pc3 = playlistContentRepository.saveAndFlush(
+            new PlaylistContent(playlistId1, UUID.randomUUID()));
+
+    // when
+    int deleted = playlistContentRepository.deleteAllByContentId(contentId);
+
+    // then
+    assertThat(deleted).isEqualTo(2);
+
+    assertThat(playlistContentRepository.findAll())
+            .extracting(PlaylistContent::getId)
+            .containsExactly(pc3.getId());
+  }
 }

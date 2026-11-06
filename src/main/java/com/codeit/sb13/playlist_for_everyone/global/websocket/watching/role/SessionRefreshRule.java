@@ -13,6 +13,6 @@ public class SessionRefreshRule extends SessionRule<WatchingSessionRefreshEvent>
 
     @Override
     public WatchingSessionRefreshEvent run(SessionInfo source) {
-        return new WatchingSessionRefreshEvent(source.session(), source.subscription(), source.user());
+        return new WatchingSessionRefreshEvent(source);
     }
 }
