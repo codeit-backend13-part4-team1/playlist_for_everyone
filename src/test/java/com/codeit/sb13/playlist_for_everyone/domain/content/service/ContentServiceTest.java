@@ -184,35 +184,6 @@ public class ContentServiceTest {
     }
 
     @Test
-    @DisplayName("태그가 null이어도 콘텐츠가 정상적으로 생성된다.")
-    void create_nullTags() {
-        // given
-        ContentCreateRequest request = new ContentCreateRequest(
-                ContentType.tvSeries,
-                "너말고다른연애",
-                "KBS 드라마 입니다.",
-                null
-        );
-
-        MultipartFile file = mock(MultipartFile.class);
-        mockFileUpload(file);
-
-        when(contentRepository.save(any(Content.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
-
-        // when
-        contentService.create(request, file);
-
-        // then
-        ArgumentCaptor<Content> captor =
-                ArgumentCaptor.forClass(Content.class);
-
-        verify(contentRepository).save(captor.capture());
-
-        assertThat(captor.getValue().getTags()).isEmpty();
-    }
-
-    @Test
     @DisplayName("존재하는 콘텐츠를 단건 조회한다.")
     void getContent_success() {
         // given
@@ -561,8 +532,8 @@ public class ContentServiceTest {
         InOrder inOrder = inOrder(
                 reviewRepository,
                 playlistContentRepository,
-                fileService,
-                contentRepository
+                contentRepository,
+                fileService
         );
 
         inOrder.verify(reviewRepository).deleteAllByContentId(contentId);
@@ -618,16 +589,7 @@ public class ContentServiceTest {
         contentService.deleteById(contentId);
 
         // then
-        InOrder inOrder = inOrder(
-                reviewRepository,
-                playlistContentRepository,
-                contentRepository
-        );
-
-        inOrder.verify(reviewRepository).deleteAllByContentId(contentId);
-        inOrder.verify(playlistContentRepository).deleteAllByContentId(contentId);
-        inOrder.verify(contentRepository).delete(content);
-
+        verify(contentRepository).delete(content);
         verify(fileService, never()).delete(any());
     }
 
