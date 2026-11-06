@@ -15,11 +15,11 @@ import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
-public class WatchingChatMessageListener extends RedisMessageListener {
+public class ChatSessionMessageListener extends RedisMessageListener {
 
     private final SimpMessagingTemplate message;
 
-    public WatchingChatMessageListener(
+    public ChatSessionMessageListener(
             RedisTemplate<String, Object> redisTemplate,
             @Qualifier("redisSerializer") GenericJacksonJsonRedisSerializer serializer,
             SimpMessagingTemplate simpMessagingTemplate

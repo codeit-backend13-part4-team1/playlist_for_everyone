@@ -96,4 +96,9 @@ public class WatchingSessionEventListener {
     @EventListener
     public void chatLeaveEvent(WatchingChatLeaveEvent event){
     }
+
+    @EventListener
+    public void chatSendEvent(WatchingChatSendEvent event){
+    }
+
 }

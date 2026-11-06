@@ -115,6 +115,25 @@ public class WatchingSession {
         );
     }
 
+    /**
+     * 세션 정보를 바탕으로 동시 시청 채팅 채널에 등록 한다.
+     * @param info 세션 정보.
+     */
+    public void joinChatSession(SessionInfo info){
+
+    }
+
+
+    /**
+     * 세션 정보를 바탕으로 동시 시청 채팅 채널에서 탈퇴 한다.
+     * @param info 세션 정보.
+     */
+    public void leaveChatSession(SessionInfo info){
+
+    }
+
+
+
     private WatchingSessionChange getWatchingSessionChange(
             ChangeType type,
             SecurityUser auth,

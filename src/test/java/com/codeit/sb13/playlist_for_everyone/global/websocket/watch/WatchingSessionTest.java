@@ -117,10 +117,10 @@ public class WatchingSessionTest {
      * redis 구독 등록을 위한 테스트용 편의 매서드
      */
     // 테스트용 서비스 타입
-    final String WATCH_SERVICE = "watch";
-    final String CHAT_SERVICE = "chat";
+    static final String WATCH_SERVICE = "watch";
+    static final String CHAT_SERVICE = "chat";
 
-    String testDestination(String contentId, String serviceType){
+    static String testDestination(String contentId, String serviceType){
         return switch (serviceType) {
             case WATCH_SERVICE -> "/sub/contents/" + contentId + "/watch";
             case CHAT_SERVICE -> "/sub/contents/" + contentId + "/chat";
@@ -429,6 +429,155 @@ public class WatchingSessionTest {
     }
 
 
+    /**
+     * ChatSession 테스트
+     * 외부에서 세션 정보를 받아와서, 같은 채팅방(redis 메세지 퍼블리셔)를 구독하는 로직
+     * 해당 클래스의 역할은
+     * 1. 인증, 인가 검사
+     * 2. 경로 검사
+     * 3. 이벤트 발신 및 기타 로직 수행
+     */
+    @Nested
+    @DisplayName("ChatSession 테스트")
+    class ChatSessionTest {
+
+        static String sessionId = "test-session";
+        static String subscriptionId = "test-sub";
+        static String contentId = UUID.randomUUID().toString();
+        static String destination = testDestination(contentId, CHAT_SERVICE);
+
+
+        @Nested
+        @DisplayName("join 검사")
+        class JoinTest {
+
+            @Test
+            @DisplayName("세션 정보를 바탕으로, 토픽을 받아오고, ChatSession 을 구독한다.")
+            void joinSessionTest(){
+                SessionInfo info = getSessionInfo(
+                        sessionId,
+                        subscriptionId,
+                        destination,
+                        Role.USER
+                );
+
+                // 현재 유저 정보를 통한 인증, 인가 검사용 호출
+                userServiceLogicSet(Objects.requireNonNull(info.user()));
+
+                watchingSession.joinChatSession(info);
+
+                verify(watchingSessionService).joinChatSession(eq(info));
+            }
+
+            static Stream<Arguments> nullableTestArgv(){
+                return Stream.of(
+                        Arguments.of(null, subscriptionId, destination),
+                        Arguments.of(sessionId, null, destination),
+                        Arguments.of(sessionId, subscriptionId, null),
+                        Arguments.of(sessionId, subscriptionId, "/test/pattern/123")
+                );
+            }
+
+            @ParameterizedTest
+            @MethodSource("nullableTestArgv")
+            @DisplayName("세션 정보나, 경로 정보가 없거나, 경로 정보가 지정된 형식이 아니면, 리소스를 등록하기 전에 예외를 반환한다.")
+            void leaveTestWithNoArgv(String session, String subscription, String destination){
+                SessionInfo info = getSessionInfo(
+                        session,
+                        subscription,
+                        destination,
+                        Role.USER
+                );
+
+                // 리소스 조회는 아예 하지 않는다.
+                assertThatThrownBy(() -> watchingSession.joinChatSession(info))
+                        .isInstanceOf(EveryOneException.class);
+
+                verifyNoInteractions(watchingSessionService);
+                verifyNoInteractions(userService);
+            }
+
+            static Stream<Arguments> authenticationTestArgv(){
+                return Stream.of(
+                        Arguments.of(Role.USER,true)
+                );
+            }
+
+            @ParameterizedTest
+            @MethodSource("authenticationTestArgv")
+            @DisplayName("유저의 인가 권한이 없거나, 유저가 잠겨있으면 리소스를 등록하기 전에 예외를 반환한다.")
+            void leaveTestWithLockedUser(Role role, boolean isLocked){
+                SessionInfo info = getSessionInfo(
+                        sessionId,
+                        subscriptionId,
+                        destination,
+                        role,
+                        isLocked
+                );
+
+                userServiceLogicSet(info.user());
+
+                assertThatThrownBy(() -> watchingSession.joinChatSession(info))
+                        .isInstanceOf(EveryOneException.class);
+
+                verifyNoInteractions(watchingSessionService);
+            }
+
+        }
+
+        @Nested
+        @DisplayName("leave 검사")
+        class Leave{
+
+            @Test
+            @DisplayName("세션 정보를 바탕으로, 토픽을 받아오고, ChatSession 을 구독 취소 한다.")
+            void joinSessionTest(){
+                SessionInfo info = getSessionInfo(
+                        sessionId,
+                        subscriptionId,
+                        destination,
+                        Role.USER
+                );
+
+                // 현재 유저 정보를 통한 인증, 인가 검사용 호출
+                userServiceLogicSet(Objects.requireNonNull(info.user()));
+
+                watchingSession.leaveChatSession(info);
+
+                verify(watchingSessionService).leaveChatSession(eq(info));
+            }
+
+            // 등록 취소는 구독 정보가 없을 수 있다. -> 없으면 delete
+            static Stream<Arguments> nullableTestArgv(){
+                return Stream.of(
+                        Arguments.of(null, subscriptionId, destination),
+                        Arguments.of(sessionId, subscriptionId, null),
+                        Arguments.of(sessionId, subscriptionId, "/test/pattern/123")
+                );
+            }
+
+            @ParameterizedTest
+            @MethodSource("nullableTestArgv")
+            @DisplayName("세션 정보나, 경로 정보가 없거나, 경로 정보가 지정된 형식이 아니면, 리소스를 등록하기 전에 예외를 반환한다.")
+            void leaveTestWithNoArgv(String session, String subscription, String destination){
+                SessionInfo info = getSessionInfo(
+                        session,
+                        subscription,
+                        destination,
+                        Role.USER
+                );
+
+                // 리소스 조회는 아예 하지 않는다.
+                assertThatThrownBy(() -> watchingSession.leaveChatSession(info))
+                        .isInstanceOf(EveryOneException.class);
+
+                verifyNoInteractions(watchingSessionService);
+                verifyNoInteractions(userService);
+            }
+        }
+
+
+    }
 
 
 }
