@@ -63,21 +63,24 @@ class SseRecoveryServiceTest {
     }
 
     @Test
-    @DisplayName("마지막 이벤트 ID가 없으면 스냅샷을 조회하고 빈 복구 목록은 전송하지 않는다.")
+    @DisplayName("마지막 이벤트 ID가 없으면 재전송 없이 현재 이력의 끝 위치를 반환한다.")
     void queriesSnapshotWithoutReplayWhenLastEventIdIsMissing() throws IOException {
-        SseHistorySnapshot snapshot = new SseHistorySnapshot(new SseHistoryPosition("1000-0"), List.of());
+        SseHistoryPosition upperBound = createHistoryPosition();
+        SseHistorySnapshot snapshot = new SseHistorySnapshot(upperBound, List.of());
 
         when(historyStore.snapshot(userId, null))
                 .thenReturn(snapshot);
 
-        service.recover(userId, connection, emitter, null);
+        SseHistoryPosition result = service.recover(userId, connection, emitter, null);
 
+        assertThat(result).isEqualTo(upperBound);
         verify(historyStore).snapshot(userId, null);
         verify(emitter, never()).send(any(SseEmitter.SseEventBuilder.class));
     }
 
+
     @Test
-    @DisplayName("스냅샷 이벤트를 순서대로 전송하며 ID와 이름 및 데이터를 유지한다.")
+    @DisplayName("스냅샷 이벤트의 순서와 내용을 유지하여 전송하고 끝 위치를 반환한다.")
     void replaysSnapshotEventsInOrderAndPreservesContents() throws IOException {
         SseEvent<JsonNode> firstEvent = SseEvent.createNotificationEvent(
                 UUID.fromString("00000000-0000-0000-0000-000000000002"),
@@ -97,13 +100,13 @@ class SseRecoveryServiceTest {
                 jsonMapper.readTree("null")
         );
 
-        SseHistoryEntry firstEntry = new SseHistoryEntry(new SseHistoryPosition("1000-0"), firstEvent);
-        SseHistoryEntry secondEntry = new SseHistoryEntry(new SseHistoryPosition("1000-1"), secondEvent);
+        SseHistoryEntry firstEntry = new SseHistoryEntry(createHistoryPosition(), firstEvent);
+        SseHistoryEntry secondEntry = new SseHistoryEntry(createHistoryPosition("1000-1"), secondEvent);
 
         when(historyStore.snapshot(userId, lastEventId))
                 .thenReturn(new SseHistorySnapshot(secondEntry.position(), List.of(firstEntry, secondEntry)));
 
-        service.recover(userId, connection, emitter, lastEventId);
+        SseHistoryPosition result = service.recover(userId, connection, emitter, lastEventId);
 
         ArgumentCaptor<SseEmitter.SseEventBuilder> eventCaptor = ArgumentCaptor.forClass(SseEmitter.SseEventBuilder.class);
         verify(emitter, times(2)).send(eventCaptor.capture());
@@ -114,9 +117,9 @@ class SseRecoveryServiceTest {
 
         verify(historyStore).snapshot(userId, lastEventId);
         verify(historyStore, never()).append(any());
+        assertThat(result).isEqualTo(secondEntry.position());
 
     }
-
     @Test
     @DisplayName("같은 사용자의 두 연결에 각자의 마지막 이벤트 ID 이후 복구 목록만 전송한다.")
     void replaysSnapshotsIndependentlyForConnectionsOfSameUser() throws IOException {
@@ -139,8 +142,8 @@ class SseRecoveryServiceTest {
                         }
                         """));
 
-        SseHistoryEntry firstEntry = new SseHistoryEntry(new SseHistoryPosition("1000-0"), firstEvent);
-        SseHistoryEntry secondEntry = new SseHistoryEntry(new SseHistoryPosition("1000-1"), secondEvent);
+        SseHistoryEntry firstEntry = new SseHistoryEntry(createHistoryPosition(), firstEvent);
+        SseHistoryEntry secondEntry = new SseHistoryEntry(createHistoryPosition("1000-1"), secondEvent);
 
         when(historyStore.snapshot(userId, lastEventId))
                 .thenReturn(new SseHistorySnapshot(secondEntry.position(),
@@ -184,12 +187,12 @@ class SseRecoveryServiceTest {
     @Test
     @DisplayName("전송 중 IOException이 발생하면 원인을 보존한 예외를 전달하고 나머지 전송을 중단한다.")
     void stopsReplayAndPreservesCauseWhenSendingFailsWithIoException() throws IOException {
-        SseHistoryEntry firstEntry = new SseHistoryEntry(new SseHistoryPosition("1000-0"),
+        SseHistoryEntry firstEntry = new SseHistoryEntry(createHistoryPosition(),
                 SseEvent.createNotificationEvent(UUID.randomUUID(),
                         userId,
                         jsonMapper.readTree("{}")));
 
-        SseHistoryEntry secondEntry = new SseHistoryEntry(new SseHistoryPosition("1000-1"),
+        SseHistoryEntry secondEntry = new SseHistoryEntry(createHistoryPosition("1000-1"),
                 SseEvent.createNotificationEvent(UUID.randomUUID(),
                         userId,
                         jsonMapper.readTree("{}")));
@@ -221,12 +224,12 @@ class SseRecoveryServiceTest {
     @Test
     @DisplayName("전송 중 IllegalStateException이 발생하면 원인을 보존한 예외를 전달하고 나머지 전송을 중단한다.")
     void stopsReplayAndPropagatesIllegalStateException() throws IOException {
-        SseHistoryEntry firstEntry = new SseHistoryEntry(new SseHistoryPosition("1000-0"),
+        SseHistoryEntry firstEntry = new SseHistoryEntry(createHistoryPosition(),
                 SseEvent.createNotificationEvent(UUID.randomUUID(),
                         userId,
                         jsonMapper.readTree("{}")));
 
-        SseHistoryEntry secondEntry = new SseHistoryEntry(new SseHistoryPosition("1000-1"),
+        SseHistoryEntry secondEntry = new SseHistoryEntry(createHistoryPosition("1000-1"),
                 SseEvent.createNotificationEvent(UUID.randomUUID(),
                         userId,
                         jsonMapper.readTree("{}")));
@@ -275,5 +278,13 @@ class SseRecoveryServiceTest {
         assertThat(actualData).isEqualTo(expected.data());
         assertThat(parts.get(2).getData()).isEqualTo("\n\n");
 
+    }
+
+    private SseHistoryPosition createHistoryPosition() {
+        return createHistoryPosition("1000-0");
+    }
+
+    private SseHistoryPosition createHistoryPosition(String position) {
+        return new SseHistoryPosition(position);
     }
 }
