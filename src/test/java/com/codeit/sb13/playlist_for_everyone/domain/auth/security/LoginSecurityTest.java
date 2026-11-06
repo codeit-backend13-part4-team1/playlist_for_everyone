@@ -7,7 +7,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AuthService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.controller.UserController;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
-import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
+import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserAdministrationService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.config.MDCLoggingInterceptor;
 import com.codeit.sb13.playlist_for_everyone.global.config.PasswordEncoderConfig;
@@ -26,7 +26,6 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -96,6 +95,9 @@ class LoginSecurityTest {
     // 여기서는 로그인 성공 후 저장 요청이 전달되는지 확인 한다.
     @MockitoBean
     private RefreshTokenRepository refreshTokenRepository;
+
+    @MockitoBean
+    private UserAdministrationService userAdministrationService;
 
 
     @MockitoBean
