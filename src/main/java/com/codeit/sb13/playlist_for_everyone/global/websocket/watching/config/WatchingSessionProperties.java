@@ -1,6 +1,8 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config;
 
 
+import com.codeit.sb13.playlist_for_everyone.global.service.MatchRule;
+
 import java.util.regex.Pattern;
 
 /**
@@ -8,6 +10,10 @@ import java.util.regex.Pattern;
  */
 
 public class WatchingSessionProperties {
+
+    static public final String PATH_PREFIX = "/sub/contents/";
+    static public final String VIEW_POSTFIX = "/watch";
+    static public final String CHAT_POSTFIX = "/chat";
 
     // redis Prefix
     // watchingSession 의 세션 저장소용 prefix
@@ -17,16 +23,14 @@ public class WatchingSessionProperties {
     static public final String MESSAGE_CHAT_PREFIX = "message:watching:chat:";
     static public final String MESSAGE_VIEW_PREFIX = "message:watching:view:";
 
-    static private  String uuidPatternString(){
-        return "([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})";
-    }
+    static public final String UUID_REGEX = "([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})";
 
     static public Pattern watchingSessionUrlPattern(){
-        return Pattern.compile("^/sub/contents/" + uuidPatternString() + "/watch$");
+        return Pattern.compile("^" + PATH_PREFIX + UUID_REGEX + VIEW_POSTFIX + "$");
     }
 
     static public Pattern watchingChatUrlPattern(){
-        return Pattern.compile("^/sub/contents/" + uuidPatternString() + "/chat$");
+        return Pattern.compile("^" + PATH_PREFIX + UUID_REGEX + CHAT_POSTFIX + "$");
     }
 
 }

@@ -3,8 +3,8 @@ package com.codeit.sb13.playlist_for_everyone.domain.auth.security;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
-import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -21,7 +21,6 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
-import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -34,8 +33,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("로그인 성공 처리")
@@ -139,7 +137,7 @@ class JwtAuthenticationSuccessHandlerTest {
         assertThat(userDto.path("profileImageUrl").isNull()).isTrue();
 
         // 인증된 사용자의 ID로 조회하고 토큰을 발급해야 한다.
-        verify(userService).getById(USER_ID);
+        verify(userService).getUserDtoById(USER_ID);
         verify(jwtTokenProvider).createAccessToken(USER_ID);
     }
 
@@ -265,75 +263,122 @@ class JwtAuthenticationSuccessHandlerTest {
     @Test
     @DisplayName("Refresh Token 저장에 실패하면 쿠키와 성공 응답 본문을 전달하지 않는다.")
     void 저장_실패시_토큰_응답을_전달하지_않는다() throws Exception {
-        User user = User.builder()
-                .email(EMAIL)
-                .name("테스트 사용자")
-                .password(ENCODED_PASSWORD)
-                .role(Role.USER)
-                .build();
+        Authentication authentication = prepareAuthentication();
 
-        ReflectionTestUtils.setField(user, "id", USER_ID);
-        ReflectionTestUtils.setField(user, "createdAt", LocalDateTime.of(2026, 10, 27, 12, 0));
-
-        given(userService.getById(USER_ID)).willReturn(user);
         given(jwtTokenProvider.createRefreshToken(USER_ID))
                 .willReturn(REFRESH_TOKEN);
 
-        SecurityUser principal = new SecurityUser(
-                USER_ID,
-                EMAIL,
-                ENCODED_PASSWORD,
-                Role.USER,
-                false
-        );
-        principal.eraseCredentials();
+        RedisConnectionFailureException failure =
+                new RedisConnectionFailureException("테스트용 Redis 연결 실패");
 
-        Authentication authentication = UsernamePasswordAuthenticationToken.authenticated(
-                principal,
-                null,
-                principal.getAuthorities()
-        );
-
-        RedisConnectionFailureException failure = new RedisConnectionFailureException("테스트용 Redis 연결 실패");
-
-        // Redis 장애가 발생한 상황을 재현한다.
         doThrow(failure)
                 .when(refreshTokenRepository)
                 .save(USER_ID, REFRESH_TOKEN, REFRESH_TOKEN_VALIDITY);
 
-
-        JwtAuthenticationSuccessHandler handler = createRefreshSuccessHandler(true);
-
-        assertThatThrownBy(()-> handler.onAuthenticationSuccess(request, response, authentication))
+        assertThatThrownBy(() ->
+                successHandler.onAuthenticationSuccess(
+                        request, response, authentication
+                ))
                 .isSameAs(failure);
 
-        // 저장 실패 전에 토큰 쿠키나 성공 본문을 작성하면 안 된다.
-        assertThat(response.getHeaders(HttpHeaders.SET_COOKIE))
-                .isEmpty();
+        // 토큰 저장에 실패했다면 성공 쿠키와 본문을 전달하지 않는다.
+        assertThat(response.getHeaders(HttpHeaders.SET_COOKIE)).isEmpty();
         assertThat(response.getContentAsString()).isEmpty();
         assertThat(response.isCommitted()).isFalse();
     }
 
 
-    private Authentication prepareAuthentication() {
-        User user = User.builder()
-                .email(EMAIL)
-                .name("테스트 사용자")
-                .password(ENCODED_PASSWORD)
-                .role(Role.USER)
-                .build();
+    @Test
+    @DisplayName("로그인 응답에 사용자 DTO의 프로필 이미지 URL을 포함한다")
+    void 로그인_응답에_프로필_이미지_URL을_포함한다() throws Exception {
+        // 실제 S3 요청 없이 URL이 응답까지 전달되는지를 검증한다.
+        String profileImageUrl =
+                "https://example.com/profile.png?signature=test";
 
-        ReflectionTestUtils.setField(user, "id", USER_ID);
-        ReflectionTestUtils.setField(
-                user,
-                "createdAt",
-                LocalDateTime.of(2026, 10, 27, 12, 0)
+        Authentication authentication =
+                prepareAuthentication(profileImageUrl);
+
+        given(jwtTokenProvider.createRefreshToken(USER_ID))
+                .willReturn(REFRESH_TOKEN);
+
+        successHandler.onAuthenticationSuccess(
+                request, response, authentication
         );
 
-        given(userService.getById(USER_ID)).willReturn(user);
+        JsonNode body = objectMapper.readTree(
+                response.getContentAsString(StandardCharsets.UTF_8)
+        );
+
+        assertThat(body.path("userDto").path("profileImageUrl").asString())
+                .isEqualTo(profileImageUrl);
+
+        verify(userService).getUserDtoById(USER_ID);
+        verify(refreshTokenRepository).save(
+                USER_ID, REFRESH_TOKEN, REFRESH_TOKEN_VALIDITY
+        );
+    }
+
+    @Test
+    @DisplayName("사용자 DTO 조회에 실패하면 토큰을 발급하거나 성공 응답을 작성하지 않는다")
+    void 사용자_DTO_조회_실패시_토큰을_발급하지_않는다() throws Exception {
+        // 성공용 준비 메서드를 사용하지 않아 불필요한 토큰 발급 스텁을 만들지 않는다.
+        Authentication authentication = createAuthentication();
+
+        IllegalStateException failure =
+                new IllegalStateException("프로필 이미지 URL 생성 실패");
+
+        given(userService.getUserDtoById(USER_ID))
+                .willThrow(failure);
+
+        assertThatThrownBy(() ->
+                successHandler.onAuthenticationSuccess(
+                        request, response, authentication
+                ))
+                .isSameAs(failure);
+
+        // DTO를 완성하지 못했으면 새 토큰이나 Redis 등록 정보가 남으면 안 된다.
+        verifyNoInteractions(jwtTokenProvider, refreshTokenRepository);
+
+        assertThat(response.getHeaders(HttpHeaders.SET_COOKIE)).isEmpty();
+        assertThat(response.getContentAsString()).isEmpty();
+        assertThat(response.isCommitted()).isFalse();
+    }
+
+
+    // 프로필 이미지가 없는 사용자의 로그인 성공 상황을 준비한다.
+    // 기존 테스트는 이 메서드를 그대로 사용한다.
+    private Authentication prepareAuthentication() {
+        return prepareAuthentication(null);
+    }
+
+    /**
+     * UserService가 완성한 DTO를 반환하도록 준비
+     * URL 생성 자체는 UserService의 책임이며, 여기서는 전달 여부를 검증한다.
+     */
+    private Authentication prepareAuthentication(String profileImageUrl) {
+        UserDto userDto = new UserDto(
+                USER_ID,
+                LocalDateTime.of(2026, 10, 27, 12, 0),
+                EMAIL,
+                "테스트 사용자",
+                profileImageUrl,
+                Role.USER,
+                false
+        );
+
+        given(userService.getUserDtoById(USER_ID))
+                .willReturn(userDto);
         given(jwtTokenProvider.createAccessToken(USER_ID))
                 .willReturn(ACCESS_TOKEN);
 
+        return createAuthentication();
+    }
+
+    /**
+     * 인증 완료 상태만 생성한다.
+     * 실패 테스트에서도 사용할 수 있도록 서비스와 토큰 발급은 스텁하지 않는다.
+     */
+    private Authentication createAuthentication() {
         SecurityUser principal = new SecurityUser(
                 USER_ID,
                 EMAIL,

@@ -12,7 +12,8 @@ import org.springframework.data.repository.query.Param;
 public interface PlaylistRepository
     extends JpaRepository<Playlist, UUID>, PlaylistCustomRepository {
 
-  @Query("select p from Playlist p join fetch p.owner where p.id = :id")
+  @Query("select p from Playlist p join fetch p.owner o "
+      + "left join fetch o.profileImage where p.id = :id")
   Optional<Playlist> findWithOwnerById(@Param("id") UUID id);
 
   @Modifying(flushAutomatically = true, clearAutomatically = true)

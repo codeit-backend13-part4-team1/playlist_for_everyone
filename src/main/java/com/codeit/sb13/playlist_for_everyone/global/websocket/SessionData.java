@@ -40,6 +40,23 @@ public class SessionData {
         this.principal = principal;
     }
 
+    // 내부 매서드용 생성자.
+    private SessionData(
+            UUID id,
+            Instant instant,
+            String session,
+            @Nullable String subscription,
+            @Nullable String destination,
+            @Nullable Principal principal
+    ) {
+        this.id = id;
+        this.createdAt = instant;
+        this.sessionId = Objects.requireNonNull(session);
+        this.subscriptionId = subscription;
+        this.destination = destination;
+        this.principal = principal;
+    }
+
     public UUID id() {
         return id;
     }
@@ -67,6 +84,19 @@ public class SessionData {
             return (SecurityUser) authentication.getPrincipal();
         return null;
     }
+
+    static public SessionData copyOf(SessionData object){
+        Objects.requireNonNull(object);
+        return new SessionData(
+                object.id(),
+                object.createdAt(),
+                object.session(),
+                object.subscription(),
+                object.destination(),
+                object.principal()
+        );
+    }
+
 
     // equals 와 hashCode 는 sessionId 와 subscriptionId 를 기준으로 구현한다.
     @Override
