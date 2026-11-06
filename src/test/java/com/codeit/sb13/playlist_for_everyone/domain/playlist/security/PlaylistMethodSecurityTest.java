@@ -14,6 +14,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.impl.Playli
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
+import com.codeit.sb13.playlist_for_everyone.global.file.storage.FileStorage;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -51,6 +52,9 @@ class PlaylistMethodSecurityTest {
 
   @MockitoBean
   private SubscriptionRepository subscriptionRepository;
+
+  @MockitoBean
+  private FileStorage fileStorage;
 
   @Test
   @WithMockUser
