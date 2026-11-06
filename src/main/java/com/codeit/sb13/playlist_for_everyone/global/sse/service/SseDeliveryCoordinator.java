@@ -5,23 +5,38 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 @RequiredArgsConstructor
 public class SseDeliveryCoordinator {
 
+    private final Map<ConnectionKey, SseEmitter> registeredEmitters = new ConcurrentHashMap<>();
+
     private final SseRecoveryService recoveryService;
 
     public void register(UUID userId, Connection connection, SseEmitter emitter){
-
+        ConnectionKey key = new ConnectionKey(userId, connection);
+        registeredEmitters.put(key, emitter);
     }
 
     public void recover(UUID userId, Connection connection, UUID lastEventId){
-
+        ConnectionKey key = new ConnectionKey(userId, connection);
+        SseEmitter emitter = registeredEmitters.get(key);
+        if (emitter == null) return;
+        recoveryService.recover(userId, connection, emitter, lastEventId);
     }
 
     public void remove(UUID userId, Connection connection){
+        ConnectionKey key = new ConnectionKey(userId, connection);
+        registeredEmitters.remove(key);
+    }
+
+    private record ConnectionKey(UUID userId, Connection connection){
 
     }
+
+
 }
