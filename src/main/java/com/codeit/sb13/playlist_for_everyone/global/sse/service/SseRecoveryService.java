@@ -43,7 +43,7 @@ public class SseRecoveryService {
                     }
                 });
 
-        return null;
+        return snapshot.upperBound();
     }
 
 }
