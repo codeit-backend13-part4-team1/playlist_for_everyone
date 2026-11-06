@@ -77,6 +77,8 @@ class ContentCollectionServiceTest {
         Content found = em.find(Content.class, saved.getId());
 
         assertThat(found).isNotNull();
+        assertThat(found.getCreatedAt()).isNotNull();
+        assertThat(found.getUpdatedAt()).isEqualTo(found.getCreatedAt());
         assertThat(found.getTitle()).isEqualTo("테스트 영화");
         assertThat(found.getProvider()).isEqualTo(ContentSource.TMDB);
         assertThat(found.getProviderItemId()).isEqualTo("550");
@@ -449,6 +451,19 @@ class ContentCollectionServiceTest {
                     .getSingleResult();
 
             assertThat(count).isEqualTo(1L);
+
+            List<String> savedTags = em.createQuery(
+                            """
+                            select t.tag from ContentTag t
+                            where t.content.id = :contentId
+                            """,
+                            String.class
+                    )
+                    .setParameter("contentId", first.getId())
+                    .getResultList();
+
+            assertThat(savedTags).containsExactly("액션");
+
         } finally {
             executor.shutdownNow();
 
