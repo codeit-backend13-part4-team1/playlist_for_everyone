@@ -320,17 +320,16 @@ class SseRecoveryServiceTest {
     }
 
     @Test
-    @DisplayName("후속 이력의 유실이 감지되면 이벤트를 전송하지 않고 예외를 전달한다.")
-    void throwsIllegalStateExceptionWithoutSendingWhenHistoryGapDetected() throws IOException {
+    @DisplayName("기준 위치가 보관 이력에 없고 남은 후속 이력도 없으면 예외 없이 기존 위치를 반환한다.")
+    void keepsPositionWithoutSendingWhenHistoryGapHasNoRemainingEntries() throws IOException {
         SseHistoryPosition afterPosition = createHistoryPosition();
 
         when(historyStore.readAfter(userId, afterPosition))
                 .thenReturn(new SseHistoryReadResult(true, List.of()));
-
-        assertThatThrownBy(() -> service.recoverAfter(userId, connection, emitter, afterPosition))
-                .isInstanceOf(IllegalStateException.class);
+        SseHistoryPosition result = service.recoverAfter(userId, connection, emitter, afterPosition);
 
         verify(historyStore).readAfter(userId, afterPosition);
+        assertThat(result).isEqualTo(afterPosition);
         verify(emitter, never()).send(any(SseEmitter.SseEventBuilder.class));
 
     }
@@ -349,6 +348,47 @@ class SseRecoveryServiceTest {
         verify(historyStore).readAfter(userId, afterPosition);
         verify(emitter, never()).send(any(SseEmitter.SseEventBuilder.class));
     }
+
+
+    @Test
+    @DisplayName("기준 위치가 보관 이력에 없어도 남은 후속 이벤트를 순서대로 전송하고 마지막 위치를 반환한다.")
+    void sendsRemainingEventsInOrderAndReturnsLastPositionWhenHistoryGapDetected() throws IOException {
+        SseHistoryPosition afterPosition = createHistoryPosition();
+
+        SseEvent<JsonNode> firstEvent = SseEvent.createNotificationEvent(
+                UUID.fromString("00000000-0000-0000-0000-000000000002"),
+                userId,
+                jsonMapper.readTree("""
+                        {"message": "첫 번째 후속 알림"}
+                        """)
+        );
+
+        SseEvent<JsonNode> secondEvent = SseEvent.createNotificationEvent(
+                UUID.fromString("00000000-0000-0000-0000-000000000001"),
+                userId,
+                jsonMapper.readTree("""
+                        {"message": "두 번째 후속 알림"}
+                        """)
+        );
+
+        SseHistoryEntry firstEntry = new SseHistoryEntry(createHistoryPosition("1000-1"), firstEvent);
+        SseHistoryEntry secondEntry = new SseHistoryEntry(createHistoryPosition("1000-2"), secondEvent);
+
+        when(historyStore.readAfter(userId, afterPosition))
+                .thenReturn(new SseHistoryReadResult(true, List.of(firstEntry, secondEntry)));
+
+        SseHistoryPosition result = service.recoverAfter(userId, connection, emitter, afterPosition);
+        verify(historyStore).readAfter(userId, afterPosition);
+
+        ArgumentCaptor<SseEmitter.SseEventBuilder> eventCaptor = ArgumentCaptor.forClass(SseEmitter.SseEventBuilder.class);
+        verify(emitter, times(2)).send(eventCaptor.capture());
+
+        List<SseEmitter.SseEventBuilder> sentEvents = eventCaptor.getAllValues();
+        assertSentEvent(sentEvents.get(0), firstEvent);
+        assertSentEvent(sentEvents.get(1), secondEvent);
+        assertThat(result).isEqualTo(secondEntry.position());
+    }
+
 
     private void assertSentEvent(SseEmitter.SseEventBuilder builder,
                                  SseEvent<JsonNode> expected){

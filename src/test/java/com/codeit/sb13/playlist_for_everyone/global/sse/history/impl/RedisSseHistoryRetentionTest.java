@@ -172,8 +172,8 @@ public class RedisSseHistoryRetentionTest {
         }
 
         @Test
-        @DisplayName("후속 조회 시 미수신 이력이 만료되면 누락을 감지하고 만료 이력과 UUID 매핑을 정리한다.")
-        void detectsGapAndRemovesExpiredEntriesWhenUnreadHistoryExpires() throws InterruptedException {
+        @DisplayName("기준 이력이 만료되어도 남은 후속이력을 반환하고 만료 이력과 UUID 매핑을 정리한다.")
+        void returnsRemainingEntriesAndRemovesExpiredHistoryWhenAfterPositionExpires() throws InterruptedException {
                 UUID receiverId = UUID.randomUUID();
                 long retentionMillis = historyProperties.retention().toMillis();
                 long halfRetentionMillis = retentionMillis / 2;
@@ -202,7 +202,7 @@ public class RedisSseHistoryRetentionTest {
 
                 assertThat(result).isNotNull();
                 assertThat(result.gapDetected()).isTrue();
-                assertThat(result.entries()).isEmpty();
+                assertThat(result.entries()).containsExactly(thirdSaved);
 
                 List<MapRecord<String, String, String>> records = findAllEventsByReceiverId(receiverId);
 

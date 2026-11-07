@@ -666,8 +666,8 @@ class RedisSseHistoryStoreTest {
         }
 
         @Test
-        @DisplayName("기준 위치 이후의 미수신 이력이 보관개수 제한으로 제거되면 누락을 감지하고 빈 목록을 반환한다.")
-        void detectsGapWhenUnreadEntriesAreTrimmed(){
+        @DisplayName("기준 위치가 보관 개수 제한으로 제거되어도 남은 후속 이력을 저장 순서대로 반환한다.")
+        void returnsRemainingEntriesWhenAfterPositionWasTrimmed(){
                 UUID receiverId = UUID.randomUUID();
 
                 SseEvent<JsonNode> firstEvent = SseEvent.createNotificationEvent(UUID.randomUUID(), receiverId, createTestMessageJson("첫 번째 이벤트"));
@@ -677,14 +677,14 @@ class RedisSseHistoryStoreTest {
 
                 SseHistoryEntry firstSaved = historyStore.append(firstEvent);
                 historyStore.append(secondEvent);
-                historyStore.append(thirdEvent);
-                historyStore.append(fourthEvent);
+                SseHistoryEntry thirdSaved = historyStore.append(thirdEvent);
+                SseHistoryEntry fourthSaved = historyStore.append(fourthEvent);
 
                 SseHistoryReadResult result = historyStore.readAfter(receiverId, firstSaved.position());
 
                 assertThat(result).isNotNull();
                 assertThat(result.gapDetected()).isTrue();
-                assertThat(result.entries()).isEmpty();
+                assertThat(result.entries()).containsExactly(thirdSaved, fourthSaved);
         }
 
         @Test
