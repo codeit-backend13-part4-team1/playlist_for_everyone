@@ -27,47 +27,97 @@ public class SseDeliveryCoordinator {
         ConnectionKey key = new ConnectionKey(userId, connection);
         ConnectionState state = connectionStates.get(key);
         if (state == null) return;
-        state.lastPosition = recoveryService.recover(userId, connection, state.emitter, lastEventId);
-        state.recovered = true;
-        if (state.pendingDelivery){
+
+        SseHistoryPosition recoveredPosition = recoveryService
+                .recover(userId, connection, state.emitter, lastEventId);
+        boolean hasPendingDelivery;
+
+        synchronized (state){
+            if(connectionStates.get(key) != state){
+                return;
+            }
+            state.lastPosition = recoveredPosition;
+            state.recovered = true;
+
+            hasPendingDelivery = state.pendingDelivery;
             state.pendingDelivery = false;
+        }
+
+        if (hasPendingDelivery){
             requestDelivery(userId, connection);
         }
     }
 
     public void remove(UUID userId, Connection connection){
         ConnectionKey key = new ConnectionKey(userId, connection);
-        connectionStates.remove(key);
+        ConnectionState state = connectionStates.get(key);
+
+        if (state == null) return;
+
+        synchronized (state){
+            if(connectionStates.remove(key, state)){
+                state.pendingDelivery = false;
+            }
+        }
     }
 
     public void requestDelivery(UUID userId, Connection connection){
         ConnectionKey key = new ConnectionKey(userId, connection);
         ConnectionState state = connectionStates.get(key);
+
         if (state == null){
             return;
         }
 
-        if (!state.recovered || state.delivering){
-            state.pendingDelivery = true;
-            return;
+        synchronized (state){
+            if (connectionStates.get(key) != state){
+                return;
+            }
+
+            if (!state.recovered || state.delivering){
+                state.pendingDelivery = true;
+                return;
+            }
+
+            state.delivering = true;
         }
 
-        state.delivering = true;
+        boolean deliveryReleased = false;
 
         try {
-            do {
-                if (connectionStates.get(key) != state){
-                    return;
+            while (true){
+                SseHistoryPosition afterPosition;
+                synchronized (state){
+                    if (connectionStates.get(key) != state){
+                        return;
+                    }
+                    state.pendingDelivery = false;
+                    afterPosition = state.lastPosition;
                 }
-
-                state.pendingDelivery = false;
-                state.lastPosition = recoveryService.recoverAfter(userId,
+                SseHistoryPosition nextPosition = recoveryService.recoverAfter(userId,
                         connection,
                         state.emitter,
-                        state.lastPosition);
-            } while (state.pendingDelivery);
+                        afterPosition);
+
+                synchronized (state){
+                    if (connectionStates.get(key) != state){
+                        return;
+                    }
+                    state.lastPosition = nextPosition;
+
+                    if (!state.pendingDelivery){
+                        state.delivering = false;
+                        deliveryReleased = true;
+                        return;
+                    }
+                }
+            }
         } finally {
-            state.delivering = false;
+            if (!deliveryReleased){
+                synchronized (state){
+                    state.delivering = false;
+                }
+            }
         }
     }
 
