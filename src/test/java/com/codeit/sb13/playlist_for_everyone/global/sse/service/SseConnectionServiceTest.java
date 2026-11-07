@@ -45,6 +45,9 @@ class SseConnectionServiceTest {
     @Mock
     private SseRecoveryService recoveryService;
 
+    @Mock
+    private SseDeliveryCoordinator deliveryCoordinator;
+
     private SseConnectionService service;
 
     @BeforeEach
@@ -484,26 +487,30 @@ class SseConnectionServiceTest {
     }
 
     @Test
-    @DisplayName("연결을 등록한 뒤 동일한 연결과 마지막 이벤트 ID로 복구를 요청한다.")
-    void connectRequestRecoveryAfterRegistration(){
+    @DisplayName("조정기에 연결을 등록한 뒤 저장소에 공개하고 마지막 이벤트 ID로 복구를 요청한다.")
+    void connectRegistersCoordinatorBeforeExposingConnectionAndRequestsRecovery(){
         UUID userId = UUID.randomUUID();
         UUID lastEventId = UUID.randomUUID();
 
         ArgumentCaptor<Connection> connectionCaptor = ArgumentCaptor.forClass(Connection.class);
         SseEmitter emitter = service.connect(userId, lastEventId);
 
-        InOrder inOrder = inOrder(repository, recoveryService);
+        InOrder inOrder = inOrder(deliveryCoordinator, repository);
+        inOrder.verify(deliveryCoordinator)
+                        .register(eq(userId), connectionCaptor.capture(), same(emitter));
+
+        Connection connection = connectionCaptor.getValue();
 
         inOrder.verify(repository)
-                .save(eq(userId), connectionCaptor.capture(), same(emitter));
+                .save(eq(userId), eq(connection), same(emitter));
 
-        inOrder.verify(recoveryService)
-                .recover(eq(userId), eq(connectionCaptor.getValue()), same(emitter), eq(lastEventId));
+        inOrder.verify(deliveryCoordinator)
+                .recover(userId, connection, lastEventId);
     }
 
     @Test
     @DisplayName("마지막 이벤트 ID가 없어도 등록한 연결의 복구를 요청한다.")
-    void connectRequestRecoveryWithoutLastEventId(){
+    void connectRequestsCoordinatorRecoveryWithoutLastEventId(){
         UUID userId = UUID.randomUUID();
 
         ArgumentCaptor<Connection> connectionCaptor = ArgumentCaptor.forClass(Connection.class);
@@ -513,8 +520,8 @@ class SseConnectionServiceTest {
         verify(repository)
                 .save(eq(userId), connectionCaptor.capture(), same(emitter));
 
-        verify(recoveryService)
-                .recover(eq(userId), eq(connectionCaptor.getValue()), same(emitter), isNull());
+        verify(deliveryCoordinator)
+                .recover(eq(userId), eq(connectionCaptor.getValue()), isNull());
     }
 
     @Test
