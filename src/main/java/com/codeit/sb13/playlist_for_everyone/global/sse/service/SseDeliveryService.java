@@ -5,12 +5,9 @@ import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.springframework.web.util.DisconnectedClientHelper;
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.util.Map;
@@ -30,7 +27,7 @@ public class SseDeliveryService {
 
     private final SseEmitterRepository sseEmitterRepository;
 
-    private final ObjectMapper objectMapper;
+    private final SseDeliveryCoordinator deliveryCoordinator;
 
     /**
      * 수신자의 모든 로컬 연결에 같은 논리적 이벤트를 전달한다.
@@ -43,18 +40,10 @@ public class SseDeliveryService {
      * @param sseEvent 수신자와 이벤트 ID, 이름 및 JSON으로 직렬화할 payload를 담은 이벤트
      */
     public void sendToLocalConnections(SseEvent<?> sseEvent){
-        Map<Connection, SseEmitter> connections = sseEmitterRepository.findAllByUserId(sseEvent.receiverId());
+        UUID receiverId = sseEvent.receiverId();
+        Map<Connection, SseEmitter> connections = sseEmitterRepository.findAllByUserId(receiverId);
 
         if (connections.isEmpty()){
-            return;
-        }
-
-        final String jsonData;
-        try {
-            jsonData = objectMapper.writeValueAsString(sseEvent.data());
-        }catch (JacksonException e){
-            log.warn("SSE 데이터 JSON 변환 실패로 이벤트 전송을 건너뜁니다. eventId={}, receiverId={}",
-                    sseEvent.eventId(), sseEvent.receiverId(), e);
             return;
         }
 
@@ -63,16 +52,12 @@ public class SseDeliveryService {
             try {
                 // 전송 전에 JSON으로 변환한 data를 모든 연결에 재사용한다.
                 // 연결 ID와 이벤트 ID는 별개이며, 여러 탭에 보내도 동일 이벤트의 id는 유지한다.
-                emitter.send(
-                        SseEmitter.event()
-                        .id(sseEvent.eventId().toString())
-                        .name(sseEvent.eventName())
-                        .data(jsonData, MediaType.APPLICATION_JSON)
-                );
-            } catch (IOException | IllegalStateException e) {
+                deliveryCoordinator.requestDelivery(receiverId, connection);
+            } catch (RuntimeException e) {
                 // 실패한 연결만 전송 대상에서 제외하고 다음 연결을 계속 처리한다.
                 // 아직 열리지 않은 연결 요청의 실패를 호출자에게 전파하는 connect와 처리 목적이 다르다.
-                sseEmitterRepository.delete(sseEvent.receiverId(), connection);
+                deliveryCoordinator.remove(receiverId, connection);
+                sseEmitterRepository.delete(receiverId, connection);
                 logSseEventDeliveryIssue(sseEvent, connection, e);
             }
         });

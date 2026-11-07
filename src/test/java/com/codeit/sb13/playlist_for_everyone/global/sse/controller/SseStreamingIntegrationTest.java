@@ -8,14 +8,19 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.config.SecurityConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.SseConfig;
+import com.codeit.sb13.playlist_for_everyone.global.config.SseEventPublisherConfig;
+import com.codeit.sb13.playlist_for_everyone.global.exception.sse.SsePublishException;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Event;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
+import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEventPublisher;
+import com.codeit.sb13.playlist_for_everyone.global.sse.history.*;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.impl.InMemorySseEmitterRepository;
 import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseConnectionService;
 import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseDeliveryCoordinator;
 import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseDeliveryService;
+import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseRecoveryService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -39,6 +44,7 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.annotation.DirtiesContext.ClassMode;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.BufferedReader;
@@ -47,12 +53,14 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.doAnswer;
 
 /**
  * 실제 내장 Tomcat에 HTTP 요청을 보내 클라이언트가 받는 SSE 프레임을 검증한다.
@@ -68,7 +76,10 @@ import static org.mockito.BDDMockito.given;
                 SseDeliveryService.class,
                 InMemorySseEmitterRepository.class,
                 SseConfig.class,
-                SecurityConfig.class
+                SecurityConfig.class,
+                SseDeliveryCoordinator.class,
+                SseRecoveryService.class,
+                SseEventPublisherConfig.class
         },
         properties = {
                 "everyone.sse.connection-timeout=30s"
@@ -104,6 +115,9 @@ public class SseStreamingIntegrationTest {
     @Autowired
     private SseEmitterRepository sseEmitterRepository;
 
+    @Autowired
+    private SseEventPublisher publisher;
+
     @MockitoBean
     private JwtTokenProvider jwtTokenProvider;
 
@@ -121,8 +135,10 @@ public class SseStreamingIntegrationTest {
     private AuthService authService;
 
     @MockitoBean
-    private SseDeliveryCoordinator deliveryCoordinator;
+    private SseHistoryStore historyStore;
 
+    @MockitoBean(name = "sseTransportPublisher")
+    private SseEventPublisher transportPublisher;
 
     @Test
     @DisplayName("인증된 HTTP 요청으로 SSE에 연결하면 최초 연결 주석 프레임을 받는다.")
@@ -131,6 +147,8 @@ public class SseStreamingIntegrationTest {
         String token = "sse-test-token";
 
         prepareAuthenticatedUser(userId, token);
+        given(historyStore.snapshot(userId, null))
+                .willReturn(new SseHistorySnapshot(null, List.of()));
 
         HttpURLConnection connection = createSseConnection(token);
 
@@ -168,6 +186,9 @@ public class SseStreamingIntegrationTest {
 
         prepareAuthenticatedUser(userId, token);
 
+        given(historyStore.snapshot(userId, null))
+                .willReturn(new SseHistorySnapshot(null, List.of()));
+
         HttpURLConnection connection = createSseConnection(token);
 
         try {
@@ -188,6 +209,11 @@ public class SseStreamingIntegrationTest {
                         eventType.getName(),
                         Map.of("message", "테스트 알림")
                 );
+                SseHistoryEntry historyEntry = new SseHistoryEntry(new SseHistoryPosition("1000-0"),
+                        event.toHistoryData(objectMapper.valueToTree(event.data())));
+
+                given(historyStore.readAfter(userId, null))
+                        .willReturn(new SseHistoryReadResult(false, List.of(historyEntry)));
 
                 sseDeliveryService.sendToLocalConnections(event);
 
@@ -212,6 +238,99 @@ public class SseStreamingIntegrationTest {
         }
     }
 
+    @Test
+    @DisplayName("이벤트의 JSON 변환에 실패해도 같은 SSE 연결로 다음 정상 이벤트를 수신한다.")
+    void serializationFailureKeepsConnection() throws IOException {
+        UUID userId = UUID.randomUUID();
+        String token = "sse-test-token";
+
+        prepareAuthenticatedUser(userId, token);
+
+        given(historyStore.snapshot(userId, null))
+                .willReturn(new SseHistorySnapshot(null, List.of()));
+
+        HttpURLConnection connection = createSseConnection(token);
+        SseEmitter registeredEmitter = null;
+
+        try {
+            assertThat(connection.getResponseCode()).isEqualTo(200);
+
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))){
+                // 최초 프레임을 읽어 실제 HTTP 응답이 시작된 연결에서 변환 실패를 재현한다.
+                assertThat(reader.readLine()).isEqualTo(":connected");
+                assertThat(reader.readLine()).isEmpty();
+
+                Map<Connection, SseEmitter> connections = sseEmitterRepository.findAllByUserId(userId);
+                assertThat(connections).hasSize(1);
+                registeredEmitter = connections.values().iterator().next();
+
+                SseEvent<SerializationFailingPayload> event = new SseEvent<>(
+                        UUID.randomUUID(),
+                        userId,
+                        Event.NOTIFICATIONS.getName(),
+                        new SerializationFailingPayload()
+                );
+
+                assertThatThrownBy(()-> publisher.publish(event))
+                        .isInstanceOf(SsePublishException.class)
+                        .hasCauseInstanceOf(JacksonException.class);
+
+                // 실패한 이벤트를 건너뛰어도 저장소에는 동일한 연결이 유지되어야 한다.
+                assertThat(sseEmitterRepository.findAllByUserId(userId).values())
+                        .containsExactly(registeredEmitter);
+
+                UUID nextEventId = UUID.randomUUID();
+                SseEvent<Map<String, String>> nextEvent = new SseEvent<>(
+                        nextEventId,
+                        userId,
+                        Event.NOTIFICATIONS.getName(),
+                        Map.of("message", "정상 알림")
+                );
+                SseHistoryEntry historyEntry = new SseHistoryEntry(new SseHistoryPosition("1000-0"),
+                        nextEvent.toHistoryData(objectMapper.valueToTree(nextEvent.data())));
+                given(historyStore.append(historyEntry.event()))
+                        .willReturn(historyEntry);
+                given(historyStore.readAfter(userId, null))
+                        .willReturn(new SseHistoryReadResult(false, List.of(historyEntry)));
+
+                doAnswer(invocation ->{
+                    SseEvent<?> publishedEvent = invocation.getArgument(0);
+                    sseDeliveryService.sendToLocalConnections(publishedEvent);
+                    return null;
+                }).when(transportPublisher).publish(historyEntry.event());
+
+                publisher.publish(nextEvent);
+
+                // 기존 reader에서 다음 프레임을 바로 읽어 실패한 이벤트의 불완전한 프레임이 남지 않았는지도 확인한다.
+                assertThat(reader.readLine()).isEqualTo("id:" + nextEventId);
+                assertThat(reader.readLine()).isEqualTo("event:notifications");
+
+                String dataLine = reader.readLine();
+                assertThat(dataLine).startsWith("data:");
+                assertThat(objectMapper.readTree(dataLine.substring("data:".length())))
+                        .isEqualTo(objectMapper.readTree("""
+                                {"message":"정상 알림"}
+                                """));
+                assertThat(reader.readLine()).isEmpty();
+            }
+        } finally {
+            try {
+                if (registeredEmitter != null){
+                    registeredEmitter.complete();
+                }
+            }finally {
+                connection.disconnect();
+            }
+        }
+    }
+
+
+    public static class SerializationFailingPayload{
+
+        public String getMessage(){
+            throw new IllegalStateException("테스트용 JSON 변환 실패");
+        }
+    }
     /** 실제 HTTP 요청의 인증·응답 형식과 대기 제한을 공통으로 준비한다. */
     private HttpURLConnection createSseConnection(String token) throws IOException {
         HttpURLConnection connection = (HttpURLConnection) URI.create("http://localhost:" + port + "/api/sse")
@@ -243,81 +362,5 @@ public class SseStreamingIntegrationTest {
 
         given(jwtTokenProvider.parseAccessToken(token)).willReturn(userId);
         given(userService.getById(userId)).willReturn(user);
-    }
-
-    @Test
-    @DisplayName("이벤트의 JSON 변환에 실패해도 같은 SSE 연결로 다음 정상 이벤트를 수신한다.")
-    void serializationFailureKeepsConnection() throws IOException {
-        UUID userId = UUID.randomUUID();
-        String token = "sse-test-token";
-
-        prepareAuthenticatedUser(userId, token);
-        HttpURLConnection connection = createSseConnection(token);
-        SseEmitter registeredEmitter = null;
-
-        try {
-            assertThat(connection.getResponseCode()).isEqualTo(200);
-
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))){
-                // 최초 프레임을 읽어 실제 HTTP 응답이 시작된 연결에서 변환 실패를 재현한다.
-                assertThat(reader.readLine()).isEqualTo(":connected");
-                assertThat(reader.readLine()).isEmpty();
-
-                Map<Connection, SseEmitter> connections = sseEmitterRepository.findAllByUserId(userId);
-                assertThat(connections).hasSize(1);
-                registeredEmitter = connections.values().iterator().next();
-
-                SseEvent<SerializationFailingPayload> event = new SseEvent<>(
-                        UUID.randomUUID(),
-                        userId,
-                        Event.NOTIFICATIONS.getName(),
-                        new SerializationFailingPayload()
-                );
-
-                assertThatCode(()-> sseDeliveryService.sendToLocalConnections(event))
-                        .doesNotThrowAnyException();
-
-                // 실패한 이벤트를 건너뛰어도 저장소에는 동일한 연결이 유지되어야 한다.
-                assertThat(sseEmitterRepository.findAllByUserId(userId).values())
-                        .containsExactly(registeredEmitter);
-
-                UUID nextEventId = UUID.randomUUID();
-                SseEvent<Map<String, String>> nextEvent = new SseEvent<>(
-                        nextEventId,
-                        userId,
-                        Event.NOTIFICATIONS.getName(),
-                        Map.of("message", "정상 알림")
-                );
-
-                sseDeliveryService.sendToLocalConnections(nextEvent);
-
-                // 기존 reader에서 다음 프레임을 바로 읽어 실패한 이벤트의 불완전한 프레임이 남지 않았는지도 확인한다.
-                assertThat(reader.readLine()).isEqualTo("id:" + nextEventId);
-                assertThat(reader.readLine()).isEqualTo("event:notifications");
-
-                String dataLine = reader.readLine();
-                assertThat(dataLine).startsWith("data:");
-                assertThat(objectMapper.readTree(dataLine.substring("data:".length())))
-                        .isEqualTo(objectMapper.readTree("""
-                                {"message":"정상 알림"}
-                                """));
-                assertThat(reader.readLine()).isEmpty();
-            }
-        } finally {
-            try {
-                if (registeredEmitter != null){
-                    registeredEmitter.complete();
-                }
-            }finally {
-                connection.disconnect();
-            }
-        }
-    }
-
-
-    public static class SerializationFailingPayload{
-        public String getMessage(){
-            throw new IllegalStateException("테스트용 JSON 변환 실패");
-        }
     }
 }
