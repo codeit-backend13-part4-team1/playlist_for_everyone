@@ -98,3 +98,4 @@ everyone:
     retry:
       initial-delay: ${EVERYONE_SSE_RETRY_INITIAL_DELAY:1s}
       max-delay: ${EVERYONE_SSE_RETRY_MAX_DELAY:30s}
+      max-retries: ${EVERYONE_SSE_RETRY_MAX_RETRIES:3}

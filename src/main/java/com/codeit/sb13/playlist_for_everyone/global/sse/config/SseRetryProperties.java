@@ -7,7 +7,8 @@ import java.time.Duration;
 @ConfigurationProperties(prefix = "everyone.sse.retry")
 public record SseRetryProperties(
         Duration initialDelay,
-        Duration maxDelay
+        Duration maxDelay,
+        int maxRetries
 ) {
     public SseRetryProperties {
         validateDuration(initialDelay, "초기 재시도 간격");

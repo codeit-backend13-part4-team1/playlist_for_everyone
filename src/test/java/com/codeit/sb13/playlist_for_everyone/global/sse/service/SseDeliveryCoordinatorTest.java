@@ -1,22 +1,34 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.service;
 
+import com.codeit.sb13.playlist_for_everyone.global.sse.config.SseRetryProperties;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
 import com.codeit.sb13.playlist_for_everyone.global.sse.history.SseHistoryPosition;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -30,14 +42,28 @@ class SseDeliveryCoordinatorTest {
     @Mock
     private SseEmitter emitter;
 
+    @Mock
+    private TaskScheduler retryTaskScheduler;
+
+    @Mock
+    private ScheduledFuture<?> retryFuture;
+
     private SseDeliveryCoordinator coordinator;
     private final UUID userId = UUID.randomUUID();
     private final Connection connection = Connection.create();
     private final UUID lastEventId = UUID.randomUUID();
+    private final SseRetryProperties retryProperties = new SseRetryProperties(
+            Duration.ofSeconds(1),
+            Duration.ofSeconds(30),
+            3
+    );
 
     @BeforeEach
     void setUp(){
-        coordinator = new SseDeliveryCoordinator(recoveryService);
+        coordinator = new SseDeliveryCoordinator(
+                recoveryService,
+                retryTaskScheduler,
+                retryProperties);
     }
 
     @Test
@@ -313,7 +339,7 @@ class SseDeliveryCoordinatorTest {
     }
 
     @Test
-    @DisplayName("복구가 실패하면 보류한 전송 요청을 실행하지 않고 원래 예외를 전달한다.")
+    @DisplayName("초기 복구가 실패하면 보류 요청을 실행하거나 재시도를 예약하지 않고 원래 예외를 전달한다.")
     void propagatesRecoveryFailureWithoutDeliveringPendingRequest(){
         DataAccessResourceFailureException failure = new DataAccessResourceFailureException("테스트용 스냅샷 복구 실패");
 
@@ -329,6 +355,7 @@ class SseDeliveryCoordinatorTest {
         verify(recoveryService)
                 .recover(userId, connection, emitter, lastEventId);
         verify(recoveryService, never()).recoverAfter(any(), any(), any(), any());
+        verifyNoInteractions(retryTaskScheduler);
     }
 
     @Test
@@ -398,10 +425,11 @@ class SseDeliveryCoordinatorTest {
     }
 
     @Test
-    @DisplayName("후속 전송이 실패하면 보류한 요청을 실행하지 않고 원래 예외를 전달한다.")
-    void propagatesDeliveryFailureWithoutDeliveringPendingRequest(){
+    @DisplayName("SSE 이벤트 전송이 실패하면 보류 요청을 실행하거나 재시도를 예약하지 않고 원래 예외를 전달한다.")
+    void propagatesEventSendFailureWithoutDeliveringPendingRequest(){
         SseHistoryPosition upperBound = createHistoryPosition();
-        DataAccessResourceFailureException failure = new DataAccessResourceFailureException("테스트용 후속 이력 조회 실패");
+        UncheckedIOException failure = new UncheckedIOException("테스트용 SSE 이벤트 전송 실패",
+                new IOException("테스트용 연결 오류"));
 
         when(recoveryService.recover(userId, connection, emitter, lastEventId))
                 .thenReturn(upperBound);
@@ -423,6 +451,7 @@ class SseDeliveryCoordinatorTest {
         verify(recoveryService)
                 .recoverAfter(eq(userId), eq(connection), same(emitter), eq(upperBound));
         verifyNoMoreInteractions(recoveryService);
+        verifyNoInteractions(retryTaskScheduler);
     }
 
     @Test
@@ -713,6 +742,638 @@ class SseDeliveryCoordinatorTest {
                     .as("테스트 작업 스레드가 종료되어야 한다.")
                     .isTrue();
         }
+    }
+
+    @Test
+    @DisplayName("후속 이력조회가 일시적으로 실패하면 예외를 전달하지 않고 초기 간격 후 재시도를 한번 예약한다.")
+    void schedulesRetryWithInitialDelayWhenHistoryReadFails(){
+        SseHistoryPosition upperBound = createHistoryPosition();
+        Instant now = Instant.parse("2026-11-07T00:00:00Z");
+
+        DataAccessResourceFailureException failure = new DataAccessResourceFailureException("테스트용 후속 이력 조회 실패");
+
+        when(retryTaskScheduler.getClock())
+                .thenReturn(Clock.fixed(now, ZoneOffset.UTC));
+
+        doReturn(retryFuture)
+                .when(retryTaskScheduler)
+                .schedule(any(Runnable.class), any(Instant.class));
+
+        when(recoveryService.recover(userId, connection, emitter, lastEventId))
+                .thenReturn(upperBound);
+        when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
+                .thenThrow(failure);
+
+        coordinator.register(userId, connection, emitter);
+        coordinator.recover(userId, connection, lastEventId);
+
+        assertThatCode(() -> coordinator.requestDelivery(userId, connection))
+                .doesNotThrowAnyException();
+        verify(retryTaskScheduler)
+                .schedule(any(Runnable.class), eq(now.plus(retryProperties.initialDelay())));
+        verify(recoveryService).recover(userId, connection, emitter, lastEventId);
+        verify(recoveryService).recoverAfter(userId, connection, emitter,upperBound);
+        verifyNoMoreInteractions(recoveryService);
+        verifyNoInteractions(emitter);
+    }
+
+    @Test
+    @DisplayName("예약된 재시도는 마지막 위치부터 조회하고 성공 후 다음 요청에는 갱신된 위치를 사용한다.")
+    void retriesFromLastPositionAndUsesUpdatedPositionAfterSuccess(){
+        SseHistoryPosition upperBound = createHistoryPosition();
+        SseHistoryPosition nextPosition = createHistoryPosition("1000-1");
+        Instant now = Instant.parse("2026-11-07T00:00:00Z");
+
+        DataAccessResourceFailureException failure = new DataAccessResourceFailureException("테스트용 후속 이력 조회 실패");
+
+        when(retryTaskScheduler.getClock())
+                .thenReturn(Clock.fixed(now, ZoneOffset.UTC));
+
+        doReturn(retryFuture)
+                .when(retryTaskScheduler)
+                .schedule(any(Runnable.class), any(Instant.class));
+
+        when(recoveryService.recover(userId, connection, emitter, lastEventId))
+                .thenReturn(upperBound);
+        when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
+                .thenThrow(failure)
+                .thenReturn(nextPosition);
+        when(recoveryService.recoverAfter(userId, connection, emitter, nextPosition))
+                .thenReturn(nextPosition);
+
+        coordinator.register(userId, connection, emitter);
+        coordinator.recover(userId, connection, lastEventId);
+
+        assertThatCode(() -> coordinator.requestDelivery(userId, connection))
+                .doesNotThrowAnyException();
+
+        verify(recoveryService)
+                .recoverAfter(userId, connection, emitter, upperBound);
+        ArgumentCaptor<Runnable> taskCaptor = ArgumentCaptor.forClass(Runnable.class);
+        verify(retryTaskScheduler)
+                .schedule(taskCaptor.capture(), any(Instant.class));
+        assertThatCode(() -> taskCaptor.getValue().run())
+                .doesNotThrowAnyException();
+        coordinator.requestDelivery(userId, connection);
+
+        ArgumentCaptor<SseHistoryPosition> positionCaptor = ArgumentCaptor.forClass(SseHistoryPosition.class);
+
+        verify(recoveryService, times(3))
+                .recoverAfter(eq(userId), eq(connection), same(emitter), positionCaptor.capture());
+        assertThat(positionCaptor.getAllValues())
+                .containsExactly(upperBound, upperBound, nextPosition);
+        verify(recoveryService)
+                .recover(userId, connection, emitter, lastEventId);
+        verifyNoMoreInteractions(recoveryService);
+    }
+
+    @Test
+    @DisplayName("예약된 재시도도 실패하면 다음 재시도 간격을 두 배로 늘린다.")
+    void doublesRetryDelayWhenScheduledRetryFails() {
+        SseHistoryPosition upperBound = createHistoryPosition();
+        Instant now = Instant.parse("2026-11-07T00:00:00Z");
+        AtomicReference<Instant> currentTime = new AtomicReference<>(now);
+        Clock retryClock = mock(Clock.class);
+        ScheduledFuture<?> secondRetryFuture = mock(ScheduledFuture.class);
+
+        DataAccessResourceFailureException failure =
+                new DataAccessResourceFailureException("테스트용 후속 이력 조회 실패");
+
+        when(retryTaskScheduler.getClock()).thenReturn(retryClock);
+        when(retryClock.instant()).thenAnswer(invocation -> currentTime.get());
+
+        doReturn(retryFuture, secondRetryFuture)
+                .when(retryTaskScheduler)
+                .schedule(any(Runnable.class), any(Instant.class));
+
+        when(recoveryService.recover(userId, connection, emitter, lastEventId))
+                .thenReturn(upperBound);
+        when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
+                .thenThrow(failure);
+
+        coordinator.register(userId, connection, emitter);
+        coordinator.recover(userId, connection, lastEventId);
+
+        assertThatCode(() -> coordinator.requestDelivery(userId, connection))
+                .doesNotThrowAnyException();
+
+        ArgumentCaptor<Runnable> taskCaptor = ArgumentCaptor.forClass(Runnable.class);
+
+        verify(retryTaskScheduler)
+                .schedule(taskCaptor.capture(), any(Instant.class));
+
+        currentTime.set(now.plusSeconds(1));
+
+        assertThatCode(() -> taskCaptor.getValue().run())
+                .doesNotThrowAnyException();
+
+        ArgumentCaptor<Instant> timeCaptor = ArgumentCaptor.forClass(Instant.class);
+
+        verify(retryTaskScheduler, times(2))
+                .schedule(any(Runnable.class), timeCaptor.capture());
+
+        assertThat(timeCaptor.getAllValues())
+                .containsExactly(now.plusSeconds(1), now.plusSeconds(3));
+
+        verify(recoveryService)
+                .recover(userId, connection, emitter, lastEventId);
+        verify(recoveryService, times(2))
+                .recoverAfter(userId, connection, emitter, upperBound);
+        verifyNoMoreInteractions(recoveryService);
+    }
+
+    @Test
+    @DisplayName("재시도 횟수가 남아 있으면 대기 간격을 설정한 최대값까지만 늘려 예약한다.")
+    void capsRetryDelayAtConfiguredMaximum() {
+        SseRetryProperties properties = new SseRetryProperties(
+                Duration.ofSeconds(20),
+                Duration.ofSeconds(30),
+                3
+        );
+        coordinator = new SseDeliveryCoordinator(
+                recoveryService, retryTaskScheduler, properties
+        );
+
+        SseHistoryPosition upperBound = createHistoryPosition();
+        Instant now = Instant.parse("2026-11-07T00:00:00Z");
+        AtomicReference<Instant> currentTime = new AtomicReference<>(now);
+        AtomicReference<Runnable> scheduledTask = new AtomicReference<>();
+        Clock retryClock = mock(Clock.class);
+
+        DataAccessResourceFailureException failure =
+                new DataAccessResourceFailureException("테스트용 후속 이력 조회 실패");
+
+        when(retryTaskScheduler.getClock()).thenReturn(retryClock);
+        when(retryClock.instant()).thenAnswer(invocation -> currentTime.get());
+
+        doAnswer(invocation -> {
+            scheduledTask.set(invocation.getArgument(0, Runnable.class));
+            return mock(ScheduledFuture.class);
+        }).when(retryTaskScheduler)
+                .schedule(any(Runnable.class), any(Instant.class));
+
+        when(recoveryService.recover(userId, connection, emitter, lastEventId))
+                .thenReturn(upperBound);
+        when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
+                .thenThrow(failure);
+
+        coordinator.register(userId, connection, emitter);
+        coordinator.recover(userId, connection, lastEventId);
+
+        assertThatCode(() -> coordinator.requestDelivery(userId, connection))
+                .doesNotThrowAnyException();
+
+        currentTime.set(now.plusSeconds(20));
+        assertThatCode(() -> scheduledTask.get().run())
+                .doesNotThrowAnyException();
+
+        currentTime.set(now.plusSeconds(50));
+        assertThatCode(() -> scheduledTask.get().run())
+                .doesNotThrowAnyException();
+
+        ArgumentCaptor<Instant> timeCaptor = ArgumentCaptor.forClass(Instant.class);
+
+        verify(retryTaskScheduler, times(3))
+                .schedule(any(Runnable.class), timeCaptor.capture());
+
+        assertThat(timeCaptor.getAllValues())
+                .containsExactly(now.plusSeconds(20), now.plusSeconds(50), now.plusSeconds(80));
+
+        verify(recoveryService)
+                .recover(userId, connection, emitter, lastEventId);
+        verify(recoveryService, times(3))
+                .recoverAfter(userId, connection, emitter, upperBound);
+        verifyNoMoreInteractions(recoveryService);
+    }
+
+    @Test
+    @DisplayName("재시도가 성공하면 추가 예약을 멈추고 다음 실패는 초기 간격으로 다시 예약한다.")
+    void resetsRetryDelayAfterSuccessfulRetry() {
+        SseHistoryPosition upperBound = createHistoryPosition();
+        SseHistoryPosition nextPosition = createHistoryPosition("1000-1");
+        Instant now = Instant.parse("2026-11-07T00:00:00Z");
+        AtomicReference<Instant> currentTime = new AtomicReference<>(now);
+        AtomicReference<Runnable> scheduledTask = new AtomicReference<>();
+        Clock retryClock = mock(Clock.class);
+
+        DataAccessResourceFailureException failure =
+                new DataAccessResourceFailureException("테스트용 후속 이력 조회 실패");
+
+        when(retryTaskScheduler.getClock()).thenReturn(retryClock);
+        when(retryClock.instant()).thenAnswer(invocation -> currentTime.get());
+
+        doAnswer(invocation -> {
+            scheduledTask.set(invocation.getArgument(0, Runnable.class));
+            return mock(ScheduledFuture.class);
+        }).when(retryTaskScheduler)
+                .schedule(any(Runnable.class), any(Instant.class));
+
+        when(recoveryService.recover(userId, connection, emitter, lastEventId))
+                .thenReturn(upperBound);
+        when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
+                .thenThrow(failure)
+                .thenThrow(failure)
+                .thenReturn(nextPosition);
+        when(recoveryService.recoverAfter(userId, connection, emitter, nextPosition))
+                .thenThrow(failure);
+
+        coordinator.register(userId, connection, emitter);
+        coordinator.recover(userId, connection, lastEventId);
+
+        assertThatCode(() -> coordinator.requestDelivery(userId, connection))
+                .doesNotThrowAnyException();
+
+        currentTime.set(now.plusSeconds(1));
+        assertThatCode(() -> scheduledTask.get().run())
+                .doesNotThrowAnyException();
+
+        currentTime.set(now.plusSeconds(3));
+        assertThatCode(() -> scheduledTask.get().run())
+                .doesNotThrowAnyException();
+
+        verify(retryTaskScheduler, times(2))
+                .schedule(any(Runnable.class), any(Instant.class));
+
+        currentTime.set(now.plusSeconds(10));
+        assertThatCode(() -> coordinator.requestDelivery(userId, connection))
+                .doesNotThrowAnyException();
+
+        ArgumentCaptor<Instant> timeCaptor = ArgumentCaptor.forClass(Instant.class);
+
+        verify(retryTaskScheduler, times(3))
+                .schedule(any(Runnable.class), timeCaptor.capture());
+
+        assertThat(timeCaptor.getAllValues())
+                .containsExactly(now.plusSeconds(1), now.plusSeconds(3), now.plusSeconds(11));
+
+        verify(recoveryService)
+                .recover(userId, connection, emitter, lastEventId);
+        verify(recoveryService, times(3))
+                .recoverAfter(userId, connection, emitter, upperBound);
+        verify(recoveryService)
+                .recoverAfter(userId, connection, emitter, nextPosition);
+        verifyNoMoreInteractions(recoveryService);
+    }
+
+    @Test
+    @DisplayName("재시도 대기 중 새 전송 요청이 들어와도 추가 조회 없이 기존 예약을 유지한다.")
+    void keepsExistingRetryWhenDeliveryIsRequestedWhileWaiting() {
+        SseHistoryPosition upperBound = createHistoryPosition();
+        Instant now = Instant.parse("2026-11-07T00:00:00Z");
+
+        DataAccessResourceFailureException failure =
+                new DataAccessResourceFailureException("테스트용 후속 이력 조회 실패");
+
+        when(retryTaskScheduler.getClock())
+                .thenReturn(Clock.fixed(now, ZoneOffset.UTC));
+
+        doReturn(retryFuture)
+                .when(retryTaskScheduler)
+                .schedule(any(Runnable.class), any(Instant.class));
+
+        when(recoveryService.recover(userId, connection, emitter, lastEventId))
+                .thenReturn(upperBound);
+        when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
+                .thenThrow(failure);
+
+        coordinator.register(userId, connection, emitter);
+        coordinator.recover(userId, connection, lastEventId);
+
+        assertThatCode(() -> {
+            coordinator.requestDelivery(userId, connection);
+            coordinator.requestDelivery(userId, connection);
+            coordinator.requestDelivery(userId, connection);
+            coordinator.requestDelivery(userId, connection);
+        }).doesNotThrowAnyException();
+
+        verify(retryTaskScheduler).schedule(
+                any(Runnable.class),
+                eq(now.plus(retryProperties.initialDelay()))
+        );
+        verify(retryFuture, never()).cancel(anyBoolean());
+
+        verify(recoveryService)
+                .recover(userId, connection, emitter, lastEventId);
+        verify(recoveryService)
+                .recoverAfter(userId, connection, emitter, upperBound);
+        verifyNoMoreInteractions(recoveryService);
+    }
+
+    @Test
+    @DisplayName("연결을 제거하면 재시도 예약을 취소하고 뒤늦게 실행된 작업도 추가 조회하지 않는다.")
+    void cancelsRetryAndSkipsLateTaskWhenConnectionIsRemoved() {
+        SseHistoryPosition upperBound = createHistoryPosition();
+        Instant now = Instant.parse("2026-11-07T00:00:00Z");
+
+        DataAccessResourceFailureException failure =
+                new DataAccessResourceFailureException("테스트용 후속 이력 조회 실패");
+
+        when(retryTaskScheduler.getClock())
+                .thenReturn(Clock.fixed(now, ZoneOffset.UTC));
+
+        doReturn(retryFuture)
+                .when(retryTaskScheduler)
+                .schedule(any(Runnable.class), any(Instant.class));
+
+        when(recoveryService.recover(userId, connection, emitter, lastEventId))
+                .thenReturn(upperBound);
+        when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
+                .thenThrow(failure);
+
+        coordinator.register(userId, connection, emitter);
+        coordinator.recover(userId, connection, lastEventId);
+
+        assertThatCode(() -> coordinator.requestDelivery(userId, connection))
+                .doesNotThrowAnyException();
+
+        ArgumentCaptor<Runnable> taskCaptor = ArgumentCaptor.forClass(Runnable.class);
+
+        verify(retryTaskScheduler)
+                .schedule(taskCaptor.capture(), any(Instant.class));
+
+        coordinator.remove(userId, connection);
+
+        verify(retryFuture).cancel(false);
+
+        assertThatCode(() -> taskCaptor.getValue().run())
+                .doesNotThrowAnyException();
+
+        verify(retryTaskScheduler)
+                .schedule(any(Runnable.class), any(Instant.class));
+        verify(recoveryService)
+                .recover(userId, connection, emitter, lastEventId);
+        verify(recoveryService)
+                .recoverAfter(userId, connection, emitter, upperBound);
+        verifyNoMoreInteractions(recoveryService);
+    }
+
+    @Test
+    @DisplayName("같은 사용자의 한 연결이 재시도를 기다려도 다른 연결은 후속 조회하고 기존 예약을 유지한다.")
+    void deliversToAnotherConnectionWhileFirstConnectionWaitsForRetry() {
+        Connection secondConnection = Connection.create();
+        SseEmitter secondEmitter = mock(SseEmitter.class);
+        UUID secondLastEventId = UUID.randomUUID();
+
+        SseHistoryPosition firstPosition = createHistoryPosition();
+        SseHistoryPosition secondPosition = createHistoryPosition("2000-0");
+        Instant now = Instant.parse("2026-11-07T00:00:00Z");
+
+        DataAccessResourceFailureException failure =
+                new DataAccessResourceFailureException("테스트용 후속 이력 조회 실패");
+
+        when(retryTaskScheduler.getClock())
+                .thenReturn(Clock.fixed(now, ZoneOffset.UTC));
+
+        doReturn(retryFuture)
+                .when(retryTaskScheduler)
+                .schedule(any(Runnable.class), any(Instant.class));
+
+        when(recoveryService.recover(userId, connection, emitter, lastEventId))
+                .thenReturn(firstPosition);
+        when(recoveryService.recover(
+                userId, secondConnection, secondEmitter, secondLastEventId
+        )).thenReturn(secondPosition);
+
+        when(recoveryService.recoverAfter(
+                userId, connection, emitter, firstPosition
+        )).thenThrow(failure);
+        when(recoveryService.recoverAfter(
+                userId, secondConnection, secondEmitter, secondPosition
+        )).thenReturn(secondPosition);
+
+        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, secondConnection, secondEmitter);
+
+        coordinator.recover(userId, connection, lastEventId);
+        coordinator.recover(userId, secondConnection, secondLastEventId);
+
+        assertThatCode(() -> coordinator.requestDelivery(userId, connection))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> coordinator.requestDelivery(userId, secondConnection))
+                .doesNotThrowAnyException();
+
+        verify(recoveryService)
+                .recover(userId, connection, emitter, lastEventId);
+        verify(recoveryService)
+                .recover(userId, secondConnection, secondEmitter, secondLastEventId);
+        verify(recoveryService)
+                .recoverAfter(userId, connection, emitter, firstPosition);
+        verify(recoveryService)
+                .recoverAfter(userId, secondConnection, secondEmitter, secondPosition);
+        verifyNoMoreInteractions(recoveryService);
+
+        verify(retryTaskScheduler).schedule(
+                any(Runnable.class),
+                eq(now.plus(retryProperties.initialDelay()))
+        );
+        verify(retryFuture, never()).cancel(anyBoolean());
+    }
+
+    @ParameterizedTest(name = "최대 재시도 횟수={0}")
+    @ValueSource(ints = {1, 3})
+    @DisplayName("최초 조회 이후 설정 횟수만큼 재시도하고 모두 실패하면 연결을 종료하며 이후 요청과 늦은 작업을 무시한다.")
+    void closesConnectionAfterConfiguredRetriesAndIgnoresLaterRequests(int maxRetries) {
+        SseRetryProperties properties = new SseRetryProperties(
+                Duration.ofSeconds(1), Duration.ofSeconds(30), maxRetries
+        );
+        coordinator = new SseDeliveryCoordinator(recoveryService, retryTaskScheduler, properties);
+
+        SseHistoryPosition upperBound = createHistoryPosition();
+        AtomicReference<Instant> currentTime = new AtomicReference<>(
+                Instant.parse("2026-11-07T00:00:00Z")
+        );
+        Clock retryClock = mock(Clock.class);
+        List<Runnable> scheduledTasks = new ArrayList<>();
+        List<Instant> scheduledTimes = new ArrayList<>();
+        DataAccessResourceFailureException failure =
+                new DataAccessResourceFailureException("테스트용 후속 이력 조회 실패");
+
+        when(retryTaskScheduler.getClock()).thenReturn(retryClock);
+        when(retryClock.instant()).thenAnswer(invocation -> currentTime.get());
+        doAnswer(invocation -> {
+            scheduledTasks.add(invocation.getArgument(0, Runnable.class));
+            scheduledTimes.add(invocation.getArgument(1, Instant.class));
+            return mock(ScheduledFuture.class);
+        }).when(retryTaskScheduler).schedule(any(Runnable.class), any(Instant.class));
+
+        when(recoveryService.recover(userId, connection, emitter, lastEventId))
+                .thenReturn(upperBound);
+        when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
+                .thenThrow(failure);
+
+        coordinator.register(userId, connection, emitter);
+        coordinator.recover(userId, connection, lastEventId);
+
+        assertThatCode(() -> coordinator.requestDelivery(userId, connection))
+                .doesNotThrowAnyException();
+
+        for (int retryIndex = 0; retryIndex < maxRetries; retryIndex++) {
+            assertThat(scheduledTasks).hasSize(retryIndex + 1);
+            verify(emitter, never()).complete();
+
+            assertThatCode(() -> coordinator.requestDelivery(userId, connection))
+                    .doesNotThrowAnyException();
+            verify(recoveryService, times(retryIndex + 1))
+                    .recoverAfter(userId, connection, emitter, upperBound);
+
+            currentTime.set(scheduledTimes.get(retryIndex));
+            Runnable task = scheduledTasks.get(retryIndex);
+            assertThatCode(task::run).doesNotThrowAnyException();
+        }
+
+        verify(emitter).complete();
+        assertThat(scheduledTasks).hasSize(maxRetries);
+
+        assertThatCode(() -> coordinator.requestDelivery(userId, connection))
+                .doesNotThrowAnyException();
+        for (Runnable task : List.copyOf(scheduledTasks)) {
+            assertThatCode(task::run).doesNotThrowAnyException();
+        }
+
+        verify(recoveryService).recover(userId, connection, emitter, lastEventId);
+        verify(recoveryService, times(maxRetries + 1))
+                .recoverAfter(userId, connection, emitter, upperBound);
+        verifyNoMoreInteractions(recoveryService);
+        verify(retryTaskScheduler, times(maxRetries))
+                .schedule(any(Runnable.class), any(Instant.class));
+        verify(emitter).complete();
+        verify(emitter, never()).completeWithError(any());
+    }
+
+    @Test
+    @DisplayName("마지막 허용 재시도가 성공하면 연결을 유지하고 다음 실패에는 재시도 횟수를 새로 부여한다.")
+    void resetsRetryBudgetAfterLastAllowedRetrySucceeds() {
+        SseRetryProperties properties = new SseRetryProperties(
+                Duration.ofSeconds(1), Duration.ofSeconds(30), 1
+        );
+        coordinator = new SseDeliveryCoordinator(recoveryService, retryTaskScheduler, properties);
+
+        SseHistoryPosition upperBound = createHistoryPosition();
+        SseHistoryPosition nextPosition = createHistoryPosition("1000-1");
+        SseHistoryPosition finalPosition = createHistoryPosition("1000-2");
+        Instant now = Instant.parse("2026-11-07T00:00:00Z");
+        AtomicReference<Instant> currentTime = new AtomicReference<>(now);
+        Clock retryClock = mock(Clock.class);
+        List<Runnable> scheduledTasks = new ArrayList<>();
+        DataAccessResourceFailureException failure =
+                new DataAccessResourceFailureException("테스트용 후속 이력 조회 실패");
+
+        when(retryTaskScheduler.getClock()).thenReturn(retryClock);
+        when(retryClock.instant()).thenAnswer(invocation -> currentTime.get());
+        doAnswer(invocation -> {
+            scheduledTasks.add(invocation.getArgument(0, Runnable.class));
+            return mock(ScheduledFuture.class);
+        }).when(retryTaskScheduler).schedule(any(Runnable.class), any(Instant.class));
+
+        when(recoveryService.recover(userId, connection, emitter, lastEventId))
+                .thenReturn(upperBound);
+        when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
+                .thenThrow(failure)
+                .thenReturn(nextPosition);
+        when(recoveryService.recoverAfter(userId, connection, emitter, nextPosition))
+                .thenThrow(failure)
+                .thenReturn(finalPosition);
+
+        coordinator.register(userId, connection, emitter);
+        coordinator.recover(userId, connection, lastEventId);
+
+        assertThatCode(() -> coordinator.requestDelivery(userId, connection))
+                .doesNotThrowAnyException();
+        assertThat(scheduledTasks).hasSize(1);
+
+        currentTime.set(now.plusSeconds(1));
+        assertThatCode(scheduledTasks.get(0)::run).doesNotThrowAnyException();
+        assertThat(scheduledTasks).hasSize(1);
+        verify(emitter, never()).complete();
+
+        currentTime.set(now.plusSeconds(10));
+        assertThatCode(() -> coordinator.requestDelivery(userId, connection))
+                .doesNotThrowAnyException();
+        assertThat(scheduledTasks).hasSize(2);
+
+        currentTime.set(now.plusSeconds(11));
+        assertThatCode(scheduledTasks.get(1)::run).doesNotThrowAnyException();
+
+        ArgumentCaptor<Instant> timeCaptor = ArgumentCaptor.forClass(Instant.class);
+        verify(retryTaskScheduler, times(2))
+                .schedule(any(Runnable.class), timeCaptor.capture());
+        assertThat(timeCaptor.getAllValues()).containsExactly(now.plusSeconds(1), now.plusSeconds(11));
+
+        verify(recoveryService).recover(userId, connection, emitter, lastEventId);
+        verify(recoveryService, times(2))
+                .recoverAfter(userId, connection, emitter, upperBound);
+        verify(recoveryService, times(2))
+                .recoverAfter(userId, connection, emitter, nextPosition);
+        verifyNoMoreInteractions(recoveryService);
+        verifyNoInteractions(emitter);
+    }
+
+    @Test
+    @DisplayName("한 연결이 재시도를 소진해 종료되어도 같은 사용자의 다른 연결은 예약된 재시도와 후속 전송을 계속한다.")
+    void keepsOtherConnectionRetryAndDeliveryAfterFirstConnectionExhaustsRetries() {
+        SseRetryProperties properties = new SseRetryProperties(
+                Duration.ofSeconds(1), Duration.ofSeconds(30), 1
+        );
+        coordinator = new SseDeliveryCoordinator(recoveryService, retryTaskScheduler, properties);
+
+        Connection secondConnection = Connection.create();
+        SseEmitter secondEmitter = mock(SseEmitter.class);
+        UUID secondLastEventId = UUID.randomUUID();
+        SseHistoryPosition firstPosition = createHistoryPosition();
+        SseHistoryPosition secondPosition = createHistoryPosition("2000-0");
+        SseHistoryPosition nextPosition = createHistoryPosition("2000-1");
+        Instant now = Instant.parse("2026-11-07T00:00:00Z");
+        ScheduledFuture<?> secondRetryFuture = mock(ScheduledFuture.class);
+        DataAccessResourceFailureException failure =
+                new DataAccessResourceFailureException("테스트용 후속 이력 조회 실패");
+
+        when(retryTaskScheduler.getClock()).thenReturn(Clock.fixed(now, ZoneOffset.UTC));
+        doReturn(retryFuture, secondRetryFuture)
+                .when(retryTaskScheduler).schedule(any(Runnable.class), any(Instant.class));
+        when(recoveryService.recover(userId, connection, emitter, lastEventId))
+                .thenReturn(firstPosition);
+        when(recoveryService.recover(userId, secondConnection, secondEmitter, secondLastEventId))
+                .thenReturn(secondPosition);
+        when(recoveryService.recoverAfter(userId, connection, emitter, firstPosition))
+                .thenThrow(failure);
+        when(recoveryService.recoverAfter(userId, secondConnection, secondEmitter, secondPosition))
+                .thenThrow(failure)
+                .thenReturn(nextPosition);
+        when(recoveryService.recoverAfter(userId, secondConnection, secondEmitter, nextPosition))
+                .thenReturn(nextPosition);
+
+        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, secondConnection, secondEmitter);
+        coordinator.recover(userId, connection, lastEventId);
+        coordinator.recover(userId, secondConnection, secondLastEventId);
+
+        assertThatCode(() -> coordinator.requestDelivery(userId, connection))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> coordinator.requestDelivery(userId, secondConnection))
+                .doesNotThrowAnyException();
+
+        ArgumentCaptor<Runnable> taskCaptor = ArgumentCaptor.forClass(Runnable.class);
+        verify(retryTaskScheduler, times(2))
+                .schedule(taskCaptor.capture(), any(Instant.class));
+
+        assertThatCode(taskCaptor.getAllValues().get(0)::run).doesNotThrowAnyException();
+        verify(emitter).complete();
+        verify(secondRetryFuture, never()).cancel(anyBoolean());
+
+        assertThatCode(taskCaptor.getAllValues().get(1)::run).doesNotThrowAnyException();
+        assertThatCode(() -> coordinator.requestDelivery(userId, secondConnection))
+                .doesNotThrowAnyException();
+
+        verify(recoveryService).recover(userId, connection, emitter, lastEventId);
+        verify(recoveryService).recover(userId, secondConnection, secondEmitter, secondLastEventId);
+        verify(recoveryService, times(2))
+                .recoverAfter(userId, connection, emitter, firstPosition);
+        verify(recoveryService, times(2))
+                .recoverAfter(userId, secondConnection, secondEmitter, secondPosition);
+        verify(recoveryService).recoverAfter(userId, secondConnection, secondEmitter, nextPosition);
+        verifyNoMoreInteractions(recoveryService);
+        verify(retryTaskScheduler, times(2)).schedule(any(Runnable.class), any(Instant.class));
+        verifyNoInteractions(secondEmitter);
     }
 
     private SseHistoryPosition createHistoryPosition(String position) {

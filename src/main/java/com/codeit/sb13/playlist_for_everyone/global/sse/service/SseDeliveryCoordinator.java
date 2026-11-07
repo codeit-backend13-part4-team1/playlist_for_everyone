@@ -1,8 +1,10 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.service;
 
+import com.codeit.sb13.playlist_for_everyone.global.sse.config.SseRetryProperties;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
 import com.codeit.sb13.playlist_for_everyone.global.sse.history.SseHistoryPosition;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -11,12 +13,23 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Component
-@RequiredArgsConstructor
 public class SseDeliveryCoordinator {
 
     private final Map<ConnectionKey, ConnectionState> connectionStates = new ConcurrentHashMap<>();
 
     private final SseRecoveryService recoveryService;
+    private final TaskScheduler retryTaskScheduler;
+    private final SseRetryProperties retryProperties;
+
+    public SseDeliveryCoordinator(
+            SseRecoveryService recoveryService,
+            @Qualifier("sseRetryTaskScheduler")
+            TaskScheduler retryTaskScheduler,
+            SseRetryProperties retryProperties) {
+        this.recoveryService = recoveryService;
+        this.retryTaskScheduler = retryTaskScheduler;
+        this.retryProperties = retryProperties;
+    }
 
     public void register(UUID userId, Connection connection, SseEmitter emitter){
         ConnectionKey key = new ConnectionKey(userId, connection);
