@@ -70,11 +70,13 @@ if redis.call('XLEN', streamKey) == 0 then
     return {1, {}}
 end
 
+local gapDetected = 0
+
 if afterPosition ~= '' then
     local cursorEntries = redis.call('XRANGE', streamKey, afterPosition, afterPosition)
 
     if #cursorEntries == 0 then
-        return {1, {}}
+        gapDetected = 1
     end
 end
 
@@ -89,4 +91,4 @@ for _, entry in ipairs(records) do
     table.insert(entries, {entry[1], getEventJson(entry)})
 end
 
-return {0, entries}
+return {gapDetected, entries}

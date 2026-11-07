@@ -7,6 +7,7 @@ import com.codeit.sb13.playlist_for_everyone.global.sse.history.SseHistoryReadRe
 import com.codeit.sb13.playlist_for_everyone.global.sse.history.SseHistorySnapshot;
 import com.codeit.sb13.playlist_for_everyone.global.sse.history.SseHistoryStore;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -19,6 +20,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class SseRecoveryService {
 
     private final SseHistoryStore historyStore;
@@ -47,7 +49,16 @@ public class SseRecoveryService {
         SseHistoryReadResult result = historyStore.readAfter(userId, afterPosition);
 
         if (result.gapDetected()){
-            throw new IllegalStateException("SSE 이력이 유실되어 연속 복구를 진행할수 없습니다.");
+            log.debug(
+                    """
+                    SSE 기준 위치가 보관 이력에 없어 남은 후속 이력을 처리합니다.
+                    userId={}, connectionId={}, afterPosition={}, remainingCount={}
+                    """,
+                    userId,
+                    connection.id(),
+                    afterPosition,
+                    result.entries().size()
+            );
         }
 
         AtomicReference<SseHistoryPosition> lastPosition = new AtomicReference<>(afterPosition);
