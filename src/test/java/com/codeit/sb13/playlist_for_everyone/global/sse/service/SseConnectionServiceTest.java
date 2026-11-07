@@ -130,8 +130,8 @@ class SseConnectionServiceTest {
     }
 
     @Test
-    @DisplayName("연결 완료 콜백이 실행되면 등록 당시의 사용자와 연결 식별자로 삭제를 요청한다.")
-    void completionCallbackRequestsDeletionOfRegisteredConnection() {
+    @DisplayName("연결 완료 콜백이 실행되면 저장소의 연결과 조정기의 상태를 정리한다.")
+    void completionCallbackRequestsConnectionAndCoordinatorCleanup() {
         UUID userId = UUID.randomUUID();
 
         try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
@@ -141,12 +141,17 @@ class SseConnectionServiceTest {
 
             ArgumentCaptor<Runnable> completionCaptor = ArgumentCaptor.forClass(Runnable.class);
             verify(emitter).onCompletion(completionCaptor.capture());
+            verify(deliveryCoordinator, never()).remove(any(), any());
 
             // onCompletion은 등록 메서드다. 등록한 Runnable을 실행하여 완료 상황을 재현한다.
             completionCaptor.getValue().run();
 
-            verify(repository).delete(userId, connectionCaptor.getValue());
+            Connection connection = connectionCaptor.getValue();
+
+            verify(repository).delete(userId, connection);
             verify(repository, times(1)).delete(any(), any());
+            verify(deliveryCoordinator).remove(userId, connection);
+            verify(deliveryCoordinator, times(1)).remove(any(), any());
         }
     }
 
@@ -229,8 +234,8 @@ class SseConnectionServiceTest {
     }
 
     @Test
-    @DisplayName("연결 시간이 초과되면 해당 연결의 삭제와 에미터 종료를 요청한다.")
-    void timeoutCallbackRequestsDeletionAndCompletion() {
+    @DisplayName("타임아웃 콜백이 실행되면 연결과 조정기 상태를 정리하고 에미터 종료를 요청한다.")
+    void timeoutCallbackRequestsCleanupAndCompletion() {
         UUID userId = UUID.randomUUID();
 
         try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
@@ -240,12 +245,17 @@ class SseConnectionServiceTest {
 
             ArgumentCaptor<Runnable> timeoutCaptor = ArgumentCaptor.forClass(Runnable.class);
             verify(emitter).onTimeout(timeoutCaptor.capture());
+            verify(deliveryCoordinator, never()).remove(any(), any());
 
             timeoutCaptor.getValue().run();
 
-            verify(repository).delete(userId, connectionCaptor.getValue());
+            Connection connection = connectionCaptor.getValue();
+
+            verify(repository).delete(userId, connection);
             verify(repository, times(1)).delete(any(), any());
             verify(emitter).complete();
+            verify(deliveryCoordinator).remove(userId, connection);
+            verify(deliveryCoordinator, times(1)).remove(any(), any());
         }
     }
 
@@ -310,7 +320,7 @@ class SseConnectionServiceTest {
     }
 
     @Test
-    @DisplayName("연결 오류 콜백이 실행되면 등록 당시의 사용자와 연결 식별자로 삭제를 요청한다.")
+    @DisplayName("오류 콜백이 실행되면 해당 연결과 조정기의 상태를 정리한다.")
     void errorCallbackRequestsDeletionOfRegisteredConnection() {
         UUID userId = UUID.randomUUID();
 
@@ -321,11 +331,16 @@ class SseConnectionServiceTest {
 
             ArgumentCaptor<Consumer<Throwable>> errorCaptor = ArgumentCaptor.captor();
             verify(emitter).onError(errorCaptor.capture());
+            verify(deliveryCoordinator, never()).remove(any(), any());
 
             errorCaptor.getValue().accept(new IOException("연결 오류"));
 
-            verify(repository).delete(userId, connectionCaptor.getValue());
+            Connection connection = connectionCaptor.getValue();
+
+            verify(repository).delete(userId, connection);
             verify(repository, times(1)).delete(any(), any());
+            verify(deliveryCoordinator).remove(userId, connection);
+            verify(deliveryCoordinator, times(1)).remove(any(), any());
         }
     }
 
