@@ -95,3 +95,6 @@ everyone:
       key-prefix: ${EVERYONE_SSE_HISTORY_KEY_PREFIX:everyone:sse:history}
       max-events-per-user: ${EVERYONE_SSE_HISTORY_MAX_EVENTS_PER_USER:1000}
       retention: ${EVERYONE_SSE_HISTORY_RETENTION:10m}
+    retry:
+      initial-delay: ${EVERYONE_SSE_RETRY_INITIAL_DELAY:1s}
+      max-delay: ${EVERYONE_SSE_RETRY_MAX_DELAY:30s}
