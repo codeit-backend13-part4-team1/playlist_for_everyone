@@ -82,6 +82,7 @@ public class SseDeliveryService {
             // 주석 프레임은 알림/DM 이벤트로 전달되지 않으며 마지막 수신 이벤트 ID도 변경하지 않는다.
             emitter.send(SseEmitter.event().comment("heartbeat"));
         } catch (IOException | IllegalStateException e) {
+            deliveryCoordinator.remove(userId, connection);
             sseEmitterRepository.delete(userId, connection);
             logSseHeartbeatIssue(userId, connection, e);
         }
