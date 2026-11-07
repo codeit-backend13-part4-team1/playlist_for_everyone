@@ -390,7 +390,7 @@ class SseConnectionServiceTest {
     }
 
     @Test
-    @DisplayName("초기 주석은 등록 요청 후 전송하며 실패하면 동일 연결의 삭제를 요청하고 원본 예외를 보존한다.")
+    @DisplayName("초기 주석 전송에 실패하면 연결과 조정기 상태를 정리하고 원래 예외를 보존한다.")
     void initialCommentFailureRequestsDeletionAndPreservesCause() {
         UUID userId = UUID.randomUUID();
         IOException sendFailure = new IOException("초기 주석 전송 실패");
@@ -412,11 +412,13 @@ class SseConnectionServiceTest {
 
             verify(repository).delete(userId, connectionCaptor.getValue());
             verify(repository, times(1)).delete(any(), any());
+            verify(deliveryCoordinator).remove(userId, connectionCaptor.getValue());
+            verify(deliveryCoordinator, times(1)).remove(any(), any());
         }
     }
 
     @Test
-    @DisplayName("전체 연결 정리를 요청하면 등록된 에미터의 종료와 연결 삭제를 요청한다.")
+    @DisplayName("전체 연결 정리를 요청하면 에미터 종료와 연결 및 조정기 상태 정리를 요청한다.")
     void closeAllLocalConnectionsRequestsCompletionAndDeletion(){
         UUID userId = UUID.randomUUID();
         Connection connection = Connection.create();
@@ -430,12 +432,14 @@ class SseConnectionServiceTest {
 
         service.closeAllLocalConnections();
 
-        verify(emitter).complete();;
+        verify(emitter).complete();
         verify(repository).delete(userId, connection);
+        verify(deliveryCoordinator).remove(userId, connection);
+        verify(deliveryCoordinator, times(1)).remove(any(), any());
     }
 
     @Test
-    @DisplayName("초기 주석 전송 중 상태 예외가 발생하면 해당 연결을 삭제하고 원본예외를 전달한다.")
+    @DisplayName("초기 주석 전송 중 상태 예외가 발생하면 연결과 조정기 상태를 정리하고 원래 예외를 전달한다.")
     void initialCommentIllegalStateRequestDeletionAndRethrowsOriginalException(){
         UUID userId = UUID.randomUUID();
         IllegalStateException sendFailure = new IllegalStateException("이미 종료된 연결입니다.");
@@ -453,6 +457,8 @@ class SseConnectionServiceTest {
 
             verify(repository).delete(userId, connectionCaptor.getValue());
             verify(repository, times(1)).delete(any(), any());
+            verify(deliveryCoordinator).remove(userId, connectionCaptor.getValue());
+            verify(deliveryCoordinator, times(1)).remove(any(), any());
         }
     }
 
@@ -496,6 +502,10 @@ class SseConnectionServiceTest {
         verify(repository).delete(secondUserId, otherUserConnection);
         verify(repository, times(3)).delete(any(), any());
 
+        verify(deliveryCoordinator).remove(firstUserId, failedConnection);
+        verify(deliveryCoordinator).remove(firstUserId, sameUserConnection);
+        verify(deliveryCoordinator).remove(secondUserId, otherUserConnection);
+        verify(deliveryCoordinator, times(3)).remove(any(), any());
     }
 
     @Test
@@ -537,7 +547,7 @@ class SseConnectionServiceTest {
     }
 
     @Test
-    @DisplayName("복구 이력 조회에 실패하면 등록한 연결을 삭제하고 원래 예외를 전달한다.")
+    @DisplayName("복구 이력 조회에 실패하면 연결과 조정기 상태를 정리하고 원래 예외를 전달한다.")
     void recoveryLookupFailureDeletesRegisteredConnection(){
         UUID userId = UUID.randomUUID();
         UUID lastEventId = UUID.randomUUID();
@@ -558,10 +568,12 @@ class SseConnectionServiceTest {
 
         verify(repository).delete(userId, connectionCaptor.getValue());
         verify(repository, times(1)).delete(any(),any());
+        verify(deliveryCoordinator).remove(userId, connectionCaptor.getValue());
+        verify(deliveryCoordinator, times(1)).remove(any(), any());
     }
 
     @Test
-    @DisplayName("복구 전송 중 I/O 오류가 발생하면 등록한 연결을 삭제하고 원래 예외를 전달한다.")
+    @DisplayName("복구 전송 중 I/O 오류가 발생하면 연결과 조정기 상태를 정리하고 원래 예외를 전달한다.")
     void recoveryIoFailureDeletesRegisteredConnection(){
         UUID userId = UUID.randomUUID();
         UUID lastEventId = UUID.randomUUID();
@@ -584,10 +596,12 @@ class SseConnectionServiceTest {
         verify(repository).save(eq(userId), connectionCaptor.capture(), any(SseEmitter.class));
         verify(repository).delete(userId, connectionCaptor.getValue());
         verify(repository, times(1)).delete(any(),any());
+        verify(deliveryCoordinator).remove(userId, connectionCaptor.getValue());
+        verify(deliveryCoordinator,times(1)).remove(any(), any());
     }
 
     @Test
-    @DisplayName("복구 전송 중 상태 예외가 발생하면 등록한 연결을 삭제하고 원래 예외를 전달한다.")
+    @DisplayName("복구 전송 중 상태 예외가 발생하면 연결과 조정기 상태를 정리하고 원래 예외를 전달한다.")
     void recoveryIllegalStateFailureDeletesRegisteredConnection(){
         UUID userId = UUID.randomUUID();
         UUID lastEventId = UUID.randomUUID();
@@ -609,6 +623,7 @@ class SseConnectionServiceTest {
         verify(repository).save(eq(userId), connectionCaptor.capture(), any(SseEmitter.class));
         verify(repository).delete(userId, connectionCaptor.getValue());
         verify(repository, times(1)).delete(any(), any());
-
+        verify(deliveryCoordinator).remove(userId, connectionCaptor.getValue());
+        verify(deliveryCoordinator, times(1)).remove(any(), any());
     }
 }

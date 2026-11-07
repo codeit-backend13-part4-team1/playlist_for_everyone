@@ -53,15 +53,15 @@ public class SseConnectionService {
         SseEmitter emitter = new SseEmitter(sseProperties.connectionTimeout().toMillis());
         // 여기서는 콜백을 등록할 뿐 실행하지 않는다. 실제 완료/타임아웃/오류 시 MVC가 호출한다.
         // 등록 당시의 userId와 connection을 캡처하여, 이전 연결 종료가 새 연결을 지우지 않게 한다.
-        emitter.onCompletion(()-> sseEmitterRepository.delete(userId, connection));
+        emitter.onCompletion(()-> cleanupConnection(userId, connection));
         emitter.onTimeout(()-> {
-            sseEmitterRepository.delete(userId, connection);
+            cleanupConnection(userId, connection);
             // 종료 후 onCompletion이 다시 삭제를 요청해도 저장소의 중복 삭제는 안전하다.
             emitter.complete();
         });
         emitter.onError(e -> {
             // 오류가 발생한 연결의 참조를 제거한다. 오류에 따른 비동기 응답 종료는 MVC가 관리한다.
-            sseEmitterRepository.delete(userId, connection);
+            cleanupConnection(userId, connection);
             logSseConnectionIssue(userId, e, connection);
         });
 
@@ -104,7 +104,7 @@ public class SseConnectionService {
                             log.warn("SSE 연결 종료에 실패했습니다. userId={}, connectionId={}", userId, connection.id(),e);
                         }finally {
                             // 콜백 실행 여부나 complete 성공 여부에 의존하지 않고 저장소 참조를 정리한다.
-                            sseEmitterRepository.delete(userId, connection);
+                            cleanupConnection(userId, connection);
                         }
                     });
                 });
@@ -115,7 +115,7 @@ public class SseConnectionService {
      * 연결 중 계속 발생하는 전송 실패는 SseDeliveryService와 등록된 오류 콜백에서 처리한다.
      */
     private void handleConnectionError(UUID userId, Exception e, Connection connection) {
-        sseEmitterRepository.delete(userId, connection);
+        cleanupConnection(userId, connection);
         if (e instanceof IOException io){
             throw new UncheckedIOException("SSE 초기 주석 전송에 실패했습니다.", io);
         }
@@ -135,5 +135,10 @@ public class SseConnectionService {
             return;
         }
         log.error("SSE 연결 오류로 연결을 정리했습니다. userId={}, connectionId={}", userId, connection.id(), e);
+    }
+
+    private void cleanupConnection(UUID userId, Connection connection){
+        deliveryCoordinator.remove(userId, connection);
+        sseEmitterRepository.delete(userId, connection);
     }
 }
