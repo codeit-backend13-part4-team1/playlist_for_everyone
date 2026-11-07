@@ -272,7 +272,7 @@ class SseDeliveryServiceTest {
     }
 
     @Test
-    @DisplayName("하트비트 전송 중 IOException이 발생하면 실패한 연결만 삭제하고 다른 연결에도 계속 전송한다.")
+    @DisplayName("하트비트 I/O 실패 시 실패한 연결만 저장소와 조정기에서 정리하고 나머지 전송을 계속한다.")
     void heartbeatIoFailureDeletesOnlyFailedConnectionAndContinuesSending() throws IOException {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
@@ -304,6 +304,8 @@ class SseDeliveryServiceTest {
                 .doesNotThrowAnyException();
 
         verify(failedEmitter).send(any(SseEmitter.SseEventBuilder.class));
+        verify(deliveryCoordinator).remove(firstUserId, failedConnection);
+        verify(deliveryCoordinator, times(1)).remove(any(), any());
         verify(repository).delete(firstUserId, failedConnection);
         verify(repository, times(1)).delete(any(), any());
 
@@ -313,7 +315,7 @@ class SseDeliveryServiceTest {
     }
 
     @Test
-    @DisplayName("하트비트 전송 중 IllegalStateException이 발생하면 실패한 연결만 삭제하고 다른 연결에도 계속 전송한다.")
+    @DisplayName("하트비트 상태 예외 발생 시 실패한 연결만 저장소와 조정기에서 정리하고 나머지 전송을 계속한다.")
     void heartbeatIllegalStateFailureDeletesOnlyFailedConnectionAndContinuesSending() throws IOException {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
@@ -345,6 +347,8 @@ class SseDeliveryServiceTest {
                 .doesNotThrowAnyException();
 
         verify(failedEmitter).send(any(SseEmitter.SseEventBuilder.class));
+        verify(deliveryCoordinator).remove(firstUserId, failedConnection);
+        verify(deliveryCoordinator, times(1)).remove(any(), any());
         verify(repository).delete(firstUserId, failedConnection);
         verify(repository, times(1)).delete(any(), any());
 
