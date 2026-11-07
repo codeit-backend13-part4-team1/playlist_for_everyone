@@ -16,6 +16,9 @@ public record SseRetryProperties(
         if (initialDelay.compareTo(maxDelay) > 0){
             throw new IllegalArgumentException("최대 재시도 간격은 초기 재시도 간격 이상이어야 합니다.");
         }
+        if (maxRetries < 1){
+            throw new IllegalArgumentException("최대 재시도 횟수는 1 이상이어야 합니다.");
+        }
     }
 
     private void validateDuration(Duration value, String fieldName){
