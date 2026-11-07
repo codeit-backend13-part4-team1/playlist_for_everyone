@@ -32,7 +32,7 @@ public class SseConnectionLifecycleTest {
     SseEmitterRepository repository;
 
     @Mock
-    private SseRecoveryService recoveryService;
+    private SseDeliveryCoordinator deliveryCoordinator;
 
     @Test
     @DisplayName("컨텍스트가 종료되면 등록된 에미터의 종료와 연결 삭제를 요청한다.")
@@ -52,7 +52,7 @@ public class SseConnectionLifecycleTest {
         // try 블록을 벗어날 때 context.close가 호출되며 실제 종료 이벤트가 발행된다.
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()){
             context.registerBean(SseConnectionService.class,
-                    ()-> new SseConnectionService(repository, properties, recoveryService));
+                    ()-> new SseConnectionService(repository, properties, deliveryCoordinator));
 
             context.refresh();
             verify(emitter, never()).complete();
@@ -85,7 +85,7 @@ public class SseConnectionLifecycleTest {
 
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()){
             context.registerBean(SseConnectionService.class,
-                    ()-> new SseConnectionService(repository, properties, recoveryService));
+                    ()-> new SseConnectionService(repository, properties, deliveryCoordinator));
             context.registerBean("testLifecycle", Lifecycle.class, () -> lifecycle);
             context.refresh();
 

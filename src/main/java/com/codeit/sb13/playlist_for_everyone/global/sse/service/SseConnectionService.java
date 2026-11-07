@@ -38,7 +38,7 @@ public class SseConnectionService {
 
     private final SseEmitterRepository sseEmitterRepository;
     private final SseProperties sseProperties;
-    private final SseRecoveryService recoveryService;
+    private final SseDeliveryCoordinator deliveryCoordinator;
 
     /**
      * 새 연결을 등록하고, 응답 시작을 위한 ID 없는 주석을 준비한다.
@@ -66,6 +66,7 @@ public class SseConnectionService {
         });
 
         // 전송을 시도하기 전에 저장하여 이후 콜백과 전송 실패 처리가 같은 연결을 정리하게 한다.
+        deliveryCoordinator.register(userId, connection, emitter);
         sseEmitterRepository.save(userId, connection, emitter);
 
         try {
@@ -73,7 +74,7 @@ public class SseConnectionService {
             // 컨트롤러 반환 전에는 MVC의 전송 handler가 없어 데이터가 버퍼에 보관될 수 있다.
             // 반환 후 MVC가 emitter를 초기화하면 보관한 주석을 실제 응답에 쓰고 응답을 시작한다.
             emitter.send(SseEmitter.event().comment("connected"));
-            recoveryService.recover(userId, connection, emitter, lastEventId);
+            deliveryCoordinator.recover(userId, connection, lastEventId);
         } catch (IOException | RuntimeException e) {
             handleConnectionError(userId, e, connection);
         }

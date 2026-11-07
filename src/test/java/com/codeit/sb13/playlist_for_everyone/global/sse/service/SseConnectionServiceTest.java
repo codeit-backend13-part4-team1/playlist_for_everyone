@@ -43,9 +43,6 @@ class SseConnectionServiceTest {
     private SseEmitterRepository repository;
 
     @Mock
-    private SseRecoveryService recoveryService;
-
-    @Mock
     private SseDeliveryCoordinator deliveryCoordinator;
 
     private SseConnectionService service;
@@ -56,7 +53,7 @@ class SseConnectionServiceTest {
                 Duration.ofSeconds(15),
                 Duration.ofMinutes(30)
         );
-        service = new SseConnectionService(repository, properties, recoveryService);
+        service = new SseConnectionService(repository, properties, deliveryCoordinator);
     }
 
     @Test
@@ -84,7 +81,7 @@ class SseConnectionServiceTest {
                 connectionTimeout
         );
         SseConnectionService serviceWithCustomTimeout =
-                new SseConnectionService(repository, properties, recoveryService);
+                new SseConnectionService(repository, properties, deliveryCoordinator);
 
         SseEmitter emitter = serviceWithCustomTimeout.connect(UUID.randomUUID());
 
@@ -535,8 +532,8 @@ class SseConnectionServiceTest {
         ArgumentCaptor<Connection> connectionCaptor = ArgumentCaptor.forClass(Connection.class);
 
         doThrow(failure)
-                .when(recoveryService)
-                .recover(eq(userId), any(Connection.class), any(SseEmitter.class), eq(lastEventId));
+                .when(deliveryCoordinator)
+                .recover(eq(userId), any(Connection.class), eq(lastEventId));
 
         assertThatThrownBy(() -> service.connect(userId, lastEventId))
                 .isSameAs(failure);
@@ -559,11 +556,10 @@ class SseConnectionServiceTest {
         ArgumentCaptor<Connection> connectionCaptor = ArgumentCaptor.forClass(Connection.class);
 
         doThrow(failure)
-                .when(recoveryService)
+                .when(deliveryCoordinator)
                 .recover(
                         eq(userId),
                         any(Connection.class),
-                        any(SseEmitter.class),
                         eq(lastEventId)
                 );
 
@@ -585,11 +581,10 @@ class SseConnectionServiceTest {
         ArgumentCaptor<Connection> connectionCaptor = ArgumentCaptor.forClass(Connection.class);
 
         doThrow(failure)
-                .when(recoveryService)
+                .when(deliveryCoordinator)
                 .recover(
                         eq(userId),
                         any(Connection.class),
-                        any(SseEmitter.class),
                         eq(lastEventId)
                 );
 

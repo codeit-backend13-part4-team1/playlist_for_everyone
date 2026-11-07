@@ -14,8 +14,8 @@ import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.impl.InMemorySseEmitterRepository;
 import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseConnectionService;
+import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseDeliveryCoordinator;
 import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseDeliveryService;
-import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseRecoveryService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -121,7 +121,7 @@ public class SseStreamingIntegrationTest {
     private AuthService authService;
 
     @MockitoBean
-    private SseRecoveryService recoveryService;
+    private SseDeliveryCoordinator deliveryCoordinator;
 
 
     @Test
