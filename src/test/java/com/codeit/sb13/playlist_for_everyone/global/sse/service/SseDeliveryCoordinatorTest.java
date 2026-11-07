@@ -13,6 +13,7 @@ import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.UUID;
+import java.util.concurrent.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -472,6 +473,246 @@ class SseDeliveryCoordinatorTest {
         verify(recoveryService, never())
                 .recoverAfter(any(), any(), any(), any());
         verifyNoMoreInteractions(recoveryService);
+    }
+
+    @Test
+    @DisplayName("전송 중 다른 스레드에서 받은 요청은 현재 전송 완료 후 갱신된 위치부터 처리한다.")
+    void defersDeliveryRequestedByAnotherThreadUntilCurrentDeliveryCompletes() throws InterruptedException, ExecutionException, TimeoutException {
+        SseHistoryPosition upperBound = createHistoryPosition();
+        SseHistoryPosition nextPosition = createHistoryPosition("1000-1");
+
+        CountDownLatch deliveryStarted = new CountDownLatch(1);
+        CountDownLatch allowDeliveryCompletion = new CountDownLatch(1);
+
+        when(recoveryService.recover(userId, connection, emitter, lastEventId))
+                .thenReturn(upperBound);
+        when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
+                .thenAnswer(invocation -> {
+                    deliveryStarted.countDown();
+                    assertThat(allowDeliveryCompletion.await(10, TimeUnit.SECONDS))
+                            .as("첫 번째 전송의 완료가 허용되어야 한다.")
+                            .isTrue();
+                    return nextPosition;
+                });
+
+        when(recoveryService.recoverAfter(userId, connection, emitter, nextPosition))
+                .thenReturn(nextPosition);
+
+        coordinator.register(userId, connection, emitter);
+        coordinator.recover(userId, connection, lastEventId);
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> firstRequest = executor.submit(() ->
+                    coordinator.requestDelivery(userId, connection));
+            assertThat(deliveryStarted.await(5,TimeUnit.SECONDS))
+                    .as("첫 번째 전송이 시작되어야 한다.")
+                    .isTrue();
+
+            Future<?> secondRequest = executor.submit(() ->
+                    coordinator.requestDelivery(userId, connection));
+            secondRequest.get(5, TimeUnit.SECONDS);
+
+            verify(recoveryService, times(1))
+                    .recoverAfter(any(), any(), any(), any());
+
+            allowDeliveryCompletion.countDown();;
+            firstRequest.get(5, TimeUnit.SECONDS);
+
+            ArgumentCaptor<SseHistoryPosition> positionCaptor = ArgumentCaptor.forClass(SseHistoryPosition.class);
+            verify(recoveryService, times(2))
+                    .recoverAfter(eq(userId), eq(connection), same(emitter), positionCaptor.capture());
+            assertThat(positionCaptor.getAllValues())
+                    .containsExactly(upperBound, nextPosition);
+        } finally {
+            allowDeliveryCompletion.countDown();
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(5, TimeUnit.SECONDS))
+                    .as("테스트 작업 스레드가 종료되어야 한다.")
+                    .isTrue();
+        }
+    }
+
+    @Test
+    @DisplayName("초기 복구 중 다른 스레드에서 받은 요청은 복구 완료 후 해당 위치부터 처리한다.")
+    void defersDeliveryRequestedByAnotherThreadUntilRecoveryCompletes() throws InterruptedException, ExecutionException, TimeoutException {
+        SseHistoryPosition upperBound = createHistoryPosition();
+
+        CountDownLatch recoveryStarted = new CountDownLatch(1);
+        CountDownLatch allowRecoveryCompletion = new CountDownLatch(1);
+
+        when(recoveryService.recover(userId, connection, emitter, lastEventId))
+                .thenAnswer(invocation -> {
+                    recoveryStarted.countDown();
+                    assertThat(allowRecoveryCompletion.await(10, TimeUnit.SECONDS))
+                            .as("초기 복구의 완료가 허용되어야 한다.")
+                            .isTrue();
+                    return upperBound;
+                });
+
+        when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
+                .thenReturn(upperBound);
+        coordinator.register(userId, connection, emitter);
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        try {
+            Future<?> recoveryRequest = executor.submit(() ->
+                    coordinator.recover(userId, connection, lastEventId));
+            assertThat(recoveryStarted.await(5, TimeUnit.SECONDS))
+                    .as("초기 복구가 시작되어야 한다.")
+                    .isTrue();
+
+            Future<?> deliveryRequest = executor.submit(() ->
+                    coordinator.requestDelivery(userId, connection));
+
+            deliveryRequest.get(5, TimeUnit.SECONDS);
+
+            verify(recoveryService, never())
+                    .recoverAfter(any(), any(), any(), any());
+
+            allowRecoveryCompletion.countDown();
+            recoveryRequest.get(5, TimeUnit.SECONDS);
+
+            verify(recoveryService)
+                    .recover(eq(userId), eq(connection), same(emitter), eq(lastEventId));
+            verify(recoveryService)
+                    .recoverAfter(eq(userId), eq(connection), same(emitter), eq(upperBound));
+            verifyNoMoreInteractions(recoveryService);
+        } finally {
+            allowRecoveryCompletion.countDown();
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(5, TimeUnit.SECONDS))
+                    .as("테스트 작업 스레드가 종료되어야 한다.")
+                    .isTrue();
+        }
+    }
+
+    @Test
+    @DisplayName("한 연결의 전송이 지연되어도 같은 사용자의 다른 연결은 독립적으로 전송한다.")
+    void deliversToAnotherConnectionOfSameUserWhileFirstDeliveryIsBlocked() throws InterruptedException, ExecutionException, TimeoutException {
+        Connection secondConnection = Connection.create();
+        SseEmitter secondEmitter = mock(SseEmitter.class);
+        UUID secondLastEventId = UUID.randomUUID();
+
+        SseHistoryPosition firstPosition = createHistoryPosition();
+        SseHistoryPosition secondPosition = createHistoryPosition("2000-0");
+
+        CountDownLatch firstDeliveryStarted = new CountDownLatch(1);
+        CountDownLatch allowFirstDeliveryCompletion = new CountDownLatch(1);
+
+        when(recoveryService.recover(userId, connection, emitter, lastEventId))
+                .thenReturn(firstPosition);
+        when(recoveryService.recover(userId, secondConnection, secondEmitter, secondLastEventId))
+                .thenReturn(secondPosition);
+        when(recoveryService.recoverAfter(userId, connection, emitter, firstPosition))
+                .thenAnswer(invocation -> {
+                    firstDeliveryStarted.countDown();
+                    assertThat(allowFirstDeliveryCompletion.await(10, TimeUnit.SECONDS))
+                            .as("첫 번째 연결이 전송완료가 허용되어야 한다.")
+                            .isTrue();
+                    return firstPosition;
+                });
+
+        when(recoveryService.recoverAfter(userId, secondConnection, secondEmitter, secondPosition))
+                .thenReturn(secondPosition);
+
+        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, secondConnection, secondEmitter);
+        coordinator.recover(userId, connection, lastEventId);
+        coordinator.recover(userId, secondConnection, secondLastEventId);
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> firstRequest = executor.submit(() ->
+                    coordinator.requestDelivery(userId, connection));
+            assertThat(firstDeliveryStarted.await(5, TimeUnit.SECONDS))
+                    .as("첫 번째 연결의 전송이 시작되어야 한다.")
+                    .isTrue();
+            Future<?> secondRequest = executor.submit(() ->
+                    coordinator.requestDelivery(userId, secondConnection));
+            secondRequest.get(5, TimeUnit.SECONDS);
+
+            assertThat(firstRequest.isDone())
+                    .as("첫 번째 연결의 전송은 아직 대기 중이어야 한다.")
+                    .isFalse();
+
+            verify(recoveryService)
+                    .recoverAfter(eq(userId), eq(secondConnection), same(secondEmitter), eq(secondPosition));
+            allowFirstDeliveryCompletion.countDown();
+            firstRequest.get(5, TimeUnit.SECONDS);
+
+            verify(recoveryService)
+                    .recoverAfter(eq(userId), eq(connection), same(emitter), eq(firstPosition));
+            verify(recoveryService, times(2))
+                    .recoverAfter(any(), any(), any(), any());
+
+        } finally {
+            allowFirstDeliveryCompletion.countDown();
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(5, TimeUnit.SECONDS))
+                    .as("테스트 작업 스레드가 종료되어야 한다.")
+                    .isTrue();
+        }
+    }
+
+    @Test
+    @DisplayName("전송 중 다른 스레드에서 연결을 제거하면 보류한 요청의 후속 조회를 중단한다.")
+    void stopsPendingDeliveryWhenAnotherThreadRemovesConnection() throws InterruptedException, ExecutionException, TimeoutException {
+        SseHistoryPosition upperBound = createHistoryPosition();
+        SseHistoryPosition nextPosition = createHistoryPosition("1000-1");
+
+        CountDownLatch deliveryStarted = new CountDownLatch(1);
+        CountDownLatch allowDeliveryCompletion = new CountDownLatch(1);
+
+        when(recoveryService.recover(userId, connection, emitter, lastEventId))
+                .thenReturn(upperBound);
+        when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
+                .thenAnswer(invocation ->{
+                    deliveryStarted.countDown();
+                    assertThat(allowDeliveryCompletion.await(10, TimeUnit.SECONDS))
+                            .as("진행 중인 전송의 완료가 허용되어야 한다.")
+                            .isTrue();
+
+                    return nextPosition;
+                });
+
+        coordinator.register(userId, connection, emitter);
+        coordinator.recover(userId, connection, lastEventId);
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        try {
+            Future<?> deliveryRequest = executor.submit(() ->
+                    coordinator.requestDelivery(userId, connection));
+            assertThat(deliveryStarted.await(5, TimeUnit.SECONDS))
+                    .as("전송이 시작되어야 한다.")
+                    .isTrue();
+
+            Future<?> removeRequest = executor.submit(() -> {
+                coordinator.requestDelivery(userId, connection);
+                coordinator.remove(userId, connection);
+            });
+
+            removeRequest.get(5, TimeUnit.SECONDS);
+            assertThat(deliveryRequest.isDone())
+                    .as("진행 중인 전송은 아직 대기중이어야 한다.")
+                    .isFalse();
+            allowDeliveryCompletion.countDown();
+            deliveryRequest.get(5, TimeUnit.SECONDS);
+            coordinator.requestDelivery(userId, connection);
+            verify(recoveryService)
+                    .recover(eq(userId), eq(connection), same(emitter), eq(lastEventId));
+            verify(recoveryService)
+                    .recoverAfter(eq(userId), eq(connection), same(emitter), eq(upperBound));
+            verifyNoMoreInteractions(recoveryService);
+        } finally {
+            allowDeliveryCompletion.countDown();
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(5, TimeUnit.SECONDS))
+                    .as("테스트 작업 스레드가 종료되어야 한다.")
+                    .isTrue();
+        }
     }
 
     private SseHistoryPosition createHistoryPosition(String position) {
