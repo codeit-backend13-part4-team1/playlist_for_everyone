@@ -20,8 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -40,7 +39,13 @@ class SseDeliveryServiceTest {
     @Mock
     private SseEmitterRepository repository;
 
+    @Mock
+    private SseDeliveryCoordinator deliveryCoordinator;
+
     private SseDeliveryService service;
+    private final UUID receiverId = UUID.randomUUID();
+    private final UUID eventId = UUID.randomUUID();
+    private final Connection connection = Connection.create();
 
     @BeforeEach
     void setUp() {
@@ -48,12 +53,11 @@ class SseDeliveryServiceTest {
     }
 
     @Test
-    @DisplayName("수신자의 연결을 조회하여 SSE 이벤트를 전송한다.")
-    void sendEventToReceiverConnection() throws IOException {
-        UUID receiverId = UUID.randomUUID();
+    @DisplayName("수신자의 연결을 조회하여 조정기에 전송을 요청한다.")
+    void requestsDeliveryForReceiverConnection() throws IOException {
         SseEmitter emitter = mock(SseEmitter.class);
         when(repository.findAllByUserId(receiverId))
-                .thenReturn(Map.of(Connection.create(), emitter));
+                .thenReturn(Map.of(connection, emitter));
 
         SseEvent<Map<String, String>> event = new SseEvent<>(
                 UUID.randomUUID(),
@@ -65,15 +69,15 @@ class SseDeliveryServiceTest {
         service.sendToLocalConnections(event);
 
         verify(repository).findAllByUserId(receiverId);
-        verify(emitter).send(any(SseEmitter.SseEventBuilder.class));
+        verify(deliveryCoordinator).requestDelivery(receiverId, connection);
+        verify(deliveryCoordinator, times(1)).requestDelivery(any(), any());
+        verify(emitter, never()).send(any(SseEmitter.SseEventBuilder.class));
     }
 
     @Test
     @DisplayName("전송하는 SSE 이벤트에 이벤트 ID와 이름 및 데이터가 포함된다.")
     void sendEventPreservesIdNameAndData() throws IOException {
-        UUID receiverId = UUID.randomUUID();
-        UUID eventId = UUID.randomUUID();
-        Connection connection = Connection.create();
+
         String eventName = Event.NOTIFICATIONS.getName();
         Map<String, String> payload = Map.of("message", "테스트 알림");
 
@@ -112,18 +116,15 @@ class SseDeliveryServiceTest {
     }
 
     @Test
-    @DisplayName("수신자의 연결이 여러 개이면 모든 연결에 SSE 이벤트를 전송한다.")
-    void sendEventToAllReceiverConnections() throws IOException {
-        UUID receiverId = UUID.randomUUID();
-
-        Connection firstConnection = Connection.create();
+    @DisplayName("수신자의 연결이 여러 개이면 각 연결에 대해 조정기에 전송을 요청한다")
+    void requestsDeliveryForAllReceiverConnections() throws IOException {
         Connection secondConnection = Connection.create();
 
         SseEmitter firstEmitter = mock(SseEmitter.class);
         SseEmitter secondEmitter = mock(SseEmitter.class);
 
         when(repository.findAllByUserId(receiverId)).thenReturn(Map.of(
-                firstConnection, firstEmitter,
+                connection, firstEmitter,
                 secondConnection, secondEmitter
         ));
 
@@ -136,12 +137,17 @@ class SseDeliveryServiceTest {
 
         service.sendToLocalConnections(event);
 
-        verify(firstEmitter).send(any(SseEmitter.SseEventBuilder.class));
-        verify(secondEmitter).send(any(SseEmitter.SseEventBuilder.class));
+        verify(repository).findAllByUserId(receiverId);
+        verify(deliveryCoordinator).requestDelivery(receiverId, connection);
+        verify(deliveryCoordinator).requestDelivery(receiverId, secondConnection);
+        verify(deliveryCoordinator, times(2)).requestDelivery(any(), any());
+
+        verify(firstEmitter, never()).send(any(SseEmitter.SseEventBuilder.class));
+        verify(secondEmitter, never()).send(any(SseEmitter.SseEventBuilder.class));
     }
 
     @Test
-    @DisplayName("수신자의 연결이 없으면 예외나 연결 삭제 요청 없이 종료한다.")
+    @DisplayName("수신자의 연결이 없으면 조정기 전송이나 연결 삭제를 요청하지 않는다.")
     void sendEventWithoutConnectionsDoesNotFail(){
         UUID receiverId = UUID.randomUUID();
 
@@ -160,6 +166,7 @@ class SseDeliveryServiceTest {
 
         verify(repository).findAllByUserId(receiverId);
         verify(repository, never()).delete(any(),any());
+        verifyNoInteractions(deliveryCoordinator);
     }
 
     @Test
