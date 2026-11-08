@@ -9,7 +9,7 @@ import org.springframework.data.redis.core.script.RedisScript;
 @Configuration
 public class WatcherScriptConfig {
 
-    static public final String DELIMITER = "-";
+    static public final String DELIMITER = ";";
     static public final Integer TTL_TIMEOUT = 60;
 
     private RedisScript<Long> load(String path){
@@ -44,5 +44,8 @@ public class WatcherScriptConfig {
         return load("scripts/wch_cnt.lua");
     }
 
-
+    @Bean("lua-script-delete-with-contentId")
+    public RedisScript<Long> watcherDeleteWithContentIdScript(){
+        return load("scripts/wch_del_cnt.lua");
+    }
 }

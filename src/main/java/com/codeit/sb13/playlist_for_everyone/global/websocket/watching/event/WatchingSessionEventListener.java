@@ -27,7 +27,6 @@ import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.We
 @RequiredArgsConstructor
 public class WatchingSessionEventListener {
 
-
     private final UserService userService;
     private final WatchingSession watchingSession;
     private final RedisTemplate<String, Object> redisTemplate;
@@ -92,24 +91,41 @@ public class WatchingSessionEventListener {
         }
     }
 
+    /**
+     * 하트비트 로직에 의한 등록된 세션 리프레시.
+     * @param event 세션 info 를 담고있다.
+     */
     @EventListener
     public void watchRefreshEvent(WatchingSessionRefreshEvent event){
         watchingSession.refresh(event.info());
     }
 
 
+    /**
+     * 동시 시청 세션 채팅방 입장 이벤트
+     * @param event 세션 정보를 들고 있다.
+     */
     @EventListener
     public void chatJoinEvent(WatchingChatJoinEvent event){
         SessionInfo info = check(event.info());
         watchingSession.joinChatSession(info);
     }
 
+    /**
+     * 동시 시청 세션 채팅방 퇴장 이벤트.
+     * @param event 세션 정보를 들고 있다.
+     */
     @EventListener
     public void chatLeaveEvent(WatchingChatLeaveEvent event){
         SessionInfo info = check(event.info());
         watchingSession.leaveChatSession(info);
     }
 
+    /**
+     * 채팅 전송 이벤트.
+     * 세션 정보와 함께 채팅 메세지 내용을 들고있다.
+     * @param event 세션 정보(info), 메세지(message)
+     */
     @EventListener
     public void chatSendEvent(WatchingChatSendEvent event){
         try {
