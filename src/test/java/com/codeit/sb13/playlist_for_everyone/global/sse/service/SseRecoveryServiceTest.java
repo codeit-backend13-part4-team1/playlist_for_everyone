@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Event;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
 import com.codeit.sb13.playlist_for_everyone.global.sse.history.*;
+import com.codeit.sb13.playlist_for_everyone.global.sse.replay.SseReplayFilter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -37,6 +38,9 @@ class SseRecoveryServiceTest {
     @Mock
     private SseEmitter emitter;
 
+    @Mock
+    private SseReplayFilter replayFilter;
+
     private SseRecoveryService service;
     private final UUID userId = UUID.randomUUID();
     private final UUID lastEventId = UUID.randomUUID();
@@ -45,7 +49,7 @@ class SseRecoveryServiceTest {
 
     @BeforeEach
     void setUp(){
-        service = new SseRecoveryService(historyStore);
+        service = new SseRecoveryService(historyStore, List.of());
     }
 
     @Test
@@ -387,6 +391,238 @@ class SseRecoveryServiceTest {
         assertSentEvent(sentEvents.get(0), firstEvent);
         assertSentEvent(sentEvents.get(1), secondEvent);
         assertThat(result).isEqualTo(secondEntry.position());
+    }
+
+    @Test
+    @DisplayName("스냅샷 복구 시 필텉가 허용한 이벤트만 전송하고 원본 끝 위치를 유지한다.")
+    void replayOnlyFilteredSnapshotEntriesAndKeepsUpperBound() throws IOException {
+        service = new SseRecoveryService(historyStore, List.of(replayFilter));
+
+        SseHistoryEntry retainedEntry = new SseHistoryEntry(createHistoryPosition("1000-0"),
+                SseEvent.createNotificationEvent(UUID.randomUUID(), userId, jsonMapper.readTree("{}")));
+
+        SseHistoryEntry excludedEntry = new SseHistoryEntry(createHistoryPosition("1000-1"),
+                SseEvent.createNotificationEvent(UUID.randomUUID(), userId, jsonMapper.readTree("{}")));
+
+        List<SseHistoryEntry> entries = List.of(retainedEntry, excludedEntry);
+        SseHistoryPosition upperBound = excludedEntry.position();
+
+        when(historyStore.snapshot(userId, lastEventId))
+                .thenReturn(new SseHistorySnapshot(upperBound, entries));
+
+        when(replayFilter.supports(Event.NOTIFICATIONS.getName()))
+                .thenReturn(true);
+
+        when(replayFilter.filter(userId, entries))
+                .thenReturn(List.of(retainedEntry));
+
+        SseHistoryPosition result = service.recover(userId, connection, emitter, lastEventId);
+        ArgumentCaptor<SseEmitter.SseEventBuilder> captor = ArgumentCaptor.forClass(SseEmitter.SseEventBuilder.class);
+
+        verify(emitter).send(captor.capture());
+        assertSentEvent(captor.getValue(), retainedEntry.event());
+
+        assertThat(result).isEqualTo(upperBound);
+        verify(replayFilter).filter(userId, entries);
+
+    }
+
+    @Test
+    @DisplayName("필터가 스냅샷의 모든 이벤트를 제외하면 전송 없이 원본 끝 위치를 유지한다.")
+    void keepsSnapshotUpperBoundWhenFilterExcludesAllEntries() throws IOException {
+        service = new SseRecoveryService(historyStore, List.of(replayFilter));
+        SseHistoryPosition upperBound = createHistoryPosition("1000-1");
+        SseHistoryEntry excludedEntry = new SseHistoryEntry(upperBound,
+                SseEvent.createNotificationEvent(UUID.randomUUID(), userId, jsonMapper.readTree("{}")));
+        List<SseHistoryEntry> entries = List.of(excludedEntry);
+
+        when(historyStore.snapshot(userId, lastEventId))
+                .thenReturn(new SseHistorySnapshot(upperBound, entries));
+        when(replayFilter.supports(Event.NOTIFICATIONS.getName()))
+                .thenReturn(true);
+        when(replayFilter.filter(userId, entries))
+                .thenReturn(List.of());
+
+        SseHistoryPosition result = service.recover(userId, connection, emitter, lastEventId);
+        verify(emitter, never()).send(any(SseEmitter.SseEventBuilder.class));
+        assertThat(result).isEqualTo(upperBound);
+        verify(replayFilter).filter(userId, entries);
+    }
+
+    @Test
+    @DisplayName("이벤트 종류가 섞여 있어도 지원 대상만 일괄 필터링하고 원래 전송 순서를 유지한다.")
+    void filtersSupportedSnapshotEntriesInBatchAndPreservesMixedEventOrder() throws IOException {
+        service = new SseRecoveryService(historyStore, List.of(replayFilter));
+
+        SseHistoryEntry firstNotification = new SseHistoryEntry(createHistoryPosition("1000-0"),
+                SseEvent.createNotificationEvent(UUID.randomUUID(), userId, jsonMapper.readTree("{}")));
+        SseHistoryEntry directMessage = new SseHistoryEntry(createHistoryPosition("1000-1"),
+                new SseEvent<>(
+                        UUID.randomUUID(),
+                        userId,
+                        Event.DIRECT_MESSAGES.getName(),
+                        jsonMapper.readTree("{}"))
+                );
+
+        SseHistoryEntry excludedNotification = new SseHistoryEntry(createHistoryPosition("1000-2"),
+                SseEvent.createNotificationEvent(UUID.randomUUID(), userId, jsonMapper.readTree("{}")));
+
+
+        SseHistoryEntry lastNotification = new SseHistoryEntry(createHistoryPosition("1000-3"),
+                SseEvent.createNotificationEvent(UUID.randomUUID(), userId, jsonMapper.readTree("{}")));
+
+        List<SseHistoryEntry> entries = List.of(firstNotification, directMessage, excludedNotification, lastNotification);
+        List<SseHistoryEntry> notifications = List.of(firstNotification, excludedNotification, lastNotification);
+
+        when(historyStore.snapshot(userId, lastEventId))
+                .thenReturn(new SseHistorySnapshot(lastNotification.position(), entries));
+        when(replayFilter.supports(Event.NOTIFICATIONS.getName()))
+                .thenReturn(true);
+        when(replayFilter.supports(Event.DIRECT_MESSAGES.getName()))
+                .thenReturn(false);
+        when(replayFilter.filter(userId, notifications))
+                .thenReturn(List.of(firstNotification, lastNotification));
+        SseHistoryPosition result = service.recover(userId, connection, emitter, lastEventId);
+
+        ArgumentCaptor<SseEmitter.SseEventBuilder> captor = ArgumentCaptor.forClass(SseEmitter.SseEventBuilder.class);
+        verify(emitter, times(3)).send(captor.capture());
+
+        List<SseEmitter.SseEventBuilder> sentEvents = captor.getAllValues();
+        assertSentEvent(sentEvents.get(0), firstNotification.event());
+        assertSentEvent(sentEvents.get(1), directMessage.event());
+        assertSentEvent(sentEvents.get(2), lastNotification.event());
+
+        assertThat(result).isEqualTo(lastNotification.position());
+        verify(replayFilter).filter(userId, notifications);
+
+    }
+
+    @Test
+    @DisplayName("스냅샷 필터 조회에 실패하면 어떤 이벤트도 전송하지 않고 원래 예외를 전달한다.")
+    void propagatesSnapshotFilterFailureWithoutSendingAnyEvents() throws IOException {
+        service = new SseRecoveryService(historyStore, List.of(replayFilter));
+
+        SseHistoryEntry directMessage = new SseHistoryEntry(createHistoryPosition("1000-0"),
+                new SseEvent<>(
+                        UUID.randomUUID(),
+                        userId,
+                        Event.DIRECT_MESSAGES.getName(),
+                        jsonMapper.readTree("{}"))
+        );
+        SseHistoryEntry notification = new SseHistoryEntry(createHistoryPosition("1000-1"),
+                SseEvent.createNotificationEvent(UUID.randomUUID(), userId, jsonMapper.readTree("{}")));
+
+
+        List<SseHistoryEntry> entries = List.of(directMessage, notification);
+        List<SseHistoryEntry> notifications = List.of(notification);
+
+        DataAccessResourceFailureException failure = new DataAccessResourceFailureException("테스트용 알림 필터 조회 실패");
+        when(historyStore.snapshot(userId, lastEventId))
+                .thenReturn(new SseHistorySnapshot(notification.position(), entries));
+        when(replayFilter.supports(Event.DIRECT_MESSAGES.getName()))
+                .thenReturn(false);
+        when(replayFilter.supports(Event.NOTIFICATIONS.getName()))
+                .thenReturn(true);
+        when(replayFilter.filter(userId, notifications))
+                .thenThrow(failure);
+
+        assertThatThrownBy(()-> service.recover(userId, connection, emitter, lastEventId))
+                .isSameAs(failure);
+
+        verify(emitter, never()).send(any(SseEmitter.SseEventBuilder.class));
+        verify(replayFilter).filter(userId, notifications);
+    }
+
+    @Test
+    @DisplayName("후속 이력은 허용한 이벤트만 전송하고 제외된 마지막 이벤트까지 처리 위치를 진행한다.")
+    void filtersFollowingEntriesAndAdvancesPastExcludedLastEntry() throws IOException {
+        service = new SseRecoveryService(historyStore, List.of(replayFilter));
+        SseHistoryPosition afterPosition = createHistoryPosition("1000-0");
+        SseHistoryEntry retainedEntry = new SseHistoryEntry(createHistoryPosition("1000-1"),
+                SseEvent.createNotificationEvent(UUID.randomUUID(), userId, jsonMapper.readTree("{}")));
+        SseHistoryEntry excludedEntry = new SseHistoryEntry(createHistoryPosition("1000-2"),
+                SseEvent.createNotificationEvent(UUID.randomUUID(), userId, jsonMapper.readTree("{}")));
+        List<SseHistoryEntry> entries = List.of(retainedEntry, excludedEntry);
+
+        when(historyStore.readAfter(userId, afterPosition))
+                .thenReturn(new SseHistoryReadResult(false, entries));
+        when(replayFilter.supports(Event.NOTIFICATIONS.getName()))
+                .thenReturn(true);
+        when(replayFilter.filter(userId, entries))
+                .thenReturn(List.of(retainedEntry));
+
+        SseHistoryPosition result = service.recoverAfter(userId, connection, emitter, afterPosition);
+        ArgumentCaptor<SseEmitter.SseEventBuilder> captor = ArgumentCaptor.forClass(SseEmitter.SseEventBuilder.class);
+
+        verify(emitter).send(captor.capture());
+        assertSentEvent(captor.getValue(), retainedEntry.event());
+        assertThat(result).isEqualTo(excludedEntry.position());
+        verify(historyStore).readAfter(userId, afterPosition);
+        verify(replayFilter).filter(userId, entries);
+    }
+
+    @Test
+    @DisplayName("후속 이력이 모두 필터에서 제외되면 전송 없이 조회한 마지막 위치까지 진행한다.")
+    void advancesPositionWhenAllFollowingEntriesAreFilteredOut() throws IOException {
+        service = new SseRecoveryService(historyStore, List.of(replayFilter));
+        SseHistoryPosition afterPosition = createHistoryPosition("1000-0");
+        SseHistoryEntry firstEntry = new SseHistoryEntry(createHistoryPosition("1000-1"),
+                SseEvent.createNotificationEvent(UUID.randomUUID(), userId, jsonMapper.readTree("{}")));
+        SseHistoryEntry lastEntry = new SseHistoryEntry(createHistoryPosition("1000-2"),
+                SseEvent.createNotificationEvent(UUID.randomUUID(), userId, jsonMapper.readTree("{}")));
+        List<SseHistoryEntry> entries = List.of(firstEntry, lastEntry);
+
+        when(historyStore.readAfter(userId, afterPosition))
+                .thenReturn(new SseHistoryReadResult(false, entries));
+        when(replayFilter.supports(Event.NOTIFICATIONS.getName()))
+                .thenReturn(true);
+        when(replayFilter.filter(userId, entries))
+                .thenReturn(List.of());
+
+        SseHistoryPosition result = service.recoverAfter(userId, connection, emitter, afterPosition);
+
+        verify(emitter, never()).send(any(SseEmitter.SseEventBuilder.class));
+        assertThat(result).isEqualTo(lastEntry.position());
+        verify(historyStore).readAfter(userId, afterPosition);
+        verify(replayFilter).filter(userId, entries);
+
+    }
+
+    @Test
+    @DisplayName("후속 필터 조회에 실패하면 어떤 이벤트도 전송하지 않고 원래 예외를 전달한다.")
+    void propagatesFollowingFilterFailureWithoutSendingAnyEvents() throws IOException {
+        service = new SseRecoveryService(historyStore, List.of(replayFilter));
+
+        SseHistoryPosition afterPosition = createHistoryPosition("1000-0");
+        SseHistoryEntry directMessage = new SseHistoryEntry(createHistoryPosition("1000-1"),
+                new SseEvent<>(
+                        UUID.randomUUID(),
+                        userId,
+                        Event.DIRECT_MESSAGES.getName(),
+                        jsonMapper.readTree("{}"))
+        );
+        SseHistoryEntry notification = new SseHistoryEntry(createHistoryPosition("1000-2"),
+                SseEvent.createNotificationEvent(UUID.randomUUID(), userId, jsonMapper.readTree("{}")));
+
+        List<SseHistoryEntry> entries = List.of(directMessage, notification);
+        List<SseHistoryEntry> notifications = List.of(notification);
+
+        DataAccessResourceFailureException failure = new DataAccessResourceFailureException("테스트용 후속 알림 필터 ㅈ회 실패");
+
+        when(historyStore.readAfter(userId, afterPosition))
+                .thenReturn(new SseHistoryReadResult(false, entries));
+        when(replayFilter.supports(Event.DIRECT_MESSAGES.getName()))
+                .thenReturn(false);
+        when(replayFilter.supports(Event.NOTIFICATIONS.getName()))
+                .thenReturn(true);
+        when(replayFilter.filter(userId, notifications))
+                .thenThrow(failure);
+
+        assertThatThrownBy(()-> service.recoverAfter(userId, connection, emitter,afterPosition))
+                .isSameAs(failure);
+        verify(emitter, never()).send(any(SseEmitter.SseEventBuilder.class));
+        verify(historyStore).readAfter(userId, afterPosition);
+        verify(replayFilter).filter(userId, notifications);
     }
 
 

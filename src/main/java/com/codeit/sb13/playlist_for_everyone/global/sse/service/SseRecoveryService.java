@@ -6,6 +6,7 @@ import com.codeit.sb13.playlist_for_everyone.global.sse.history.SseHistoryPositi
 import com.codeit.sb13.playlist_for_everyone.global.sse.history.SseHistoryReadResult;
 import com.codeit.sb13.playlist_for_everyone.global.sse.history.SseHistorySnapshot;
 import com.codeit.sb13.playlist_for_everyone.global.sse.history.SseHistoryStore;
+import com.codeit.sb13.playlist_for_everyone.global.sse.replay.SseReplayFilter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -16,6 +17,7 @@ import tools.jackson.databind.JsonNode;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.UUID;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Service
@@ -24,6 +26,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public class SseRecoveryService {
 
     private final SseHistoryStore historyStore;
+    private final List<SseReplayFilter> replayFilters;
 
     public SseHistoryPosition recover(
             UUID userId,
