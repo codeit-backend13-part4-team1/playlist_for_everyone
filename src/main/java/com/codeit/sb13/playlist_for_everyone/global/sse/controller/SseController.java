@@ -1,16 +1,21 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.controller;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
+import com.codeit.sb13.playlist_for_everyone.global.dto.response.ApiErrorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseConnectionService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.QueryTimeoutException;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -23,6 +28,7 @@ import java.util.UUID;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/sse")
+@Slf4j
 public class SseController {
 
     private final SseConnectionService sseConnectionService;
@@ -44,5 +50,21 @@ public class SseController {
                               @AuthenticationPrincipal SecurityUser user){
         return sseConnectionService.connect(user.getUserId(), lastEventId);
 
+    }
+
+
+    @ExceptionHandler({
+            DataAccessResourceFailureException.class,
+            QueryTimeoutException.class
+    })
+    public ResponseEntity<ApiErrorResponse> handleInitialHistoryReadFailure(DataAccessException failure){
+        log.error("SSE 초기 이력 조회에 실패했습니다.", failure);
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(new ApiErrorResponse(
+                        failure.getClass().getSimpleName(),
+                        "SSE 이벤트 이력을 조회할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+                        Map.of()
+                ));
     }
 }
