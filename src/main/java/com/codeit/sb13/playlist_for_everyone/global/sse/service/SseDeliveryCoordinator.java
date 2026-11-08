@@ -205,7 +205,7 @@ public class SseDeliveryCoordinator {
         }
         try {
             requestDelivery(key.userId, key.connection);
-        } catch (UncheckedIOException failure){
+        } catch (UncheckedIOException | IllegalStateException failure){
             synchronized (state) {
                 if (!connectionStates.remove(key, state)){
                     return;
