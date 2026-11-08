@@ -452,9 +452,56 @@ class SseDeliveryCoordinatorTest {
         verify(recoveryService)
                 .recover(userId, connection, emitter, lastEventId);
         verify(recoveryService)
-                .recoverAfter(eq(userId), eq(connection), same(emitter), eq(upperBound));
+                .recoverAfter(userId, connection, emitter, upperBound);
         verifyNoMoreInteractions(recoveryService);
         verifyNoInteractions(retryTaskScheduler);
+    }
+
+
+    @Test
+    @DisplayName("예약된 재시도 중 SSE 전송이 실패하면 연결을 종료하고 이후 요청과 늦은 작업을 무시한다.")
+    void closesConnectionWhenEventSendFailsDuringScheduledRetry(){
+        SseHistoryPosition upperBound = createHistoryPosition();
+        Instant now = Instant.parse("2026-11-07T00:00:00Z");
+        DataAccessResourceFailureException historyFailure = new DataAccessResourceFailureException("테스트용 후속 이력 조회 실패");
+        UncheckedIOException sendFailure = new UncheckedIOException("테스트용 SSE 이벤트 전송 실패",
+                new IOException("테스트용 연결 오류"));
+
+        when(retryTaskScheduler.getClock())
+                .thenReturn(Clock.fixed(now, ZoneOffset.UTC));
+        doReturn(retryFuture)
+                .when(retryTaskScheduler)
+                .schedule(any(Runnable.class), any(Instant.class));
+        when(recoveryService.recover(userId, connection, emitter, lastEventId))
+                .thenReturn(upperBound);
+        when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
+                .thenThrow(historyFailure)
+                .thenThrow(sendFailure);
+
+        coordinator.register(userId, connection, emitter);
+        coordinator.recover(userId, connection, lastEventId);
+
+        assertThatCode(() -> coordinator.requestDelivery(userId, connection))
+                .doesNotThrowAnyException();
+
+        ArgumentCaptor<Runnable> taskCaptor = ArgumentCaptor.forClass(Runnable.class);
+        verify(retryTaskScheduler).schedule(taskCaptor.capture(), any(Instant.class));
+        verifyNoInteractions(connectionCloser);
+
+        Runnable retryTask = taskCaptor.getValue();
+        assertThatCode(retryTask::run).doesNotThrowAnyException();
+        assertThatCode(()-> coordinator.requestDelivery(userId, connection))
+                .doesNotThrowAnyException();
+        assertThatCode(retryTask::run).doesNotThrowAnyException();
+
+        verify(recoveryService)
+                .recover(userId, connection, emitter, lastEventId);
+        verify(recoveryService, times(2))
+                .recoverAfter(userId, connection, emitter, upperBound);
+        verifyNoMoreInteractions(recoveryService);
+        verify(retryTaskScheduler, times(1)).schedule(any(Runnable.class), any(Instant.class));
+        verify(connectionCloser).close(userId, connection, emitter);
+        verifyNoMoreInteractions(connectionCloser);
     }
 
     @Test
