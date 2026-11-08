@@ -2,10 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.global.sse.service;
 
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
-import com.codeit.sb13.playlist_for_everyone.global.sse.history.SseHistoryPosition;
-import com.codeit.sb13.playlist_for_everyone.global.sse.history.SseHistoryReadResult;
-import com.codeit.sb13.playlist_for_everyone.global.sse.history.SseHistorySnapshot;
-import com.codeit.sb13.playlist_for_everyone.global.sse.history.SseHistoryStore;
+import com.codeit.sb13.playlist_for_everyone.global.sse.history.*;
 import com.codeit.sb13.playlist_for_everyone.global.sse.replay.SseReplayFilter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,9 +13,8 @@ import tools.jackson.databind.JsonNode;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.util.UUID;
-import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -35,8 +31,7 @@ public class SseRecoveryService {
             UUID lastEventId
     ){
         SseHistorySnapshot snapshot = historyStore.snapshot(userId, lastEventId);
-
-        snapshot.entries()
+        filterReplayEntries(userId, snapshot.entries())
                 .forEach(entry ->
                         sendEvent(emitter, entry.event()));
 
@@ -63,16 +58,16 @@ public class SseRecoveryService {
                     result.entries().size()
             );
         }
+        List<SseHistoryEntry> entries = result.entries();
 
-        AtomicReference<SseHistoryPosition> lastPosition = new AtomicReference<>(afterPosition);
+        if (entries.isEmpty()) {
+            return afterPosition;
+        }
 
-        result.entries()
-                .forEach(entry -> {
-                            sendEvent(emitter, entry.event());
-                            lastPosition.set(entry.position());
-                        });
+        filterReplayEntries(userId, entries)
+                .forEach(entry -> sendEvent(emitter, entry.event()));
 
-        return lastPosition.get();
+        return entries.get(entries.size() - 1).position();
     }
 
     private void sendEvent(SseEmitter emitter, SseEvent<JsonNode> event) {
@@ -85,6 +80,34 @@ public class SseRecoveryService {
         } catch (IOException e) {
             throw new UncheckedIOException("SSE 복구 이벤트 전송에 실패했습니다.",e);
         }
+    }
+
+    private List<SseHistoryEntry> filterReplayEntries(UUID receiverId, List<SseHistoryEntry> entries){
+        if (entries.isEmpty() || replayFilters.isEmpty()){
+            return entries;
+        }
+
+        LinkedHashMap<String, List<SseHistoryEntry>> groupedEntries = entries.stream()
+                .collect(Collectors.groupingBy(entry -> entry.event().eventName(),
+                        LinkedHashMap::new,
+                        Collectors.toList()));
+
+        Set<SseHistoryPosition> allowedPositions = new HashSet<>();
+        for (Map.Entry<String, List<SseHistoryEntry>> group : groupedEntries.entrySet()){
+            SseReplayFilter replayFilter = replayFilters.stream()
+                    .filter(filter -> filter.supports(group.getKey()))
+                    .findFirst()
+                    .orElse(null);
+
+            List<SseHistoryEntry> candidates = group.getValue();
+            List<SseHistoryEntry> retainedEntries = replayFilter == null ?
+                    candidates : replayFilter.filter(receiverId, candidates);
+
+            retainedEntries.forEach(entry -> allowedPositions.add(entry.position()));
+        }
+        return entries.stream()
+                .filter(entry -> allowedPositions.contains(entry.position()))
+                .toList();
     }
 
 }
