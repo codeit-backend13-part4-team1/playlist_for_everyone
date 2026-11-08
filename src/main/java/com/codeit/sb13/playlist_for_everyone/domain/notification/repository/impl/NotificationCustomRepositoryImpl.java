@@ -16,6 +16,7 @@ import org.springframework.stereotype.Repository;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.List;
+import java.util.UUID;
 
 import static com.codeit.sb13.playlist_for_everyone.domain.notification.entity.QNotification.notification;
 
@@ -56,6 +57,11 @@ public class NotificationCustomRepositoryImpl implements NotificationCustomRepos
                 .fetchOne();
 
         return countResult == null ? 0 : countResult;
+    }
+
+    @Override
+    public List<UUID> findExistingIds(UUID receiverId, List<UUID> notificationIds) {
+        return List.of();
     }
 
     private OrderSpecifier<?> getSortOrder(NotificationSearchCondition condition) {

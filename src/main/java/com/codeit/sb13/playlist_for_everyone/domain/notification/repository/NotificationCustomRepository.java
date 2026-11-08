@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.repository.
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.Notification;
 
 import java.util.List;
+import java.util.UUID;
 
 public interface NotificationCustomRepository {
 
@@ -12,4 +13,6 @@ public interface NotificationCustomRepository {
 
     /** 커서 위치를 제외하고, 같은 수신자의 전체 알림 수를 조회한다. */
     long searchCount(NotificationSearchCondition condition);
+
+    List<UUID> findExistingIds(UUID receiverId, List<UUID> notificationIds);
 }

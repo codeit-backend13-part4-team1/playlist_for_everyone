@@ -635,6 +635,29 @@ public class NotificationRepositoryTest {
 
     }
 
+    @Test
+    @DisplayName("요청한 알림 ID 중 지정한 수신자에게 실제로 존재하는 ID만 반환한다.")
+    void findsOnlyRequestedExistingIdsForReceiver(){
+        UUID receiverId = createReceiver();
+        UUID otherReceiverId = createReceiver();
+
+        LocalDateTime createdAt = LocalDateTime.of(2026, 11, 8, 10, 0);
+
+        UUID firstId = insertNotification(receiverId, createdAt);
+        UUID secondId = insertNotification(receiverId, createdAt.minusMinutes(1));
+
+        insertNotification(receiverId, createdAt.minusMinutes(2));
+
+        UUID otherId = insertNotification(otherReceiverId, createdAt);
+        UUID missingId = UUID.randomUUID();
+
+        List<UUID> requestedIds = List.of(secondId, otherId, missingId, firstId);
+        List<UUID> result = notificationRepository.findExistingIds(receiverId, requestedIds);
+
+        assertThat(result)
+                .containsExactlyInAnyOrder(firstId, secondId);
+    }
+
 
     private UUID createReceiver(){
         UUID receiverId = UUID.randomUUID();
