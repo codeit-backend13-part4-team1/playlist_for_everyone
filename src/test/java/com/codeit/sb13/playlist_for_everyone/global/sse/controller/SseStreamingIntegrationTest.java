@@ -9,6 +9,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.config.SecurityConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.SseConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.SseEventPublisherConfig;
+import com.codeit.sb13.playlist_for_everyone.global.config.SseRetryConfig;
 import com.codeit.sb13.playlist_for_everyone.global.exception.sse.SsePublishException;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Event;
@@ -17,10 +18,7 @@ import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEventPublisher;
 import com.codeit.sb13.playlist_for_everyone.global.sse.history.*;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.impl.InMemorySseEmitterRepository;
-import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseConnectionService;
-import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseDeliveryCoordinator;
-import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseDeliveryService;
-import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseRecoveryService;
+import com.codeit.sb13.playlist_for_everyone.global.sse.service.*;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -76,10 +74,12 @@ import static org.mockito.Mockito.doAnswer;
                 SseDeliveryService.class,
                 InMemorySseEmitterRepository.class,
                 SseConfig.class,
+                SseRetryConfig.class,
                 SecurityConfig.class,
                 SseDeliveryCoordinator.class,
                 SseRecoveryService.class,
-                SseEventPublisherConfig.class
+                SseEventPublisherConfig.class,
+                SseConnectionCloser.class,
         },
         properties = {
                 "everyone.sse.connection-timeout=30s"

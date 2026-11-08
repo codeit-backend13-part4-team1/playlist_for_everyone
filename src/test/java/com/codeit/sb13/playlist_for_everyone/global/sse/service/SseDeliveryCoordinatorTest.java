@@ -48,6 +48,8 @@ class SseDeliveryCoordinatorTest {
     @Mock
     private ScheduledFuture<?> retryFuture;
 
+    @Mock SseConnectionCloser connectionCloser;
+
     private SseDeliveryCoordinator coordinator;
     private final UUID userId = UUID.randomUUID();
     private final Connection connection = Connection.create();
@@ -63,7 +65,8 @@ class SseDeliveryCoordinatorTest {
         coordinator = new SseDeliveryCoordinator(
                 recoveryService,
                 retryTaskScheduler,
-                retryProperties);
+                retryProperties,
+                connectionCloser);
     }
 
     @Test
@@ -891,7 +894,7 @@ class SseDeliveryCoordinatorTest {
                 3
         );
         coordinator = new SseDeliveryCoordinator(
-                recoveryService, retryTaskScheduler, properties
+                recoveryService, retryTaskScheduler, properties, connectionCloser
         );
 
         SseHistoryPosition upperBound = createHistoryPosition();
@@ -1176,7 +1179,7 @@ class SseDeliveryCoordinatorTest {
         SseRetryProperties properties = new SseRetryProperties(
                 Duration.ofSeconds(1), Duration.ofSeconds(30), maxRetries
         );
-        coordinator = new SseDeliveryCoordinator(recoveryService, retryTaskScheduler, properties);
+        coordinator = new SseDeliveryCoordinator(recoveryService, retryTaskScheduler, properties, connectionCloser);
 
         SseHistoryPosition upperBound = createHistoryPosition();
         AtomicReference<Instant> currentTime = new AtomicReference<>(
@@ -1209,7 +1212,7 @@ class SseDeliveryCoordinatorTest {
 
         for (int retryIndex = 0; retryIndex < maxRetries; retryIndex++) {
             assertThat(scheduledTasks).hasSize(retryIndex + 1);
-            verify(emitter, never()).complete();
+            verify(connectionCloser, never()).close(userId, connection, emitter);
 
             assertThatCode(() -> coordinator.requestDelivery(userId, connection))
                     .doesNotThrowAnyException();
@@ -1221,7 +1224,7 @@ class SseDeliveryCoordinatorTest {
             assertThatCode(task::run).doesNotThrowAnyException();
         }
 
-        verify(emitter).complete();
+        verify(connectionCloser).close(userId, connection, emitter);
         assertThat(scheduledTasks).hasSize(maxRetries);
 
         assertThatCode(() -> coordinator.requestDelivery(userId, connection))
@@ -1236,8 +1239,8 @@ class SseDeliveryCoordinatorTest {
         verifyNoMoreInteractions(recoveryService);
         verify(retryTaskScheduler, times(maxRetries))
                 .schedule(any(Runnable.class), any(Instant.class));
-        verify(emitter).complete();
-        verify(emitter, never()).completeWithError(any());
+        verify(connectionCloser, times(1)).close(userId, connection, emitter);
+        verifyNoMoreInteractions(connectionCloser);
     }
 
     @Test
@@ -1246,7 +1249,7 @@ class SseDeliveryCoordinatorTest {
         SseRetryProperties properties = new SseRetryProperties(
                 Duration.ofSeconds(1), Duration.ofSeconds(30), 1
         );
-        coordinator = new SseDeliveryCoordinator(recoveryService, retryTaskScheduler, properties);
+        coordinator = new SseDeliveryCoordinator(recoveryService, retryTaskScheduler, properties, connectionCloser);
 
         SseHistoryPosition upperBound = createHistoryPosition();
         SseHistoryPosition nextPosition = createHistoryPosition("1000-1");
@@ -1284,7 +1287,7 @@ class SseDeliveryCoordinatorTest {
         currentTime.set(now.plusSeconds(1));
         assertThatCode(scheduledTasks.get(0)::run).doesNotThrowAnyException();
         assertThat(scheduledTasks).hasSize(1);
-        verify(emitter, never()).complete();
+        verifyNoInteractions(connectionCloser);
 
         currentTime.set(now.plusSeconds(10));
         assertThatCode(() -> coordinator.requestDelivery(userId, connection))
@@ -1305,7 +1308,7 @@ class SseDeliveryCoordinatorTest {
         verify(recoveryService, times(2))
                 .recoverAfter(userId, connection, emitter, nextPosition);
         verifyNoMoreInteractions(recoveryService);
-        verifyNoInteractions(emitter);
+        verifyNoInteractions(connectionCloser);
     }
 
     @Test
@@ -1314,7 +1317,7 @@ class SseDeliveryCoordinatorTest {
         SseRetryProperties properties = new SseRetryProperties(
                 Duration.ofSeconds(1), Duration.ofSeconds(30), 1
         );
-        coordinator = new SseDeliveryCoordinator(recoveryService, retryTaskScheduler, properties);
+        coordinator = new SseDeliveryCoordinator(recoveryService, retryTaskScheduler, properties, connectionCloser);
 
         Connection secondConnection = Connection.create();
         SseEmitter secondEmitter = mock(SseEmitter.class);
@@ -1357,7 +1360,7 @@ class SseDeliveryCoordinatorTest {
                 .schedule(taskCaptor.capture(), any(Instant.class));
 
         assertThatCode(taskCaptor.getAllValues().get(0)::run).doesNotThrowAnyException();
-        verify(emitter).complete();
+        verify(connectionCloser).close(userId, connection, emitter);
         verify(secondRetryFuture, never()).cancel(anyBoolean());
 
         assertThatCode(taskCaptor.getAllValues().get(1)::run).doesNotThrowAnyException();
@@ -1373,7 +1376,8 @@ class SseDeliveryCoordinatorTest {
         verify(recoveryService).recoverAfter(userId, secondConnection, secondEmitter, nextPosition);
         verifyNoMoreInteractions(recoveryService);
         verify(retryTaskScheduler, times(2)).schedule(any(Runnable.class), any(Instant.class));
-        verifyNoInteractions(secondEmitter);
+        verify(connectionCloser, never()).close(userId, secondConnection, secondEmitter);
+        verifyNoMoreInteractions(connectionCloser);
     }
 
     private SseHistoryPosition createHistoryPosition(String position) {

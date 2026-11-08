@@ -56,7 +56,7 @@ class SseRetryExhaustionTest {
         SseProperties properties = new SseProperties(Duration.ofSeconds(15), Duration.ofMinutes(30));
         SseEmitterRepository repository = new InMemorySseEmitterRepository();
         SseDeliveryCoordinator coordinator = new SseDeliveryCoordinator(
-                recoveryService, retryTaskScheduler, retryProperties
+                recoveryService, retryTaskScheduler, retryProperties , new SseConnectionCloser(repository)
         );
         SseConnectionService service = new SseConnectionService(repository, properties, coordinator);
         DataAccessResourceFailureException failure =

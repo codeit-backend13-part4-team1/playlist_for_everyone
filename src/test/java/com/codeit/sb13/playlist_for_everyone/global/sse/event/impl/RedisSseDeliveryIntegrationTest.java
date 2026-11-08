@@ -1,9 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.event.impl;
 
-import com.codeit.sb13.playlist_for_everyone.global.config.RedisConfig;
-import com.codeit.sb13.playlist_for_everyone.global.config.SseEventPublisherConfig;
-import com.codeit.sb13.playlist_for_everyone.global.config.SseHistoryConfig;
-import com.codeit.sb13.playlist_for_everyone.global.config.SseTransportConfig;
+import com.codeit.sb13.playlist_for_everyone.global.config.*;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisBrokerRegister;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Event;
@@ -12,6 +9,7 @@ import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEventPublisher;
 import com.codeit.sb13.playlist_for_everyone.global.sse.history.impl.RedisSseHistoryStore;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.impl.InMemorySseEmitterRepository;
+import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseConnectionCloser;
 import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseDeliveryCoordinator;
 import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseDeliveryService;
 import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseRecoveryService;
@@ -57,9 +55,11 @@ import static org.mockito.Mockito.*;
                 InMemorySseEmitterRepository.class,
                 SseEventPublisherConfig.class,
                 SseHistoryConfig.class,
+                SseRetryConfig.class,
                 RedisSseHistoryStore.class,
                 SseRecoveryService.class,
-                SseDeliveryCoordinator.class
+                SseDeliveryCoordinator.class,
+                SseConnectionCloser.class
         },
         properties = {
                 "everyone.sse.transport=redis",
@@ -67,7 +67,10 @@ import static org.mockito.Mockito.*;
                 "everyone.sse.redis.channel=test:sse:delivery",
                 "everyone.sse.history.retention=10m",
                 "everyone.sse.history.max-events-per-user=10",
-                "everyone.sse.history.key-prefix=test:sse:delivery:history"
+                "everyone.sse.history.key-prefix=test:sse:delivery:history",
+                "everyone.sse.retry.initial-delay=1s",
+                "everyone.sse.retry.max-delay=30s",
+                "everyone.sse.retry.max-retries=3"
         }
 )
 @ImportAutoConfiguration({
@@ -331,9 +334,11 @@ public class RedisSseDeliveryIntegrationTest {
                         InMemorySseEmitterRepository.class,
                         SseEventPublisherConfig.class,
                         SseHistoryConfig.class,
+                        SseRetryConfig.class,
                         RedisSseHistoryStore.class,
                         SseRecoveryService.class,
-                        SseDeliveryCoordinator.class
+                        SseDeliveryCoordinator.class,
+                        SseConnectionCloser.class
                 )
                 .withPropertyValues(
                         "spring.data.redis.host="+ redis.getHost(),
@@ -343,7 +348,10 @@ public class RedisSseDeliveryIntegrationTest {
                         "everyone.sse.redis.channel=test:sse:delivery",
                         "everyone.sse.history.retention=10m",
                         "everyone.sse.history.max-events-per-user=10",
-                        "everyone.sse.history.key-prefix=test:sse:delivery:history"
+                        "everyone.sse.history.key-prefix=test:sse:delivery:history",
+                        "everyone.sse.retry.initial-delay=1s",
+                        "everyone.sse.retry.max-delay=30s",
+                        "everyone.sse.retry.max-retries=3"
                 );
     }
 
