@@ -8,6 +8,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
@@ -27,6 +28,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -458,14 +460,13 @@ class SseDeliveryCoordinatorTest {
     }
 
 
-    @Test
+    @ParameterizedTest(name = "{index}: {0}")
+    @MethodSource("eventSendFailures")
     @DisplayName("예약된 재시도 중 SSE 전송이 실패하면 연결을 종료하고 이후 요청과 늦은 작업을 무시한다.")
-    void closesConnectionWhenEventSendFailsDuringScheduledRetry(){
+    void closesConnectionWhenEventSendFailsDuringScheduledRetry(RuntimeException sendFailure){
         SseHistoryPosition upperBound = createHistoryPosition();
         Instant now = Instant.parse("2026-11-07T00:00:00Z");
         DataAccessResourceFailureException historyFailure = new DataAccessResourceFailureException("테스트용 후속 이력 조회 실패");
-        UncheckedIOException sendFailure = new UncheckedIOException("테스트용 SSE 이벤트 전송 실패",
-                new IOException("테스트용 연결 오류"));
 
         when(retryTaskScheduler.getClock())
                 .thenReturn(Clock.fixed(now, ZoneOffset.UTC));
@@ -1433,6 +1434,13 @@ class SseDeliveryCoordinatorTest {
 
     private SseHistoryPosition createHistoryPosition() {
         return createHistoryPosition("1000-0");
+    }
+
+    private static Stream<RuntimeException> eventSendFailures() {
+        return Stream.of(
+                new UncheckedIOException("테스트용 SSE 이벤트 전송 실패", new IOException("테스트용 연결 오류")),
+                new IllegalStateException("테스트용 SSE 연결 상태 오류")
+        );
     }
 
 }
