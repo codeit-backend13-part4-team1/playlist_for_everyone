@@ -74,12 +74,7 @@ public class SseDeliveryCoordinator {
 
         if (state == null) return;
 
-        synchronized (state){
-            if(connectionStates.remove(key, state)){
-                state.pendingDelivery = false;
-                cancelRetry(state);
-            }
-        }
+        removeConnectionState(key, state);
     }
 
     public void requestDelivery(UUID userId, Connection connection){
@@ -144,11 +139,7 @@ public class SseDeliveryCoordinator {
                     return;
                 }
                 if (!tryScheduleRetry(key,state)){
-                   if (connectionStates.remove(key, state)){
-                       state.pendingDelivery = false;
-                       cancelRetry(state);
-                       shouldClose = true;
-                   }
+                   shouldClose = removeConnectionState(key, state);
                 }
                 state.delivering =false;
                 deliveryReleased =true;
@@ -207,12 +198,8 @@ public class SseDeliveryCoordinator {
         try {
             requestDelivery(key.userId, key.connection);
         } catch (UncheckedIOException | IllegalStateException failure){
-            synchronized (state) {
-                if (!connectionStates.remove(key, state)){
-                    return;
-                }
-                state.pendingDelivery = false;
-                cancelRetry(state);
+            if (!removeConnectionState(key, state)){
+                return;
             }
             connectionCloser.close(key.userId, key.connection, state.emitter);
         }
@@ -243,6 +230,17 @@ public class SseDeliveryCoordinator {
             state.nextRetryDelay = nextDelay;
             return true;
 
+        }
+    }
+
+    private boolean removeConnectionState(ConnectionKey key, ConnectionState state){
+        synchronized (state){
+            if (!connectionStates.remove(key, state)){
+                return false;
+            }
+            state.pendingDelivery =false;
+            cancelRetry(state);
+            return true;
         }
     }
 
