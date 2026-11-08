@@ -5,6 +5,7 @@ import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
 import com.codeit.sb13.playlist_for_everyone.global.sse.history.SseHistoryPosition;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -136,7 +137,7 @@ public class SseDeliveryCoordinator {
                     }
                 }
             }
-        } catch (DataAccessResourceFailureException failure){
+        } catch (DataAccessResourceFailureException | QueryTimeoutException failure){
             boolean shouldClose = false;
             synchronized (state){
                 if (connectionStates.get(key) != state){
