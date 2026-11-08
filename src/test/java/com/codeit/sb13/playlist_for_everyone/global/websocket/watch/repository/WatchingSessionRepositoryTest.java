@@ -1,4 +1,4 @@
-package com.codeit.sb13.playlist_for_everyone.global.websocket.watch;
+package com.codeit.sb13.playlist_for_everyone.global.websocket.watch.repository;
 
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.WatchingSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatcherScriptConfig;
@@ -50,7 +50,8 @@ public class WatchingSessionRepositoryTest {
                 redisScriptConfig.watcherUnregisterScript(),
                 redisScriptConfig.watcherRefreshScript(),
                 redisScriptConfig.watcherDeleteScript(),
-                redisScriptConfig.watcherCountScript()
+                redisScriptConfig.watcherCountScript(),
+                redisScriptConfig.watcherDeleteWithContentIdScript()
         );
 
         // 테스트용 타임아웃 세팅 ( 3초 )
@@ -67,10 +68,10 @@ public class WatchingSessionRepositoryTest {
     }
 
     private void clear(){
-        Set<String> watchers = template.keys(STORAGE_SESSION_PREFIX + "*");
-        Set<String> sessions = template.keys(STORAGE_CONTENT_PREFIX + "*");
-        watchers.addAll(sessions);
-        for(String key : watchers){
+        Set<String> sessions = template.keys(STORAGE_SESSION_PREFIX + "*");
+        Set<String> contents = template.keys(STORAGE_CONTENT_PREFIX + "*");
+        contents.addAll(sessions);
+        for(String key : contents){
             template.delete(key);
             log.info("[WatcherRegistryTest] key 삭제됨 - {}",key);
         }
@@ -79,6 +80,8 @@ public class WatchingSessionRepositoryTest {
     private boolean checkContainedChannelIdInList(String sessionId, String targetId){
          Map<Object,Object> test= template.opsForHash()
                  .entries(STORAGE_SESSION_PREFIX + sessionId);
+
+         log.info("세션 id:{} - {}",sessionId,test);
 
          for(Object id : test.values()){
              log.info("[WatcherRegistryTest] id 검색됨 - {}",id);
@@ -97,7 +100,7 @@ public class WatchingSessionRepositoryTest {
     }
 
     private String subscriptionKey(String session, String subscription){
-        return session + "-" + subscription;
+        return session + WatcherScriptConfig.DELIMITER + subscription;
     }
 
 
@@ -180,22 +183,52 @@ public class WatchingSessionRepositoryTest {
 
     }
 
+    @Nested
+    @DisplayName("Delete Test")
+    class Delete {
 
+        String contentId1 = UUID.randomUUID().toString();
+        String contentId2 = UUID.randomUUID().toString();
+        String sessionId1 = "test-session-id1";
+        String sessionId2 = "test-session-id2";
+        String subscriptionId1 = "test-sub-1";
+        String subscriptionId2 = "test-sub-2";
 
-    @Test
-    @DisplayName("세션 구독 전부삭제 테스트")
-    void deleteTest(){
-        String content = UUID.randomUUID().toString();
-        String session = "sdfsdf";
-        String subscribe = "sub-1";
+        @BeforeEach
+        void setUp(){
+            // content 1 에는 session 1,2
+            watchingSessionRepository.register(sessionId1, subscriptionId1, contentId1);
+            watchingSessionRepository.register(sessionId2, subscriptionId1, contentId1);
 
-        watchingSessionRepository.register(session, subscribe, content);
+            // content 2 에는 session 1 만
+            watchingSessionRepository.register(sessionId1, subscriptionId2, contentId2);
+        }
 
-        watchingSessionRepository.delete(session);
+        @Test
+        @DisplayName("세션 구독 전부삭제 테스트")
+        void deleteTest(){
+            watchingSessionRepository.delete(sessionId1);
 
-        assertThat(watchingSessionRepository.getWatcherCount(content)).isEqualTo(0L);
-        assertThat(checkContainedChannelIdInList(session,content)).isFalse();
+            assertThat(watchingSessionRepository.getWatcherCount(contentId1)).isEqualTo(1L);
+            assertThat(watchingSessionRepository.getWatcherCount(contentId2)).isEqualTo(0L);
+            assertThat(checkContainedChannelIdInList(sessionId1,contentId1)).isFalse();
+            assertThat(checkContainedChannelIdInList(sessionId2,contentId2)).isFalse();
+        }
+
+        @Test
+        @DisplayName("컨텐츠 id 기반 삭제 테스트")
+        void deleteWithContentIdTest(){
+            watchingSessionRepository.deleteWithContentId(UUID.fromString(contentId1));
+
+            assertThat(watchingSessionRepository.getWatcherCount(contentId1)).isEqualTo(0L);
+            assertThat(watchingSessionRepository.getWatcherCount(contentId2)).isEqualTo(1L);
+            assertThat(checkContainedChannelIdInList(sessionId1,contentId1)).isFalse();
+            assertThat(checkContainedChannelIdInList(sessionId2,contentId1)).isFalse();
+            assertThat(checkContainedChannelIdInList(sessionId1,contentId2)).isTrue();
+        }
     }
+
+
 
 
 }
