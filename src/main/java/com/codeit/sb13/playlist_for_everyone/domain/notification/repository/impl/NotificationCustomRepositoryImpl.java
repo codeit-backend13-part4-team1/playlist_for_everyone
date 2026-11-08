@@ -61,7 +61,17 @@ public class NotificationCustomRepositoryImpl implements NotificationCustomRepos
 
     @Override
     public List<UUID> findExistingIds(UUID receiverId, List<UUID> notificationIds) {
-        return List.of();
+        if (notificationIds.isEmpty()) {
+            return List.of();
+        }
+
+        return jpaQueryFactory
+                .select(notification.id)
+                .from(notification)
+                .where(
+                        notification.receiver.id.eq(receiverId),
+                        notification.id.in(notificationIds)
+                ).fetch();
     }
 
     private OrderSpecifier<?> getSortOrder(NotificationSearchCondition condition) {
