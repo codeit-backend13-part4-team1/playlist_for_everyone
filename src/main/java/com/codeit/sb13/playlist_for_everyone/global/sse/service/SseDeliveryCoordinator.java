@@ -9,6 +9,7 @@ import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.UncheckedIOException;
 import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
@@ -202,7 +203,18 @@ public class SseDeliveryCoordinator {
             }
             state.retryFuture = null;
         }
-        requestDelivery(key.userId, key.connection);
+        try {
+            requestDelivery(key.userId, key.connection);
+        } catch (UncheckedIOException failure){
+            synchronized (state) {
+                if (!connectionStates.remove(key, state)){
+                    return;
+                }
+                state.pendingDelivery = false;
+                cancelRetry(state);
+            }
+            connectionCloser.close(key.userId, key.connection, state.emitter);
+        }
     }
 
     private boolean tryScheduleRetry(ConnectionKey key, ConnectionState state){
