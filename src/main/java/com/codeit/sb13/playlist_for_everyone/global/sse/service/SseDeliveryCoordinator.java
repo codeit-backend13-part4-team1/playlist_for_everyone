@@ -3,12 +3,14 @@ package com.codeit.sb13.playlist_for_everyone.global.sse.service;
 import com.codeit.sb13.playlist_for_everyone.global.sse.config.SseRetryProperties;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
 import com.codeit.sb13.playlist_for_everyone.global.sse.history.SseHistoryPosition;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.QueryTimeoutException;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.springframework.web.util.DisconnectedClientHelper;
 
 import java.io.UncheckedIOException;
 import java.time.Duration;
@@ -18,6 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 
 @Component
+@Slf4j
 public class SseDeliveryCoordinator {
 
     private final Map<ConnectionKey, ConnectionState> connectionStates = new ConcurrentHashMap<>();
@@ -145,6 +148,16 @@ public class SseDeliveryCoordinator {
                 deliveryReleased =true;
             }
             if (shouldClose){
+                log.warn(
+                        """
+                        SSE 후속 이력 조회 재시도를 소진하여 연결을 종료합니다.
+                        userId={}, connectionId={}, maxRetries={}
+                        """,
+                        userId,
+                        connection.id(),
+                        retryProperties.maxRetries(),
+                        failure
+                );
                 connectionCloser.close(userId, connection, state.emitter);
             }
         } finally {
@@ -201,6 +214,7 @@ public class SseDeliveryCoordinator {
             if (!removeConnectionState(key, state)){
                 return;
             }
+            logRetryDeliveryFailure(key, failure);
             connectionCloser.close(key.userId, key.connection, state.emitter);
         }
     }
@@ -242,6 +256,23 @@ public class SseDeliveryCoordinator {
             cancelRetry(state);
             return true;
         }
+    }
+
+    private void logRetryDeliveryFailure(ConnectionKey key, RuntimeException failure){
+        if (DisconnectedClientHelper.isClientDisconnectedException(failure)){
+            log.debug(
+                    "SSE 예약 재시도 중 클라이언트 단절로 연결을 정리합니다. userId={}, connectionId={}",
+                    key.userId(),
+                    key.connection().id()
+            );
+            return;
+        }
+        log.warn(
+                "SSE 예약 재시도 중 전송에 실패하여 연결을 종료합니다. userId={}, connectionId={}",
+                key.userId(),
+                key.connection().id(),
+                failure
+        );
     }
 
 
