@@ -10,6 +10,8 @@ import com.codeit.sb13.playlist_for_everyone.global.config.SecurityConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.SseConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.SseEventPublisherConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.SseRetryConfig;
+import com.codeit.sb13.playlist_for_everyone.global.controller.GlobalExceptionHandler;
+import com.codeit.sb13.playlist_for_everyone.global.dto.response.ApiErrorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.exception.sse.SsePublishException;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Event;
@@ -23,6 +25,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
@@ -35,6 +38,9 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.tomcat.autoconfigure.servlet.TomcatServletWebServerAutoConfiguration;
 import org.springframework.boot.webmvc.autoconfigure.DispatcherServletAutoConfiguration;
 import org.springframework.boot.webmvc.autoconfigure.WebMvcAutoConfiguration;
+import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -54,6 +60,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -80,6 +87,7 @@ import static org.mockito.Mockito.doAnswer;
                 SseRecoveryService.class,
                 SseEventPublisherConfig.class,
                 SseConnectionCloser.class,
+                GlobalExceptionHandler.class
         },
         properties = {
                 "everyone.sse.connection-timeout=30s"
@@ -324,6 +332,47 @@ public class SseStreamingIntegrationTest {
         }
     }
 
+    @ParameterizedTest(name = "{index}: {0}")
+    @MethodSource("initialHistoryReadFailures")
+    @DisplayName("초기 이력 조회에 실패하면 SSE 시작전에 503과 공통 JSON 오류를 반환하고 연결을 정리한다.")
+    void connectReturns503WhenInitialHistoryReadFails(DataAccessException failure) throws IOException {
+        UUID userId = UUID.randomUUID();
+        String token = "sse-test-token";
+
+        prepareAuthenticatedUser(userId, token);
+        given(historyStore.snapshot(userId, null))
+                .willThrow(failure);
+
+        HttpURLConnection connection = createSseConnection(token);
+        try {
+            assertThat(connection.getResponseCode()).isEqualTo(503);
+            MediaType contentType = MediaType.parseMediaType(connection.getContentType());
+            assertThat(contentType.isCompatibleWith(MediaType.APPLICATION_JSON)).isTrue();
+
+            try (var errorStream = connection.getErrorStream()){
+                assertThat(errorStream).isNotNull();
+                String body = new String(errorStream.readAllBytes(),
+                        StandardCharsets.UTF_8);
+
+                assertThat(body)
+                        .doesNotContain(":connected")
+                        .doesNotContain(failure.getMessage());
+                ApiErrorResponse response = objectMapper.readValue(body, ApiErrorResponse.class);
+                assertThat(response.exceptionName())
+                        .isEqualTo(failure.getClass().getSimpleName());
+                assertThat(response.message()).isNotBlank();
+                assertThat(response.details()).isEmpty();
+            }
+            assertThat(sseEmitterRepository.findAllByUserId(userId)).isEmpty();
+
+        } finally {
+            try {
+                sseConnectionService.closeAllLocalConnections();
+            } finally {
+                connection.disconnect();
+            }
+        }
+    }
 
     public static class SerializationFailingPayload{
 
@@ -362,5 +411,10 @@ public class SseStreamingIntegrationTest {
 
         given(jwtTokenProvider.parseAccessToken(token)).willReturn(userId);
         given(userService.getById(userId)).willReturn(user);
+    }
+
+    private static Stream<DataAccessException> initialHistoryReadFailures(){
+        return  Stream.of(new DataAccessResourceFailureException("테스트용 초기 이력 조회 실패"),
+                new QueryTimeoutException("테스트용 초기 이력 조회 시간 초과"));
     }
 }
