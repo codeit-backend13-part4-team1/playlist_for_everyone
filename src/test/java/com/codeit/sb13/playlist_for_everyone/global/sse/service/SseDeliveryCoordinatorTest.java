@@ -13,7 +13,9 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -795,13 +797,12 @@ class SseDeliveryCoordinatorTest {
         }
     }
 
-    @Test
+    @ParameterizedTest(name = "{index}: {0}")
+    @MethodSource("historyReadFailures")
     @DisplayName("후속 이력조회가 일시적으로 실패하면 예외를 전달하지 않고 초기 간격 후 재시도를 한번 예약한다.")
-    void schedulesRetryWithInitialDelayWhenHistoryReadFails(){
+    void schedulesRetryWithInitialDelayWhenHistoryReadFails(DataAccessException failure){
         SseHistoryPosition upperBound = createHistoryPosition();
         Instant now = Instant.parse("2026-11-07T00:00:00Z");
-
-        DataAccessResourceFailureException failure = new DataAccessResourceFailureException("테스트용 후속 이력 조회 실패");
 
         when(retryTaskScheduler.getClock())
                 .thenReturn(Clock.fixed(now, ZoneOffset.UTC));
@@ -825,7 +826,7 @@ class SseDeliveryCoordinatorTest {
         verify(recoveryService).recover(userId, connection, emitter, lastEventId);
         verify(recoveryService).recoverAfter(userId, connection, emitter,upperBound);
         verifyNoMoreInteractions(recoveryService);
-        verifyNoInteractions(emitter);
+        verifyNoInteractions(emitter, connectionCloser);
     }
 
     @Test
@@ -1440,6 +1441,13 @@ class SseDeliveryCoordinatorTest {
         return Stream.of(
                 new UncheckedIOException("테스트용 SSE 이벤트 전송 실패", new IOException("테스트용 연결 오류")),
                 new IllegalStateException("테스트용 SSE 연결 상태 오류")
+        );
+    }
+
+    private static Stream<DataAccessException> historyReadFailures(){
+        return Stream.of(
+                new DataAccessResourceFailureException("테스트용 Redis 연결 실패"),
+                new QueryTimeoutException("테스트용 Redis 조회 시간 초과")
         );
     }
 
