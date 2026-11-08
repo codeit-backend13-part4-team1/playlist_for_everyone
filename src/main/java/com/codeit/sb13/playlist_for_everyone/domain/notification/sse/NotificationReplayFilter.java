@@ -7,7 +7,9 @@ import com.codeit.sb13.playlist_for_everyone.global.sse.replay.SseReplayFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Component
@@ -22,6 +24,23 @@ public class NotificationReplayFilter implements SseReplayFilter {
 
     @Override
     public List<SseHistoryEntry> filter(UUID receiverId, List<SseHistoryEntry> entries) {
-        return entries;
+        if (entries.isEmpty()) {
+            return List.of();
+        }
+
+        List<UUID> notificationIds = entries.stream()
+                .map(this::extractNotificationId)
+                .toList();
+
+        Set<UUID> existingIds = new HashSet<>(notificationRepository
+                .findExistingIds(receiverId, notificationIds));
+
+        return entries.stream()
+                .filter(entry -> existingIds.contains(extractNotificationId(entry)))
+                .toList();
+    }
+
+    private UUID extractNotificationId(SseHistoryEntry entry){
+        return UUID.fromString(entry.event().data().get("id").asString());
     }
 }
