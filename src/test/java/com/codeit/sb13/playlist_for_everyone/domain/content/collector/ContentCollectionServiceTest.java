@@ -1,7 +1,10 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.collector;
 
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.TmdbMovieReader;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.CollectedContentData;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.SportsDbEventResponse;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.TmdbMovieResponse;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.TmdbPageResponse;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentSource;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentTag;
@@ -37,7 +40,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
-import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.*;
 
 @DataJpaTest(properties = {
         "spring.flyway.enabled=true",
@@ -482,4 +485,5 @@ class ContentCollectionServiceTest {
             );
         }
     }
+
 }
