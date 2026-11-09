@@ -140,4 +140,51 @@ class TmdbMovieReaderTest {
 
         verifyNoInteractions(client);
     }
+
+    @Test
+    void 영화가_없으면_null을_반환하고_종료한다() {
+        TmdbClient client = mock(TmdbClient.class);
+
+        when(client.getPopularMovies(1))
+                .thenReturn(new TmdbPageResponse<TmdbMovieResponse>(
+                        1, List.of(), 0, 0
+                ));
+
+        var reader = new TmdbMovieReader(client, 5);
+
+        assertThat(reader.read()).isNull();
+        assertThat(reader.read()).isNull();
+
+        verify(client, times(1)).getPopularMovies(1);
+        verifyNoMoreInteractions(client);
+    }
+
+    @Test
+    void 응답이_없으면_예외가_발생한다() {
+        TmdbClient client = mock(TmdbClient.class);
+
+        when(client.getPopularMovies(1)).thenReturn(null);
+
+        var reader = new TmdbMovieReader(client, 5);
+
+        assertThatThrownBy(reader::read)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("TMDB 영화 목록 응답이 없습니다.");
+    }
+
+    @Test
+    void 응답의_results가_null이면_예외가_발생한다() {
+        TmdbClient client = mock(TmdbClient.class);
+
+        when(client.getPopularMovies(1))
+                .thenReturn(new TmdbPageResponse<TmdbMovieResponse>(
+                        1, null, 1, 0
+                ));
+
+        var reader = new TmdbMovieReader(client, 5);
+
+        assertThatThrownBy(reader::read)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("TMDB 영화 목록 응답이 없습니다.");
+    }
 }
