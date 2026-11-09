@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.entity;
 
 import com.codeit.sb13.playlist_for_everyone.global.domain.UpdatedAtEntity;
+import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -18,6 +19,10 @@ import java.util.List;
                 @UniqueConstraint(
                         name = "uk_content_provider_type_item_id",
                         columnNames = {"provider", "type", "provider_item_id"}
+                ),
+                @UniqueConstraint(
+                        name = "uk_contents_file_info",
+                        columnNames = {"file_info_id"}
                 )
         }
 )
@@ -50,11 +55,19 @@ public class Content extends UpdatedAtEntity {
     )
     private List<ContentTag> tags = new ArrayList<>();
 
+    // S3 파일 삭제 이벤트 처리를 위해 cascade 대신 FileService.delete() 사용
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "file_info_id")
+    private FileInfo fileInfo;
+
+    // 기존 호출부에 영향을 주지 않도록 생성 메서드 시그니처 유지
+    // Presigned URL은 서비스 응답 생성 시 처리
     public static Content createAdminContent(
             ContentType type,
             String title,
             String description,
-            String thumbnailUrl
+            String thumbnailUrl,
+            FileInfo fileInfo
     ) {
         Content content = new Content();
 
@@ -62,10 +75,27 @@ public class Content extends UpdatedAtEntity {
         content.title = title;
         content.description = description;
         content.thumbnailUrl = thumbnailUrl;
+        content.fileInfo = fileInfo;
         content.provider = ContentSource.ADMIN;
         content.providerItemId = null;
 
         return content;
+    }
+
+    // 기존 호출부와의 호환성을 위한 오버로딩 메서드
+    public static Content createAdminContent(
+            ContentType type,
+            String title,
+            String description,
+            String thumbnailUrl
+    ) {
+        return createAdminContent(
+                type,
+                title,
+                description,
+                thumbnailUrl,
+                null
+        );
     }
 
     /** 외부 API에서 수집한 콘텐츠 생성 */
@@ -97,7 +127,6 @@ public class Content extends UpdatedAtEntity {
     public void update(
             String title,
             String description,
-            String thumbnailUrl,
             List<String> tags
     ) {
         if (title != null) {
@@ -106,10 +135,6 @@ public class Content extends UpdatedAtEntity {
 
         if (description != null) {
             this.description = description;
-        }
-
-        if (thumbnailUrl != null) {
-            this.thumbnailUrl = thumbnailUrl;
         }
 
         if (tags != null) {
@@ -132,6 +157,11 @@ public class Content extends UpdatedAtEntity {
     public void addTag(String tag) {
         ContentTag contentTag = new ContentTag(this, tag);
         tags.add(contentTag);
+    }
+
+    public void updateThumbnail(String thumbnailUrl, FileInfo fileInfo) {
+        this.thumbnailUrl = thumbnailUrl;
+        this.fileInfo = fileInfo;
     }
 
 }

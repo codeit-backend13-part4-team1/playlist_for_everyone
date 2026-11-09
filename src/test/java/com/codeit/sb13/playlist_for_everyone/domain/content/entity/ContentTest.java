@@ -1,28 +1,36 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.entity;
 
+import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.Mockito;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 
 @DisplayName("Content 엔터티")
 public class ContentTest {
 
     @Test
-    @DisplayName("관리자 콘텐츠 생성 시 필드와 출처가 올바르게 설정된다.")
+    @DisplayName("관리자 콘텐츠 생성 시 필드와 파일 정보가 올바르게 설정된다.")
     void createAdminContent_success() {
+        // given
+        FileInfo fileInfo = mock(FileInfo.class);
+
         // when
         Content content = Content.createAdminContent(
                 ContentType.movie,
                 "인셉션",
                 "영화 설명",
-                "thumbnail-url"
+                "thumbnail-url",
+                fileInfo
         );
 
         // then
@@ -30,6 +38,7 @@ public class ContentTest {
         assertThat(content.getTitle()).isEqualTo("인셉션");
         assertThat(content.getDescription()).isEqualTo("영화 설명");
         assertThat(content.getThumbnailUrl()).isEqualTo("thumbnail-url");
+        assertThat(content.getFileInfo()).isSameAs(fileInfo);
         assertThat(content.getProvider()).isEqualTo(ContentSource.ADMIN);
         assertThat(content.getProviderItemId()).isNull();
     }
@@ -132,14 +141,12 @@ public class ContentTest {
         content.update(
                 "수정된 인셉션",
                 "수정된 영화 설명",
-                "new-thumbnail-url",
                 List.of("액션", "스릴러")
         );
 
         // then
         assertThat(content.getTitle()).isEqualTo("수정된 인셉션");
         assertThat(content.getDescription()).isEqualTo("수정된 영화 설명");
-        assertThat(content.getThumbnailUrl()).isEqualTo("new-thumbnail-url");
 
         assertThat(content.getTags())
                 .extracting(ContentTag::getTag)
@@ -147,6 +154,32 @@ public class ContentTest {
 
         // 기존 태그 객체가 그대로 유지되는지 확인
         assertThat(content.getTags()).contains(existingTag);
+    }
+
+    @Test
+    @DisplayName("썸네일 수정 시 URL과 FileInfo가 함께 변경된다.")
+    void update_thumbnail() {
+        // given
+        FileInfo oldFileInfo = mock(FileInfo.class);
+        FileInfo newFileInfo = mock(FileInfo.class);
+
+        String oldThumbnailUrl = "thumbnail-url";
+        String newThumbnailUrl = "new-thumbnail-url";
+
+        Content content = Content.createAdminContent(
+                ContentType.movie,
+                "인셉션",
+                "영화 설명",
+                oldThumbnailUrl,
+                oldFileInfo
+        );
+
+        // when
+        content.updateThumbnail(newThumbnailUrl, newFileInfo);
+
+        // then
+        assertThat(content.getThumbnailUrl()).isEqualTo(newThumbnailUrl);
+        assertThat(content.getFileInfo()).isSameAs(newFileInfo);
     }
 
 }

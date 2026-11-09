@@ -9,6 +9,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
+import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -234,7 +235,6 @@ public class ContentRepositoryTest {
         found.update(
                 "수정된 제목",
                 "수정된 설명",
-                null,
                 List.of("드라마", "액션")
         );
 
@@ -252,6 +252,40 @@ public class ContentRepositoryTest {
         assertThat(updated.getTags())
                 .extracting(ContentTag::getTag)
                 .containsExactlyInAnyOrder("드라마", "액션");
+    }
+
+    @Test
+    @DisplayName("콘텐츠 저장 시 FileInfo 연관관계가 정상적으로 저장된다.")
+    void save_withFileInfo() {
+        // given
+        FileInfo fileInfo = FileInfo.createS3File(
+                "contents/test-thumbnail.jpg",
+                "thumbnail.jpg",
+                "image/jpeg",
+                1024L
+        );
+        em.persist(fileInfo);
+
+        Content content = Content.createAdminContent(
+                ContentType.movie,
+                "인셉션",
+                "영화 설명",
+                "thumbnail-url",
+                fileInfo
+        );
+
+        // when
+        Content savedContent = contentRepository.save(content);
+
+        em.flush();
+        em.clear();
+
+        // then
+        Content found = contentRepository.findById(savedContent.getId())
+                .orElseThrow();
+
+        assertThat(found.getFileInfo()).isNotNull();
+        assertThat(found.getFileInfo().getId()).isEqualTo(fileInfo.getId());
     }
 
 }

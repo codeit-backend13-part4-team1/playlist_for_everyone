@@ -10,7 +10,10 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRe
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.review.repository.ReviewRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.file.FileEmptyException;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
+import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
+import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -29,22 +32,35 @@ public class ContentService {
     private final WatchingSessionService watchingSessionService;
     private final PlaylistContentRepository playlistContentRepository;
     private final ContentMapper contentMapper;
+    private final FileService fileService;
 
     @Transactional
     public ContentDto create(ContentCreateRequest request, MultipartFile file) {
+        // 관리자 콘텐츠는 썸네일 파일 없이는 등록이 불가합니다.
+        if (file == null || file.isEmpty()) {
+            throw new FileEmptyException(Map.of());
+        }
+
+        // S3 업로드 및 파일 정보 저장
+        FileInfo fileInfo = fileService.upload(file);
+
         Content content = Content.createAdminContent(
                 request.type(),
                 request.title(),
                 request.description(),
-                "temporary-thumbnail-url"   // TODO: S3 파일 업로드 연동 후 실제 URL로 변경
+                null,
+                fileInfo
         );
 
-        List<String> tags = normalizeTags(request.tags());
-        tags.forEach(content::addTag);
+        normalizeTags(request.tags()).forEach(content::addTag);
 
         Content savedContent = contentRepository.save(content);
+        String thumbnailUrl = generateThumbnailUrl(savedContent);
 
-        return contentMapper.toDto(savedContent, 0.0, 0, 0L);
+        return contentMapper.toDto(
+                savedContent,
+                thumbnailUrl,
+                0.0, 0, 0L);
     }
 
     @Transactional(readOnly = true)
@@ -55,10 +71,13 @@ public class ContentService {
                 ));
         Content content = detail.getContent();
 
+        String thumbnailUrl = generateThumbnailUrl(content);
+
         long watcherCount = watchingSessionService.getCurrentViewerCount(contentId);
 
         return contentMapper.toDto(
                 content,
+                thumbnailUrl,
                 detail.getAverageRating(),
                 Math.toIntExact(detail.getReviewCount()),
                 watcherCount);
@@ -70,28 +89,49 @@ public class ContentService {
                 .orElseThrow(() -> new ContentNotFoundException(
                         Map.of("contentId", contentId)
                 ));
+
         Content content = detail.getContent();
 
-        List<String> tags = request.tags() == null
-                ? null
-                : normalizeTags(request.tags());
+        // 제목, 설명, 태그 수정
+        if (request != null) {
+            List<String> tags = request.tags() == null
+                    ? null
+                    : normalizeTags(request.tags());
 
-        // TODO: 이미지 업로드 구현 후 새 URL 적용
-        String thumbnailUrl = null;
-        content.update(
-                request.title(),
-                request.description(),
-                thumbnailUrl,
-                tags
-        );
+            content.update(
+                    request.title(),
+                    request.description(),
+                    tags
+            );
+        }
+
+        if (file != null && !file.isEmpty()) {
+            FileInfo oldFileInfo = content.getFileInfo();
+
+            FileInfo newFileInfo = fileService.upload(file);
+
+            content.updateThumbnail(null, newFileInfo);
+
+            // 변경된 외래 키를 DB에 먼저 반영
+            contentRepository.flush();
+
+            // 기존 파일 삭제
+            if (oldFileInfo != null) {
+                fileService.delete(oldFileInfo.getId());
+            }
+        }
+
+        String thumbnailUrl = generateThumbnailUrl(content);
 
         long watcherCount = watchingSessionService.getCurrentViewerCount(contentId);
 
         return contentMapper.toDto(
                 content,
+                thumbnailUrl,
                 detail.getAverageRating(),
                 Math.toIntExact(detail.getReviewCount()),
-                watcherCount);
+                watcherCount
+        );
     }
 
     @Transactional
@@ -101,15 +141,35 @@ public class ContentService {
                         Map.of("contentId", contentId)
                 ));
 
+        // TODO: 콘텐츠 삭제 시 WatchingSessionDisconnectEvent 발행 연동
         int deletedReviews = reviewRepository.deleteAllByContentId(contentId);
         int deletedPlaylistContents = playlistContentRepository.deleteAllByContentId(contentId);
 
         contentRepository.delete(content);
 
+        // 콘텐츠 삭제를 DB에 반영한 후 파일 정보 삭제
+        contentRepository.flush();
+
+        // S3 파일 정보가 있는 경우에만 삭제
+        FileInfo fileInfo = content.getFileInfo();
+        if (fileInfo != null) {
+            fileService.delete(fileInfo.getId());
+        }
+
         log.debug(
                 "콘텐츠 삭제: contentId={}, 삭제된 리뷰={}, 삭제된 플레이리스트 연결={}",
                 contentId, deletedReviews, deletedPlaylistContents
         );
+    }
+
+    // Presigned URL 생성
+    private String generateThumbnailUrl(Content content) {
+        FileInfo fileInfo = content.getFileInfo();
+
+        return fileInfo != null
+                ? fileService.getFileUrl(fileInfo.getId())
+                // 외부 API 콘텐츠는 기존 썸네일 URL 사용
+                : content.getThumbnailUrl();
     }
 
     // 태그 중복 검사
