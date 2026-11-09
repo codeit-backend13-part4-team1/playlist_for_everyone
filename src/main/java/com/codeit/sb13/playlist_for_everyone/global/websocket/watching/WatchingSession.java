@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserSummary;
@@ -161,6 +162,10 @@ public class WatchingSession {
 
         UserSummary userSummary = userSummaryMapper.toSummary(user);
         return new ContentChatDto(userSummary,content);
+    }
+
+    public void disconnectWithContentId(UUID contentId){
+
     }
 
 
