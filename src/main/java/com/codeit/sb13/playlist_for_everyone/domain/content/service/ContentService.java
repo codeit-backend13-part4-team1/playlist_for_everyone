@@ -43,21 +43,24 @@ public class ContentService {
 
         // S3 업로드 및 파일 정보 저장
         FileInfo fileInfo = fileService.upload(file);
-        String thumbnailUrl = fileService.getFileUrl(fileInfo.getId());
 
         Content content = Content.createAdminContent(
                 request.type(),
                 request.title(),
                 request.description(),
-                thumbnailUrl,
+                null,
                 fileInfo
         );
 
         normalizeTags(request.tags()).forEach(content::addTag);
 
         Content savedContent = contentRepository.save(content);
+        String thumbnailUrl = generateThumbnailUrl(savedContent);
 
-        return contentMapper.toDto(savedContent, 0.0, 0, 0L);
+        return contentMapper.toDto(
+                savedContent,
+                thumbnailUrl,
+                0.0, 0, 0L);
     }
 
     @Transactional(readOnly = true)
@@ -68,10 +71,13 @@ public class ContentService {
                 ));
         Content content = detail.getContent();
 
+        String thumbnailUrl = generateThumbnailUrl(content);
+
         long watcherCount = watchingSessionService.getCurrentViewerCount(contentId);
 
         return contentMapper.toDto(
                 content,
+                thumbnailUrl,
                 detail.getAverageRating(),
                 Math.toIntExact(detail.getReviewCount()),
                 watcherCount);
@@ -103,9 +109,8 @@ public class ContentService {
             FileInfo oldFileInfo = content.getFileInfo();
 
             FileInfo newFileInfo = fileService.upload(file);
-            String newThumbnailUrl = fileService.getFileUrl(newFileInfo.getId());
 
-            content.updateThumbnail(newThumbnailUrl, newFileInfo);
+            content.updateThumbnail(null, newFileInfo);
 
             // 변경된 외래 키를 DB에 먼저 반영
             contentRepository.flush();
@@ -116,10 +121,13 @@ public class ContentService {
             }
         }
 
+        String thumbnailUrl = generateThumbnailUrl(content);
+
         long watcherCount = watchingSessionService.getCurrentViewerCount(contentId);
 
         return contentMapper.toDto(
                 content,
+                thumbnailUrl,
                 detail.getAverageRating(),
                 Math.toIntExact(detail.getReviewCount()),
                 watcherCount
@@ -152,6 +160,16 @@ public class ContentService {
                 "콘텐츠 삭제: contentId={}, 삭제된 리뷰={}, 삭제된 플레이리스트 연결={}",
                 contentId, deletedReviews, deletedPlaylistContents
         );
+    }
+
+    // Presigned URL 생성
+    private String generateThumbnailUrl(Content content) {
+        FileInfo fileInfo = content.getFileInfo();
+
+        return fileInfo != null
+                ? fileService.getFileUrl(fileInfo.getId())
+                // 외부 API 콘텐츠는 기존 썸네일 URL 사용
+                : content.getThumbnailUrl();
     }
 
     // 태그 중복 검사

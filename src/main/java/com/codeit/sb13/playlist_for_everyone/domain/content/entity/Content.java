@@ -60,6 +60,8 @@ public class Content extends UpdatedAtEntity {
     @JoinColumn(name = "file_info_id")
     private FileInfo fileInfo;
 
+    // 기존 호출부에 영향을 주지 않도록 생성 메서드 시그니처 유지
+    // Presigned URL은 서비스 응답 생성 시 처리
     public static Content createAdminContent(
             ContentType type,
             String title,

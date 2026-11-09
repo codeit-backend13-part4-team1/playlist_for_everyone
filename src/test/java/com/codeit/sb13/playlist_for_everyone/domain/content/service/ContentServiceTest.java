@@ -111,7 +111,7 @@ public class ContentServiceTest {
                         ContentType.tvSeries,
                         "너말고다른연애",
                         "KBS 드라마 입니다.",
-                        "https://example.com/thumbnail.jpg",
+                        null,
                         ContentSource.ADMIN
                 );
 
@@ -121,7 +121,12 @@ public class ContentServiceTest {
                 .containsExactly("드라마", "로맨스");
 
         verify(fileService).upload(file);
-        verify(contentMapper).toDto(savedContent, 0.0, 0, 0L);
+        verify(contentMapper).toDto(
+                savedContent,
+                "https://example.com/thumbnail.jpg",
+                0.0,
+                0,
+                0L);
     }
 
     @Test
@@ -207,7 +212,12 @@ public class ContentServiceTest {
         given(detail.getReviewCount()).willReturn(3L);
         given(watchingSessionService.getCurrentViewerCount(contentId)).willReturn(3L);
 
-        given(contentMapper.toDto(content, 4.5, 3, 3L))
+        given(contentMapper.toDto(
+                content,
+                "thumbnail-url",
+                4.5,
+                3,
+                3L))
                 .willReturn(expected);
 
         // when
@@ -216,7 +226,10 @@ public class ContentServiceTest {
         // then
         assertThat(result).isSameAs(expected);
         verify(contentRepository).findDetailById(contentId);
-        verify(contentMapper).toDto(content, 4.5, 3, 3L);
+        verify(contentMapper).toDto(
+                content,
+                "thumbnail-url",
+                4.5, 3, 3L);
     }
 
     @Test
@@ -246,6 +259,7 @@ public class ContentServiceTest {
         // given
         UUID contentId = UUID.randomUUID();
         UUID fileId = UUID.randomUUID();
+        String presignedUrl = "https://example.com/thumbnail.jpg";
 
         FileInfo fileInfo = mock(FileInfo.class);
         given(fileInfo.getId()).willReturn(fileId);
@@ -265,7 +279,7 @@ public class ContentServiceTest {
         given(detail.getContent()).willReturn(content);
 
         given(fileService.getFileUrl(fileId))
-                .willReturn("https://example.com/thumbnail.jpg");
+                .willReturn(presignedUrl);
 
         // when
         ContentDto result = contentService.getById(contentId);
@@ -274,9 +288,14 @@ public class ContentServiceTest {
         // 엔터티에는 URL이 저장되지 않는다.
         assertThat(content.getThumbnailUrl()).isNull();
 
-        // API 응답에는 새로 생성한 URL이 포함된다.
-        assertThat(result.thumbnailUrl())
-                .isEqualTo("https://example.com/thumbnail.jpg");
+        // Mapper에 생성된 Presigned URL이 전달된다.
+        verify(contentMapper).toDto(
+                eq(content),
+                eq(presignedUrl),
+                anyDouble(),
+                anyInt(),
+                anyLong()
+        );
 
         verify(fileService).getFileUrl(fileId);
     }
@@ -321,7 +340,10 @@ public class ContentServiceTest {
                 .containsExactly("로맨스");
 
         verify(contentRepository).findDetailById(contentId);
-        verify(contentMapper).toDto(content, 4.5, 3, 0L);
+        verify(contentMapper).toDto(
+                content,
+                "thumbnail-url",
+                4.5, 3, 0L);
     }
 
     @Test
@@ -430,7 +452,6 @@ public class ContentServiceTest {
         UUID contentId = UUID.randomUUID();
 
         // 기존 파일 정보
-        String oldThumbnailUrl = "https://example.com/old.jpg";
         UUID oldFileId = UUID.randomUUID();
 
         FileInfo oldFileInfo = mock(FileInfo.class);
@@ -440,12 +461,11 @@ public class ContentServiceTest {
                 ContentType.tvSeries,
                 "너말고다른연애",
                 "KBS 드라마 입니다.",
-                oldThumbnailUrl,
+                null,
                 oldFileInfo
         );
 
         // 새 파일 정보
-        String newThumbnailUrl = "https://example.com/thumbnail.jpg";
         MultipartFile file = mock(MultipartFile.class);
         FileInfo newFileInfo = mockFileUpload(file);
 
@@ -460,15 +480,15 @@ public class ContentServiceTest {
         contentService.update(contentId, null, file);
 
         // then
-        assertThat(content.getThumbnailUrl()).isEqualTo(newThumbnailUrl);
+        assertThat(content.getThumbnailUrl()).isNull();
         assertThat(content.getFileInfo()).isSameAs(newFileInfo);
 
         InOrder inOrder = inOrder(fileService, contentRepository);
 
         inOrder.verify(fileService).upload(file);
-        inOrder.verify(fileService).getFileUrl(newFileInfo.getId());
         inOrder.verify(contentRepository).flush();
         inOrder.verify(fileService).delete(oldFileId);
+        inOrder.verify(fileService).getFileUrl(newFileInfo.getId());
     }
 
     @Test
@@ -477,15 +497,17 @@ public class ContentServiceTest {
         // given
         UUID contentId = UUID.randomUUID();
 
+        // 기존 파일 정보
+
         Content content = Content.createAdminContent(
                 ContentType.tvSeries,
                 "너말고다른연애",
                 "KBS 드라마 입니다.",
-                "thumbnail-url"
+                null,
+                null
         );
 
         // 새 파일 정보
-        String newThumbnailUrl = "https://example.com/thumbnail.jpg";
         MultipartFile file = mock(MultipartFile.class);
         FileInfo newFileInfo = mockFileUpload(file);
 
@@ -500,10 +522,11 @@ public class ContentServiceTest {
         contentService.update(contentId, null, file);
 
         // then
-        assertThat(content.getThumbnailUrl()).isEqualTo(newThumbnailUrl);
+        assertThat(content.getThumbnailUrl()).isNull();
         assertThat(content.getFileInfo()).isSameAs(newFileInfo);
 
         verify(fileService).upload(file);
+        verify(contentRepository).flush();
         verify(fileService, never()).delete(any());
     }
 
