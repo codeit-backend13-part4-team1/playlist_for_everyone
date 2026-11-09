@@ -9,6 +9,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.dto.command.UserCreateC
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
+import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserAdministrationService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import io.jsonwebtoken.JwtException;
 import org.junit.jupiter.api.DisplayName;
@@ -78,8 +79,11 @@ class SecurityConfigTest {
     @MockitoBean
     private RefreshTokenRepository refreshTokenRepository;
 
+    @MockitoBean
+    private UserAdministrationService userAdministrationService;
+
     // SecurityConfig에서 로그아웃 핸들러를 생성할 때 필요한 의존성이다.
-// 이 테스트에서는 로그아웃 동작을 검증하지 않으므로 Mock으로 등록한다.
+    // 이 테스트에서는 로그아웃 동작을 검증하지 않으므로 Mock으로 등록한다.
     @MockitoBean
     private AuthService authService;
 

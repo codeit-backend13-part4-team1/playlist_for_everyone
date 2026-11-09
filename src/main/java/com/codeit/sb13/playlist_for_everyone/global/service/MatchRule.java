@@ -12,27 +12,39 @@ public class MatchRule {
     private final Pattern prefix;
     private final Pattern postfix;
     private final Pattern pattern;
+    private final String origin;
 
-    @Builder
-    public MatchRule(
+     @Builder
+     protected MatchRule(
+            String origin,
             Object prefix,
-            Object postfix,
-            Object pattern
+            Object pattern,
+            Object postfix
     ){
+        this.origin = origin;
         this.prefix = toPattern(prefix);
-        this.postfix = toPattern(postfix);
         this.pattern = toPattern(pattern);
+        this.postfix = toPattern(postfix);
     }
 
     @Override
     public String toString(){
-        return String.format("prefix: %s, postfix: %s, pattern: %s",
+        return String.format("prefix: %s, postfix: %s, pattern: %s, origin: %s",
                 prefix == null ? null : prefix.pattern(),
                 postfix == null ? null : postfix.pattern(),
-                pattern == null ? null : pattern.pattern());
+                pattern == null ? null : pattern.pattern(),
+                origin);
     }
 
 
+    /**
+     * origin 에 해당 패턴이 존재하는지 확인하는 매서드
+     * @return 문자열에 해당 패턴이 한개 이상 존재하면 true
+     */
+    public boolean check(){
+        if (origin == null) return false;
+        return !extract(origin, prefix, pattern, postfix).isEmpty();
+    }
     /**
      * target 에 해당 패턴이 존재하는지 확인하는 매서드
      * @param target 탐색 할 문자열
@@ -49,6 +61,17 @@ public class MatchRule {
     }
     static public boolean check(String target, Object prefix, Object pattern, Object postfix){
         return !extract(target, prefix, pattern, postfix).isEmpty();
+    }
+
+    /**
+     * origin 에 존재하는 문자열을 추출하는 매서드.
+     * 패턴은 String or Pattern 으로 주입할 수 있다.
+     * 패턴이 정규표현식 형식 이 아닐 시, 해당 문자열이 정확하게 존재해야 하는 표현식으로 치환된다.
+     * @return 문자열에 존재하는 패턴을 문자열 인덱스 순서대로 반환.
+     */
+    public List<String> extract(){
+        if (origin == null) return List.of();
+        return extract(origin, prefix, pattern, postfix);
     }
 
     /**
@@ -101,10 +124,8 @@ public class MatchRule {
         Pattern pre = toPattern(prefix, true);
         Pattern pat = toPattern(pattern);
         Pattern post = toPattern(postfix, true);
-        int start = start(target, pre);
-        int end = end(target, post);
 
-        String trimmed = target.substring(start, end);
+        String trimmed = trim(target, pre, post);
 
         Matcher matcher = pat.matcher(trimmed);
 
@@ -128,6 +149,12 @@ public class MatchRule {
         } catch (PatternSyntaxException e) {
             return Pattern.compile(Pattern.quote(originString));
         }
+    }
+
+    static private String trim(String origin, Pattern prefix, Pattern postfix){
+        int start = start(origin, prefix);
+        int end = end(origin, postfix);
+        return origin.substring(start, end);
     }
 
     static private int start(String target, Pattern pre){
