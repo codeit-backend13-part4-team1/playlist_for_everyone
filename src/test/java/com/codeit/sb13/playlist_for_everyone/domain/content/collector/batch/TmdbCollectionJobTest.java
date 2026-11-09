@@ -405,7 +405,7 @@ class TmdbCollectionJobTest {
 
         assertThatThrownBy(() -> jobOperator.start(job, parameters))
                 .isInstanceOf(InvalidJobParametersException.class)
-                .hasMessage("maxPages는 1 이상의 정수여야 합니다.");
+                .hasMessage("maxPages는 1 이상 500 이하의 정수여야 합니다.");
 
         verifyNoInteractions(tmdbClient);
     }

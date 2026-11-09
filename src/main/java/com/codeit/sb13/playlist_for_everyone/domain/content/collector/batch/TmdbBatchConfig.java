@@ -36,21 +36,24 @@ public class TmdbBatchConfig {
                     if (parameter == null
                             || !Long.class.equals(parameter.type())) {
                         throw new InvalidJobParametersException(
-                                "maxPages는 1 이상의 정수여야 합니다."
+                                "maxPages는 1 이상 500 이하의 정수여야 합니다."
                         );
                     }
 
                     long maxPages = parameters.getLong("maxPages");
 
-                    if (maxPages < 1) {
+                    if (maxPages < 1 || maxPages > 500) {
                         throw new InvalidJobParametersException(
-                                "maxPages는 1 이상의 정수여야 합니다."
+                                "maxPages는 1 이상 500 이하의 정수여야 합니다."
                         );
                     }
                 })
+
                 .start(movieStep)
                 .next(tvStep)
                 .build();
+
+
     }
 
     @Bean
