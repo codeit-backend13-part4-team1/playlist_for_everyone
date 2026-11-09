@@ -410,4 +410,47 @@ class TmdbCollectionJobTest {
         verifyNoInteractions(tmdbClient);
     }
 
+    @ParameterizedTest
+    @ValueSource(longs = {501L, Long.MAX_VALUE})
+    void 수집_페이지_수가_상한을_초과하면_실행을_거부한다(
+            long maxPages
+    ) {
+        var parameters = new JobParametersBuilder()
+                .addLong("maxPages", maxPages)
+                .addString("run.id", UUID.randomUUID().toString())
+                .toJobParameters();
+
+        assertThatThrownBy(() -> jobOperator.start(job, parameters))
+                .isInstanceOf(InvalidJobParametersException.class)
+                .hasMessage("maxPages는 1 이상 500 이하의 정수여야 합니다.");
+
+        verifyNoInteractions(tmdbClient);
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {1L, 500L})
+    void 수집_페이지_수의_최솟값과_최댓값은_허용한다(
+            long maxPages
+    ) throws Exception {
+        when(tmdbClient.getPopularMovies(1))
+                .thenReturn(new TmdbPageResponse<TmdbMovieResponse>(
+                        1, List.of(), 0, 0
+                ));
+
+        when(tmdbClient.getPopularTvShows(1))
+                .thenReturn(new TmdbPageResponse<TmdbTvResponse>(
+                        1, List.of(), 0, 0
+                ));
+
+        var parameters = new JobParametersBuilder()
+                .addLong("maxPages", maxPages)
+                .addString("run.id", UUID.randomUUID().toString())
+                .toJobParameters();
+
+        var execution = jobOperator.start(job, parameters);
+
+        assertThat(execution.getStatus())
+                .isEqualTo(BatchStatus.COMPLETED);
+    }
+
 }
