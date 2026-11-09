@@ -71,7 +71,7 @@ public class PlaylistController {
       @PathVariable UUID playlistId,
       @AuthenticationPrincipal SecurityUser principal) {
     playlistService.deletePlaylist(playlistId, principal.getUserId());
-    return ResponseEntity.ok().build();
+    return ResponseEntity.noContent().build();
   }
 
   @PostMapping("/{playlistId}/contents/{contentId}")
@@ -89,7 +89,7 @@ public class PlaylistController {
       @PathVariable UUID contentId,
       @AuthenticationPrincipal SecurityUser principal) {
     playlistService.removeContent(playlistId, contentId, principal.getUserId());
-    return ResponseEntity.ok().build();
+    return ResponseEntity.noContent().build();
   }
 
   @PostMapping("/{playlistId}/subscription")
@@ -105,7 +105,7 @@ public class PlaylistController {
       @PathVariable UUID playlistId,
       @AuthenticationPrincipal SecurityUser principal) {
     playlistService.unsubscribe(playlistId, principal.getUserId());
-    return ResponseEntity.ok().build();
+    return ResponseEntity.noContent().build();
   }
 
 }
