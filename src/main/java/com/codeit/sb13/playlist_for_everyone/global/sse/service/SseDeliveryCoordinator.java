@@ -13,9 +13,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.springframework.web.util.DisconnectedClientHelper;
 
-import java.io.UncheckedIOException;
 import java.time.Duration;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
@@ -24,11 +24,11 @@ import java.util.concurrent.ScheduledFuture;
  * 한 연결의 초기 복구와 후속 전송이 같은 처리 위치를 공유하도록 조정한다.
  * 연결마다 별도 state를 가지므로 같은 사용자의 다른 탭도 독립적으로 진행한다.
  *
- * <p>synchronized(state)는 상태 전환만 보호한다. Redis·DB 조회와 HTTP 전송은 잠금 밖에서
+ * <p>synchronized(state)는 상태 전환과 로컬 저장소 등록·조회를 보호한다. Redis·DB 조회와 HTTP 전송은 잠금 밖에서
  * 실행하고 delivering으로 같은 연결의 후속 전송을 겹치지 않게 한다. 작업 중 들어온 신호는
  * 목록에 쌓지 않고 pendingDelivery 하나로 합쳐, 완료 후 갱신된 위치에서 다시 조회한다.
  *
- * <p>연결 상태에는 emitter·처리 위치·예약만 유지하고 조회한 이력 목록은 보관하지 않는다.
+ * <p>연결 상태에는 처리 위치·전송 여부·예약만 유지한다. emitter는 로컬 저장소에서 조회한다.
  * 복구 중 제거되었거나 늦게 실행된 작업은 Map의 state 동일성으로 구분한다.
  * 이미 실행 중인 조회·send의 즉시 중단까지 보장하는 구조는 아니다.
  */
@@ -57,10 +57,21 @@ public class SseDeliveryCoordinator {
         this.emitterRepository = emitterRepository;
     }
 
-    /** emitter 저장 전에 호출하여, 초기 복구 전 들어오는 신호도 보류할 수 있게 한다. */
+    /** 상태 생성과 로컬 저장소 등록을 묶는다. 초기 복구 전 신호는 해당 상태에 보류한다. */
     public void register(UUID userId, Connection connection, SseEmitter emitter){
         ConnectionKey key = new ConnectionKey(userId, connection);
-        connectionStates.put(key, new ConnectionState(emitter, retryProperties.initialDelay()));
+        ConnectionState state = new ConnectionState(retryProperties.initialDelay());
+        synchronized (state) {
+            if (connectionStates.putIfAbsent(key, state) != null) {
+                throw new IllegalStateException("이미 등록된 SSE 연결입니다.");
+            }
+            try {
+                emitterRepository.save(userId, connection, emitter);
+            } catch (RuntimeException failure) {
+                removeConnectionState(key, state);
+                throw failure;
+            }
+        }
     }
 
     /**
@@ -72,8 +83,11 @@ public class SseDeliveryCoordinator {
         ConnectionState state = connectionStates.get(key);
         if (state == null) return;
 
+        Optional<SseEmitter> emitter = findEmitter(key, state);
+        if (emitter.isEmpty()) return;
+
         SseHistoryPosition recoveredPosition = recoveryService
-                .recover(userId, connection, state.emitter, lastEventId);
+                .recover(userId, connection, emitter.get(), lastEventId);
         boolean hasPendingDelivery;
 
         synchronized (state){
@@ -88,18 +102,8 @@ public class SseDeliveryCoordinator {
         }
 
         if (hasPendingDelivery){
-            requestDelivery(userId, connection);
+            requestDelivery(key, state);
         }
-    }
-
-    /** 연결 상태와 대기 중인 재시도를 정리한다. emitter 저장소와 Redis 이력 삭제는 수행하지 않는다. */
-    public void remove(UUID userId, Connection connection){
-        ConnectionKey key = new ConnectionKey(userId, connection);
-        ConnectionState state = connectionStates.get(key);
-
-        if (state == null) return;
-
-        removeConnectionState(key, state);
     }
 
     /**
@@ -110,15 +114,18 @@ public class SseDeliveryCoordinator {
     public void requestDelivery(UUID userId, Connection connection){
         ConnectionKey key = new ConnectionKey(userId, connection);
         ConnectionState state = connectionStates.get(key);
-
-        if (state == null){
+        if (state == null) {
             return;
         }
 
+        requestDelivery(key, state);
+    }
+
+    private void requestDelivery(ConnectionKey key, ConnectionState state) {
+        UUID userId = key.userId();
+        Connection connection = key.connection();
         synchronized (state){
-            if (connectionStates.get(key) != state){
-                return;
-            }
+            if (findEmitter(key, state).isEmpty()) return;
 
             if (!state.recovered
                     || state.delivering
@@ -142,9 +149,11 @@ public class SseDeliveryCoordinator {
                     state.pendingDelivery = false;
                     afterPosition = state.lastPosition;
                 }
+                Optional<SseEmitter> emitter = findEmitter(key, state);
+                if (emitter.isEmpty()) return;
                 SseHistoryPosition nextPosition = recoveryService.recoverAfter(userId,
                         connection,
-                        state.emitter,
+                        emitter.get(),
                         afterPosition);
 
                 synchronized (state) {
@@ -164,18 +173,16 @@ public class SseDeliveryCoordinator {
                 }
             }
         } catch (DataAccessResourceFailureException | QueryTimeoutException failure){
-            boolean shouldClose = false;
+            Optional<SseEmitter> emitterToClose = Optional.empty();
             synchronized (state){
-                if (connectionStates.get(key) != state){
-                    return;
-                }
+                if (findEmitter(key, state).isEmpty()) return;
                 if (!tryScheduleRetry(key,state)){
-                   shouldClose = removeConnectionState(key, state);
+                   emitterToClose = detachState(key, state);
                 }
                 state.delivering =false;
                 deliveryReleased =true;
             }
-            if (shouldClose){
+            if (emitterToClose.isPresent()){
                 log.warn(
                         """
                         SSE 후속 이력 조회 재시도를 소진하여 연결을 종료합니다.
@@ -186,7 +193,7 @@ public class SseDeliveryCoordinator {
                         retryProperties.maxRetries(),
                         failure
                 );
-                connectionCloser.close(userId, connection, state.emitter);
+                connectionCloser.close(userId, connection, emitterToClose.get());
             }
         } finally {
             if (!deliveryReleased){
@@ -195,6 +202,45 @@ public class SseDeliveryCoordinator {
                 }
             }
         }
+    }
+
+    public void closeConnection(UUID userId, Connection connection){
+        detachConnection(new ConnectionKey(userId, connection))
+                .ifPresent(emitter -> connectionCloser.close(userId, connection, emitter));
+    }
+
+    public void cleanupConnection(UUID userId, Connection connection){
+        if (detachConnection(new ConnectionKey(userId, connection)).isPresent()) {
+            connectionCloser.cleanUp(userId, connection);
+        }
+    }
+
+    /** 등록 완료를 기다린 뒤 조회한다. 사라진 연결의 상태와 예약을 계속 유지하지 않는다. */
+    private Optional<SseEmitter> findEmitter(ConnectionKey key, ConnectionState state) {
+        synchronized (state) {
+            if (connectionStates.get(key) != state) return Optional.empty();
+            Optional<SseEmitter> emitter = emitterRepository.findByUserIdAndConnection(key.userId(), key.connection());
+            if (emitter.isEmpty()) removeConnectionState(key, state);
+            return emitter;
+        }
+    }
+
+    /** 예약 작업은 자신이 캡처한 상태에 대해서만 종료 대상을 확보한다. HTTP 종료는 잠금 밖에서 한다. */
+    private Optional<SseEmitter> detachState(ConnectionKey key, ConnectionState state) {
+        synchronized (state) {
+            if (connectionStates.get(key) != state) return Optional.empty();
+            Optional<SseEmitter> emitter = emitterRepository.findByUserIdAndConnection(key.userId(), key.connection());
+            removeConnectionState(key, state);
+            return emitter;
+        }
+    }
+
+    private Optional<SseEmitter> detachConnection(ConnectionKey key) {
+        ConnectionState state = connectionStates.get(key);
+        if (state == null) {
+            return emitterRepository.findByUserIdAndConnection(key.userId(), key.connection());
+        }
+        return detachState(key, state);
     }
 
     private record ConnectionKey(
@@ -206,7 +252,6 @@ public class SseDeliveryCoordinator {
 
     /** 이력 목록을 캐시하지 않는 연결 단위 상태. pendingDelivery는 개수가 아니라 재조회 필요 여부다. */
     private static class ConnectionState {
-        private final SseEmitter emitter;
         private boolean recovered;
         private boolean pendingDelivery;
         private boolean delivering;
@@ -215,8 +260,7 @@ public class SseDeliveryCoordinator {
         private Duration nextRetryDelay;
         private ScheduledFuture<?> retryFuture;
 
-        private ConnectionState(SseEmitter emitter, Duration initialRetryDelay){
-            this.emitter = emitter;
+        private ConnectionState(Duration initialRetryDelay){
             this.nextRetryDelay = initialRetryDelay;
         }
     }
@@ -230,7 +274,7 @@ public class SseDeliveryCoordinator {
         }
     }
 
-    /** 예약을 소비한 뒤 기존 전송 경로를 재사용한다. 예약 작업의 I/O·상태 오류는 여기서 연결을 정리한다. */
+    /** 예약은 캡처한 상태로 실행한다. 재시도 대상 이외의 RuntimeException은 해당 연결을 종료한다. */
     private void runRetry(ConnectionKey key, ConnectionState state){
         synchronized (state){
             if (connectionStates.get(key) != state
@@ -240,13 +284,12 @@ public class SseDeliveryCoordinator {
             state.retryFuture = null;
         }
         try {
-            requestDelivery(key.userId, key.connection);
-        } catch (UncheckedIOException | IllegalStateException failure){
-            if (!removeConnectionState(key, state)){
-                return;
-            }
+            requestDelivery(key, state);
+        } catch (RuntimeException failure){
+            Optional<SseEmitter> emitter = detachState(key, state);
+            if (emitter.isEmpty()) return;
             logRetryDeliveryFailure(key, failure);
-            connectionCloser.close(key.userId, key.connection, state.emitter);
+            connectionCloser.close(key.userId(), key.connection(), emitter.get());
         }
     }
 
@@ -288,7 +331,7 @@ public class SseDeliveryCoordinator {
             if (!connectionStates.remove(key, state)){
                 return false;
             }
-            state.pendingDelivery =false;
+            state.pendingDelivery = false;
             cancelRetry(state);
             return true;
         }
@@ -312,10 +355,13 @@ public class SseDeliveryCoordinator {
     }
 
 
-    public void closeConnection(UUID userId, Connection connection) {
-    }
+    public void remove(UUID userId, Connection connection){
+        ConnectionKey key = new ConnectionKey(userId, connection);
+        ConnectionState state = connectionStates.get(key);
 
-    public void cleanupConnection(UUID userId, Connection connection) {
+        if (state == null) return;
+
+        removeConnectionState(key, state);
     }
 
 }

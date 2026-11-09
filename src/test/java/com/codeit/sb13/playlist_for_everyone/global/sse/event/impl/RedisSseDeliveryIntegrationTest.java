@@ -121,7 +121,7 @@ public class RedisSseDeliveryIntegrationTest {
 
         try {
             deliveryCoordinator.register(receiverId, connection, emitter);
-            sseEmitterRepository.save(receiverId, connection, emitter);
+
             deliveryCoordinator.recover(receiverId, connection, null);
             ArgumentCaptor<SseEmitter.SseEventBuilder> eventCaptor = ArgumentCaptor.captor();
             publisher.publish(event);
@@ -145,8 +145,7 @@ public class RedisSseDeliveryIntegrationTest {
                     .isEqualTo(objectMapper.valueToTree(event.data()));
 
         } finally {
-            deliveryCoordinator.remove(receiverId, connection);
-            sseEmitterRepository.delete(receiverId, connection);
+            deliveryCoordinator.cleanupConnection(receiverId, connection);
         }
     }
 
@@ -168,11 +167,11 @@ public class RedisSseDeliveryIntegrationTest {
 
         try {
             deliveryCoordinator.register(receiverId, firstConnection, firstEmitter);
-            sseEmitterRepository.save(receiverId, firstConnection, firstEmitter);
+
             deliveryCoordinator.recover(receiverId, firstConnection, null);
 
             deliveryCoordinator.register(receiverId, secondConnection, secondEmitter);
-            sseEmitterRepository.save(receiverId, secondConnection, secondEmitter);
+
             deliveryCoordinator.recover(receiverId, secondConnection, null);
 
             publisher.publish(event);
@@ -182,10 +181,8 @@ public class RedisSseDeliveryIntegrationTest {
                     .send(any(SseEmitter.SseEventBuilder.class));
 
         } finally {
-            deliveryCoordinator.remove(receiverId, firstConnection);
-            sseEmitterRepository.delete(receiverId, firstConnection);
-            deliveryCoordinator.remove(receiverId, secondConnection);
-            sseEmitterRepository.delete(receiverId, secondConnection);
+            deliveryCoordinator.cleanupConnection(receiverId, firstConnection);
+            deliveryCoordinator.cleanupConnection(receiverId, secondConnection);
         }
     }
 
@@ -207,11 +204,11 @@ public class RedisSseDeliveryIntegrationTest {
 
         try {
             deliveryCoordinator.register(receiverId, receiverConnection, receiverEmitter);
-            sseEmitterRepository.save(receiverId, receiverConnection, receiverEmitter);
+
             deliveryCoordinator.recover(receiverId, receiverConnection, null);
 
             deliveryCoordinator.register(otherUserId, otherConnection, otherEmitter);
-            sseEmitterRepository.save(otherUserId, otherConnection, otherEmitter);
+
             deliveryCoordinator.recover(otherUserId, otherConnection, null);
 
             publisher.publish(event);
@@ -222,10 +219,8 @@ public class RedisSseDeliveryIntegrationTest {
             verify(otherEmitter, after(500).never())
                     .send(any(SseEmitter.SseEventBuilder.class));
         } finally {
-            deliveryCoordinator.remove(receiverId, receiverConnection);
-            sseEmitterRepository.delete(receiverId, receiverConnection);
-            deliveryCoordinator.remove(otherUserId, otherConnection);
-            sseEmitterRepository.delete(otherUserId, otherConnection);
+            deliveryCoordinator.cleanupConnection(receiverId, receiverConnection);
+            deliveryCoordinator.cleanupConnection(otherUserId, otherConnection);
         }
 
 
@@ -257,11 +252,11 @@ public class RedisSseDeliveryIntegrationTest {
 
             try {
                 deliveryCoordinator.register(receiverId, connectionOnA, emitterOnA);
-                sseEmitterRepository.save(receiverId, connectionOnA, emitterOnA);
+
                 deliveryCoordinator.recover(receiverId, connectionOnA, null);
 
                 coordinatorOnB.register(receiverId, connectionOnB, emitterOnB);
-                repositoryOnB.save(receiverId, connectionOnB, emitterOnB);
+
                 coordinatorOnB.recover(receiverId, connectionOnB, null);
 
                 publisher.publish(event);
@@ -270,10 +265,8 @@ public class RedisSseDeliveryIntegrationTest {
                 verify(emitterOnB, timeout(5_000))
                         .send(any(SseEmitter.SseEventBuilder.class));
             } finally {
-                deliveryCoordinator.remove(receiverId, connectionOnA);
-                sseEmitterRepository.delete(receiverId, connectionOnA);
-                coordinatorOnB.remove(receiverId, connectionOnB);
-                repositoryOnB.delete(receiverId, connectionOnB);
+                deliveryCoordinator.cleanupConnection(receiverId, connectionOnA);
+                coordinatorOnB.cleanupConnection(receiverId, connectionOnB);
             }
         });
     }
@@ -301,7 +294,7 @@ public class RedisSseDeliveryIntegrationTest {
 
             try {
                 coordinatorOnB.register(receiverId, connectionOnB, emitterOnB);
-                repositoryOnB.save(receiverId, connectionOnB, emitterOnB);
+
                 coordinatorOnB.recover(receiverId, connectionOnB, null);
 
                 assertThat(sseEmitterRepository.findAllByUserId(receiverId)).isEmpty();
@@ -311,8 +304,7 @@ public class RedisSseDeliveryIntegrationTest {
                         .send(any(SseEmitter.SseEventBuilder.class));
 
             } finally {
-                coordinatorOnB.remove(receiverId, connectionOnB);
-                repositoryOnB.delete(receiverId, connectionOnB);
+                coordinatorOnB.cleanupConnection(receiverId, connectionOnB);
             }
         });
     }

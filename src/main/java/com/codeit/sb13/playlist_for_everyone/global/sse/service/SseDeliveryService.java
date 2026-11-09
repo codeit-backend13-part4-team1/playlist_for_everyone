@@ -48,15 +48,14 @@ public class SseDeliveryService {
         }
 
         // 조회한 Map은 전송 대상을 순회하기 위한 사본이다. 조회 후 종료된 emitter도 있을 수 있다.
-        connections.forEach((connection, emitter)->{
+        connections.keySet().forEach(connection -> {
             try {
                 // 각 연결은 자신의 위치부터 읽는다. 신호가 중복되거나 역순이어도 이력 순서가 기준이다.
                 deliveryCoordinator.requestDelivery(receiverId, connection);
             } catch (RuntimeException e) {
                 // 실패한 연결만 전송 대상에서 제외하고 다음 연결을 계속 처리한다.
                 // 아직 열리지 않은 연결 요청의 실패를 호출자에게 전파하는 connect와 처리 목적이 다르다.
-                deliveryCoordinator.remove(receiverId, connection);
-                sseEmitterRepository.delete(receiverId, connection);
+                deliveryCoordinator.closeConnection(receiverId, connection);
                 logSseEventDeliveryIssue(sseEvent, connection, e);
             }
         });
@@ -81,8 +80,7 @@ public class SseDeliveryService {
             // 주석 프레임은 알림/DM 이벤트로 전달되지 않으며 마지막 수신 이벤트 ID도 변경하지 않는다.
             emitter.send(SseEmitter.event().comment("heartbeat"));
         } catch (IOException | IllegalStateException e) {
-            deliveryCoordinator.remove(userId, connection);
-            sseEmitterRepository.delete(userId, connection);
+            deliveryCoordinator.cleanupConnection(userId, connection);
             logSseHeartbeatIssue(userId, connection, e);
         }
     }

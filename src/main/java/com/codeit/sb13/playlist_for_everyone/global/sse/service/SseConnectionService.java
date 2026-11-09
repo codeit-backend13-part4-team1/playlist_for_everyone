@@ -67,10 +67,8 @@ public class SseConnectionService {
             logSseConnectionIssue(userId, e, connection);
         });
 
-        // 전송을 시도하기 전에 저장하여 이후 콜백과 전송 실패 처리가 같은 연결을 정리하게 한다.
+        // 등록 실패는 조정기가 자신이 만든 상태만 취소한다. 기존 연결을 키로 삭제하지 않는다.
         deliveryCoordinator.register(userId, connection, emitter);
-        sseEmitterRepository.save(userId, connection, emitter);
-
         try {
             // 주석은 업무 이벤트가 아니므로 ID를 넣지 않아 클라이언트의 마지막 이벤트 ID를 유지한다.
             // 컨트롤러 반환 전에는 MVC의 전송 handler가 없어 데이터가 버퍼에 보관될 수 있다.
@@ -81,10 +79,6 @@ public class SseConnectionService {
             handleConnectionError(userId, e, connection);
         }
         return emitter;
-    }
-
-    public SseEmitter connect(UUID userId){
-        return connect(userId, null);
     }
 
     /**
@@ -141,7 +135,10 @@ public class SseConnectionService {
 
     /** 해당 연결의 상태·예약부터 제거한다. 여러 번 호출해도 다른 연결이나 공유 이력을 삭제하지 않는다. */
     private void cleanupConnection(UUID userId, Connection connection){
-        deliveryCoordinator.remove(userId, connection);
-        sseEmitterRepository.delete(userId, connection);
+        deliveryCoordinator.cleanupConnection(userId, connection);
     }
+    public SseEmitter connect(UUID userId){
+        return connect(userId, null);
+    }
+
 }
