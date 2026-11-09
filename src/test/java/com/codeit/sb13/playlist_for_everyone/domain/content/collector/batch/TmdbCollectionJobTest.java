@@ -265,4 +265,59 @@ class TmdbCollectionJobTest {
 
         assertThat(savedCount).isEqualTo(2L);
     }
+
+    @Test
+    void 제목이_없는_영화는_건너뛰고_정상_영화는_저장한다()
+            throws Exception {
+
+        var first = new TmdbMovieResponse(
+                990101L, "정상 영화 A", "설명", "/a.jpg", List.of(28)
+        );
+        var invalid = new TmdbMovieResponse(
+                990102L, "   ", "설명", "/b.jpg", List.of(18)
+        );
+        var third = new TmdbMovieResponse(
+                990103L, "정상 영화 C", "설명", "/c.jpg", List.of(35)
+        );
+
+        when(tmdbClient.getPopularMovies(1))
+                .thenReturn(new TmdbPageResponse<>(
+                        1, List.of(first, invalid, third), 1, 3
+                ));
+
+        when(tmdbClient.getPopularTvShows(1))
+                .thenReturn(new TmdbPageResponse<TmdbTvResponse>(
+                        1, List.of(), 0, 0
+                ));
+
+        var parameters = new JobParametersBuilder()
+                .addLong("maxPages", 1L)
+                .addString("run.id", UUID.randomUUID().toString())
+                .toJobParameters();
+
+        var execution = jobOperator.start(job, parameters);
+
+        assertThat(execution.getStatus())
+                .isEqualTo(BatchStatus.COMPLETED);
+
+        assertThat(contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.TMDB, ContentType.movie, "990101"
+        )).isPresent();
+
+        assertThat(contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.TMDB, ContentType.movie, "990102"
+        )).isEmpty();
+
+        assertThat(contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.TMDB, ContentType.movie, "990103"
+        )).isPresent();
+
+        var movieStep = execution.getStepExecutions().stream()
+                .filter(step -> step.getStepName()
+                        .equals("tmdbMovieCollectionStep"))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(movieStep.getWriteSkipCount()).isEqualTo(1L);
+    }
 }
