@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.collector.ContentCol
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.TmdbClient;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.TmdbMovieResponse;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.TmdbPageResponse;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.TmdbTvResponse;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentSource;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
@@ -78,7 +79,7 @@ class TmdbCollectionJobTest {
     private TmdbClient tmdbClient;
 
     @Test
-    void 배치를_실행하면_영화와_태그가_저장된다() throws Exception {
+    void 배치를_실행하면_영화와_TV와_태그가_저장된다() throws Exception {
         var movie = new TmdbMovieResponse(
                 550L,
                 "테스트 영화",
@@ -90,6 +91,19 @@ class TmdbCollectionJobTest {
         when(tmdbClient.getPopularMovies(1))
                 .thenReturn(new TmdbPageResponse<>(
                         1, List.of(movie), 1, 1
+                ));
+
+        var tv = new TmdbTvResponse(
+                550L,
+                "테스트 드라마",
+                "드라마 설명",
+                "/tv-poster.jpg",
+                List.of(18, 35)
+        );
+
+        when(tmdbClient.getPopularTvShows(1))
+                .thenReturn(new TmdbPageResponse<>(
+                        1, List.of(tv), 1, 1
                 ));
 
         var parameters = new JobParametersBuilder()
@@ -124,6 +138,30 @@ class TmdbCollectionJobTest {
         );
 
         assertThat(tags).containsExactlyInAnyOrder("액션", "드라마");
+
+        var savedTv = contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.TMDB,
+                ContentType.tvSeries,
+                "550"
+        );
+
+        assertThat(savedTv).isPresent();
+
+        var tvContent = savedTv.orElseThrow();
+
+        assertThat(tvContent.getId()).isNotEqualTo(content.getId());
+        assertThat(tvContent.getTitle()).isEqualTo("테스트 드라마");
+        assertThat(tvContent.getDescription()).isEqualTo("드라마 설명");
+        assertThat(tvContent.getThumbnailUrl())
+                .isEqualTo("https://image.tmdb.org/t/p/w500/tv-poster.jpg");
+
+        var tvTags = jdbcTemplate.queryForList(
+                "SELECT tag FROM content_tags WHERE content_id = ?",
+                String.class,
+                tvContent.getId()
+        );
+
+        assertThat(tvTags).containsExactlyInAnyOrder("드라마", "코미디");
 
         var executionCount = jdbcTemplate.queryForObject(
                 """
