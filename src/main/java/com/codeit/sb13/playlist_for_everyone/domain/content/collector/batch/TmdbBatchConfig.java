@@ -18,6 +18,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.batch.core.job.parameters.InvalidJobParametersException;
 
 @Configuration(proxyBeanMethods = false)
 public class TmdbBatchConfig {
@@ -29,6 +30,24 @@ public class TmdbBatchConfig {
             @Qualifier("tmdbTvCollectionStep") Step tvStep
     ) {
         return new JobBuilder("tmdbCollectionJob", jobRepository)
+                .validator(parameters -> {
+                    var parameter = parameters.getParameter("maxPages");
+
+                    if (parameter == null
+                            || !Long.class.equals(parameter.type())) {
+                        throw new InvalidJobParametersException(
+                                "maxPages는 1 이상의 정수여야 합니다."
+                        );
+                    }
+
+                    long maxPages = parameters.getLong("maxPages");
+
+                    if (maxPages < 1) {
+                        throw new InvalidJobParametersException(
+                                "maxPages는 1 이상의 정수여야 합니다."
+                        );
+                    }
+                })
                 .start(movieStep)
                 .next(tvStep)
                 .build();
