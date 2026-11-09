@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.auth.jwt;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
@@ -38,15 +39,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider jwtTokenProvider;
     private final UserService userService;
+    private final UserSessionRepository userSessionRepository;
     private final AuthenticationEntryPoint authenticationEntryPoint;
     // 인증 정보를 이 객체 내부가 아닌 HttpServletRequest의 속성에 저장한다.
     // 기본 속성 이름을 사용하므로 보안 필터 체인의 요청 속성 저장소도 같은 값을 읽을 수 있다.
     // 저장 범위는 동일 HTTP 요청이며, HTTP 세션이나 Redis에 사용자 인증을 보관하는 설정이 아니다.
     private final SecurityContextRepository securityContextRepository = new RequestAttributeSecurityContextRepository();
 
-    public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider, UserService userService, AuthenticationEntryPoint authenticationEntryPoint) {
+    public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider, UserService userService, UserSessionRepository userSessionRepository, AuthenticationEntryPoint authenticationEntryPoint) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.userService = userService;
+        this.userSessionRepository = userSessionRepository;
         this.authenticationEntryPoint = authenticationEntryPoint;
     }
 

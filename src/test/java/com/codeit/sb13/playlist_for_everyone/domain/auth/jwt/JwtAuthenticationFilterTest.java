@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.auth.jwt;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
@@ -17,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpHeaders;
@@ -44,13 +46,23 @@ class JwtAuthenticationFilterTest {
     private static final UUID USER_ID =
             UUID.fromString("11111111-1111-1111-1111-111111111111");
 
+    private static final UUID SESSION_ID =
+            UUID.fromString("22222222-2222-2222-2222-222222222222");
+
 
     // Provider를 Mock으로 사용하므로 실제 JWT 문자열일 필요는 없다.
     private static final String TOKEN = "test-access-token";
     private static final String EMAIL = "test@gmail.com";
 
+    // Provider 검증을 통과한 토큰에서 꺼낸 정보다.
+    private static final AccessTokenClaims CLAIMS =
+            new AccessTokenClaims(USER_ID, SESSION_ID);
+
     @Mock
     private JwtTokenProvider jwtTokenProvider;
+
+    @Mock
+    private UserSessionRepository userSessionRepository;
 
     @Mock
     private UserService userService;
@@ -77,6 +89,7 @@ class JwtAuthenticationFilterTest {
         filter = new JwtAuthenticationFilter(
                 jwtTokenProvider,
                 userService,
+                userSessionRepository,
                 entryPoint
         );
 
@@ -100,7 +113,7 @@ class JwtAuthenticationFilterTest {
                 .isNull();
 
         verify(filterChain).doFilter(request, response);
-        verifyNoInteractions(jwtTokenProvider, userService);
+        verifyNoInteractions(jwtTokenProvider, userSessionRepository, userService);
     }
 
     @Test
@@ -111,8 +124,11 @@ class JwtAuthenticationFilterTest {
         // 역할은 토큰이 아닌 현재 DB 조회 결과에서 가져온다.
         User user = createUser(Role.ADMIN);
 
-        given(jwtTokenProvider.parseAccessToken(TOKEN))
-                .willReturn(USER_ID);
+        given(jwtTokenProvider.parseAccess(TOKEN))
+                .willReturn(CLAIMS);
+
+        given(userSessionRepository.isCurrent(USER_ID, SESSION_ID))
+                .willReturn(true);
 
         given(userService.getById(USER_ID))
                 .willReturn(user);
@@ -148,8 +164,13 @@ class JwtAuthenticationFilterTest {
 
         filter.doFilter(request, response, filterChain);
 
-        verify(jwtTokenProvider).parseAccessToken(TOKEN);
-        verify(userService).getById(USER_ID);
+        // 세션 확인 후 사용자를 조회한다.
+        // 무효한 세션이면 DB 조회 없이 거부하기 위한 순서다.
+        InOrder inOrder = inOrder(jwtTokenProvider, userSessionRepository, userService);
+        inOrder.verify(jwtTokenProvider).parseAccess(TOKEN);
+        inOrder.verify(userSessionRepository).isCurrent(USER_ID, SESSION_ID);
+        inOrder.verify(userService).getById(USER_ID);
+
         verify(filterChain).doFilter(request, response);
     }
 
@@ -159,14 +180,14 @@ class JwtAuthenticationFilterTest {
     void 만료된_토큰이면_인증에_실패한다() throws Exception {
         request.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN);
 
-        given(jwtTokenProvider.parseAccessToken(TOKEN))
+        given(jwtTokenProvider.parseAccess(TOKEN))
                 .willThrow(new ExpiredJwtException(
                         null, null, "만료된 토큰"
                 ));
         filter.doFilter(request, response, filterChain);
 
         assertUnauthorized();
-        verifyNoInteractions(userService, filterChain);
+        verifyNoInteractions(userSessionRepository, userService, filterChain);
     }
 
     @Test
@@ -174,13 +195,13 @@ class JwtAuthenticationFilterTest {
     void 잘못된_토큰이면_인증에_실패한다() throws Exception {
         request.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN);
 
-        given(jwtTokenProvider.parseAccessToken(TOKEN))
+        given(jwtTokenProvider.parseAccess(TOKEN))
                 .willThrow(new JwtException("유효하지 않은 토큰"));
 
         filter.doFilter(request, response, filterChain);
 
         assertUnauthorized();
-        verifyNoInteractions(userService, filterChain);
+        verifyNoInteractions(userSessionRepository, userService, filterChain);
     }
 
     @Test
@@ -191,8 +212,10 @@ class JwtAuthenticationFilterTest {
         User user = createUser(Role.USER);
         user.lock();
 
-        given(jwtTokenProvider.parseAccessToken(TOKEN))
-                .willReturn(USER_ID);
+        given(jwtTokenProvider.parseAccess(TOKEN))
+                .willReturn(CLAIMS);
+        given(userSessionRepository.isCurrent(USER_ID, SESSION_ID))
+                .willReturn(true);
         given(userService.getById(USER_ID))
                 .willReturn(user);
 
@@ -207,8 +230,10 @@ class JwtAuthenticationFilterTest {
     void 사용자가_없으면_인증에_실패한다() throws Exception {
         request.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN);
 
-        given(jwtTokenProvider.parseAccessToken(TOKEN))
-                .willReturn(USER_ID);
+        given(jwtTokenProvider.parseAccess(TOKEN))
+                .willReturn(CLAIMS);
+        given(userSessionRepository.isCurrent(USER_ID, SESSION_ID))
+                .willReturn(true);
         given(userService.getById(USER_ID))
                 .willThrow(new UserNotFoundException(
                         Map.of("userId", USER_ID)
@@ -231,7 +256,7 @@ class JwtAuthenticationFilterTest {
         assertUnauthorized();
 
         // 빈 값은 필터에서 확인하고 Provider에 넘기지 않는다.
-        verifyNoInteractions(jwtTokenProvider, userService, filterChain);
+        verifyNoInteractions(jwtTokenProvider, userSessionRepository, userService, filterChain);
     }
 
     @Test
@@ -272,7 +297,7 @@ class JwtAuthenticationFilterTest {
                 .isNull();
 
         verify(filterChain).doFilter(request, response);
-        verifyNoInteractions(jwtTokenProvider, userService);
+        verifyNoInteractions(jwtTokenProvider, userSessionRepository, userService);
     }
 
     @Test
@@ -282,7 +307,7 @@ class JwtAuthenticationFilterTest {
         request.setRequestURI("/api/users");
         request.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN);
 
-        given(jwtTokenProvider.parseAccessToken(TOKEN))
+        given(jwtTokenProvider.parseAccess(TOKEN))
                 .willThrow(new ExpiredJwtException(
                         null, null, "만료된 토큰"
                 ));
@@ -293,11 +318,41 @@ class JwtAuthenticationFilterTest {
 
         // POST /api/users만 제외해야 한다.
         // GET /api/users는 토큰 검증을 수행하고 실패 시 요청을 중단한다.
-        verify(jwtTokenProvider).parseAccessToken(TOKEN);
+        verify(jwtTokenProvider).parseAccess(TOKEN);
+        verifyNoInteractions(userSessionRepository, userService, filterChain);
+    }
+
+    @Test
+    @DisplayName("다른 곳에서 다시 로그인했거나 강제 로그아웃된 세션의 토큰이면 401을 반환하고 사용자를 조회하지 않는다")
+    void 무효화된_세션의_토큰이면_인증에_실패한다() throws Exception {
+        request.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN);
+
+        // 서명·만료는 유효하지만 Redis의 현재 세션과 다르다.
+        given(jwtTokenProvider.parseAccess(TOKEN))
+                .willReturn(CLAIMS);
+        given(userSessionRepository.isCurrent(USER_ID, SESSION_ID))
+                .willReturn(false);
+
+        filter.doFilter(request, response, filterChain);
+
+        assertUnauthorized();
         verifyNoInteractions(userService, filterChain);
     }
 
+    @Test
+    @DisplayName("로그인 세션 ID가 없는 이전 형식의 토큰이면 401을 반환한다")
+    void 세션_ID가_없는_토큰이면_인증에_실패한다() throws Exception {
+        request.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN);
 
+        // sid 누락은 Provider가 JwtException으로 거부한다.
+        given(jwtTokenProvider.parseAccess(TOKEN))
+                .willThrow(new JwtException("토큰에 로그인 세션 ID가 없습니다."));
+
+        filter.doFilter(request, response, filterChain);
+
+        assertUnauthorized();
+        verifyNoInteractions(userSessionRepository, userService, filterChain);
+    }
 
 
     /**
@@ -325,11 +380,6 @@ class JwtAuthenticationFilterTest {
         assertThat(SecurityContextHolder.getContext().getAuthentication())
                 .isNull();
     }
-
-
-
-
-
 
 
 }

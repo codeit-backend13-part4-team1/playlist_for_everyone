@@ -93,7 +93,7 @@ public class SecurityConfig {
         // Servlet 필터로 자동 등록되지 않도록 여기에서 직접 생성한다.
         // 이 필터는 아래에서 Spring Security 체인에만 등록한다.
         JwtAuthenticationFilter jwtAuthenticationFilter =
-                new JwtAuthenticationFilter(jwtTokenProvider, userService, authenticationEntryPoint);
+                new JwtAuthenticationFilter(jwtTokenProvider, userService, userSessionRepository, authenticationEntryPoint);
 
         // JWT 발급, Redis 저장 TTL, 쿠키 보관 기간에 같은 유효기간을 사용한다.
         // Secure 여부는 실행 환경의 설정으로 결정한다.
