@@ -263,7 +263,7 @@ class JwtTokenProviderTest {
     @Test
     @DisplayName("Access Token에 로그인 세션 ID를 담는다.")
     void Access_Token에_세션_ID를_담는다() {
-        String token = jwtTokenProvider.createRefreshToken(USER_ID, SESSION_ID);
+        String token = jwtTokenProvider.createAccessToken(USER_ID, SESSION_ID);
 
         // Provider의 파싱 메서드와 독립적으로 발급 결과를 확인한다.
         Claims claims = readClaims(token);

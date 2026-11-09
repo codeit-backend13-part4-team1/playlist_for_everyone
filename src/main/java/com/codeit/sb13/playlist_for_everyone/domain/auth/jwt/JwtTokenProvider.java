@@ -23,6 +23,9 @@ public class JwtTokenProvider {
     private static final String ACCESS_TOKEN_TYPE = "ACCESS";
     private static final String REFRESH_TOKEN_TYPE = "REFRESH";
 
+    // 로그인 세션 ID. 로그인할 때 새로 만들고, 재발급할 때는 유지한다.
+    private static final String SESSION_ID_CLAIM = "sid";
+
     private final SecretKey signingKey;
     private final Duration accessTokenValidity;
     private final Duration refreshTokenValidity;
@@ -192,14 +195,12 @@ public class JwtTokenProvider {
         }
     }
 
-    // =========== 변경 ================
 
     /**
-     *
      * 사용자 ID, 로그인 세션 ID, 고유 토큰 ID를 담은 Access Token을 발급한다.
      */
     public  String createAccessToken(UUID userId, UUID sessionId) {
-        throw new UnsupportedOperationException("구현 예정");
+        return createToken(userId, sessionId, ACCESS_TOKEN_TYPE, accessTokenValidity);
     }
 
     /**
@@ -208,7 +209,7 @@ public class JwtTokenProvider {
      * Redis 저장과 쿠키 발급은 호출하는 쪽에서 처리한다.
      */
     public  String createRefreshToken(UUID userId, UUID sessionId) {
-        throw new UnsupportedOperationException("구현 예정");
+        return createToken(userId, sessionId, REFRESH_TOKEN_TYPE, refreshTokenValidity);
     }
 
     /**
@@ -217,7 +218,12 @@ public class JwtTokenProvider {
      * 실패하면 JwtException 계열 예외를 발생시킨다.
      */
     public AccessTokenClaims parseAccess(String token) {
-        throw new UnsupportedOperationException("구현 예정");
+        Claims claims = parseClaims(token, ACCESS_TOKEN_TYPE);
+
+        return new AccessTokenClaims(
+                requireUuid(claims.getSubject(), "사용자 ID"),
+                requireUuid(claims.get(SESSION_ID_CLAIM, String.class), "로그인 세션 ID")
+        );
     }
 
     /**
@@ -226,6 +232,85 @@ public class JwtTokenProvider {
      * Redis에 등록된 토큰인지, 현재 로그인 세션인지는 서비스에서 검증한다.
      */
     public RefreshTokenClaims parseRefresh(String token) {
-        throw new UnsupportedOperationException("구현 예정");
+        Claims claims = parseClaims(token, REFRESH_TOKEN_TYPE);
+
+        // Redis에서 개별 Refresh Token을 구분하려면 식별자가 있어야 한다.
+        String jti = claims.getId();
+
+        if (jti == null || jti.isBlank()) {
+            throw new JwtException("토큰에 식별자가 없습니다.");
+        }
+
+        return new RefreshTokenClaims(
+                requireUuid(claims.getSubject(), "사용자 ID"),
+                requireUuid(claims.get(SESSION_ID_CLAIM, String.class), "로그인 세션 ID")
+        );
+    }
+
+    private String createToken(UUID userId, UUID sessionId, String tokenType, Duration validity) {
+        Objects.requireNonNull(userId, "사용자 ID는 필수입니다.");
+        Objects.requireNonNull(sessionId, "로그인 세션 ID는 필수입니다.");
+
+        Instant now = clock.instant();
+
+        return Jwts.builder()
+                // sub: 이 토큰의 대상 사용자
+                .subject(userId.toString())
+                // jti: 개별 토큰 식별자. 발급할 때마다 새로 생성한다.
+                .id(UUID.randomUUID().toString())
+                // sid: 로그인 세션 식별자. 재발급해도 유지된다.
+                .claim(SESSION_ID_CLAIM, sessionId.toString())
+                // Access Token과 Refresh Token을 구분하기 위한 토큰 종류
+                .claim(TOKEN_TYPE_CLAIM, tokenType)
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(now.plus(validity)))
+                // HS256 알고리즘과 서버의 비밀 키로 서명한다.
+                .signWith(signingKey, Jwts.SIG.HS256)
+                .compact();
+    }
+
+    /**
+     * 서명, 만료, 토큰 종류를 공통으로 검증하고 Claims를 반환한다.
+     */
+    private Claims parseClaims(String token, String expectedType) {
+        if (token == null || token.isBlank()) {
+            throw new JwtException("토큰이 비어 있습니다.");
+        }
+
+        // 서명 불일치, 잘못된 형식, 만료 등의 오류는 JJWT가 예외로 처리한다.
+        // ExpiredJwtException도 그대로 호출부에 전달한다.
+        Claims claims = jwtParser.parseSignedClaims(token).getPayload();
+
+        // 같은 키로 서명되었더라도 다른 종류의 토큰은 사용할 수 없다.
+        String tokenType = claims.get(TOKEN_TYPE_CLAIM, String.class);
+
+        if (!expectedType.equals(tokenType)) {
+            throw new JwtException("토큰 종류가 올바르지 않습니다.");
+        }
+
+        // JJWT의 만료 검사는 exp가 있을 때만 적용되므로 존재 여부도 확인한다.
+        if (claims.getExpiration() == null) {
+            throw new JwtException("토큰에 만료 시각이 없습니다.");
+        }
+
+        return claims;
+    }
+
+    /**
+     * 필수 UUID 값을 검증한다.
+     *
+     * sid가 없는 토큰은 로그인 세션 관리 이전에 발급된 토큰이므로 거부한다.
+     */
+    private UUID requireUuid(String value, String name) {
+        if (value == null || value.isBlank()) {
+            throw new JwtException("토큰에 " + name + "가 없습니다.");
+        }
+
+        try {
+            return UUID.fromString(value);
+        } catch (IllegalArgumentException exception) {
+            throw new JwtException("토큰의 " + name + " 형식이 올바르지 않습니다.", exception);
+        }
+
     }
 }
