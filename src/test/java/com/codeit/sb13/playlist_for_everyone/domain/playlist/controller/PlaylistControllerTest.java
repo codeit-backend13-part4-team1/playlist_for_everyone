@@ -7,7 +7,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.Playlis
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistSearchRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.PlaylistResponse;
-import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.UserSummary;
+import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistSortBy;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.PlaylistService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;

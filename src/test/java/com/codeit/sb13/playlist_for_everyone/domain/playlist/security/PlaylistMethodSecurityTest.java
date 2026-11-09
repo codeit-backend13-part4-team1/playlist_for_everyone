@@ -13,6 +13,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.PlaylistSer
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.impl.PlaylistServiceImpl;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.user.mapper.UserSummaryMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.file.storage.FileStorage;
 import java.util.UUID;
@@ -54,7 +55,7 @@ class PlaylistMethodSecurityTest {
   private SubscriptionRepository subscriptionRepository;
 
   @MockitoBean
-  private FileStorage fileStorage;
+  private UserSummaryMapper summaryMapper;
 
   @Test
   @WithMockUser
