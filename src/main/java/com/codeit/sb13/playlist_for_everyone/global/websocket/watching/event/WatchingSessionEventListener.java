@@ -18,6 +18,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.Objects;
+import java.util.UUID;
 
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WebSocketUtils.check;
@@ -160,6 +161,15 @@ public class WatchingSessionEventListener {
             throw new WebSocketSessionNotFoundException();
         }
 
+    }
+
+    /**
+     * 컨텐츠가 삭제 되었을 때, 연괸된 세션 리소스를 전부 종료 및 제거 하는 매서드
+     * @param event contentID 를 담고있다.
+     */
+    @EventListener
+    public void contentDeleteEvent(WatchingSessionDisconnectEvent event){
+        UUID content = event.contentId();
     }
 
 }

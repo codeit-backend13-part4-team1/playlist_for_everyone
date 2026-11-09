@@ -38,6 +38,14 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
         return watchingSessionRepository.getWatcherCount(contentId.toString());
     }
 
+
+    @Override
+    public List<String> disconnectWithContentId(UUID contentId){
+//        return watchingSessionRepository.disconnectWithContentId(contentId.toString());
+        return null;
+    }
+
+
     /**
      * 세션 경로에 따라 채팅, 혹은 뷰어 세션을 분간하고,
      * 해당 세션의 메세지 토픽을 반환한다.
