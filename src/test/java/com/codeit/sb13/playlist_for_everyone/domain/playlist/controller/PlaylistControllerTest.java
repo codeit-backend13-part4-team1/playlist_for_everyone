@@ -7,7 +7,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.Playlis
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistSearchRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.PlaylistResponse;
-import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.UserSummary;
+import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistSortBy;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.PlaylistService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
@@ -510,8 +510,8 @@ class PlaylistControllerTest {
 
 
   @Test
-  @DisplayName("올바른 삭제 요청에는 200으로 응답하고 서비스에 경로변수와 헤더를 전달한다")
-  void 플레이리스트_삭제_요청이_올바르면_200을_반환한다() throws Exception {
+  @DisplayName("올바른 삭제 요청에는 204로 응답하고 서비스에 경로변수와 헤더를 전달한다")
+  void 플레이리스트_삭제_요청이_올바르면_204를_반환한다() throws Exception {
     // given
     UUID requesterId = UUID.randomUUID();
     UUID playlistId = UUID.randomUUID();
@@ -519,7 +519,7 @@ class PlaylistControllerTest {
     // when & then
     mockMvc.perform(delete("/api/playlists/{playlistId}", playlistId)
             .with(loginAs(requesterId)))
-        .andExpect(status().isOk());
+        .andExpect(status().isNoContent());
 
     verify(playlistService).deletePlaylist(playlistId, requesterId);
   }
@@ -675,8 +675,8 @@ class PlaylistControllerTest {
   }
 
   @Test
-  @DisplayName("콘텐츠 삭제 요청이 올바르면 200으로 응답하고 서비스에 경로변수와 인증 사용자 ID를 전달한다")
-  void 콘텐츠_삭제_요청이_올바르면_200을_반환한다() throws Exception {
+  @DisplayName("콘텐츠 삭제 요청이 올바르면 204로 응답하고 서비스에 경로변수와 인증 사용자 ID를 전달한다")
+  void 콘텐츠_삭제_요청이_올바르면_204를_반환한다() throws Exception {
     // given
     UUID requesterId = UUID.randomUUID();
     UUID playlistId = UUID.randomUUID();
@@ -685,7 +685,7 @@ class PlaylistControllerTest {
     // when & then
     mockMvc.perform(delete("/api/playlists/{playlistId}/contents/{contentId}", playlistId, contentId)
             .with(loginAs(requesterId)))
-        .andExpect(status().isOk());
+        .andExpect(status().isNoContent());
 
     verify(playlistService).removeContent(playlistId, contentId, requesterId);
   }
@@ -839,8 +839,8 @@ class PlaylistControllerTest {
   }
 
   @Test
-  @DisplayName("구독 취소 요청이 올바르면 200으로 응답하고 서비스에 경로변수와 인증 사용자 ID를 전달한다")
-  void 구독_취소_요청이_올바르면_200을_반환한다() throws Exception {
+  @DisplayName("구독 취소 요청이 올바르면 204로 응답하고 서비스에 경로변수와 인증 사용자 ID를 전달한다")
+  void 구독_취소_요청이_올바르면_204를_반환한다() throws Exception {
     // given
     UUID requesterId = UUID.randomUUID();
     UUID playlistId = UUID.randomUUID();
@@ -848,7 +848,7 @@ class PlaylistControllerTest {
     // when & then
     mockMvc.perform(delete("/api/playlists/{playlistId}/subscription", playlistId)
             .with(loginAs(requesterId)))
-        .andExpect(status().isOk());
+        .andExpect(status().isNoContent());
 
     verify(playlistService).unsubscribe(playlistId, requesterId);
   }
