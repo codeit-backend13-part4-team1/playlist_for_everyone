@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.auth.security;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.controller.AuthController;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.SessionStartResult;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AuthService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.controller.UserController;
@@ -30,6 +31,9 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 
 import java.time.Duration;
@@ -69,6 +73,9 @@ class LoginSecurityTest {
 
     private static final UUID USER_ID =
             UUID.fromString("11111111-1111-1111-1111-111111111111");
+    private static final UUID SESSION_ID =
+            UUID.fromString("22222222-2222-2222-2222-222222222222");
+
     private static final String REFRESH_TOKEN = "issued-refresh-token";
 
     private static final Duration REFRESH_TOKEN_EXPIRATION = Duration.ofDays(3);
@@ -134,11 +141,14 @@ class LoginSecurityTest {
 
         // 성공 응답뿐 아니라 실제 인증 경로가 실행됐는지도 확인한다.
         verify(userDetailsService).loadUserByUsername(EMAIL);
-        verify(jwtTokenProvider).createAccessToken(USER_ID);
+        verify(jwtTokenProvider).createAccessToken(USER_ID, SESSION_ID);
 
         // SecurityConfig가 Refresh Token을 지원하는 성공 핸들러를
         // 실제 로그인 경로에 연결했는지 확인한다.
-        verify(jwtTokenProvider).createRefreshToken(USER_ID);
+        verify(jwtTokenProvider).createRefreshToken(USER_ID, SESSION_ID);
+
+        // SecurityConfig가 로그인 세션 저장소를 성공 핸들러에 연결했는지 확인한다.
+        verify(userSessionRepository).start(USER_ID, REFRESH_TOKEN_EXPIRATION);
 
         // 테스트 설정의 3일이 저장소 TTL로 전달되어야 한다.
         verify(refreshTokenRepository).save(
@@ -266,8 +276,8 @@ class LoginSecurityTest {
 
         // 두 번 모두 실제 로그인 인증 과정과 토큰 저장 요청까지 도달해야 한다.
         verify(userDetailsService, times(2)).loadUserByUsername(EMAIL);
-        verify(jwtTokenProvider, times(2)).createAccessToken(USER_ID);
-        verify(jwtTokenProvider, times(2)).createRefreshToken(USER_ID);
+        verify(jwtTokenProvider, times(2)).createAccessToken(USER_ID, SESSION_ID);
+        verify(jwtTokenProvider, times(2)).createRefreshToken(USER_ID, SESSION_ID);
 
         verify(refreshTokenRepository, times(2)).save(
                 USER_ID,
@@ -407,9 +417,14 @@ class LoginSecurityTest {
 
         given(userService.getUserDtoById(USER_ID))
                 .willReturn(userDto);
-        given(jwtTokenProvider.createAccessToken(USER_ID))
+
+        // 로그인 성공 시 세션을 시작한다. Redis 동작은 저장소 테스트에서 검증한다.
+        given(userSessionRepository.start(eq(USER_ID), any(Duration.class)))
+                .willReturn(new SessionStartResult(SESSION_ID, null));
+
+        given(jwtTokenProvider.createAccessToken(USER_ID, SESSION_ID))
                 .willReturn(ACCESS_TOKEN);
-        given(jwtTokenProvider.createRefreshToken(USER_ID))
+        given(jwtTokenProvider.createRefreshToken(USER_ID, SESSION_ID))
                 .willReturn(REFRESH_TOKEN);
     }
 

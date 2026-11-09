@@ -1,13 +1,16 @@
 package com.codeit.sb13.playlist_for_everyone.domain.auth.security;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.dto.response.JwtDto;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.event.UserSessionRevokedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseCookie;
@@ -35,25 +38,32 @@ public class JwtAuthenticationSuccessHandler implements AuthenticationSuccessHan
     private final ObjectMapper objectMapper;
 
     private final RefreshTokenRepository refreshTokenRepository;
+    private final UserSessionRepository userSessionRepository;
+    private final ApplicationEventPublisher eventPublisher;
     private final Duration refreshTokenValidity;
     private final boolean refreshCookieSecure;
 
     /**
-     * Refresh Token 발급·저장과 쿠키 전달에 필요한 의존성을 받는다.
+     * 로그인 세션 시작, Refresh Token 발급·저장과 쿠키 전달에 필요한 의존성을 전달받는다.
      *
      * 실제 서버 연결시 Provider와 같은 Refresh Token 유효기간을 전달해야 한다.
+     * 로그인 세션도 같은 기간 동안 유지된다.
      */
 
     public JwtAuthenticationSuccessHandler(JwtTokenProvider jwtTokenProvider,
                                            UserService userService,
                                            ObjectMapper objectMapper,
                                            RefreshTokenRepository refreshTokenRepository,
+                                           UserSessionRepository userSessionRepository,
+                                           ApplicationEventPublisher eventPublisher,
                                            Duration refreshTokenValidity,
                                            boolean refreshCookieSecure) {
         this.jwtTokenProvider = Objects.requireNonNull(jwtTokenProvider);
         this.userService = Objects.requireNonNull(userService);
         this.objectMapper = Objects.requireNonNull(objectMapper);
         this.refreshTokenRepository = Objects.requireNonNull(refreshTokenRepository);
+        this.userSessionRepository = Objects.requireNonNull(userSessionRepository);
+        this.eventPublisher = Objects.requireNonNull(eventPublisher);
         this.refreshTokenValidity = Objects.requireNonNull(refreshTokenValidity);
 
         if (refreshTokenValidity.isZero() || refreshTokenValidity.isNegative()) {
