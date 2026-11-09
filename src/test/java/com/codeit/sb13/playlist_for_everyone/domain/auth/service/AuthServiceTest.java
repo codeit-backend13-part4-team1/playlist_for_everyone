@@ -102,6 +102,10 @@ class AuthServiceTest {
                 REFRESH_VALIDITY
         )).willReturn(true);
 
+        // 교체 후 세션이 그대로면 유효기간을 연장한다.
+        given(userSessionRepository.extendIfCurrent(USER_ID, SESSION_ID, REFRESH_VALIDITY))
+                .willReturn(true);
+
         TokenReissueResult result = authService.reissue(OLD_REFRESH_TOKEN);
 
         assertThat(result.jwtDto().accessToken()).isEqualTo(NEW_ACCESS_TOKEN);
@@ -120,9 +124,6 @@ class AuthServiceTest {
                 NEW_REFRESH_TOKEN,
                 REFRESH_VALIDITY
         );
-        // 교체 후 세션이 그대로면 유효기간을 연장한다.
-        given(userSessionRepository.extendIfCurrent(USER_ID, SESSION_ID, REFRESH_VALIDITY))
-                .willReturn(true);
 
         // 개별 저장·삭제로 원자적 교체를 우회하지 않는다.
         verify(refreshTokenRepository, never())
