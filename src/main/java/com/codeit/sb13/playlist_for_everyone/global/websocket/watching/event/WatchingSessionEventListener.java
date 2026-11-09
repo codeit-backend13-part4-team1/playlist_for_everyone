@@ -27,8 +27,6 @@ import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.We
 @Component
 @RequiredArgsConstructor
 public class WatchingSessionEventListener {
-
-    private final UserService userService;
     private final WatchingSession watchingSession;
     private final RedisTemplate<String, Object> redisTemplate;
 
@@ -163,6 +161,10 @@ public class WatchingSessionEventListener {
 
     }
 
+    /*
+     * 시스템이 호출하는 이벤트.
+     */
+
     /**
      * 컨텐츠가 삭제 되었을 때, 연괸된 세션 리소스를 전부 종료 및 제거 하는 매서드
      * 단일 세션에는 단일 구독만이 존재한다 가정하고, 세션 - 구독 쌍의 연결을 끊는다.
@@ -172,6 +174,17 @@ public class WatchingSessionEventListener {
     public void contentDeleteEvent(WatchingSessionDisconnectEvent event){
         UUID content = event.contentId();
         watchingSession.disconnectWithContentId(content);
+    }
+
+
+    /**
+     * 중복 로그인 등에 의해 Session 이 리프레시 되어야 할 때 호출되는 매서드
+     * 세션에 연관된 리소스를 해지하고 연결을 종료한다.
+     */
+    @EventListener
+    public void revokeAuthEvent(WatchingSessionAuthRevokeEvent event){
+        String sessionId = check(event.sessionId());
+        watchingSession.disconnectWithSessionIds(sessionId);
     }
 
 }
