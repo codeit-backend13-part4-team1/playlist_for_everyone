@@ -9,6 +9,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataAccessResourceFailureException;
@@ -16,6 +19,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -106,6 +110,63 @@ class NotificationReplayFilterTest {
         verify(notificationRepository).findExistingIds(receiverId, notificationIds);
         verifyNoMoreInteractions(notificationRepository);
 
+    }
+
+    @ParameterizedTest(name = "{index}: {0}")
+    @MethodSource("invalidNotificationPayloads")
+    @DisplayName("잘못된 알림 데이터가 섞여 있어도 정상 알림만 원래 순서대로 반환한다.")
+    void skipsInvalidNotificationIdsAndPreservesHistoryOrder(String description, String payloadJson) {
+        UUID receiverId = UUID.randomUUID();
+        UUID firstId = UUID.randomUUID();
+        UUID lastId = UUID.randomUUID();
+
+        SseHistoryEntry firstEntry = createEntry(receiverId, firstId, "1000-0");
+        SseHistoryEntry invalidEntry = createEntryWithPayload(receiverId, payloadJson, "1000-1");
+        SseHistoryEntry lastEntry = createEntry(receiverId, lastId, "1000-2");
+
+        List<UUID> notificationIds = List.of(firstId, lastId);
+        when(notificationRepository.findExistingIds(receiverId, notificationIds))
+                .thenReturn(List.of(lastId, firstId));
+
+        List<SseHistoryEntry> result = replayFilter.filter(
+                receiverId, List.of(firstEntry, invalidEntry, lastEntry));
+
+        assertThat(result).containsExactly(firstEntry, lastEntry);
+        verify(notificationRepository).findExistingIds(receiverId, notificationIds);
+        verifyNoMoreInteractions(notificationRepository);
+    }
+
+    @ParameterizedTest(name = "{index}: {0}")
+    @MethodSource("invalidNotificationPayloads")
+    @DisplayName("모든 알림 데이터가 비정상이면 DB 조회 없이 빈 이력 목록을 반환한다.")
+    void returnsEmptyWithoutLookupWhenAllNotificationIdsAreInvalid(String description, String payloadJson) {
+        UUID receiverId = UUID.randomUUID();
+        SseHistoryEntry invalidEntry = createEntryWithPayload(receiverId, payloadJson, "1000-0");
+
+        List<SseHistoryEntry> result = replayFilter.filter(receiverId, List.of(invalidEntry));
+
+        assertThat(result).isEmpty();
+        verifyNoInteractions(notificationRepository);
+    }
+
+    private static Stream<Arguments> invalidNotificationPayloads() {
+        return Stream.of(
+                Arguments.of("데이터 참조 없음", (String) null),
+                Arguments.of("JSON null", "null"),
+                Arguments.of("ID 누락", "{}"),
+                Arguments.of("ID가 null", "{\"id\":null}"),
+                Arguments.of("ID가 비문자열", "{\"id\":123}"),
+                Arguments.of("UUID 형식 오류", "{\"id\":\"not-a-uuid\"}")
+        );
+    }
+
+    private SseHistoryEntry createEntryWithPayload(UUID receiverId, String payloadJson, String position) {
+        return new SseHistoryEntry(
+                new SseHistoryPosition(position),
+                SseEvent.createNotificationEvent(
+                        UUID.randomUUID(), receiverId,
+                        payloadJson == null ? null : jsonMapper.readTree(payloadJson))
+        );
     }
 
     private SseHistoryEntry createEntry(UUID receiverId, UUID notificationId, String position){
