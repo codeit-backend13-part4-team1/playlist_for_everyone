@@ -35,7 +35,10 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.ArrayList;
 
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
@@ -320,4 +323,63 @@ class TmdbCollectionJobTest {
 
         assertThat(movieStep.getWriteSkipCount()).isEqualTo(1L);
     }
+
+    @Test
+    void 잘못된_영화가_건너뛰기_제한을_초과하면_배치가_실패한다()
+            throws Exception {
+
+        var movies = new ArrayList<TmdbMovieResponse>();
+
+        movies.add(new TmdbMovieResponse(
+                990201L, "먼저 저장할 영화", "설명", "/first.jpg", List.of(28)
+        ));
+
+        // 제목이 없는 영화 11건
+        for (int i = 0; i < 11; i++) {
+            movies.add(new TmdbMovieResponse(
+                    990210L + i, "", "설명", null, List.of()
+            ));
+        }
+
+        movies.add(new TmdbMovieResponse(
+                990299L, "중단 이후 영화", "설명", "/last.jpg", List.of(18)
+        ));
+
+        when(tmdbClient.getPopularMovies(1))
+                .thenReturn(new TmdbPageResponse<>(
+                        1, movies, 1, movies.size()
+                ));
+
+        var parameters = new JobParametersBuilder()
+                .addLong("maxPages", 1L)
+                .addString("run.id", UUID.randomUUID().toString())
+                .toJobParameters();
+
+        var execution = jobOperator.start(job, parameters);
+
+        assertThat(execution.getStatus())
+                .isEqualTo(BatchStatus.FAILED);
+
+        // 실패 전에 커밋한 영화는 유지된다.
+        assertThat(contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.TMDB, ContentType.movie, "990201"
+        )).isPresent();
+
+        // 제한 초과 이후의 영화는 처리하지 않는다.
+        assertThat(contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.TMDB, ContentType.movie, "990299"
+        )).isEmpty();
+
+        var movieStep = execution.getStepExecutions().stream()
+                .filter(step -> step.getStepName()
+                        .equals("tmdbMovieCollectionStep"))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(movieStep.getWriteSkipCount()).isEqualTo(10L);
+
+        // 영화 Step이 실패했으므로 TV Step은 실행하지 않는다.
+        verify(tmdbClient, never()).getPopularTvShows(1);
+    }
+
 }
