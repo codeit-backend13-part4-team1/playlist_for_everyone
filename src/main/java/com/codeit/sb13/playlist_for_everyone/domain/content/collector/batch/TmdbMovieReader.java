@@ -2,12 +2,12 @@ package com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.TmdbClient;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.TmdbMovieResponse;
-import org.springframework.batch.infrastructure.item.ItemReader;
+import org.springframework.batch.infrastructure.item.ItemStreamReader;
 
 import java.util.Collections;
 import java.util.Iterator;
 
-public class TmdbMovieReader implements ItemReader<TmdbMovieResponse> {
+public class TmdbMovieReader implements ItemStreamReader<TmdbMovieResponse> {
 
     private final TmdbClient tmdbClient;
     private final int maxPages;

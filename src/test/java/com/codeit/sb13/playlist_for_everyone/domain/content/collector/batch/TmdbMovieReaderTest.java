@@ -6,6 +6,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.TmdbPa
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.batch.infrastructure.item.ExecutionContext;
 
 import java.util.List;
 
@@ -186,5 +187,42 @@ class TmdbMovieReaderTest {
         assertThatThrownBy(reader::read)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("TMDB 영화 목록 응답이 없습니다.");
+    }
+
+    @Test
+    void 재시작하면_마지막으로_기록한_위치부터_읽는다() {
+        TmdbClient client = mock(TmdbClient.class);
+
+        var first = new TmdbMovieResponse(
+                1L, "첫 번째 영화", "설명", "/first.jpg", List.of(28)
+        );
+        var second = new TmdbMovieResponse(
+                2L, "두 번째 영화", "설명", "/second.jpg", List.of(18)
+        );
+
+        when(client.getPopularMovies(1))
+                .thenReturn(new TmdbPageResponse<>(
+                        1, List.of(first, second), 1, 2
+                ));
+
+        var context = new ExecutionContext();
+        var reader = new TmdbMovieReader(client, 5);
+
+        reader.open(context);
+
+        assertThat(reader.read()).isEqualTo(first);
+        reader.update(context);
+
+        // 두 번째 영화는 읽었지만 처리 완료 위치는 기록하지 않았다.
+        assertThat(reader.read()).isEqualTo(second);
+        reader.close();
+
+        var restartedReader = new TmdbMovieReader(client, 5);
+        restartedReader.open(context);
+
+        assertThat(restartedReader.read()).isEqualTo(second);
+        assertThat(restartedReader.read()).isNull();
+
+        restartedReader.close();
     }
 }
