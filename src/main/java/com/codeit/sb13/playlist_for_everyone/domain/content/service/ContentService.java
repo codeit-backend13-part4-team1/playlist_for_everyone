@@ -10,6 +10,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRe
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.review.repository.ReviewRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.file.FileEmptyException;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
 import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
 import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
@@ -35,6 +36,11 @@ public class ContentService {
 
     @Transactional
     public ContentDto create(ContentCreateRequest request, MultipartFile file) {
+        // 관리자 콘텐츠는 썸네일 파일 없이는 등록이 불가합니다.
+        if (file == null || file.isEmpty()) {
+            throw new FileEmptyException(Map.of());
+        }
+
         // S3 업로드 및 파일 정보 저장
         FileInfo fileInfo = fileService.upload(file);
         String thumbnailUrl = fileService.getFileUrl(fileInfo.getId());
