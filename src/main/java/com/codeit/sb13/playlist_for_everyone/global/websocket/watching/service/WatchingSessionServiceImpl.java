@@ -145,6 +145,12 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
         return topicRegistry.disconnectWithContentId(contentId);
     }
 
+    @Override
+    public void disconnectWithSessionIds(String sessionId){
+        watchingSessionRepository.delete(sessionId);
+        topicRegistry.disconnect(sessionId);
+    }
+
 
     private void checkAuth(SessionInfo info){
         SecurityUser user = check(info.user());

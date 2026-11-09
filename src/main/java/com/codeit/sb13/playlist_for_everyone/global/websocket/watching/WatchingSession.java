@@ -169,6 +169,11 @@ public class WatchingSession {
             connectionRegistry.close(sessionId);
     }
 
+    public void disconnectWithSessionIds(String sessionId){
+        watchingSessionService.disconnectWithSessionIds(sessionId);
+        connectionRegistry.close(sessionId);
+    }
+
 
 
 

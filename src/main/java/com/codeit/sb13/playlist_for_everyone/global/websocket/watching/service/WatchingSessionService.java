@@ -64,4 +64,6 @@ public interface WatchingSessionService {
      */
     List<String> disconnectWithContentDeleted(UUID contentId);
 
+    void disconnectWithSessionIds(String sessionId);
+
 }
