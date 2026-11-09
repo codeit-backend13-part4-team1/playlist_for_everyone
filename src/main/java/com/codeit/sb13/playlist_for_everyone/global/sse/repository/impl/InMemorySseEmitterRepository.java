@@ -29,14 +29,17 @@ public class InMemorySseEmitterRepository implements SseEmitterRepository {
       // 마지막 연결 삭제가 사용자 Map을 제거하는 순간, 별도로 추가한 새 연결이 함께 유실되는 경합을 막는다.
       sseEmitters.compute(userId, (id, connections)->{
           Map<Connection, SseEmitter> userConnections = initializeConnections(connections);
-          userConnections.put(connection, sseEmitter);
+          if (userConnections.putIfAbsent(connection, sseEmitter) != null) {
+              throw new IllegalStateException("이미 등록된 SSE 연결입니다.");
+          }
           return userConnections;
       });
     }
 
     @Override
     public Optional<SseEmitter> findByUserIdAndConnection(UUID userId, Connection connection) {
-        return Optional.empty();
+        Map<Connection, SseEmitter> connections = sseEmitters.get(userId);
+        return connections == null ? Optional.empty() : Optional.ofNullable(connections.get(connection));
     }
 
     @Override
