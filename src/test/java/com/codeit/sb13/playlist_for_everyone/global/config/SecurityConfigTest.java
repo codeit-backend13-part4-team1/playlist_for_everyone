@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.config;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.AccessTokenClaims;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
@@ -60,6 +61,9 @@ class SecurityConfigTest {
 
     private static final UUID USER_ID =
             UUID.fromString("11111111-1111-1111-1111-111111111111");
+
+    private static final UUID SESSION_ID =
+            UUID.fromString("22222222-2222-2222-2222-222222222222");
 
     private static final String TOKEN = "test-access-token";
     private static final String ME_URL = "/api/security-test/me";
@@ -157,7 +161,7 @@ class SecurityConfigTest {
     @Test
     @DisplayName("유효하지 않은 JWT로 접근하면 401을 반환한다")
     void 잘못된_JWT는_거절한다() throws Exception {
-        given(jwtTokenProvider.parseAccessToken(TOKEN))
+        given(jwtTokenProvider.parseAccess(TOKEN))
                 .willThrow(new JwtException("내부 토큰 검증 오류"));
 
         mockMvc.perform(get(ME_URL)
@@ -247,8 +251,12 @@ class SecurityConfigTest {
 
         ReflectionTestUtils.setField(user, "id", USER_ID);
 
-        given(jwtTokenProvider.parseAccessToken(TOKEN))
-                .willReturn(USER_ID);
+        given(jwtTokenProvider.parseAccess(TOKEN))
+                .willReturn(new AccessTokenClaims(USER_ID, SESSION_ID));
+
+        // 현재 로그인 세션의 토큰으로 요청한 상황이다.
+        given(userSessionRepository.isCurrent(USER_ID, SESSION_ID))
+                .willReturn(true);
 
         given(userService.getById(USER_ID))
                 .willReturn(user);

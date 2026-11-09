@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.user.controller;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.AccessTokenClaims;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
@@ -61,6 +62,9 @@ class UserControllerTest {
             UUID.fromString("11111111-1111-1111-1111-111111111111");
 
     private static final UUID TARGET_USER_ID =
+            UUID.fromString("22222222-2222-2222-2222-222222222222");
+
+    private static final UUID SESSION_ID =
             UUID.fromString("22222222-2222-2222-2222-222222222222");
 
     private static final String TOKEN = "test-access-token";
@@ -498,8 +502,10 @@ class UserControllerTest {
                 .build();
         ReflectionTestUtils.setField(requester, "id", ADMIN_ID);
 
-        given(jwtTokenProvider.parseAccessToken(TOKEN))
-                .willReturn(ADMIN_ID);
+        given(jwtTokenProvider.parseAccess(TOKEN))
+                .willReturn(new AccessTokenClaims(ADMIN_ID, SESSION_ID));
+        given(userSessionRepository.isCurrent(ADMIN_ID, SESSION_ID))
+                .willReturn(true);
         given(userService.getById(ADMIN_ID))
                 .willReturn(requester);
     }

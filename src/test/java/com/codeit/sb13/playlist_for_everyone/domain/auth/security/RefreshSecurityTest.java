@@ -162,7 +162,7 @@ class RefreshSecurityTest {
         givenReissueSuccess();
 
         // 필터가 Access Token을 검사하면 만료 예외가 발생하는 상황이다.
-        given(jwtTokenProvider.parseAccessToken(EXPIRED_ACCESS_TOKEN))
+        given(jwtTokenProvider.parseAccess(EXPIRED_ACCESS_TOKEN))
                 .willThrow(new ExpiredJwtException(
                         null,
                         null,
@@ -178,7 +178,7 @@ class RefreshSecurityTest {
         verify(authService).reissue(OLD_REFRESH_TOKEN);
 
         // 재발급 요청에서는 Access Token 검증을 건너뛰어야 한다.
-        verify(jwtTokenProvider, never()).parseAccessToken(anyString());
+        verify(jwtTokenProvider, never()).parseAccess(anyString());
     }
 
     @Test

@@ -102,7 +102,7 @@ class LogoutSecurityTest {
     void 만료된_Access_Token이_로그아웃을_막지_않는다()
             throws Exception {
         // Access Token을 검사하면 만료 예외가 발생하는 상황이다.
-        given(jwtTokenProvider.parseAccessToken(EXPIRED_ACCESS_TOKEN))
+        given(jwtTokenProvider.parseAccess(EXPIRED_ACCESS_TOKEN))
                 .willThrow(new ExpiredJwtException(
                         null,
                         null,
@@ -124,7 +124,7 @@ class LogoutSecurityTest {
         verify(authService).logout(REFRESH_TOKEN);
 
         // Access Token 만료 때문에 로그아웃이 차단되면 안 된다.
-        verify(jwtTokenProvider, never()).parseAccessToken(anyString());
+        verify(jwtTokenProvider, never()).parseAccess(anyString());
 
         assertRefreshCookieDeleted(result);
     }

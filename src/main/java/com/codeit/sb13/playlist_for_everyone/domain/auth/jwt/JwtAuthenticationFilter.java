@@ -25,8 +25,6 @@ import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.UUID;
-
 /**
  * 요청의 Bearer 토큰을 검증하고 Spring Security 인증 정보를 설정한다.
  *
@@ -157,8 +155,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
      * 토큰과 현재 사용자 상태를 확인한 뒤 인증 객체를 만든다.
      */
     private Authentication createAuthentication(String token, HttpServletRequest request) {
-        UUID userId = jwtTokenProvider.parseAccessToken(token);
-        User user = userService.getById(userId);
+        // 서명, 만료, 토큰 종류, 사용자 ID, 로그인 세션 ID를 검증한다.
+        // sid가 없는 이전 형식의 토큰은 여기서 JwtException으로 거부된다.
+        AccessTokenClaims claims = jwtTokenProvider.parseAccess(token);
+
+        // 다른 곳에서 다시 로그인했거나 강제 로그아웃된 세션의 토큰은 거부한다.
+        // 무효한 토큰이면 DB를 조회하지 않도록 사용자 조회보다 먼저 확인한다.
+        if (!userSessionRepository.isCurrent(claims.userId(), claims.sessionId())) {
+            throw new BadCredentialsException("만료된 로그인 세션입니다.");
+        }
+
+        User user = userService.getById(claims.userId());
 
         // 토큰이 유효하더라도 현재 계정이 잠겨 있으면 인증하지 않는다.
         if (user.isLocked()) {

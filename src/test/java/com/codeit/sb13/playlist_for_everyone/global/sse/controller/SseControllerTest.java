@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.controller;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.AccessTokenClaims;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
@@ -217,7 +218,10 @@ class SseControllerTest {
         given(user.getRole()).willReturn(Role.USER);
         given(user.isLocked()).willReturn(false);
 
-        given(jwtTokenProvider.parseAccessToken(token)).willReturn(userId);
+        UUID sessionId = UUID.randomUUID();
+        given(jwtTokenProvider.parseAccess(token))
+                .willReturn(new AccessTokenClaims(userId, sessionId));
+        given(userSessionRepository.isCurrent(userId, sessionId)).willReturn(true);
         given(userService.getById(userId)).willReturn(user);
 
         SseEmitter emitter = new SseEmitter(30_000L);

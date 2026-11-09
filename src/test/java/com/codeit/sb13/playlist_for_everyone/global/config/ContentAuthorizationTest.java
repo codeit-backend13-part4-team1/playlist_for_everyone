@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.config;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.AccessTokenClaims;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
@@ -42,6 +43,9 @@ public class ContentAuthorizationTest {
     private static final UUID USER_ID =
             UUID.fromString("11111111-1111-1111-1111-111111111111");
 
+    private static final UUID SESSION_ID =
+            UUID.fromString("22222222-2222-2222-2222-222222222222");
+
     private static final String TOKEN = "test-access-token";
 
     @Autowired
@@ -76,8 +80,11 @@ public class ContentAuthorizationTest {
 
         ReflectionTestUtils.setField(user, "id", USER_ID);
 
-        given(jwtTokenProvider.parseAccessToken(TOKEN))
-                .willReturn(USER_ID);
+        given(jwtTokenProvider.parseAccess(TOKEN))
+                .willReturn(new AccessTokenClaims(USER_ID, SESSION_ID));
+
+        given(userSessionRepository.isCurrent(USER_ID, SESSION_ID))
+                .willReturn(true);
 
         given(userService.getById(USER_ID))
                 .willReturn(user);
