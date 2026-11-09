@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.notification;
 
 import com.codeit.sb13.playlist_for_everyone.PlaylistForEveryoneApplication;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationCreateRequestedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.Notification;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.NotificationLevel;
@@ -9,6 +10,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.notification.event.Notificat
 import com.codeit.sb13.playlist_for_everyone.domain.notification.repository.NotificationRepository;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
 import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseConnectionService;
+import com.codeit.sb13.testsupport.auth.TestTokens;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -105,6 +107,9 @@ public class NotificationSseIntegrationTest {
     private JwtTokenProvider jwtTokenProvider;
 
     @Autowired
+    private UserSessionRepository userSessionRepository;
+
+    @Autowired
     private SseConnectionService sseConnectionService;
 
     @Autowired
@@ -141,8 +146,8 @@ public class NotificationSseIntegrationTest {
         insertUser(RECEIVER_ID, "알림 수신자");
         insertUser(OTHER_USER_ID, "다른 사용자");
 
-        accessToken = jwtTokenProvider.createAccessToken(RECEIVER_ID);
-        otherAccessToken = jwtTokenProvider.createAccessToken(OTHER_USER_ID);
+        accessToken = TestTokens.accessToken(jwtTokenProvider, userSessionRepository, RECEIVER_ID);
+        otherAccessToken = TestTokens.accessToken(jwtTokenProvider, userSessionRepository, OTHER_USER_ID);
         transactionTemplate = new TransactionTemplate(transactionManager);
     }
 

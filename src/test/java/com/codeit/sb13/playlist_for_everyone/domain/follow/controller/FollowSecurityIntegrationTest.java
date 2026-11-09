@@ -2,7 +2,10 @@ package com.codeit.sb13.playlist_for_everyone.domain.follow.controller;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtProperties;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.event.UserFollowedEvent;
+import com.codeit.sb13.testsupport.auth.InMemoryUserSessionConfig;
+import com.codeit.sb13.testsupport.auth.TestTokens;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
@@ -68,7 +71,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
                 "spring.docker.compose.enabled=false"
         }
 )
-@Import(FollowSecurityIntegrationTest.CsrfDisabledTestConfig.class)
+@Import({
+        FollowSecurityIntegrationTest.CsrfDisabledTestConfig.class,
+        InMemoryUserSessionConfig.class
+})
 @AutoConfigureMockMvc
 @Testcontainers
 // 종료된 컨테이너의 접속 정보를 가진 애플리케이션 컨텍스트가 다른 테스트에 재사용되지 않게 한다.
@@ -93,6 +99,10 @@ public class FollowSecurityIntegrationTest {
 
     @Autowired
     private JwtTokenProvider jwtTokenProvider;
+
+    // 필터가 확인할 로그인 세션을 테스트 토큰 발급 시 함께 시작한다.
+    @Autowired
+    private UserSessionRepository userSessionRepository;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -129,7 +139,7 @@ public class FollowSecurityIntegrationTest {
     @Test
     @DisplayName("유효한 JWT로 신규 팔로우를 요청하면 관계를 저장하고 201을 반환하며 생성이벤트를 한 번 발행한다.")
     void follow_returnsCreatedWithAuthenticatedUser(ApplicationEvents applicationEvents) throws Exception {
-        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+        String accessToken = TestTokens.accessToken(jwtTokenProvider, userSessionRepository, followerId);
 
         ResultActions result = mockMvc.perform(post("/api/follows")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
@@ -163,7 +173,7 @@ public class FollowSecurityIntegrationTest {
     @Test
     @DisplayName("유효한 JWT로 중복 팔로우를 요청하면 200을 반환하고 관계 ID·생성 시각·행 수를 유지한다.")
     void follow_returnsExistingRelationForDuplicateRequest() throws Exception {
-        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+        String accessToken = TestTokens.accessToken(jwtTokenProvider, userSessionRepository, followerId);
 
         String requestBody = """
                 {
@@ -216,7 +226,7 @@ public class FollowSecurityIntegrationTest {
             VALUES (?, ?, ?, CURRENT_TIMESTAMP)
             """, reverseFollowId, followeeId, followerId);
 
-        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+        String accessToken = TestTokens.accessToken(jwtTokenProvider, userSessionRepository, followerId);
         mockMvc.perform(delete("/api/follows/{followId}", followId)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
                 .andExpect(status().isNoContent())
@@ -251,7 +261,7 @@ public class FollowSecurityIntegrationTest {
         UUID followId = UUID.randomUUID();
         followInsert(followId);
 
-        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+        String accessToken = TestTokens.accessToken(jwtTokenProvider, userSessionRepository, followerId);
         String countRelationSql = "SELECT COUNT(*) FROM follows WHERE id =?";
 
         mockMvc.perform(delete("/api/follows/{followId}", followId)
@@ -286,7 +296,7 @@ public class FollowSecurityIntegrationTest {
         List<Map<String, Object>> beforeRows = jdbcTemplate.queryForList(findRelationSql, followId);
         assertThat(beforeRows).hasSize(1);
 
-        String accessToken = jwtTokenProvider.createAccessToken(followeeId);
+        String accessToken = TestTokens.accessToken(jwtTokenProvider, userSessionRepository, followeeId);
 
         mockMvc.perform(delete("/api/follows/{followId}",followId)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
@@ -321,7 +331,7 @@ public class FollowSecurityIntegrationTest {
         assertThat(beforeRows).hasSize(1);
 
         UUID missingFollowId = UUID.randomUUID();
-        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+        String accessToken = TestTokens.accessToken(jwtTokenProvider, userSessionRepository, followerId);
 
         mockMvc.perform(delete("/api/follows/{followId}", missingFollowId)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
@@ -651,7 +661,7 @@ public class FollowSecurityIntegrationTest {
         UUID followId = UUID.randomUUID();
         followInsert(followId);
 
-        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+        String accessToken = TestTokens.accessToken(jwtTokenProvider, userSessionRepository, followerId);
         mockMvc.perform(get("/api/follows/followed-by-me")
                 .param("followeeId", followeeId.toString())
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
@@ -671,8 +681,8 @@ public class FollowSecurityIntegrationTest {
         UUID secondFollowId = UUID.randomUUID();
         followInsert(secondFollowId, otherFollowerId, followeeId);
 
-        String firstToken = jwtTokenProvider.createAccessToken(followerId);
-        String secondToken = jwtTokenProvider.createAccessToken(otherFollowerId);
+        String firstToken = TestTokens.accessToken(jwtTokenProvider, userSessionRepository, followerId);
+        String secondToken = TestTokens.accessToken(jwtTokenProvider, userSessionRepository, otherFollowerId);
 
         mockMvc.perform(get("/api/follows/followed-by-me")
                 .param("followeeId", followeeId.toString())
@@ -699,7 +709,7 @@ public class FollowSecurityIntegrationTest {
     @Test
     @DisplayName("유효한 JWT로 팔로우하지 않은 사용자를 조회하면 404와 공통 오류 응답을 반환한다.")
     void getFollowedByMe_returnsNotFoundWhenNotFollowing() throws Exception {
-        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+        String accessToken = TestTokens.accessToken(jwtTokenProvider, userSessionRepository, followerId);
 
         mockMvc.perform(get("/api/follows/followed-by-me")
                 .param("followeeId", followeeId.toString())
@@ -720,7 +730,7 @@ public class FollowSecurityIntegrationTest {
         UUID followId = UUID.randomUUID();
         followInsert(followId);
 
-        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+        String accessToken = TestTokens.accessToken(jwtTokenProvider, userSessionRepository, followerId);
         mockMvc.perform(delete("/api/follows/{followId}", followId)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
                 .andExpect(status().isNoContent())
@@ -743,7 +753,7 @@ public class FollowSecurityIntegrationTest {
     @DisplayName("유효한 JWT로 존재하지 않는 사용자의 팔로우 관계를 조회하면 404와 공통 오류 응답을 반환한다.")
     void getFollowedByMe_returnsNotFoundForMissingFollowee() throws Exception {
         UUID missingFolloweeId = UUID.randomUUID();
-        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+        String accessToken = TestTokens.accessToken(jwtTokenProvider, userSessionRepository, followerId);
 
         mockMvc.perform(get("/api/follows/followed-by-me")
                 .param("followeeId", missingFolloweeId.toString())
@@ -762,7 +772,7 @@ public class FollowSecurityIntegrationTest {
         UUID otherFollowId = UUID.randomUUID();
         followInsert(otherFollowId, otherFollowerId, followeeId);
 
-        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+        String accessToken = TestTokens.accessToken(jwtTokenProvider, userSessionRepository, followerId);
         mockMvc.perform(get("/api/follows/followed-by-me")
                 .param("followeeId", followeeId.toString())
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
@@ -786,7 +796,7 @@ public class FollowSecurityIntegrationTest {
     @Test
     @DisplayName("유효한 JWT로 팔로워가 없는 사용자의 팔로워 수를 조회하면 200과 숫자 0을 반환한다.")
     void getFollowCount_returnsZeroWhenNoFollowers() throws Exception {
-        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+        String accessToken = TestTokens.accessToken(jwtTokenProvider, userSessionRepository, followerId);
 
         mockMvc.perform(get("/api/follows/count")
                 .param("followeeId", followeeId.toString())
@@ -804,7 +814,7 @@ public class FollowSecurityIntegrationTest {
 
         followInsert(UUID.randomUUID(), followeeId, followerId);
 
-        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+        String accessToken = TestTokens.accessToken(jwtTokenProvider, userSessionRepository, followerId);
 
         mockMvc.perform(get("/api/follows/count")
                 .param("followeeId", followeeId.toString())
@@ -818,7 +828,7 @@ public class FollowSecurityIntegrationTest {
     @DisplayName("유효한 JWT로 존재하지 않는 사용자의 팔로워 수를 조회하면 200과 숫자 0을 반환한다.")
     void getFollowCount_returnsZeroForMissingFollowee() throws Exception {
         UUID missingFolloweeId = UUID.randomUUID();
-        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+        String accessToken = TestTokens.accessToken(jwtTokenProvider, userSessionRepository, followerId);
 
         mockMvc.perform(get("/api/follows/count")
                 .param("followeeId", missingFolloweeId.toString())
@@ -831,7 +841,7 @@ public class FollowSecurityIntegrationTest {
     @Test
     @DisplayName("유효한 JWT로 내 팔로우 관계 조회시 대상 ID를 누락하면 400과 공통 오류 응답을 반환한다.")
     void getFollowedByMe_returnsBadRequestWhenFolloweeIdMissing() throws Exception {
-        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+        String accessToken = TestTokens.accessToken(jwtTokenProvider, userSessionRepository, followerId);
 
         mockMvc.perform(get("/api/follows/followed-by-me")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
@@ -847,7 +857,7 @@ public class FollowSecurityIntegrationTest {
     @Test
     @DisplayName("유효한 JWT로 내 팔로우 관계 조회시 대상 ID의 UUID 형식이 잘못되면 400과 공통 오류 응답을 반환한다.")
     void getFollowedByMe_returnsBadRequestWhenFolloweeIdInvalid() throws Exception {
-        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+        String accessToken = TestTokens.accessToken(jwtTokenProvider, userSessionRepository, followerId);
 
         mockMvc.perform(get("/api/follows/followed-by-me")
                 .param("followeeId", "not-a-uuid")
@@ -864,7 +874,7 @@ public class FollowSecurityIntegrationTest {
     @Test
     @DisplayName("유효한 JWT로 팔로워 수 조회 시 대상 ID를 누락하면 400과 공통 오류 응답을 반환한다.")
     void getFollowCount_returnsBadRequestWhenFolloweeIdMissing() throws Exception {
-        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+        String accessToken = TestTokens.accessToken(jwtTokenProvider, userSessionRepository, followerId);
 
         mockMvc.perform(get("/api/follows/count")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
@@ -880,7 +890,7 @@ public class FollowSecurityIntegrationTest {
     @Test
     @DisplayName("유효한 JWT로 팔로워 수 조회 시 대상 ID의 UUID 형식이 잘못되면 400과 공통 오류 응답을 반환한다.")
     void getFollowCount_returnsBadRequestWhenFolloweeIdInvalid() throws Exception {
-        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+        String accessToken = TestTokens.accessToken(jwtTokenProvider, userSessionRepository, followerId);
 
         mockMvc.perform(get("/api/follows/count")
                 .param("followeeId", "not-a-uuid")
@@ -901,7 +911,7 @@ public class FollowSecurityIntegrationTest {
     @Test
     @DisplayName("유효한 JWT로 같은 대상을 동시에 팔로우하면 관계 한 건만 저장하고 201과 200 응답에 동일한 관계 ID를 반환한다.")
     void follow_returnsCreatedAndOkForConcurrentRequests() throws Exception {
-        String accessToken = jwtTokenProvider.createAccessToken(followerId);
+        String accessToken = TestTokens.accessToken(jwtTokenProvider, userSessionRepository, followerId);
 
         String requestBody = """
                 {
@@ -994,7 +1004,7 @@ public class FollowSecurityIntegrationTest {
 
         JwtTokenProvider pastTokenProvider = new JwtTokenProvider(signingKey, validity,
                 jwtProperties.refreshTokenValidity(), Clock.fixed(issuedAt, ZoneOffset.UTC));
-        return pastTokenProvider.createAccessToken(userId);
+        return pastTokenProvider.createAccessToken(userId, UUID.randomUUID());
 
     }
 
@@ -1015,7 +1025,7 @@ public class FollowSecurityIntegrationTest {
      * 각 테스트는 SignatureException을 먼저 확인해 토큰 형식이나 만료 오류와 구분한다.
      */
     private String createTamperedAccessToken(UUID userId){
-        String validToken = jwtTokenProvider.createAccessToken(userId);
+        String validToken = TestTokens.accessToken(jwtTokenProvider, userSessionRepository, userId);
         String[] tokenParts = validToken.split("\\.");
 
         String signature = tokenParts[2];

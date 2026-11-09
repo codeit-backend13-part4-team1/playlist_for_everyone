@@ -2,6 +2,9 @@ package com.codeit.sb13.playlist_for_everyone.domain.notification.controller;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtProperties;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
+import com.codeit.sb13.testsupport.auth.InMemoryUserSessionConfig;
+import com.codeit.sb13.testsupport.auth.TestTokens;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
@@ -56,7 +59,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         }
 )
 @AutoConfigureMockMvc
-@Import(NotificationSecurityIntegrationTest.CsrfDisabledTestConfig.class)
+@Import({NotificationSecurityIntegrationTest.CsrfDisabledTestConfig.class, InMemoryUserSessionConfig.class})
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @DisplayName("알림 JWT 인증 통합 테스트")
@@ -78,6 +81,9 @@ public class NotificationSecurityIntegrationTest {
 
     @Autowired
     private JwtTokenProvider jwtTokenProvider;
+
+    @Autowired
+    private UserSessionRepository userSessionRepository;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -157,7 +163,7 @@ public class NotificationSecurityIntegrationTest {
         insertNotification(newerNotificationId, receiverId, baseTime.plusMinutes(2));
         insertNotification(otherNotificationId, otherReceiverId, baseTime.plusMinutes(1));
 
-        String accessToken = jwtTokenProvider.createAccessToken(receiverId);
+        String accessToken = TestTokens.accessToken(jwtTokenProvider, userSessionRepository, receiverId);
 
         mockMvc.perform(get("/api/notifications")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
@@ -189,7 +195,7 @@ public class NotificationSecurityIntegrationTest {
         insertNotification(remainingNotificationId, receiverId, createdAt.minusMinutes(1));
         insertNotification(otherNotificationId, otherReceiverId, createdAt);
 
-        String accessToken = jwtTokenProvider.createAccessToken(receiverId);
+        String accessToken = TestTokens.accessToken(jwtTokenProvider, userSessionRepository, receiverId);
 
         mockMvc.perform(delete("/api/notifications/{notificationId}", notificationId)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
@@ -242,7 +248,7 @@ public class NotificationSecurityIntegrationTest {
         insertNotification(ownNotificationId, receiverId, createdAt);
         insertNotification(otherNotificationId, otherReceiverId, createdAt);
 
-        String accessToken = jwtTokenProvider.createAccessToken(receiverId);
+        String accessToken = TestTokens.accessToken(jwtTokenProvider, userSessionRepository, receiverId);
 
         mockMvc.perform(delete("/api/notifications/{notificationId}", otherNotificationId)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
@@ -259,7 +265,7 @@ public class NotificationSecurityIntegrationTest {
         UUID notificationId = UUID.randomUUID();
         insertNotification(notificationId, receiverId, getNotificationTimestamp());
 
-        String accessToken = jwtTokenProvider.createAccessToken(receiverId);
+        String accessToken = TestTokens.accessToken(jwtTokenProvider, userSessionRepository, receiverId);
 
         mockMvc.perform(delete("/api/notifications/{notificationId}", notificationId)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
@@ -284,7 +290,7 @@ public class NotificationSecurityIntegrationTest {
 
         insertNotification(existingNotificationId, receiverId, getNotificationTimestamp());
 
-        String accessToken = jwtTokenProvider.createAccessToken(receiverId);
+        String accessToken = TestTokens.accessToken(jwtTokenProvider, userSessionRepository, receiverId);
 
         assertThat(countNotificationsById(missingNotificationId)).isZero();
 
@@ -431,12 +437,12 @@ public class NotificationSecurityIntegrationTest {
                 Clock.fixed(issuedAt, ZoneOffset.UTC)
         );
 
-        return pastTokenProvider.createAccessToken(userId);
+        return pastTokenProvider.createAccessToken(userId, UUID.randomUUID());
     }
 
     /** 헤더·페이로드를 유지하고 서명만 변경한다. 각 사례에서 SignatureException인지 먼저 확인한다. */
     private String createTamperedAccessToken(UUID userId){
-        String validToken = jwtTokenProvider.createAccessToken(userId);
+        String validToken = TestTokens.accessToken(jwtTokenProvider, userSessionRepository, userId);
         String[] tokenParts = validToken.split("\\.");
 
         String signature = tokenParts[2];
