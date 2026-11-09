@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch;
 
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.exception.CollectedContentValidationException;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.ContentCollectionService;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.TmdbClient;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.TmdbContentMapper;
@@ -60,6 +61,9 @@ public class TmdbBatchConfig {
         return new StepBuilder("tmdbMovieCollectionStep", jobRepository)
                 .<TmdbMovieResponse, CollectedContentData>chunk(1)
                 .transactionManager(transactionManager)
+                .faultTolerant()
+                .skip(CollectedContentValidationException.class)
+                .skipLimit(10)
                 .reader(reader)
                 .processor(mapper::fromMovie)
                 .writer(chunk -> {
@@ -97,6 +101,9 @@ public class TmdbBatchConfig {
         return new StepBuilder("tmdbTvCollectionStep", jobRepository)
                 .<TmdbTvResponse, CollectedContentData>chunk(1)
                 .transactionManager(transactionManager)
+                .faultTolerant()
+                .skip(CollectedContentValidationException.class)
+                .skipLimit(10)
                 .reader(reader)
                 .processor(mapper::fromTv)
                 .writer(chunk -> {
