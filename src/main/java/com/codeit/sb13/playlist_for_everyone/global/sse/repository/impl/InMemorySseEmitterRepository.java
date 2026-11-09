@@ -7,6 +7,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -31,6 +32,11 @@ public class InMemorySseEmitterRepository implements SseEmitterRepository {
           userConnections.put(connection, sseEmitter);
           return userConnections;
       });
+    }
+
+    @Override
+    public Optional<SseEmitter> findByUserIdAndConnection(UUID userId, Connection connection) {
+        return Optional.empty();
     }
 
     @Override

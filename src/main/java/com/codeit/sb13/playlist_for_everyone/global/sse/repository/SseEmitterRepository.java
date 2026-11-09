@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -14,13 +15,16 @@ import java.util.UUID;
  * 조회 이후 실제 연결 상태가 바뀔 수 있다. 이 저장소는 메시지 이력이나 브로커 저장소가 아니다.
  */
 public interface SseEmitterRepository {
-    /** 사용자에게 속한 연결과 실제 HTTP 응답에 사용할 emitter를 등록한다. */
+    /** 새 연결을 등록한다. 이미 등록된 사용자·연결 키는 덮어쓰지 않고 IllegalStateException을 발생시킨다. */
     void save(UUID userId, Connection connection, SseEmitter sseEmitter);
+
+    /** 지정한 연결의 emitter를 조회한다. 해당 연결이 없으면 Optional.empty()를 반환한다. */
+    Optional<SseEmitter> findByUserIdAndConnection(UUID userId, Connection connection);
 
     /** 해당 사용자의 연결 사본을 반환하며, 연결이 없으면 빈 Map을 반환한다. */
     Map<Connection, SseEmitter> findAllByUserId(UUID userId);
 
-    /** 지정한 연결만 제거한다. 이미 제거됐거나 없는 연결을 다시 제거해도 다른 연결에 영향이 없다. */
+    /** 재사용하지 않는 연결 ID로 해당 연결만 제거한다. 없는 연결의 중복 삭제는 무시한다. */
     void delete(UUID userId, Connection connection);
 
     /**
