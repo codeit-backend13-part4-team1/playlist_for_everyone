@@ -13,8 +13,9 @@
 --     }
 -- }
 --
--- gapDetected: 0이면 누락 미감지, 1이면 누락 감지
--- 누락을 감지하면 이벤트 목록은 빈 배열로 반환한다.
+-- gapDetected: 1이면 주어진 기준 위치를 보관 이력에서 확인할 수 없다. 실제 미수신 유실의 확정은 아니다.
+-- 기준 위치가 없어도 그보다 뒤에 남은 이력은 반환한다. 기준 위치가 없거나 오래됐다는 이유로 실패하지 않는다.
+-- 기준 위치를 주지 않으면 남은 전체 이력과 gapDetected=0을 반환한다.
 -- 조회 과정에서 키의 만료시간은 갱신하지 않는다.
 
 local streamKey = KEYS[1]
@@ -60,6 +61,7 @@ if cutoffMillis >= 0 then
     removeHistoryEntries(expiredEntries)
 end
 
+-- 전체 만료 시 빈 키를 다시 만들지 않는다. 연결 유지와 이후 새 이벤트 처리는 호출부의 책임이다.
 if redis.call('XLEN', streamKey) == 0 then
     redis.call('DEL', streamKey, mappingKey)
 

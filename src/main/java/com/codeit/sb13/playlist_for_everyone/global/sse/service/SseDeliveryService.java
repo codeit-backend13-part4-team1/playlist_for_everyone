@@ -17,7 +17,7 @@ import java.util.UUID;
  * 현재 서버의 메모리에 등록된 연결로 업무 이벤트와 하트비트를 전송한다.
  *
  * <p>사용자의 탭이 다른 서버에도 연결될 수 있으므로 이 서비스 호출만으로 모든 서버에
- * 이벤트가 전달되지는 않는다. 후속 Redis/Kafka 수신 구현체가 각 서버에서 이 서비스를 호출한다.
+ * 이벤트가 전달되지는 않는다. Redis 수신 구현체가 각 서버에서 이 서비스를 호출한다.
  * 연결 생성은 SseConnectionService, 연결 참조 관리는 SseEmitterRepository가 담당한다.
  */
 @Service
@@ -30,14 +30,14 @@ public class SseDeliveryService {
     private final SseDeliveryCoordinator deliveryCoordinator;
 
     /**
-     * 수신자의 모든 로컬 연결에 같은 논리적 이벤트를 전달한다.
-     * 연결을 조회한 뒤 data만 JSON으로 한 번 변환하고, 각 연결에 같은 내용을 전송한다.
-     * 연결이 없으면 JSON 변환이나 별도 저장, 재시도 없이 종료한다.
+     * 수신자의 모든 로컬 연결에 후속 이력 조회를 요청한다. 브로커 메시지는 조회를 깨우는 신호다.
+     * 실제 전송할 데이터와 순서는 공유 이력에서 가져오며, 이 메서드가 payload를 직접 보내지는 않는다.
+     * 연결이 없으면 정상 종료한다. 여기서 이력을 저장하거나 브로커에 재발행하지 않는다.
      *
-     * <p>JSON 변환 실패 시에는 아직 연결에 쓰지 않았으므로 연결을 유지하고 해당 이벤트 전송만 건너뛴다.
-     * 실제 전송 중 실패하면 해당 연결만 제거하고 나머지 연결에 계속 전송한다.
+     * <p>일시적 조회 실패의 예약 재시도는 coordinator가 처리한다. 그 밖에 전달된 RuntimeException은
+     * 해당 연결의 상태·저장소 참조를 정리하고 다음 연결로 진행한다. HTTP 종료 통지는 MVC와 콜백도 관여한다.
      *
-     * @param sseEvent 수신자와 이벤트 ID, 이름 및 JSON으로 직렬화할 payload를 담은 이벤트
+     * @param sseEvent 수신자 식별과 실패 로그의 이벤트 ID 추적에 사용하는 전송 신호
      */
     public void sendToLocalConnections(SseEvent<?> sseEvent){
         UUID receiverId = sseEvent.receiverId();
@@ -50,8 +50,7 @@ public class SseDeliveryService {
         // 조회한 Map은 전송 대상을 순회하기 위한 사본이다. 조회 후 종료된 emitter도 있을 수 있다.
         connections.forEach((connection, emitter)->{
             try {
-                // 전송 전에 JSON으로 변환한 data를 모든 연결에 재사용한다.
-                // 연결 ID와 이벤트 ID는 별개이며, 여러 탭에 보내도 동일 이벤트의 id는 유지한다.
+                // 각 연결은 자신의 위치부터 읽는다. 신호가 중복되거나 역순이어도 이력 순서가 기준이다.
                 deliveryCoordinator.requestDelivery(receiverId, connection);
             } catch (RuntimeException e) {
                 // 실패한 연결만 전송 대상에서 제외하고 다음 연결을 계속 처리한다.

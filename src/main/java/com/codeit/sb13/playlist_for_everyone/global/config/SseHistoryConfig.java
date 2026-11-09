@@ -9,6 +9,7 @@ import org.springframework.data.redis.core.script.RedisScript;
 
 import java.util.List;
 
+/** 저장·스냅샷·후속 조회 Lua를 서로 다른 이름의 빈으로 등록한다. 각 호출 안에서 이력과 매핑을 함께 처리한다. */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(SseHistoryProperties.class)
 public class SseHistoryConfig {

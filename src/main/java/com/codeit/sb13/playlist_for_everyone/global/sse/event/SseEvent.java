@@ -10,7 +10,7 @@ import java.util.UUID;
  *
  * <p>브라우저에는 eventId -> id, eventName -> event, data -> JSON data로 전달한다.
  * receiverId는 서버에서 연결을 찾는 데 사용하며, 이 record 전체를 data로 감싸 보내지 않는다.
- * 호출부는 data에 직렬화 전 객체를 넣고, SseDeliveryService가 연결에 쓰기 전에 JSON으로 변환한다.
+ * 호출부는 data에 직렬화 전 객체를 넣고, 이력 저장 발행기가 JSON 트리로 변환하여 저장한다.
  *
  * <p>필드 참조는 변경할 수 없지만 T 객체 내부까지 불변으로 만드는 것은 아니다.
  * 발행 후 payload를 변경하지 않는 방식으로 사용해야 수신 연결 간 내용이 달라지지 않는다.
@@ -51,6 +51,7 @@ public record SseEvent<T>(
         );
     }
 
+    /** 저장용 JSON 데이터로 바꾸되 이벤트 ID·수신자·이름은 그대로 유지한다. */
     public SseEvent<JsonNode> toHistoryData(JsonNode data){
         return new SseEvent<>(eventId, receiverId, eventName, data);
     }

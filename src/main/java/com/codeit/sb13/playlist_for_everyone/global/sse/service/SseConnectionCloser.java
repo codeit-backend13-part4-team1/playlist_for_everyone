@@ -9,6 +9,11 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.UUID;
 
+/**
+ * 재시도 소진·예약 작업의 전송 실패 시 HTTP 종료 요청과 emitter 저장소 정리를 담당한다.
+ * 호출자는 먼저 coordinator 상태와 예약을 정리한다. complete가 실패하거나 완료 콜백이 늦어도
+ * finally에서 로컬 연결 참조를 제거하며, Redis 공유 이력에는 손대지 않는다.
+ */
 @Component
 @RequiredArgsConstructor
 @Slf4j

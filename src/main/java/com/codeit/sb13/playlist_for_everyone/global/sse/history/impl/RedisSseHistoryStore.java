@@ -18,6 +18,12 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * 사용자별 Stream과 이벤트 UUID 매핑을 Lua로 함께 갱신하는 공유 이력 저장소.
+ * {사용자UUID} 해시 태그로 두 키의 Redis Cluster 슬롯을 맞춘다. 서로 다른 환경은 접두사로 구분한다.
+ * Lua의 배열 응답은 내부 record로 검사한 뒤 공통 계약으로 변환하며, 비정상 응답을 빈 결과로 숨기지 않는다.
+ * 조회 중에도 보관기간이 지난 이벤트를 정리하므로 조회가 Redis 데이터 변경을 전혀 하지 않는 것은 아니다.
+ */
 @Repository
 public class RedisSseHistoryStore implements SseHistoryStore {
 
@@ -48,6 +54,7 @@ public class RedisSseHistoryStore implements SseHistoryStore {
 
     @Override
     public SseHistoryEntry append(SseEvent<JsonNode> event) {
+        // JSON 객체의 필드 순서 차이가 동일 이벤트의 내용 충돌로 오인되지 않도록 정렬한다.
         String eventJson = objectMapper.writer()
                 .with(JsonNodeFeature.WRITE_PROPERTIES_SORTED)
                 .writeValueAsString(event);

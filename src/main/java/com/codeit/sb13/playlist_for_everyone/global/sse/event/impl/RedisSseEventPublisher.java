@@ -23,7 +23,8 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p>직렬화·Redis 발행 실패는 식별자와 예외 타입만 로그에 남기고 SsePublishException으로 전달한다.
  * 이 로그에는 data나 예외 메시지를 넣지 않으며, 원인 예외는 호출자가 확인할 수 있도록 보존한다.
- * 자동 재시도와 이벤트 이력 저장은 수행하지 않는다.
+ * 이 구현체는 자동 재시도와 이벤트 이력 저장을 수행하지 않는다. 일반 호출부는 이력 저장 발행기를
+ * 주입받아 저장 후 이 전송 구현체로 위임한다. 직접 호출하면 이력 저장 단계를 우회하게 된다.
  */
 @Component
 @RequiredArgsConstructor

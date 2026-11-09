@@ -3,6 +3,7 @@
 **생성 요청 → 저장·커밋 → SSE 전송 → 목록 조회 → 읽음 처리**를 따라갈 수 있도록 정리한 가이드입니다.
 공통 생성·전송뿐 아니라 [#38 조회·삭제](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/38),
 [#51 SSE 연동](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/51),
+[#53 이력 복구와 알림 필터](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/53),
 [#67 JWT 인증 연동](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/67),
 [#129 수신자 연관관계](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/129)의 현재 코드와 검증 범위를 설명합니다.
 
@@ -28,7 +29,7 @@
 | 알림 도메인에서 설명하는 것 | 공통 SSE 가이드에서 설명하는 것 |
 | --- | --- |
 | 생성 요청, 독립 저장·커밋, DTO 스냅샷 | 연결 생성·종료, 다중 탭, 하트비트 |
-| 커밋 후 발행 요청, 저장·발행 실패 처리 | Redis 발행·수신, 로컬 연결로 전송 |
+| 커밋 후 발행 요청, 삭제된 알림의 수신자별 필터 | 공유 이력 저장·Redis 발행·연결별 복구·재시도 |
 | 알림 생성부터 HTTP 수신까지의 통합 테스트 | 공통 전송 계약과 저장소·설정 테스트 |
 
 알림은 `SseEventPublisher` 계약으로 전송을 요청합니다.
@@ -37,7 +38,7 @@ HTTP 인증은 공통 JWT 필터가 담당하고, 알림 컨트롤러는 검증�
 
 ## 현재 구현과 후속 범위
 
-공통 생성 요청 → 알림 저장·커밋 → Redis → 수신자의 SSE 응답까지 연결되어 있습니다.
+공통 생성 요청 → 알림 저장·커밋 → 공유 이력 저장 → Redis Pub/Sub → 이력 조회·필터 → SSE 응답까지 연결되어 있습니다.
 저장 시 사용자 조회 컴포넌트로 수신자를 찾아 `User` 연관관계로 연결하며, 요청·응답·이벤트에는 수신자 UUID를 사용합니다.
 조회·읽음 처리는 인증된 사용자의 알림에 한정합니다.
 목록 조회는 저장소의 수신자 조건으로 제한하고, 읽음 처리는 서비스가 잠금 조회 후 소유자를 확인하여 삭제합니다.
@@ -45,7 +46,8 @@ HTTP 인증은 공통 JWT 필터가 담당하고, 알림 컨트롤러는 검증�
 
 업무별 이벤트를 공통 생성 요청으로 바꾸는 [#45](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/45)는 별도 작업입니다.
 알림의 실제 CSRF 토큰 연동·검증과 테스트 임시 설정 제거는 [#124](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/124)에서 다룹니다.
-DM 본문 전송 연동, Kafka 구현체, 공유 이벤트 이력·누락 복구와 Outbox도 현재 가이드의 구현 범위에 포함하지 않습니다.
+공유 이력과 보관 범위 내 복구는 구현되어 있으며, [공통 복구 가이드](../sse/10-recovery-and-retry.md)를 참고합니다.
+DM 본문 전송 연동, Kafka 구현체와 Outbox는 현재 구현 범위에 포함하지 않습니다.
 
 ---
 

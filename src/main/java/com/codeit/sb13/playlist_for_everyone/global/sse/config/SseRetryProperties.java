@@ -4,6 +4,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.time.Duration;
 
+/**
+ * 연결을 유지한 채 수행하는 후속 조회 재시도 설정. 브로커 재발행이나 브라우저 재연결 설정이 아니다.
+ * maxRetries는 최초 시도를 제외한 예약 횟수이며, 정상 조회 후 횟수와 간격을 초기화한다.
+ */
 @ConfigurationProperties(prefix = "everyone.sse.retry")
 public record SseRetryProperties(
         Duration initialDelay,

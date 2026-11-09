@@ -5,6 +5,11 @@ import org.springframework.util.StringUtils;
 
 import java.time.Duration;
 
+/**
+ * 공유 이력 보관 설정. retention은 이벤트의 보관기간과 비활성 키의 TTL에 사용한다.
+ * maxEventsPerUser는 전체 사용자 합계가 아닌 사용자별 상한이며, keyPrefix는 같은 환경의 서버가 공유한다.
+ * 기본값은 YAML에서 제공하고 생성자는 최종 바인딩 값의 유효성을 검증한다.
+ */
 @ConfigurationProperties(prefix = "everyone.sse.history")
 public record SseHistoryProperties(
         Duration retention,

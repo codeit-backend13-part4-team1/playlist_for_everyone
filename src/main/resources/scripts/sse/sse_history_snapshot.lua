@@ -15,6 +15,8 @@
 --
 -- upperBound: 조회 시점의 마지막 Stream ID. 이력이 없으면 빈 문자열
 -- 복구할 이벤트가 없으면 두 번째 값은 빈 배열
+-- 커서가 없거나 현재 사용자 이력에 없으면 과거 전체를 보내지 않고 현재 끝 위치만 반환한다.
+-- 만료 정리와 끝 위치·복구 목록 확보를 한 호출로 수행하며, 조회가 TTL을 갱신하지 않는다.
 
 local streamKey = KEYS[1]
 local mappingKey = KEYS[2]
@@ -81,6 +83,7 @@ if #cursorEntries == 0 then
     return {upperBound, {}}
 end
 
+-- 커서 자신은 제외하고, 이번 조회에서 확보한 upperBound까지만 초기 복구 대상으로 삼는다.
 local records = redis.call('XRANGE', streamKey, '('.. cursorPosition, upperBound)
 local entries = {}
 

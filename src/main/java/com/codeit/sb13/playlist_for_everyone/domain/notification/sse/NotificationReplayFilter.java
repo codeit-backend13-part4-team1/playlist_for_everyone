@@ -12,6 +12,11 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
+/**
+ * Redis에는 남아 있지만 DB에서 읽음 처리로 삭제된 알림을 SSE 전송 대상에서 제외한다.
+ * SSE 이벤트 UUID가 아닌 data.id의 DB 알림 ID를 수신자 조건과 함께 일괄 조회한다.
+ * 존재 여부를 조회한 시점의 필터이며, 이후 DB 삭제와 네트워크 전송을 원자적으로 묶지는 않는다.
+ */
 @Component
 @RequiredArgsConstructor
 public class NotificationReplayFilter implements SseReplayFilter {

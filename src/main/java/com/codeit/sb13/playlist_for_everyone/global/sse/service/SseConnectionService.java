@@ -22,9 +22,9 @@ import java.util.UUID;
  * 있을 수 있으므로 사용자 ID와 별도로 연결마다 Connection 식별자를 발급한다.
  *
  * <pre>
- * 연결: JWT 인증 -> SseController -> connect -> 콜백 등록 -> 저장 -> 최초 주석 전송
- * 전송: SseDeliveryService -> 저장소에서 수신자의 연결 조회 -> 각 emitter로 전송
- * 종료: 완료/타임아웃/오류 콜백 또는 애플리케이션 종료 -> 해당 연결 정리
+ * 연결: JWT 인증 -> connect -> 콜백/상태/연결 등록 -> 최초 주석 -> 초기 이력 복구
+ * 전송: SseDeliveryService -> SseDeliveryCoordinator -> 후속 이력 조회/필터 -> emitter
+ * 종료: 완료/타임아웃/오류 콜백 또는 애플리케이션 종료 -> 상태/예약/로컬 연결 정리
  * </pre>
  *
  * <p>처음 읽을 때는 SseController, 이 클래스, SseEmitterRepository와 메모리 구현체,
@@ -41,12 +41,14 @@ public class SseConnectionService {
     private final SseDeliveryCoordinator deliveryCoordinator;
 
     /**
-     * 새 연결을 등록하고, 응답 시작을 위한 ID 없는 주석을 준비한다.
+     * 새 연결을 등록하고 ID 없는 주석과 초기 복구 데이터를 준비한다.
+     * 응답 반환 전 복구하므로 조회 실패 시 SSE 응답 대신 JSON 오류를 반환할 수 있다.
      *
      * @param userId 인증된 사용자 ID
+     * @param lastEventId 클라이언트가 마지막으로 받은 이벤트 UUID. 생략 가능
      * @return 이번 연결에서 생성한 emitter
      * @throws UncheckedIOException 초기 send 호출에서 I/O 예외가 발생한 경우. 원인을 보존한다
-     * @throws IllegalStateException 초기 send 호출에서 emitter 상태 예외가 발생한 경우
+     * @throws IllegalStateException 초기 전송 상태나 이력 해석에 문제가 있는 경우
      */
     public SseEmitter connect(UUID userId, UUID lastEventId){
         Connection connection = Connection.create();
@@ -103,7 +105,7 @@ public class SseConnectionService {
                             // 한 연결의 종료 실패 때문에 다른 사용자의 연결 정리가 중단되지 않게 한다.
                             log.warn("SSE 연결 종료에 실패했습니다. userId={}, connectionId={}", userId, connection.id(),e);
                         }finally {
-                            // 콜백 실행 여부나 complete 성공 여부에 의존하지 않고 저장소 참조를 정리한다.
+                            // 콜백 실행 여부나 complete 성공 여부에 의존하지 않고 상태·예약·저장소 참조를 정리한다.
                             cleanupConnection(userId, connection);
                         }
                     });
@@ -111,7 +113,7 @@ public class SseConnectionService {
     }
 
     /**
-     * connect 내부에서 잡은 두 종류의 초기 전송 예외를 정리한 뒤 호출자에게 전달한다.
+     * 초기 주석 전송 또는 이력 복구 실패 시 상태·예약·로컬 연결을 정리하고 원래 실패를 전달한다.
      * 연결 중 계속 발생하는 전송 실패는 SseDeliveryService와 등록된 오류 콜백에서 처리한다.
      */
     private void handleConnectionError(UUID userId, Exception e, Connection connection) {
@@ -137,6 +139,7 @@ public class SseConnectionService {
         log.error("SSE 연결 오류로 연결을 정리했습니다. userId={}, connectionId={}", userId, connection.id(), e);
     }
 
+    /** 해당 연결의 상태·예약부터 제거한다. 여러 번 호출해도 다른 연결이나 공유 이력을 삭제하지 않는다. */
     private void cleanupConnection(UUID userId, Connection connection){
         deliveryCoordinator.remove(userId, connection);
         sseEmitterRepository.delete(userId, connection);
