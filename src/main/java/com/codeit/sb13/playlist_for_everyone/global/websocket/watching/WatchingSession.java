@@ -164,7 +164,9 @@ public class WatchingSession {
     }
 
     public void disconnectWithContentId(UUID contentId){
-
+        List<String> sessionIds = watchingSessionService.disconnectWithContentDeleted(contentId);
+        for (String sessionId : sessionIds)
+            connectionRegistry.close(sessionId);
     }
 
 

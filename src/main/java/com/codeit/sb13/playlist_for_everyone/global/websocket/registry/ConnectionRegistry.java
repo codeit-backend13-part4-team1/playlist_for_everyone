@@ -42,6 +42,7 @@ public interface ConnectionRegistry {
 
     void unregister(SessionData data);
 
+    void close(String sessionId);
 
     /**
      * 저장된 세션 과 세션에 속한 구독에 대한 SocketConnection 을 반환한다.

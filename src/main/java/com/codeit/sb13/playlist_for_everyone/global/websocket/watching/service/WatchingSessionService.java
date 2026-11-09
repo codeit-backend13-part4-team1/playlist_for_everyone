@@ -56,4 +56,12 @@ public interface WatchingSessionService {
      * @param info 세션 정보가 포함된 객체
      */
     void leaveChatSession(SessionInfo info);
+
+    /**
+     * 컨텐츠 ID 를 기반으로 채팅 세션 및 구독을 해지하고, 연결을 끊을 세션 Id 를 리스트로 반환하는 매서드
+     * @param contentId contentID
+     * @return 삭제 해야 할 세션 id 리스트
+     */
+    List<String> disconnectWithContentDeleted(UUID contentId);
+
 }

@@ -165,11 +165,13 @@ public class WatchingSessionEventListener {
 
     /**
      * 컨텐츠가 삭제 되었을 때, 연괸된 세션 리소스를 전부 종료 및 제거 하는 매서드
+     * 단일 세션에는 단일 구독만이 존재한다 가정하고, 세션 - 구독 쌍의 연결을 끊는다.
      * @param event contentID 를 담고있다.
      */
     @EventListener
     public void contentDeleteEvent(WatchingSessionDisconnectEvent event){
         UUID content = event.contentId();
+        watchingSession.disconnectWithContentId(content);
     }
 
 }
