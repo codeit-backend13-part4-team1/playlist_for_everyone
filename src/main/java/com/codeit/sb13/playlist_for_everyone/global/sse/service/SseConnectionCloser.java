@@ -35,4 +35,7 @@ public class SseConnectionCloser {
             sseEmitterRepository.delete(userId, connection);
         }
     }
+    public void cleanUp(UUID userId, Connection connection) {
+    }
+
 }

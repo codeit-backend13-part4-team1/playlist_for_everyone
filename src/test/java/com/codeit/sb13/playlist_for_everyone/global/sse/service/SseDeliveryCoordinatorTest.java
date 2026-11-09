@@ -3,6 +3,8 @@ package com.codeit.sb13.playlist_for_everyone.global.sse.service;
 import com.codeit.sb13.playlist_for_everyone.global.sse.config.SseRetryProperties;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
 import com.codeit.sb13.playlist_for_everyone.global.sse.history.SseHistoryPosition;
+import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
+import com.codeit.sb13.playlist_for_everyone.global.sse.repository.impl.InMemorySseEmitterRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -55,6 +57,7 @@ class SseDeliveryCoordinatorTest {
     @Mock SseConnectionCloser connectionCloser;
 
     private SseDeliveryCoordinator coordinator;
+    private SseEmitterRepository repository;
     private final UUID userId = UUID.randomUUID();
     private final Connection connection = Connection.create();
     private final UUID lastEventId = UUID.randomUUID();
@@ -66,16 +69,17 @@ class SseDeliveryCoordinatorTest {
 
     @BeforeEach
     void setUp(){
+        repository = new InMemorySseEmitterRepository();
         coordinator = new SseDeliveryCoordinator(
                 recoveryService,
                 retryTaskScheduler,
                 retryProperties,
-                connectionCloser);
+                connectionCloser, repository);
     }
 
     @Test
-    @DisplayName("등록한 사용자·연결·에미터와 마지막 이벤트 ID로 복구를 요청한다.")
-    void recoverDelegatesWithRegisteredConnectionAndLastEventId(){
+    @DisplayName("등록한 연결의 에미터와 사용자·마지막 이벤트 ID로 복구를 요청한다.")
+    void recoverDelegatesWithRegisteredEmitterAndLastEventId(){
         coordinator.register(userId, connection, emitter);
         coordinator.recover(userId, connection, lastEventId);
 
@@ -112,8 +116,8 @@ class SseDeliveryCoordinatorTest {
     }
 
     @Test
-    @DisplayName("제거한 연결은 복구하지 않고 같은 사용자의 다른 연결은 복구한다.")
-    void removePreventsRecoveryOnlyForRemovedConnection(){
+    @DisplayName("정리한 연결은 복구하지 않고 같은 사용자의 다른 연결은 복구한다.")
+    void cleanupPreventsRecoveryOnlyForTargetConnection(){
         Connection secondConnection = Connection.create();
         SseEmitter secondEmitter = mock(SseEmitter.class);
         UUID secondLastEventId = UUID.randomUUID();
@@ -121,7 +125,7 @@ class SseDeliveryCoordinatorTest {
         coordinator.register(userId, connection, emitter);
         coordinator.register(userId, secondConnection, secondEmitter);
 
-        coordinator.remove(userId, connection);
+        coordinator.cleanupConnection(userId, connection);
         coordinator.recover(userId, connection, lastEventId);
 
         coordinator.recover(userId, secondConnection, secondLastEventId);
@@ -130,6 +134,8 @@ class SseDeliveryCoordinatorTest {
                 .recover(eq(userId), eq(secondConnection), same(secondEmitter), eq(secondLastEventId));
 
         verifyNoMoreInteractions(recoveryService);
+        verify(connectionCloser).cleanUp(userId, connection);
+        verifyNoMoreInteractions(connectionCloser);
     }
 
     @Test
@@ -167,7 +173,7 @@ class SseDeliveryCoordinatorTest {
         SseHistoryPosition upperBound = createHistoryPosition();
         SseHistoryPosition nextPosition = createHistoryPosition("1000-1");
 
-        when(recoveryService.recover(userId, connection, emitter,lastEventId))
+        when(recoveryService.recover(userId, connection, emitter, lastEventId))
                 .thenReturn(upperBound);
 
         when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
@@ -263,7 +269,7 @@ class SseDeliveryCoordinatorTest {
         coordinator.recover(userId, connection, lastEventId);
         coordinator.recover(userId, secondConnection, secondLastEventId);
 
-        coordinator.remove(userId, connection);
+        coordinator.cleanupConnection(userId, connection);
 
         coordinator.requestDelivery(userId, connection);
         coordinator.requestDelivery(userId, secondConnection);
@@ -273,6 +279,8 @@ class SseDeliveryCoordinatorTest {
 
         verify(recoveryService)
                 .recoverAfter(eq(userId), eq(secondConnection), same(secondEmitter), eq(secondPosition));
+        verify(connectionCloser).cleanUp(userId, connection);
+        verifyNoMoreInteractions(connectionCloser);
 
     }
 
@@ -463,9 +471,9 @@ class SseDeliveryCoordinatorTest {
 
 
     @ParameterizedTest(name = "{index}: {0}")
-    @MethodSource("eventSendFailures")
-    @DisplayName("예약된 재시도 중 SSE 전송이 실패하면 연결을 종료하고 이후 요청과 늦은 작업을 무시한다.")
-    void closesConnectionWhenEventSendFailsDuringScheduledRetry(RuntimeException sendFailure){
+    @MethodSource("nonRetryableFailures")
+    @DisplayName("예약 재시도 중 재시도 대상이 아닌 예외가 발생하면 연결을 종료하고 이후 요청과 늦은 작업을 무시한다.")
+    void closesConnectionWhenNonRetryableFailureOccursDuringScheduledRetry(RuntimeException failure){
         SseHistoryPosition upperBound = createHistoryPosition();
         Instant now = Instant.parse("2026-11-07T00:00:00Z");
         DataAccessResourceFailureException historyFailure = new DataAccessResourceFailureException("테스트용 후속 이력 조회 실패");
@@ -479,7 +487,7 @@ class SseDeliveryCoordinatorTest {
                 .thenReturn(upperBound);
         when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
                 .thenThrow(historyFailure)
-                .thenThrow(sendFailure);
+                .thenThrow(failure);
 
         coordinator.register(userId, connection, emitter);
         coordinator.recover(userId, connection, lastEventId);
@@ -513,12 +521,12 @@ class SseDeliveryCoordinatorTest {
         SseHistoryPosition upperBound = createHistoryPosition();
         SseHistoryPosition nextPosition = createHistoryPosition("1000-1");
 
-        when(recoveryService.recover(userId, connection,emitter, lastEventId))
+        when(recoveryService.recover(userId, connection, emitter, lastEventId))
                 .thenReturn(upperBound);
         when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
                 .thenAnswer(invocation ->{
                     coordinator.requestDelivery(userId, connection);
-                    coordinator.remove(userId, connection);
+                    coordinator.cleanupConnection(userId, connection);
                     return nextPosition;
                 });
 
@@ -532,6 +540,8 @@ class SseDeliveryCoordinatorTest {
         verify(recoveryService)
                 .recoverAfter(eq(userId), eq(connection), same(emitter), eq(upperBound));
         verifyNoMoreInteractions(recoveryService);
+        verify(connectionCloser).cleanUp(userId, connection);
+        verifyNoMoreInteractions(connectionCloser);
     }
 
     @Test
@@ -542,7 +552,7 @@ class SseDeliveryCoordinatorTest {
         when(recoveryService.recover(userId, connection, emitter, lastEventId))
                 .thenAnswer(invocation -> {
                     coordinator.requestDelivery(userId, connection);
-                    coordinator.remove(userId, connection);
+                    coordinator.cleanupConnection(userId, connection);
                     return upperBound;
                 });
 
@@ -555,6 +565,8 @@ class SseDeliveryCoordinatorTest {
         verify(recoveryService, never())
                 .recoverAfter(any(), any(), any(), any());
         verifyNoMoreInteractions(recoveryService);
+        verify(connectionCloser).cleanUp(userId, connection);
+        verifyNoMoreInteractions(connectionCloser);
     }
 
     @Test
@@ -773,7 +785,7 @@ class SseDeliveryCoordinatorTest {
 
             Future<?> removeRequest = executor.submit(() -> {
                 coordinator.requestDelivery(userId, connection);
-                coordinator.remove(userId, connection);
+                coordinator.cleanupConnection(userId, connection);
             });
 
             removeRequest.get(5, TimeUnit.SECONDS);
@@ -788,6 +800,8 @@ class SseDeliveryCoordinatorTest {
             verify(recoveryService)
                     .recoverAfter(eq(userId), eq(connection), same(emitter), eq(upperBound));
             verifyNoMoreInteractions(recoveryService);
+            verify(connectionCloser).cleanUp(userId, connection);
+            verifyNoMoreInteractions(connectionCloser);
         } finally {
             allowDeliveryCompletion.countDown();
             executor.shutdownNow();
@@ -943,7 +957,7 @@ class SseDeliveryCoordinatorTest {
                 3
         );
         coordinator = new SseDeliveryCoordinator(
-                recoveryService, retryTaskScheduler, properties, connectionCloser
+                recoveryService, retryTaskScheduler, properties, connectionCloser, repository
         );
 
         SseHistoryPosition upperBound = createHistoryPosition();
@@ -1143,7 +1157,7 @@ class SseDeliveryCoordinatorTest {
         verify(retryTaskScheduler)
                 .schedule(taskCaptor.capture(), any(Instant.class));
 
-        coordinator.remove(userId, connection);
+        coordinator.cleanupConnection(userId, connection);
 
         verify(retryFuture).cancel(false);
 
@@ -1157,6 +1171,8 @@ class SseDeliveryCoordinatorTest {
         verify(recoveryService)
                 .recoverAfter(userId, connection, emitter, upperBound);
         verifyNoMoreInteractions(recoveryService);
+        verify(connectionCloser).cleanUp(userId, connection);
+        verifyNoMoreInteractions(connectionCloser);
     }
 
     @Test
@@ -1182,9 +1198,7 @@ class SseDeliveryCoordinatorTest {
 
         when(recoveryService.recover(userId, connection, emitter, lastEventId))
                 .thenReturn(firstPosition);
-        when(recoveryService.recover(
-                userId, secondConnection, secondEmitter, secondLastEventId
-        )).thenReturn(secondPosition);
+        when(recoveryService.recover(userId, secondConnection, secondEmitter, secondLastEventId)).thenReturn(secondPosition);
 
         when(recoveryService.recoverAfter(
                 userId, connection, emitter, firstPosition
@@ -1228,7 +1242,7 @@ class SseDeliveryCoordinatorTest {
         SseRetryProperties properties = new SseRetryProperties(
                 Duration.ofSeconds(1), Duration.ofSeconds(30), maxRetries
         );
-        coordinator = new SseDeliveryCoordinator(recoveryService, retryTaskScheduler, properties, connectionCloser);
+        coordinator = new SseDeliveryCoordinator(recoveryService, retryTaskScheduler, properties, connectionCloser, repository);
 
         SseHistoryPosition upperBound = createHistoryPosition();
         AtomicReference<Instant> currentTime = new AtomicReference<>(
@@ -1298,7 +1312,7 @@ class SseDeliveryCoordinatorTest {
         SseRetryProperties properties = new SseRetryProperties(
                 Duration.ofSeconds(1), Duration.ofSeconds(30), 1
         );
-        coordinator = new SseDeliveryCoordinator(recoveryService, retryTaskScheduler, properties, connectionCloser);
+        coordinator = new SseDeliveryCoordinator(recoveryService, retryTaskScheduler, properties, connectionCloser, repository);
 
         SseHistoryPosition upperBound = createHistoryPosition();
         SseHistoryPosition nextPosition = createHistoryPosition("1000-1");
@@ -1366,7 +1380,7 @@ class SseDeliveryCoordinatorTest {
         SseRetryProperties properties = new SseRetryProperties(
                 Duration.ofSeconds(1), Duration.ofSeconds(30), 1
         );
-        coordinator = new SseDeliveryCoordinator(recoveryService, retryTaskScheduler, properties, connectionCloser);
+        coordinator = new SseDeliveryCoordinator(recoveryService, retryTaskScheduler, properties, connectionCloser, repository);
 
         Connection secondConnection = Connection.create();
         SseEmitter secondEmitter = mock(SseEmitter.class);
@@ -1429,6 +1443,178 @@ class SseDeliveryCoordinatorTest {
         verifyNoMoreInteractions(connectionCloser);
     }
 
+    @Test
+    @DisplayName("연결 종료를 요청하면 종료 처리를 위임하고 이후 복구와 전송을 수행하지 않는다.")
+    void closeConnectionDelegatesClosureAndPreventsFurtherDelivery(){
+        coordinator.register(userId, connection, emitter);
+
+        coordinator.closeConnection(userId, connection);
+
+        coordinator.recover(userId, connection, lastEventId);
+        coordinator.requestDelivery(userId, connection);
+
+        verify(connectionCloser).close(userId, connection, emitter);
+        verifyNoMoreInteractions(recoveryService, retryTaskScheduler);
+    }
+
+    @Test
+    @DisplayName("중복 상태 등록을 거부하고 기존 연결의 복구 상태를 유지한다.")
+    void rejectsDuplicateRegistrationAndPreservesExistingState(){
+        SseEmitter replacementEmitter = mock(SseEmitter.class);
+        SseHistoryPosition position = createHistoryPosition();
+        when(recoveryService.recover(userId, connection, emitter, lastEventId)).thenReturn(position);
+
+        coordinator.register(userId, connection, emitter);
+        coordinator.recover(userId, connection, lastEventId);
+        assertThatThrownBy(() -> coordinator.register(userId, connection, replacementEmitter))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("이미 등록된 SSE 연결입니다.");
+
+        coordinator.requestDelivery(userId, connection);
+        verify(recoveryService).recover(userId, connection, emitter, lastEventId);
+        verify(recoveryService).recoverAfter(userId, connection, emitter, position);
+        verifyNoMoreInteractions(recoveryService);
+    }
+
+    @Test
+    @DisplayName("연결을 정리하면 HTTP 종료 요청 없이 저장소 정리를 위임하고 이후 복구와 전송을 수행하지 않는다.")
+    void cleanupConnectionPreventsFurtherDeliveryWithoutClosingEmitter(){
+        coordinator.register(userId, connection, emitter);
+        coordinator.cleanupConnection(userId, connection);
+
+        coordinator.recover(userId, connection, lastEventId);
+        coordinator.requestDelivery(userId, connection);
+
+        verify(connectionCloser).cleanUp(userId, connection);
+        verifyNoMoreInteractions(connectionCloser);
+        verifyNoInteractions(recoveryService, retryTaskScheduler, emitter);
+    }
+
+
+    @Test
+    @DisplayName("조정기 등록은 저장소에 emitter를 공개하고 저장소의 객체로 초기 복구한다.")
+    void registrationPublishesEmitterAndRecoveryUsesRepository(){
+        coordinator.register(userId, connection, emitter);
+        assertThat(repository.findByUserIdAndConnection(userId, connection)).containsSame(emitter);
+        coordinator.recover(userId, connection, lastEventId);
+        verify(recoveryService).recover(userId, connection, emitter, lastEventId);
+    }
+
+    @Test
+    @DisplayName("초기 복구 전에 저장소 연결이 사라지면 이력 조회를 수행하지 않는다.")
+    void missingEmitterPreventsInitialRecovery(){
+        coordinator.register(userId, connection, emitter);
+        repository.delete(userId, connection);
+        coordinator.recover(userId, connection, lastEventId);
+        coordinator.requestDelivery(userId, connection);
+        verifyNoInteractions(recoveryService, retryTaskScheduler, connectionCloser);
+    }
+
+    @Test
+    @DisplayName("후속 전송 전에 저장소 연결이 사라지면 이력 조회를 수행하지 않는다.")
+    void missingEmitterPreventsSubsequentDelivery(){
+        coordinator.register(userId, connection, emitter);
+        coordinator.recover(userId, connection, lastEventId);
+        repository.delete(userId, connection);
+        coordinator.requestDelivery(userId, connection);
+        verify(recoveryService).recover(userId, connection, emitter, lastEventId);
+        verifyNoMoreInteractions(recoveryService);
+        verifyNoInteractions(retryTaskScheduler, connectionCloser);
+    }
+
+    @Test
+    @DisplayName("저장소 등록 실패 시 새 상태를 취소하고 기존 저장소 연결은 유지한다.")
+    void failedRepositoryRegistrationRemovesOnlyNewState(){
+        SseEmitter existingEmitter = mock(SseEmitter.class);
+        repository.save(userId, connection, existingEmitter);
+        assertThatThrownBy(() -> coordinator.register(userId, connection, emitter))
+                .isInstanceOf(IllegalStateException.class);
+        coordinator.recover(userId, connection, lastEventId);
+        coordinator.requestDelivery(userId, connection);
+        assertThat(repository.findByUserIdAndConnection(userId, connection)).containsSame(existingEmitter);
+        verifyNoInteractions(recoveryService, retryTaskScheduler, connectionCloser);
+    }
+
+    @ParameterizedTest(name = "진입 경로={0}")
+    @ValueSource(strings = {"delivery", "retry", "cleanup", "close"})
+    @DisplayName("저장소 연결이 사라지면 남은 상태와 예약을 정리하고 늦은 작업은 전송하지 않는다.")
+    void missingEmitterStopsPendingRetry(String entryPoint){
+        SseHistoryPosition position = createHistoryPosition();
+        when(recoveryService.recover(userId, connection, emitter, lastEventId)).thenReturn(position);
+        when(recoveryService.recoverAfter(userId, connection, emitter, position))
+                .thenThrow(new DataAccessResourceFailureException("테스트용 조회 실패"));
+        when(retryTaskScheduler.getClock()).thenReturn(Clock.systemUTC());
+        doReturn(retryFuture).when(retryTaskScheduler).schedule(any(Runnable.class), any(Instant.class));
+        coordinator.register(userId, connection, emitter);
+        coordinator.recover(userId, connection, lastEventId);
+        coordinator.requestDelivery(userId, connection);
+        ArgumentCaptor<Runnable> taskCaptor = ArgumentCaptor.forClass(Runnable.class);
+        verify(retryTaskScheduler).schedule(taskCaptor.capture(), any(Instant.class));
+        repository.delete(userId, connection);
+
+        switch (entryPoint) {
+            case "delivery" -> coordinator.requestDelivery(userId, connection);
+            case "retry" -> taskCaptor.getValue().run();
+            case "cleanup" -> coordinator.cleanupConnection(userId, connection);
+            case "close" -> coordinator.closeConnection(userId, connection);
+            default -> throw new AssertionError(entryPoint);
+        }
+        if (!entryPoint.equals("retry")) verify(retryFuture).cancel(false);
+        taskCaptor.getValue().run();
+        coordinator.requestDelivery(userId, connection);
+        verify(recoveryService).recover(userId, connection, emitter, lastEventId);
+        verify(recoveryService).recoverAfter(userId, connection, emitter, position);
+        verifyNoMoreInteractions(recoveryService);
+        verify(retryTaskScheduler, times(1)).schedule(any(Runnable.class), any(Instant.class));
+        verifyNoInteractions(connectionCloser);
+    }
+
+    @Test
+    @DisplayName("등록 중 복구 요청은 저장 완료를 기다리고 등록 전 부재를 연결 종료로 판단하지 않는다.")
+    void recoveryWaitsUntilRepositoryRegistrationCompletes() throws Exception {
+        SseEmitterRepository slowRepository = spy(new InMemorySseEmitterRepository());
+        SseDeliveryCoordinator registeringCoordinator = new SseDeliveryCoordinator(
+                recoveryService, retryTaskScheduler, retryProperties, connectionCloser, slowRepository);
+        CountDownLatch registrationStarted = new CountDownLatch(1);
+        CountDownLatch allowRegistration = new CountDownLatch(1);
+        CountDownLatch recoveryRequested = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            registrationStarted.countDown();
+            assertThat(allowRegistration.await(5, TimeUnit.SECONDS)).isTrue();
+            return invocation.callRealMethod();
+        }).when(slowRepository).save(userId, connection, emitter);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> registration = executor.submit(() -> registeringCoordinator.register(userId, connection, emitter));
+            assertThat(registrationStarted.await(5, TimeUnit.SECONDS)).isTrue();
+            Future<?> recovery = executor.submit(() -> {
+                recoveryRequested.countDown();
+                registeringCoordinator.recover(userId, connection, lastEventId);
+            });
+            assertThat(recoveryRequested.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThatThrownBy(() -> recovery.get(100, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+            verifyNoInteractions(recoveryService);
+            allowRegistration.countDown();
+            registration.get(5, TimeUnit.SECONDS);
+            recovery.get(5, TimeUnit.SECONDS);
+            assertThat(slowRepository.findByUserIdAndConnection(userId, connection)).containsSame(emitter);
+            verify(recoveryService).recover(userId, connection, emitter, lastEventId);
+        } finally {
+            allowRegistration.countDown();
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
+    @Test
+    @DisplayName("조정기 상태가 이미 없어도 저장소에 남은 일치하는 연결의 정리를 위임한다.")
+    void cleanupWithoutStateStillDelegatesRepositoryCleanup(){
+        repository.save(userId, connection, emitter);
+        coordinator.cleanupConnection(userId, connection);
+        verify(connectionCloser).cleanUp(userId, connection);
+        verifyNoInteractions(recoveryService, retryTaskScheduler);
+    }
+
     private SseHistoryPosition createHistoryPosition(String position) {
         return new SseHistoryPosition(position);
     }
@@ -1437,10 +1623,11 @@ class SseDeliveryCoordinatorTest {
         return createHistoryPosition("1000-0");
     }
 
-    private static Stream<RuntimeException> eventSendFailures() {
+    private static Stream<RuntimeException> nonRetryableFailures() {
         return Stream.of(
                 new UncheckedIOException("테스트용 SSE 이벤트 전송 실패", new IOException("테스트용 연결 오류")),
-                new IllegalStateException("테스트용 SSE 연결 상태 오류")
+                new IllegalStateException("테스트용 SSE 연결 상태 오류"),
+                new IllegalArgumentException("테스트용 SSE 이벤트 데이터 오류")
         );
     }
 

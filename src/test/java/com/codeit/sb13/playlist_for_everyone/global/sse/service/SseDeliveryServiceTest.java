@@ -123,13 +123,13 @@ class SseDeliveryServiceTest {
                 .doesNotThrowAnyException();
 
         verify(repository).findAllByUserId(receiverId);
-        verify(repository, never()).delete(any(),any());
+        verify(repository, never()).delete(any(), any());
         verifyNoInteractions(deliveryCoordinator);
     }
 
     @Test
-    @DisplayName("조정기 요청 중 I/O 오류가 발생하면 실패한 연결만 정리하고 다음 연결을 처리한다.")
-    void ioFailureDeletesOnlyFailedConnectionAndContinuesSending() throws IOException {
+    @DisplayName("조정기 요청 중 I/O 오류가 발생하면 실패한 연결의 종료를 위임하고 다음 연결을 처리한다.")
+    void ioFailureClosesOnlyFailedConnectionAndContinuesSending() throws IOException {
 
         UUID receiverId = UUID.randomUUID();
 
@@ -161,18 +161,15 @@ class SseDeliveryServiceTest {
                 .doesNotThrowAnyException();
 
         verify(deliveryCoordinator).requestDelivery(receiverId, failedConnection);
-        verify(deliveryCoordinator).remove(receiverId, failedConnection);
-        verify(deliveryCoordinator, times(1)).remove(any(), any());
-        verify(repository).delete(receiverId, failedConnection);
-        verify(repository, times(1)).delete(any(), any());
-
+        verify(deliveryCoordinator).closeConnection(receiverId, failedConnection);
         verify(deliveryCoordinator).requestDelivery(receiverId, healthyConnection);
-        verify(deliveryCoordinator, times(2)).requestDelivery(any(), any());
+        verifyNoMoreInteractions(deliveryCoordinator);
+        verify(repository, never()).delete(any(), any());
     }
 
     @Test
-    @DisplayName("조정기 요청 중 상태 예외가 발생하면 실패한 연결만 정리하고 다음 연결을 처리한다.")
-    void illegalStateFailureDeletesOnlyFailedConnectionAndContinuesSending() throws IOException {
+    @DisplayName("조정기 요청 중 상태 예외가 발생하면 실패한 연결의 종료를 위임하고 다음 연결을 처리한다.")
+    void illegalStateFailureClosesOnlyFailedConnectionAndContinuesSending() throws IOException {
         Connection failedConnection = Connection.create();
         Connection healthyConnection = Connection.create();
 
@@ -200,13 +197,10 @@ class SseDeliveryServiceTest {
                 .doesNotThrowAnyException();
 
         verify(deliveryCoordinator).requestDelivery(receiverId, failedConnection);
-        verify(deliveryCoordinator).remove(receiverId, failedConnection);
-        verify(deliveryCoordinator, times(1)).remove(any(), any());
-        verify(repository).delete(receiverId, failedConnection);
-        verify(repository, times(1)).delete(any(), any());
-
+        verify(deliveryCoordinator).closeConnection(receiverId, failedConnection);
         verify(deliveryCoordinator).requestDelivery(receiverId, healthyConnection);
-        verify(deliveryCoordinator, times(2)).requestDelivery(any(), any());
+        verifyNoMoreInteractions(deliveryCoordinator);
+        verify(repository, never()).delete(any(), any());
     }
 
     @Test
@@ -268,12 +262,12 @@ class SseDeliveryServiceTest {
                 .doesNotThrowAnyException();
 
         verify(repository).findAll();
-        verify(repository, never()).delete(any(),any());
+        verify(repository, never()).delete(any(), any());
     }
 
     @Test
-    @DisplayName("하트비트 I/O 실패 시 실패한 연결만 저장소와 조정기에서 정리하고 나머지 전송을 계속한다.")
-    void heartbeatIoFailureDeletesOnlyFailedConnectionAndContinuesSending() throws IOException {
+    @DisplayName("하트비트 I/O 실패 시 실패한 연결만 정리를 위임하고 나머지 전송을 계속한다.")
+    void heartbeatIoFailureDelegatesCleanupOnlyForFailedConnectionAndContinuesSending() throws IOException {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
 
@@ -304,10 +298,9 @@ class SseDeliveryServiceTest {
                 .doesNotThrowAnyException();
 
         verify(failedEmitter).send(any(SseEmitter.SseEventBuilder.class));
-        verify(deliveryCoordinator).remove(firstUserId, failedConnection);
-        verify(deliveryCoordinator, times(1)).remove(any(), any());
-        verify(repository).delete(firstUserId, failedConnection);
-        verify(repository, times(1)).delete(any(), any());
+        verify(deliveryCoordinator).cleanupConnection(eq(firstUserId), eq(failedConnection));
+        verify(deliveryCoordinator, times(1)).cleanupConnection(any(), any());
+        verify(repository, never()).delete(any(), any());
 
         verify(healthyEmitter).send(any(SseEmitter.SseEventBuilder.class));
         verify(otherUserEmitter).send(any(SseEmitter.SseEventBuilder.class));
@@ -315,8 +308,8 @@ class SseDeliveryServiceTest {
     }
 
     @Test
-    @DisplayName("하트비트 상태 예외 발생 시 실패한 연결만 저장소와 조정기에서 정리하고 나머지 전송을 계속한다.")
-    void heartbeatIllegalStateFailureDeletesOnlyFailedConnectionAndContinuesSending() throws IOException {
+    @DisplayName("하트비트 상태 예외 발생 시 실패한 연결만 정리를 위임하고 나머지 전송을 계속한다.")
+    void heartbeatIllegalStateFailureDelegatesCleanupOnlyForFailedConnectionAndContinuesSending() throws IOException {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
 
@@ -347,10 +340,9 @@ class SseDeliveryServiceTest {
                 .doesNotThrowAnyException();
 
         verify(failedEmitter).send(any(SseEmitter.SseEventBuilder.class));
-        verify(deliveryCoordinator).remove(firstUserId, failedConnection);
-        verify(deliveryCoordinator, times(1)).remove(any(), any());
-        verify(repository).delete(firstUserId, failedConnection);
-        verify(repository, times(1)).delete(any(), any());
+        verify(deliveryCoordinator).cleanupConnection(eq(firstUserId), eq(failedConnection));
+        verify(deliveryCoordinator, times(1)).cleanupConnection(any(), any());
+        verify(repository, never()).delete(any(), any());
 
         verify(healthyEmitter).send(any(SseEmitter.SseEventBuilder.class));
         verify(otherUserEmitter).send(any(SseEmitter.SseEventBuilder.class));

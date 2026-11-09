@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.global.sse.service;
 import com.codeit.sb13.playlist_for_everyone.global.sse.config.SseRetryProperties;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
 import com.codeit.sb13.playlist_for_everyone.global.sse.history.SseHistoryPosition;
+import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.dao.DataAccessResourceFailureException;
@@ -41,16 +42,19 @@ public class SseDeliveryCoordinator {
     private final TaskScheduler retryTaskScheduler;
     private final SseRetryProperties retryProperties;
     private final SseConnectionCloser connectionCloser;
+    private final SseEmitterRepository emitterRepository;
 
     public SseDeliveryCoordinator(
             SseRecoveryService recoveryService,
             @Qualifier("sseRetryTaskScheduler")
             TaskScheduler retryTaskScheduler,
-            SseRetryProperties retryProperties, SseConnectionCloser connectionCloser) {
+            SseRetryProperties retryProperties, SseConnectionCloser connectionCloser,
+            SseEmitterRepository emitterRepository) {
         this.recoveryService = recoveryService;
         this.retryTaskScheduler = retryTaskScheduler;
         this.retryProperties = retryProperties;
         this.connectionCloser = connectionCloser;
+        this.emitterRepository = emitterRepository;
     }
 
     /** emitter 저장 전에 호출하여, 초기 복구 전 들어오는 신호도 보류할 수 있게 한다. */
@@ -307,5 +311,11 @@ public class SseDeliveryCoordinator {
         );
     }
 
+
+    public void closeConnection(UUID userId, Connection connection) {
+    }
+
+    public void cleanupConnection(UUID userId, Connection connection) {
+    }
 
 }

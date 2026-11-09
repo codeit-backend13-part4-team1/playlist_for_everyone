@@ -56,7 +56,7 @@ class SseRetryExhaustionTest {
         SseProperties properties = new SseProperties(Duration.ofSeconds(15), Duration.ofMinutes(30));
         SseEmitterRepository repository = new InMemorySseEmitterRepository();
         SseDeliveryCoordinator coordinator = new SseDeliveryCoordinator(
-                recoveryService, retryTaskScheduler, retryProperties , new SseConnectionCloser(repository)
+                recoveryService, retryTaskScheduler, retryProperties , new SseConnectionCloser(repository), repository
         );
         SseConnectionService service = new SseConnectionService(repository, properties, coordinator);
         DataAccessResourceFailureException failure =
@@ -67,9 +67,7 @@ class SseRetryExhaustionTest {
         ));
         doReturn(retryFuture)
                 .when(retryTaskScheduler).schedule(any(Runnable.class), any(Instant.class));
-        when(recoveryService.recover(
-                eq(userId), any(Connection.class), any(SseEmitter.class), eq(lastEventId)
-        )).thenReturn(upperBound);
+        when(recoveryService.recover(eq(userId), any(Connection.class), any(SseEmitter.class), eq(lastEventId))).thenReturn(upperBound);
 
         try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
             SseEmitter emitter = service.connect(userId, lastEventId);

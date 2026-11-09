@@ -68,7 +68,7 @@ public class SseRetryLifecycleTest {
                 recoveryService,
                 retryTaskScheduler,
                 retryProperties,
-                new SseConnectionCloser(repository));
+                new SseConnectionCloser(repository), repository);
 
         SseProperties properties = new SseProperties(
                 Duration.ofSeconds(15),

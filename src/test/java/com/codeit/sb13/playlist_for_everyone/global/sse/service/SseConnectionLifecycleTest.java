@@ -20,9 +20,9 @@ import java.util.UUID;
 import static org.mockito.Mockito.*;
 
 /**
- * 실제 Spring 컨텍스트를 닫아 ContextClosedEvent와 연결 정리 메서드의 연결을 확인한다.
+ * 실제 Spring 컨텍스트를 닫아 ContextClosedEvent와 조정기의 연결 정리 위임을 확인한다.
  * 서비스 메서드를 직접 호출하는 단위 테스트와 달리 EventListener 등록까지 검증한다.
- * emitter와 저장소는 Mock이므로 실제 HTTP 응답 종료까지 완료됐다는 뜻은 아니다.
+ * emitter·저장소·조정기는 Mock이므로 실제 HTTP 응답 종료나 저장소 삭제 완료를 검증하지는 않는다.
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("SSE 연결 종료 생명주기")
@@ -35,8 +35,8 @@ public class SseConnectionLifecycleTest {
     private SseDeliveryCoordinator deliveryCoordinator;
 
     @Test
-    @DisplayName("컨텍스트가 종료되면 등록된 에미터의 종료와 연결 삭제를 요청한다.")
-    void contextCloseRequestsConnectionCleanup(){
+    @DisplayName("컨텍스트가 종료되면 에미터 종료를 요청하고 연결 정리를 조정기에 위임한다.")
+    void contextCloseRequestsCompletionAndDelegatesCleanup(){
         UUID userId = UUID.randomUUID();
         Connection connection = Connection.create();
         SseEmitter emitter = mock(SseEmitter.class);
@@ -56,17 +56,20 @@ public class SseConnectionLifecycleTest {
 
             context.refresh();
             verify(emitter, never()).complete();
+            verify(deliveryCoordinator, never()).cleanupConnection(any(), any());
             verify(repository, never()).delete(any(), any());
         }
 
         verify(emitter).complete();
-        verify(repository).delete(userId, connection);
+        verify(deliveryCoordinator).cleanupConnection(eq(userId), eq(connection));
+        verify(deliveryCoordinator, times(1)).cleanupConnection(any(), any());
+        verify(repository, never()).delete(any(), any());
 
     }
 
     @Test
-    @DisplayName("Lifecycle 빈이 종료되기 전에 SSE 에미터 종료와 연결 삭제를 요청한다.")
-    void contextCloseCleansConnectionsBeforeLifecycleStop(){
+    @DisplayName("Lifecycle 빈이 종료되기 전에 SSE 에미터 종료를 요청하고 연결 정리를 위임한다.")
+    void contextCloseDelegatesCleanupBeforeLifecycleStop(){
         UUID userId = UUID.randomUUID();
         Connection connection = Connection.create();
 
@@ -97,8 +100,10 @@ public class SseConnectionLifecycleTest {
         completionOrder.verify(emitter).complete();
         completionOrder.verify(lifecycle).stop();
 
-        InOrder deletionOrder = inOrder(repository, lifecycle);
-        deletionOrder.verify(repository).delete(userId, connection);
-        deletionOrder.verify(lifecycle).stop();
+        InOrder cleanupOrder = inOrder(deliveryCoordinator, lifecycle);
+        cleanupOrder.verify(deliveryCoordinator).cleanupConnection(eq(userId), eq(connection));
+        cleanupOrder.verify(lifecycle).stop();
+        verify(deliveryCoordinator, times(1)).cleanupConnection(any(), any());
+        verify(repository, never()).delete(any(), any());
     }
 }
