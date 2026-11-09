@@ -3,7 +3,9 @@ package com.codeit.sb13.playlist_for_everyone.domain.auth.service;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.dto.TokenReissueResult;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtProperties;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.RefreshTokenClaims;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
@@ -38,6 +40,12 @@ class AuthServiceTest {
     private static final UUID USER_ID =
             UUID.fromString("11111111-1111-1111-1111-111111111111");
 
+    private static final UUID SESSION_ID =
+            UUID.fromString("33333333-3333-3333-3333-333333333333");
+
+    private static final RefreshTokenClaims CLAIMS =
+            new RefreshTokenClaims(USER_ID, SESSION_ID);
+
 
     // 실제 JWT가 아닌 서비스 테스트용 문자열이다.
     // JWT 자체의 검증은 JwtTokenProviderTest에서 한다.
@@ -52,6 +60,9 @@ class AuthServiceTest {
 
     @Mock
     private RefreshTokenRepository refreshTokenRepository;
+
+    @Mock
+    private UserSessionRepository userSessionRepository;
 
     @Mock
     private UserService userService;
@@ -71,7 +82,8 @@ class AuthServiceTest {
                 jwtTokenProvider,
                 refreshTokenRepository,
                 userService,
-                properties
+                properties,
+                userSessionRepository
         );
     }
 
@@ -108,24 +120,32 @@ class AuthServiceTest {
                 NEW_REFRESH_TOKEN,
                 REFRESH_VALIDITY
         );
+        // 교체 후 세션이 그대로면 유효기간을 연장한다.
+        given(userSessionRepository.extendIfCurrent(USER_ID, SESSION_ID, REFRESH_VALIDITY))
+                .willReturn(true);
 
         // 개별 저장·삭제로 원자적 교체를 우회하지 않는다.
         verify(refreshTokenRepository, never())
                 .save(any(), anyString(), any());
         verify(refreshTokenRepository, never()).delete(anyString());
+
+        // 같은 로그인 세션 ID로 새 토큰을 만들고, 세션 유효기간을 연장한다.
+        verify(jwtTokenProvider).createAccessToken(USER_ID, SESSION_ID);
+        verify(jwtTokenProvider).createRefreshToken(USER_ID, SESSION_ID);
+        verify(userSessionRepository).extendIfCurrent(USER_ID, SESSION_ID, REFRESH_VALIDITY);
     }
 
     @Test
     @DisplayName("JWT 검증에 실패하면 재발급을 거절한다")
     void 유효하지_않은_JWT를_거절한다() {
-        given(jwtTokenProvider.parseRefreshToken(OLD_REFRESH_TOKEN))
+        given(jwtTokenProvider.parseRefresh(OLD_REFRESH_TOKEN))
                 .willThrow(new JwtException("유효하지 않은 토큰"));
 
         assertThatThrownBy(()-> authService.reissue(OLD_REFRESH_TOKEN))
                 .isInstanceOf(BadCredentialsException.class);
 
         // JWT 검증에 실패한 요청은 저장소와 사용자 조회까지 진행하지 않는다.
-        verifyNoInteractions(refreshTokenRepository, userService);
+        verifyNoInteractions(userSessionRepository, refreshTokenRepository, userService);
         verify(jwtTokenProvider, never()).createAccessToken(any());
         verify(jwtTokenProvider, never()).createRefreshToken(any());
     }
@@ -133,8 +153,10 @@ class AuthServiceTest {
     @Test
     @DisplayName("Redis에 등록되지 않은 Refresh Token의 재발급을 거절한다")
     void 미등록_토큰을_거절한다() {
-        given(jwtTokenProvider.parseRefreshToken(OLD_REFRESH_TOKEN))
-                .willReturn(USER_ID);
+        given(jwtTokenProvider.parseRefresh(OLD_REFRESH_TOKEN))
+                .willReturn(CLAIMS);
+        given(userSessionRepository.isCurrent(USER_ID, SESSION_ID))
+                .willReturn(true);
         given(refreshTokenRepository.findUserId(OLD_REFRESH_TOKEN))
                 .willReturn(Optional.empty());
         assertThatThrownBy(()-> authService.reissue(OLD_REFRESH_TOKEN))
@@ -149,9 +171,10 @@ class AuthServiceTest {
     void 토큰_소유자가_다르면_거절한다() {
         UUID anotherUserId = UUID.fromString("22222222-2222-2222-2222-222222222222");
 
-        given(jwtTokenProvider.parseRefreshToken(OLD_REFRESH_TOKEN))
-                .willReturn(USER_ID);
-
+        given(jwtTokenProvider.parseRefresh(OLD_REFRESH_TOKEN))
+                .willReturn(CLAIMS);
+        given(userSessionRepository.isCurrent(USER_ID, SESSION_ID))
+                .willReturn(true);
         given(refreshTokenRepository.findUserId(OLD_REFRESH_TOKEN))
                 .willReturn(Optional.of(anotherUserId));
         assertThatThrownBy(() -> authService.reissue(OLD_REFRESH_TOKEN))
@@ -164,8 +187,10 @@ class AuthServiceTest {
     @Test
     @DisplayName("삭제된 사용자의 재발급을 거절한다")
     void 사용자가_없으면_거절한다() {
-        given(jwtTokenProvider.parseRefreshToken(OLD_REFRESH_TOKEN))
-                .willReturn(USER_ID);
+        given(jwtTokenProvider.parseRefresh(OLD_REFRESH_TOKEN))
+                .willReturn(CLAIMS);
+        given(userSessionRepository.isCurrent(USER_ID, SESSION_ID))
+                .willReturn(true);
         given(refreshTokenRepository.findUserId(OLD_REFRESH_TOKEN))
                 .willReturn(Optional.of(USER_ID));
         given(userService.getUserDtoById(USER_ID))
@@ -216,21 +241,29 @@ class AuthServiceTest {
                 REFRESH_VALIDITY
         );
 
-        // 교체 실패를 일반 저장으로 우회하면 안 된다.
-        verify(refreshTokenRepository, never())
-                .save(any(), anyString(), any());
+        // 교체에 실패했으면 세션 유효기간도 연장하지 않는다.
+        verify(userSessionRepository, never()).extendIfCurrent(any(), any(), any());
     }
 
     @Test
-    @DisplayName("로그아웃하면 전달받은 Refresh Token의 등록 정보를 삭제한다.")
+    @DisplayName("로그아웃하면 현재 로그인 세션을 종료하고 Refresh Token의 등록 정보를 삭제한다.")
     void 로그아웃하면_리프레시_토큰을_삭제한다() {
+        given(jwtTokenProvider.parseRefresh(OLD_REFRESH_TOKEN))
+                .willReturn(CLAIMS);
+
         authService.logout(OLD_REFRESH_TOKEN);
+
+        // 이 로그인의 Access Token도 바로 사용할 수 없도록 세션을 종료한다.
+        // 다른 곳에서 이미 다시 로그인했다면 그 세션은 유지된다.
+        verify(userSessionRepository).endIfCurrent(USER_ID, SESSION_ID);
 
         // 해당 토큰으로 더 이상 재발급하지 못하도록 등록 정보를 삭제한다.
         verify(refreshTokenRepository).delete(OLD_REFRESH_TOKEN);
 
         // 로그아웃에서는 새 토큰을 발급하거나 사용자 정보를 조회하지 않는다.
-        verifyNoInteractions(jwtTokenProvider, userService);
+        verifyNoInteractions(userService);
+        verify(jwtTokenProvider, never()).createAccessToken(any(), any());
+        verify(jwtTokenProvider, never()).createRefreshToken(any(), any());
     }
 
     @Test
@@ -238,6 +271,8 @@ class AuthServiceTest {
     void 토큰_삭제_실패를_호출자에게_전달한다() {
         var exception = new DataAccessResourceFailureException("Redis 연결 실패");
 
+        given(jwtTokenProvider.parseRefresh(OLD_REFRESH_TOKEN))
+                .willReturn(CLAIMS);
 
         doThrow(exception)
                 .when(refreshTokenRepository)
@@ -266,6 +301,10 @@ class AuthServiceTest {
                 REFRESH_VALIDITY
         )).willReturn(true);
 
+        // 교체 후 세션이 그대로면 유효기간을 연장한다.
+        given(userSessionRepository.extendIfCurrent(USER_ID, SESSION_ID, REFRESH_VALIDITY))
+                .willReturn(true);
+
         TokenReissueResult result = authService.reissue(OLD_REFRESH_TOKEN);
 
         // 조회한 DTO를 반환하면서 URL을 누락하거나 null로 덮어쓰면 안 된다.
@@ -285,8 +324,10 @@ class AuthServiceTest {
     @Test
     @DisplayName("사용자 DTO 조회에 실패하면 새 토큰 발급과 기존 토큰 교체를 수행하지 않는다")
     void 사용자_DTO_조회_실패시_기존_토큰을_교체하지_않는다() {
-        given(jwtTokenProvider.parseRefreshToken(OLD_REFRESH_TOKEN))
-                .willReturn(USER_ID);
+        given(jwtTokenProvider.parseRefresh(OLD_REFRESH_TOKEN))
+                .willReturn(CLAIMS);
+        given(userSessionRepository.isCurrent(USER_ID, SESSION_ID))
+                .willReturn(true);
         given(refreshTokenRepository.findUserId(OLD_REFRESH_TOKEN))
                 .willReturn(Optional.of(USER_ID));
 
@@ -307,6 +348,56 @@ class AuthServiceTest {
         verify(refreshTokenRepository, never()).delete(anyString());
     }
 
+    @Test
+    @DisplayName("다른 곳에서 다시 로그인했거나 강제 로그아웃된 세션의 Refresh Token은 재발급하지 않는다")
+    void 무효화된_세션이면_재발급을_거절한다() {
+        given(jwtTokenProvider.parseRefresh(OLD_REFRESH_TOKEN))
+                .willReturn(CLAIMS);
+        // Redis에 Refresh Token이 남아 있어도 세션이 교체되었으면 사용할 수 없다.
+        given(userSessionRepository.isCurrent(USER_ID, SESSION_ID))
+                .willReturn(false);
+
+        assertThatThrownBy(() -> authService.reissue(OLD_REFRESH_TOKEN))
+                .isInstanceOf(BadCredentialsException.class);
+
+        verifyNoInteractions(refreshTokenRepository, userService);
+        verifyNoTokenIssueOrRotation();
+    }
+
+    @Test
+    @DisplayName("토큰 교체 중 세션이 종료되었으면 새 토큰을 반환하지 않는다")
+    void 교체_중_세션이_종료되면_재발급을_거절한다() {
+        givenRegisteredToken();
+        givenNewTokens();
+        given(refreshTokenRepository.rotate(
+                USER_ID,
+                OLD_REFRESH_TOKEN,
+                NEW_REFRESH_TOKEN,
+                REFRESH_VALIDITY
+        )).willReturn(true);
+
+        // 사전 확인 이후 다른 곳에서 로그인했거나 관리자가 계정을 잠근 상황이다.
+        given(userSessionRepository.extendIfCurrent(USER_ID, SESSION_ID, REFRESH_VALIDITY))
+                .willReturn(false);
+
+        // 이미 종료된 세션의 토큰을 응답하지 않는다.
+        assertThatThrownBy(() -> authService.reissue(OLD_REFRESH_TOKEN))
+                .isInstanceOf(BadCredentialsException.class);
+    }
+
+    @Test
+    @DisplayName("세션 정보를 읽을 수 없는 Refresh Token으로 로그아웃해도 등록 정보는 삭제한다")
+    void 읽을_수_없는_토큰으로_로그아웃해도_등록_정보는_삭제한다() {
+        given(jwtTokenProvider.parseRefresh(OLD_REFRESH_TOKEN))
+                .willThrow(new JwtException("만료된 토큰"));
+
+        authService.logout(OLD_REFRESH_TOKEN);
+
+        // 세션을 알 수 없으므로 종료하지 않고, 로그아웃 자체는 실패시키지 않는다.
+        verifyNoInteractions(userSessionRepository);
+        verify(refreshTokenRepository).delete(OLD_REFRESH_TOKEN);
+    }
+
 
     /**
      * 이미지가 없고 잠기지 않은 사용자의 재발급 상황을 준비한다.
@@ -319,8 +410,10 @@ class AuthServiceTest {
      * JWT와 Redis의 사용자 ID가 일치하고, 응답용 DTO를 조회한 상황을 준비한다.
      */
     private void givenRegisteredToken(UserDto userDto) {
-        given(jwtTokenProvider.parseRefreshToken(OLD_REFRESH_TOKEN))
-                .willReturn(USER_ID);
+        given(jwtTokenProvider.parseRefresh(OLD_REFRESH_TOKEN))
+                .willReturn(CLAIMS);
+        given(userSessionRepository.isCurrent(USER_ID, SESSION_ID))
+                .willReturn(true);
         given(refreshTokenRepository.findUserId(OLD_REFRESH_TOKEN))
                 .willReturn(Optional.of(USER_ID));
         given(userService.getUserDtoById(USER_ID))
@@ -343,9 +436,9 @@ class AuthServiceTest {
     }
 
     private void givenNewTokens() {
-        given(jwtTokenProvider.createAccessToken(USER_ID))
+        given(jwtTokenProvider.createAccessToken(USER_ID, SESSION_ID))
                 .willReturn(NEW_ACCESS_TOKEN);
-        given(jwtTokenProvider.createRefreshToken(USER_ID))
+        given(jwtTokenProvider.createRefreshToken(USER_ID, SESSION_ID))
                 .willReturn(NEW_REFRESH_TOKEN);
     }
 
@@ -353,9 +446,10 @@ class AuthServiceTest {
      *  검증 실패 시 새 토큰 발급이나 Redis 교체가 실행되지 않았는지 확인한다.
      */
     private void verifyNoTokenIssueOrRotation() {
-        verify(jwtTokenProvider, never()).createAccessToken(any());
-        verify(jwtTokenProvider, never()).createRefreshToken(any());
+        verify(jwtTokenProvider, never()).createAccessToken(any(), any());
+        verify(jwtTokenProvider, never()).createRefreshToken(any(), any());
         verify(refreshTokenRepository, never())
                 .rotate(any(), anyString(), anyString(), any());
+        verify(userSessionRepository, never()).extendIfCurrent(any(), any(), any());
     }
 }

@@ -5,6 +5,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.dto.response.JwtDto;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtProperties;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
@@ -26,6 +27,7 @@ public class AuthService {
     private final RefreshTokenRepository  refreshTokenRepository;
     private final UserService userService;
     private final JwtProperties jwtProperties;
+    private final UserSessionRepository  userSessionRepository;
 
 
     /**
