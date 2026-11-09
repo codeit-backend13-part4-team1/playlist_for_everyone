@@ -225,4 +225,81 @@ class TmdbMovieReaderTest {
 
         restartedReader.close();
     }
+
+    @Test
+    void 두_번째_페이지에서도_기록한_위치부터_다시_읽는다() {
+        TmdbClient client = mock(TmdbClient.class);
+
+        var first = new TmdbMovieResponse(
+                1L, "첫 번째 영화", "설명", "/first.jpg", List.of(28)
+        );
+        var second = new TmdbMovieResponse(
+                2L, "두 번째 영화", "설명", "/second.jpg", List.of(18)
+        );
+        var third = new TmdbMovieResponse(
+                3L, "세 번째 영화", "설명", "/third.jpg", List.of(35)
+        );
+
+        when(client.getPopularMovies(1))
+                .thenReturn(new TmdbPageResponse<>(
+                        1, List.of(first), 2, 3
+                ));
+        when(client.getPopularMovies(2))
+                .thenReturn(new TmdbPageResponse<>(
+                        2, List.of(second, third), 2, 3
+                ));
+
+        var context = new ExecutionContext();
+        var reader = new TmdbMovieReader(client, 5);
+
+        reader.open(context);
+        assertThat(reader.read()).isEqualTo(first);
+        assertThat(reader.read()).isEqualTo(second);
+        reader.update(context);
+        reader.close();
+
+        var restartedReader = new TmdbMovieReader(client, 5);
+
+        restartedReader.open(context);
+        assertThat(restartedReader.read()).isEqualTo(third);
+        assertThat(restartedReader.read()).isNull();
+        restartedReader.close();
+
+        // 재시작할 때는 1페이지를 다시 조회하지 않는다.
+        verify(client, times(1)).getPopularMovies(1);
+        verify(client, times(2)).getPopularMovies(2);
+        verifyNoMoreInteractions(client);
+    }
+
+    @Test
+    void 읽기를_마친_위치에서_재시작하면_API를_다시_호출하지_않는다() {
+        TmdbClient client = mock(TmdbClient.class);
+
+        var movie = new TmdbMovieResponse(
+                1L, "영화", "설명", "/poster.jpg", List.of(28)
+        );
+
+        when(client.getPopularMovies(1))
+                .thenReturn(new TmdbPageResponse<>(
+                        1, List.of(movie), 1, 1
+                ));
+
+        var context = new ExecutionContext();
+        var reader = new TmdbMovieReader(client, 5);
+
+        reader.open(context);
+        assertThat(reader.read()).isEqualTo(movie);
+        assertThat(reader.read()).isNull();
+        reader.update(context);
+        reader.close();
+
+        var restartedReader = new TmdbMovieReader(client, 5);
+
+        restartedReader.open(context);
+        assertThat(restartedReader.read()).isNull();
+        restartedReader.close();
+
+        verify(client, times(1)).getPopularMovies(1);
+        verifyNoMoreInteractions(client);
+    }
 }
