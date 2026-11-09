@@ -132,6 +132,20 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
 
     }
 
+    /*
+     * 임시로 이 컨텐츠, 세션에 대한 리소스 등록 해제에 있어서 세션 - 구독 은 content 와 1 대 1 로 매칭된다고 가정한다.
+     * 프론트 데모 페이지에서 1:1 매칭으로 서비스를 구현 해 두었기에 일단 매칭하고,
+     * 단일 세션에 여러 구독을 붙이는 것은 추후 리팩토링을 통해 구현한다.
+     */
+    @Override
+    public List<String> disconnectWithContentDeleted(UUID contentId) {
+        // 시청에서 content 기반으로 구독 해지
+        watchingSessionRepository.deleteWithContentId(contentId);
+        // content 기반 메세지 구독 리스트
+        return topicRegistry.disconnectWithContentId(contentId);
+    }
+
+
     private void checkAuth(SessionInfo info){
         SecurityUser user = check(info.user());
 

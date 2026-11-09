@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.registry;
 
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionRegisterException;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionData;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -21,6 +22,7 @@ import java.util.stream.Stream;
 @RequiredArgsConstructor
 public class InMemoryConnectionRegistry implements ConnectionRegistry {
 
+    private final WebSocketRegistry socketRegistry;
     /*
      * 기본 세션 SocketConnection(sessionId,null) 을 키로 구독을 할 때마다 Set 에 엔티티 객체를 추가한다.
      */
@@ -148,6 +150,21 @@ public class InMemoryConnectionRegistry implements ConnectionRegistry {
                     e
             );
             throw new WebSocketSessionRegisterException(e);
+        }
+    }
+
+
+    @Override
+    public void close(String sessionId) {
+        try {
+            socketRegistry.close(sessionId);
+        } catch (Exception e) {
+            log.error("[{}] session : {} 세션 종료 에러",
+                    this.getClass().getSimpleName(),
+                    sessionId,
+                    e
+            );
+            throw new RuntimeException(e);
         }
     }
 
