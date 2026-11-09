@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.global.config;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AuthService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.controller.UserController;
@@ -86,6 +87,10 @@ class SecurityConfigTest {
     // 이 테스트에서는 로그아웃 동작을 검증하지 않으므로 Mock으로 등록한다.
     @MockitoBean
     private AuthService authService;
+
+    // SecurityConfig가 로그인 세션 저장소를 주입받는다.
+    @MockitoBean
+    private UserSessionRepository userSessionRepository;
 
 
     @Test

@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.user.controller;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AuthService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.command.UserCreateCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
@@ -84,6 +85,10 @@ class UserControllerTest {
 
     @MockitoBean
     private UserService userService;
+
+    // SecurityConfig가 로그인 세션 저장소를 주입받는다.
+    @MockitoBean
+    private UserSessionRepository userSessionRepository;
 
     @Test
     @DisplayName("정상 요청이면 201과 사용자 정보를 반환한다")

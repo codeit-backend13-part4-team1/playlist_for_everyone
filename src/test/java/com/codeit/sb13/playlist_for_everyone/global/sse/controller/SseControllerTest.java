@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.global.sse.controller;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AuthService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
@@ -73,6 +74,10 @@ class SseControllerTest {
     // SecurityConfig가 로그아웃 핸들러를 생성할 때 필요한 의존성이다.
     @MockitoBean
     private AuthService authService;
+
+    // SecurityConfig가 로그인 세션 저장소를 주입받는다.
+    @MockitoBean
+    private UserSessionRepository userSessionRepository;
 
     @Test
     @DisplayName("인증된 사용자가 최초 연결을 요청하면 캐시가 금지된 SEE 스트림을 반환한다.")

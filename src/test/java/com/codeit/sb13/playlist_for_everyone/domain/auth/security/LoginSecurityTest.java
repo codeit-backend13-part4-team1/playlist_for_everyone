@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.auth.security;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.controller.AuthController;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AuthService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.controller.UserController;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
@@ -111,6 +112,10 @@ class LoginSecurityTest {
     // SecurityConfig에서 로그아웃 핸들러를 생성할 때 필요한 의존성이다.
     @MockitoBean
     private AuthService authService;
+
+    // SecurityConfig가 로그인 세션 저장소를 주입받는다.
+    @MockitoBean
+    private UserSessionRepository userSessionRepository;
 
     @Test
     @DisplayName("올바른 이메일과 비밀번호로 로그인하면 토큰과 사용자 정보를 반환한다")
