@@ -2,6 +2,7 @@
 
 [#51](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/51)은 **저장이 커밋된 알림을 수신자에게 실시간으로 전달**하는 연결 작업입니다.
 알림 생성 요청부터 읽고, 트랜잭션 경계와 실패 처리를 확인하면 코드를 따라가기 쉽습니다.
+팔로우 업무 이벤트에서 시작하는 흐름과 생산 코드 예시는 [업무 이벤트 연동](07-domain-event-integration.md)에서 설명합니다.
 연결부터 전달까지는 [SSE 전체 흐름](../sse/00-overall-flow.md), 이력과 복구 정책은 [공유 이력 계약](../sse/09-shared-history.md)을 참고합니다.
 
 ## 역할부터 구분하기
@@ -9,7 +10,7 @@
 | 역할 | 코드 | 맡은 일 |
 | --- | --- | --- |
 | 생성 요청 | `NotificationCreateRequestedEvent` | 수신자·제목·내용·수준으로 알림 저장을 요청 |
-| 업무 커밋 후 처리 | `NotificationEventListener` | 요청을 command로 변환하고 저장 서비스 호출 |
+| 공통 요청 수신 | `NotificationEventListener` | 트랜잭션 안의 요청은 커밋 후, 밖의 요청은 즉시 받아 command로 변환하고 저장 서비스 호출 |
 | 독립 저장 | `NotificationService.save` | 새 트랜잭션에서 수신자를 조회·연결하고 알림 저장·생성 이벤트 발행 |
 | 사용자 조회 | `NotificationUserReader` | `UserService.getById`에 조회를 위임하고 User 반환 |
 | 저장 결과 전달 | `NotificationCreatedEvent` | 별도 이벤트 ID와 저장된 알림의 DTO 스냅샷 보관 |
@@ -36,19 +37,24 @@ null·공백 제목은 검증 오류를 낼 수 있도록 원래 값으로 두�
 서비스는 수신자 UUID로 사용자를 조회한 뒤 엔티티의 `User` 연관관계에 연결합니다.
 DB의 `receiver_id` 외래 키와 요청·응답의 UUID 형식은 유지합니다. 매핑과 조회 컴포넌트는 [수신자 연관관계 문서](06-receiver-association.md)에서 설명합니다.
 
-## 커밋은 두 번 구분한다
+## 요청 수신 조건과 알림 커밋
+
+아래는 요청을 등록한 트랜잭션이 커밋되거나, 트랜잭션 밖에서 요청을 발행한 경우의 정상 처리 흐름입니다.
 
 ```mermaid
 sequenceDiagram
-    participant B as 업무 처리
+    participant B as 공통 요청 발행자
     participant R as 생성 요청 리스너
     participant N as 알림 저장 서비스
     participant S as SSE 전송 리스너
     participant Redis as Redis
     participant C as 수신자 연결 서버
-    B->>B: 업무 트랜잭션 안에서 생성 요청 발행
-    B->>B: 업무 트랜잭션 커밋
-    B->>R: AFTER_COMMIT 실행
+    B->>R: NotificationCreateRequestedEvent 발행
+    alt 트랜잭션 안에서 발행
+        Note over B,R: 요청을 등록한 트랜잭션의 커밋 후 처리
+    else 트랜잭션 밖에서 발행
+        Note over B,R: fallbackExecution=true로 즉시 처리
+    end
     R->>N: save 호출 / REQUIRES_NEW 시작
     N->>N: 사용자 조회·연결 / 저장 / DTO 복사 / 생성 이벤트 발행
     N->>N: 알림 트랜잭션 커밋
@@ -59,17 +65,24 @@ sequenceDiagram
     C->>C: DB에 남은 본인 알림 필터 후 SSE 전송
 ```
 
-두 리스너의 `@TransactionalEventListener`는 기본값인 `AFTER_COMMIT`, `fallbackExecution=false`를 사용합니다.
-업무가 롤백되면 첫 리스너가, 알림 저장이 롤백되면 두 번째 리스너가 실행되지 않습니다.
-각 이벤트를 트랜잭션 밖에서 발행해도 해당 리스너는 처리하지 않습니다.
+세 이벤트는 역할과 트랜잭션 밖 발행 시 동작이 다릅니다. 모두 `AFTER_COMMIT`을 사용합니다.
+
+| 수신 이벤트 | 리스너 | `fallbackExecution` | 트랜잭션 밖 발행 |
+| --- | --- | --- | --- |
+| `UserFollowedEvent` | `NotificationDomainEventListener` | `false` | 무시 |
+| `NotificationCreateRequestedEvent` | `NotificationEventListener` | `true` | 즉시 처리 |
+| `NotificationCreatedEvent` | `NotificationSseEventListener` | `false` | 무시 |
+
+트랜잭션에 등록된 이벤트는 커밋 후 처리하고, 롤백되면 처리하지 않습니다.
+팔로우 경로는 업무 커밋 후 공통 요청을 재발행하므로 별도 변환 트랜잭션 없이 위 즉시 처리 경로로 연결됩니다.
 
 `NotificationCreatedEvent`는 **저장 트랜잭션 안에서** 발행됩니다. 이름만 보고 커밋까지 완료된 것으로 해석하지 않습니다.
 현재 UUID 생성 전략과 JPA Auditing은 신규 엔티티를 저장할 때 ID·생성시각을 채워 주므로 DTO를 즉시 구성합니다.
 `save` 반환이나 SQL을 실행하는 `flush` 자체는 커밋 완료를 뜻하지 않으며, 이 경로는 명시적 `flush`를 강제하지 않습니다.
 
 저장은 별도 Spring 빈을 통해 호출하여 `REQUIRES_NEW`를 적용합니다.
-업무 커밋 전에 저장 서비스를 직접 호출하면 알림만 먼저 커밋될 수 있으므로, 공통 생성 흐름은 업무 트랜잭션 안에서 생성 요청 이벤트를 발행합니다.
-두 리스너에 `@Async`는 없습니다. 커밋 처리 스레드에서 공유 이력 저장·Redis 발행 요청까지 진행하며, 브라우저 수신 완료를 기다리지는 않습니다.
+업무 커밋 전에 저장 서비스를 직접 호출하면 알림만 먼저 커밋될 수 있습니다. 업무 이벤트는 저장 트랜잭션 안에서 발행하고 커밋 후 변환합니다.
+세 리스너에 `@Async`는 없습니다. 트랜잭션에 등록된 요청은 커밋 처리 스레드에서, 밖의 요청은 발행 스레드에서 실행하며 브라우저 수신 완료를 기다리지는 않습니다.
 
 ## 이벤트 ID와 클라이언트 데이터
 
@@ -96,7 +109,7 @@ DTO의 DB 알림 ID를 수신자 조건으로 일괄 조회하여 현재 남아 
 
 | 상황 | 알림 저장·전송 결과 |
 | --- | --- |
-| 업무 트랜잭션 롤백 | 알림 생성 요청 리스너 미실행, 알림·SSE 발행 없음 |
+| 업무 이벤트나 공통 요청을 등록한 트랜잭션의 롤백 | 해당 AFTER_COMMIT 소비 미실행, 알림·SSE 발행 없음 |
 | 알림 입력 검증 실패 | 원래 업무 커밋 유지, 검증 실패 기록, 알림 저장·SSE 발행 없음 |
 | 수신자 미존재 | 사용자 조회에서 UserNotFoundException 발생, 알림 저장·생성 이벤트 발행 전 종료 |
 | 실제 DB 저장 실패 | 알림 트랜잭션 롤백, 원래 업무 커밋 유지, 실패 기록, SSE 발행 없음 |
@@ -122,7 +135,8 @@ DB 알림은 조회할 수 있습니다. 공유 이력 저장에 성공한 항�
 연결 이후의 일시적 조회 실패는 제한된 재시도를 수행합니다. 이것은 브로커 자동 재발행이나 Outbox가 아닙니다.
 발행 실패 후 보관된 이력이 즉시 전송된다고 보장하지 않으며, 이후 조회 신호나 유효한 커서를 가진 재연결이 필요합니다.
 
-업무별 이벤트를 공통 생성 요청으로 바꾸는 [#45](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/45), DM 본문의 `direct-messages` 연동, Kafka 구현체는 별도 범위입니다.
+팔로우 이벤트의 공통 생성 요청 변환은 [#155 연동 가이드](07-domain-event-integration.md)에 구현과 검증 범위를 정리했습니다.
+나머지 업무 이벤트는 [#45](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/45)의 후속 연동이며, DM 본문의 `direct-messages` 연동과 Kafka 구현체도 별도 범위입니다.
 공유 이력과 재연결 복구의 현재 동작은 [SSE 복구 문서](../sse/10-recovery-and-retry.md)에 정리했습니다.
 이번 기능을 위한 외부 알림 생성 API는 추가하지 않았으며, 실제 저장부터 수신까지의 확인 방법은 다음 문서에 정리합니다.
 
