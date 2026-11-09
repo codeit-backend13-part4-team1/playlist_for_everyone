@@ -4,8 +4,7 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.DestinationMatcher;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.SessionMatcher;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.ConnectionRegistry;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.role.WatchingSessionJoinRule;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.role.WatchingSessionLeaveRule;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.role.*;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -34,7 +33,10 @@ public class WebSocketEventListener {
     public void init(){
         // watchingSession 경로 이벤트 등록.
         subscribe.add(new WatchingSessionJoinRule(watchingSessionUrlPattern()));
+        subscribe.add(new ChattingSessionJoinRule(watchingChatUrlPattern()));
         unsubscribe.add(new WatchingSessionLeaveRule(watchingSessionUrlPattern()));
+        unsubscribe.add(new ChattingSessionLeaveRule(watchingChatUrlPattern()));
+        disconnect.add(new WatchingServiceDisconnectRule());
     }
 
     /**
