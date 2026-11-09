@@ -7,8 +7,9 @@ HTTP 응답을 가진 emitter는 각 서버 메모리에 남습니다.
 
 ```mermaid
 flowchart TD
-    P["공통 발행기"] --> H["Redis 공유 이력 저장"]
-    H --> T["RedisSseEventPublisher"]
+    P["이력 저장 발행기"] -->|저장 요청| H["Redis 공유 이력"]
+    H -->|저장 결과 반환| P
+    P -->|저장 성공 후 위임| T["RedisSseEventPublisher"]
     T --> R["Redis Pub/Sub"]
     R --> A["서버 A 수신자"]
     R --> B["서버 B 수신자"]
@@ -32,7 +33,7 @@ flowchart TD
 | 공용 컨테이너 등록 창구 | [RedisBrokerRegister](../../src/main/java/com/codeit/sb13/playlist_for_everyone/global/service/redis/RedisBrokerRegister.java) |
 | 연결별 상태·순서·재시도 | SseDeliveryCoordinator |
 
-[저장 계약](09-shared-history.md)과 [복구 흐름](10-recovery-and-retry.md)은 별도 페이지에서 설명합니다.
+[전체 흐름](00-overall-flow.md)에서 연결까지 함께 살펴보고, [저장 계약](09-shared-history.md)과 [복구 흐름](10-recovery-and-retry.md)으로 이어갑니다.
 
 ## Redis 이벤트와 클라이언트 응답
 

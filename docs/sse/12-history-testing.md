@@ -16,11 +16,11 @@
 | `HistorySavingSseEventPublisherTest` | 저장 후 발행 순서, 실패 시 전송 차단과 예외 전달 |
 | `HistorySavingSseEventPublisherIntegrationTest` | 실제 Redis 이력 저장, 전송 실패 후 이력 보존 |
 | `SseRecoveryServiceTest` | 순서·내용·필터·처리 위치·gap 처리와 실패 전달 |
-| `SseDeliveryCoordinatorTest` | 연결별 상태, 동시 신호, 중복 합치기, 재시도 예산·간격 |
+| `SseDeliveryCoordinatorTest` | 등록 중복 거부·등록 중 조회 대기, emitter 부재 정리, 연결별 상태·신호 합치기·재시도·실패 종료 위임 |
 | `SseRetryExhaustionTest` | 실제 연결 정리 구성에서 재시도 소진과 complete 실패 |
 | `SseRetryLifecycleTest` | 실제 상태·저장소 정리, 콜백·서버 종료·늦은 예약 작업 |
 | `SseStreamingIntegrationTest` | 실제 HTTP 프레임, 초기 조회 실패의 503 JSON 응답 |
-| `NotificationReplayFilterTest` (domain.notification.sse) | 본인에게 남은 알림만 일괄 필터링 |
+| `NotificationReplayFilterTest` (domain.notification.sse) | 본인에게 남은 알림만 필터링, 잘못된 data.id 제외, 유효 ID가 없으면 DB 미호출 |
 | `NotificationRepositoryTest` (domain.notification.repository) | 실제 DB 수신자 조건과 알림 ID 조회 |
 | `NotificationSseIntegrationTest` (domain.notification) | 저장 커밋부터 Redis 이력·Pub/Sub·실제 HTTP 수신 |
 
@@ -43,6 +43,10 @@
 
 ## 검증 도구와 한계
 
+조정기 테스트는 실제 메모리 저장소를 쓰지만 closer는 Mock입니다. 정리 위임과 이후 전송 차단을 검증하며,
+`cleanUp` 호출로 실제 저장소까지 비워졌다고 해석하지 않습니다.
+저장소 삭제까지 이어지는 구성은 실제 closer를 연결한 `SseRetryLifecycleTest`와 `SseRetryExhaustionTest`에서 확인합니다.
+
 | 방식 | 읽을 때 주의할 점 |
 | --- | --- |
 | 예약 Runnable·콜백 직접 실행 | 정리 후 재조회 차단을 검증. 실제 시간 경과나 모든 스레드 순서를 재현하지 않음 |
@@ -51,7 +55,7 @@
 | 읽기 타임아웃 | 관찰한 구간에 추가 프레임이 없음을 확인. 영구적인 미전달 보장은 아님 |
 | 독립 Spring 컨텍스트 A·B | 서로 다른 빈·포트·연결 저장소. 같은 JVM이며 별도 OS 프로세스가 아님 |
 
-조회 목록을 coordinator가 저장하지 않는 구조와 실제 GC가 언제 메모리를 회수하는지는 구분합니다.
+조회 목록을 조정기가 저장하지 않는 구조와 실제 GC가 언제 메모리를 회수하는지는 구분합니다.
 취소된 예약을 수동 실행하는 검증도 이미 실행 중인 모든 I/O의 강제 중단을 보장하지 않습니다.
 
 ## 실행 방법
@@ -63,7 +67,7 @@ Docker를 실행한 상태에서 최근 연결·만료 회귀 검증을 함께 �
   --tests '*SseRetryLifecycleTest'
 ```
 
-이 두 클래스의 현재 검증은 각각 12건과 5건입니다. 전체 프로젝트 테스트 결과를 뜻하지 않습니다.
+위 명령은 알림 수신과 연결 정리의 검증이며, 전체 프로젝트 테스트를 대신하지 않습니다.
 
 이력 저장·보관기간만 확인할 때:
 

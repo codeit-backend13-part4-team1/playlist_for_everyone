@@ -9,14 +9,16 @@ HTTP 연결은 각 서버 메모리에, 이벤트 이력은 Redis에 둡니다.
 flowchart LR
     A["업무 호출부"] --> P["SseEventPublisher: 기본 주입"]
     P --> H["HistorySavingSseEventPublisher"]
-    H --> S["SseHistoryStore / Redis"]
-    S --> T["저장 성공 후 전송 구현체"]
+    H -->|저장 요청| S["SseHistoryStore / Redis"]
+    S -->|저장된 이벤트·위치 반환| H
+    H -->|저장 성공 후 위임| T["전송 구현체"]
     T --> R["Redis Pub/Sub"]
 ```
 
 일반 주입에는 `@Primary`인 이력 저장 발행기를 사용합니다.
 그 안의 `@Qualifier("sseTransportPublisher")`는 실제 브로커 전송 구현체를 선택합니다.
 호출부는 DTO 객체를 넘기고, 이력 저장 발행기가 JSON 트리로 변환합니다.
+저장소가 브로커를 호출하는 것은 아닙니다. 발행기가 저장 결과를 받은 뒤 전송을 위임합니다.
 
 | 값 | 역할 |
 | --- | --- |

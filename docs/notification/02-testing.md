@@ -11,7 +11,7 @@
 | `NotificationServiceTest` | 조회한 User 연결, 수신자 미존재 시 저장·발행 미호출, 저장 결과의 DTO·이벤트 구성 | 사용자 조회 컴포넌트·저장소·이벤트 발행자는 Mock. DB·Auditing·트랜잭션 실행 없음 |
 | `NotificationSseEventListenerTest` | ID·수신자·이벤트 이름·DTO 보존, 실패 처리·후속 발행·로그 | 발행자는 Mock, 리스너 직접 호출. AFTER_COMMIT 실행 시점 검증 없음 |
 | `NotificationIntegrationTest` | 실제 사용자 조회·PostgreSQL·Flyway, 커밋·롤백, 발행 요청과 실패 격리 | `SseEventPublisher`만 Mock으로 교체. Redis·HTTP 수신 검증 없음 |
-| `NotificationSseIntegrationTest` | 실제 JWT·DB·Redis·HTTP, 알림 프레임과 서버 간 전달 | 별도 OS 프로세스·로그인 API·누락 복구 검증 없음 |
+| `NotificationSseIntegrationTest` | 실제 JWT·DB·Redis·HTTP, 알림 프레임·서버 간 전달·보관 이력 복구 | 별도 OS 프로세스·로그인 API·부하 검증 없음 |
 
 테스트 코드는 [알림 테스트 패키지](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/notification)에 있습니다.
 각 클래스의 한글 `@DisplayName`으로 개별 시나리오를 확인할 수 있습니다.
@@ -61,7 +61,8 @@ DB에 사용자를 준비하고 실제 `JwtTokenProvider`로 토큰을 발급합
 
 #53에서는 삭제된 알림 제외, 삭제된 기준 알림의 커서 유지, 다른 서버 재연결, 복구 중 도착한 신호,
 중복·역순 신호, 연결별 커서, 한 연결 종료와 전체 이력 만료 후 새 알림 수신도 검증합니다.
-`NotificationReplayFilterTest`와 `NotificationRepositoryTest`는 본인에게 남은 DB 알림 ID 일괄 조회를 검증합니다.
+`NotificationReplayFilterTest`는 Mock 저장소로 본인 알림의 필터링, 잘못된 data.id 제외, 유효 ID가 없을 때 DB 미호출을 확인합니다.
+`NotificationRepositoryTest`는 실제 DB에서 수신자 조건을 포함한 알림 ID 일괄 조회를 검증합니다.
 시나리오별 책임과 최근 연결·만료 테스트의 해석은 [이력 테스트 가이드](../sse/12-history-testing.md)에 모았습니다.
 
 수신자 분리 사례는 두 사용자로 연결하고, 다른 사용자 연결에서 읽기 제한 시간 동안 데이터가 오지 않는지 확인합니다.

@@ -37,6 +37,7 @@ import static org.mockito.Mockito.*;
 
 /**
  * 실제 연결 서비스·coordinator·메모리 저장소에 조회 서비스와 예약 실행기 Mock을 연결한다.
+ * SseConnectionCloser도 실제 객체를 사용하므로 조정기의 정리 요청이 저장소 삭제로 이어지는지 확인한다.
  * 콜백과 예약 Runnable을 직접 실행하여 정리 이후 늦은 작업이 다시 조회하지 않는지 검증한다.
  * 마지막 테스트는 실제 emitter의 동일성과 타임아웃 설정을 확인하며, HTTP의 실제 만료 시각을 재지는 않는다.
  */
@@ -104,6 +105,7 @@ public class SseRetryLifecycleTest {
 
             verify(retryFuture).cancel(false);
             assertThat(repository.findAllByUserId(userId)).isEmpty();
+            // 취소된 작업이 이미 실행 큐에 있었던 상황을 재현한다. 상태가 제거됐으므로 다시 조회하지 않아야 한다.
             assertThatCode(retryTask::run)
                     .doesNotThrowAnyException();
             assertThatCode(() -> coordinator.requestDelivery(userId, connection))

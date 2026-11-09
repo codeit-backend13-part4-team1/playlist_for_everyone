@@ -2,6 +2,7 @@
 
 SSE는 하나의 HTTP 응답을 열어 두고 서버가 클라이언트에 이벤트를 보내는 방식입니다.
 이 가이드는 **연결 → 이력 저장·분산 전송 → 복구 → 종료**를 팀원이 따라 읽도록 구성했습니다.
+처음 읽는 팀원은 [전체 흐름](00-overall-flow.md)의 두 그림으로 역할과 순서를 먼저 확인합니다.
 
 기준 범위는 [#49 연결 관리](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/49),
 [#50 Redis 전송](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/50),
@@ -20,15 +21,7 @@ Java 17, Spring Boot 4.0.8, Spring MVC를 사용합니다.
 알림 DTO의 DB 알림 ID는 이벤트 UUID와 별개입니다.
 HTTP 응답을 가진 `SseEmitter`는 해당 서버 메모리에 남고, 이력은 Redis에 공유합니다.
 
-## 전체 흐름
-
-```text
-연결: JWT 인증 → 연결·상태 등록 → lastEventId 기준 초기 복구
-발행: SseEventPublisher → JSON 변환·공유 이력 저장 → Redis Pub/Sub
-수신: 각 서버 수신자 → 로컬 전송 서비스 → 연결별 후속 이력 조회 → 필터 → SSE 전송
-재시도: 일시적인 후속 조회 실패 → 제한된 지연 재시도 → 소진 시 해당 연결 종료
-정리: 완료·타임아웃·오류·서버 종료 → 연결·복구 상태·예약 정리
-```
+## 진입점 구분
 
 `SseEventPublisher`는 저장 후 서버 간 전송을 요청하는 진입점입니다.
 `SseDeliveryService` 직접 호출은 현재 서버의 연결에서 저장된 후속 이력을 읽게 하며,
@@ -41,6 +34,7 @@ MVC가 비동기 응답을 관리하고, 전송 시 같은 HTTP 응답에 데이
 
 | 문서 | 답을 얻을 질문 |
 | --- | --- |
+| [전체 흐름](00-overall-flow.md) | 연결·알림 발행·복구·종료가 어떻게 이어지나요? |
 | [1. 연결 생성과 종료](01-connection-lifecycle.md) | 여러 탭과 콜백은 어떻게 구분하나요? |
 | [2. 전송과 하트비트](02-delivery-heartbeat.md) | 클라이언트 프레임과 오류 처리는 어떻게 되나요? |
 | [3. 저장소와 동시성](03-repository-concurrency.md) | compute와 조회 사본은 왜 필요한가요? |
@@ -54,7 +48,7 @@ MVC가 비동기 응답을 관리하고, 전송 시 같은 HTTP 응답에 데이
 | [11. 운영 설정](11-history-operations.md) | 어떤 값을 조정하고 어떤 로그를 보나요? |
 | [12. 이력·복구 테스트](12-history-testing.md) | 만료·다중 연결·재시도는 무엇으로 검증하나요? |
 
-#53을 처음 읽는 팀원은 **9 → 10 → 11 → 12**를 먼저 읽고 기존 연결 설명을 참고해도 됩니다.
+**전체 흐름 → 9 → 10 → 11 → 12** 순서로 읽고 기존 연결 설명을 참고해도 됩니다.
 알림 생성의 트랜잭션 경계는 [알림 가이드](../notification/README.md)에 별도로 정리했습니다.
 
 ## 현재 제공하는 범위
@@ -68,4 +62,4 @@ MVC가 비동기 응답을 관리하고, 전송 시 같은 HTTP 응답에 데이
 
 ---
 
-[프로젝트 README](../../README.md) · [팀원 개발 가이드](../DEVELOPMENT.md) · [다음: 연결 생성과 종료 →](01-connection-lifecycle.md)
+[프로젝트 README](../../README.md) · [팀원 개발 가이드](../DEVELOPMENT.md) · [다음: 전체 흐름 →](00-overall-flow.md)

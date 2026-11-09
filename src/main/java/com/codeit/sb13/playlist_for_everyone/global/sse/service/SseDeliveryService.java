@@ -35,7 +35,8 @@ public class SseDeliveryService {
      * 연결이 없으면 정상 종료한다. 여기서 이력을 저장하거나 브로커에 재발행하지 않는다.
      *
      * <p>일시적 조회 실패의 예약 재시도는 coordinator가 처리한다. 그 밖에 전달된 RuntimeException은
-     * 해당 연결의 상태·저장소 참조를 정리하고 다음 연결로 진행한다. HTTP 종료 통지는 MVC와 콜백도 관여한다.
+     * 조정기에 해당 연결의 종료와 정리를 요청하고 다음 연결로 진행한다. 조회·필터 오류는 HTTP 단절을 뜻하지
+     * 않으므로 참조만 지워 전송 불가능한 응답이 계속 열린 채 남지 않도록 complete도 요청한다.
      *
      * @param sseEvent 수신자 식별과 실패 로그의 이벤트 ID 추적에 사용하는 전송 신호
      */
@@ -47,13 +48,14 @@ public class SseDeliveryService {
             return;
         }
 
-        // 조회한 Map은 전송 대상을 순회하기 위한 사본이다. 조회 후 종료된 emitter도 있을 수 있다.
+        // 사본에서는 연결 키만 순회한다. 실제 전송할 emitter는 조정기가 저장소에서 다시 조회한다.
+        // 사본 조회 후 연결이 사라질 수 있으며, 이 순회가 연결별 병렬 실행을 의미하지는 않는다.
         connections.keySet().forEach(connection -> {
             try {
                 // 각 연결은 자신의 위치부터 읽는다. 신호가 중복되거나 역순이어도 이력 순서가 기준이다.
                 deliveryCoordinator.requestDelivery(receiverId, connection);
             } catch (RuntimeException e) {
-                // 실패한 연결만 전송 대상에서 제외하고 다음 연결을 계속 처리한다.
+                // 조정기 상태·예약을 먼저 정리한 뒤 HTTP 종료와 저장소 삭제를 요청한다.
                 // 아직 열리지 않은 연결 요청의 실패를 호출자에게 전파하는 connect와 처리 목적이 다르다.
                 deliveryCoordinator.closeConnection(receiverId, connection);
                 logSseEventDeliveryIssue(sseEvent, connection, e);
@@ -80,6 +82,7 @@ public class SseDeliveryService {
             // 주석 프레임은 알림/DM 이벤트로 전달되지 않으며 마지막 수신 이벤트 ID도 변경하지 않는다.
             emitter.send(SseEmitter.event().comment("heartbeat"));
         } catch (IOException | IllegalStateException e) {
+            // 하트비트 send 실패 경로에서는 내부 참조를 정리한다. 이곳에서 complete를 다시 요청하지 않는다.
             deliveryCoordinator.cleanupConnection(userId, connection);
             logSseHeartbeatIssue(userId, connection, e);
         }

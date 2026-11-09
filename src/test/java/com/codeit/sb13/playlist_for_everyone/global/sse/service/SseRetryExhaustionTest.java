@@ -30,6 +30,11 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+/**
+ * 실제 조정기·종료 컴포넌트·저장소로 재시도 소진 후 정리 결과를 검증한다.
+ * Mock emitter의 complete는 완료 콜백을 자동 실행하지 않는다. 콜백에 의존하지 않는 finally 정리를 확인한다.
+ * 예약 작업은 직접 실행하고, HTTP 응답 종료 여부나 실제 지연 시간은 이 테스트에서 검증하지 않는다.
+ */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("SSE 재시도 소진 시 연결 서비스와 조정기의 정리")
 class SseRetryExhaustionTest {

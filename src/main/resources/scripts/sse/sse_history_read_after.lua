@@ -42,6 +42,7 @@ local function getEventJson(entry)
     error('저장된 SSE 이력에 event 필드가 없습니다.')
 end
 
+-- 새 이벤트가 들어오지 않아도 조회 시 보관기간을 적용한다. 삭제한 본문의 UUID 매핑도 함께 제거한다.
 local function removeHistoryEntries(entries)
     for _, entry in ipairs(entries) do
         local position = entry[1]
@@ -84,6 +85,7 @@ end
 
 local startPosition = '-'
 if afterPosition ~= '' then
+    -- 기준 항목 자체가 없어도 위치의 대소 비교로 뒤의 이력을 찾을 수 있다. '('는 기준 위치를 제외한다.
     startPosition = '(' .. afterPosition
 end
 

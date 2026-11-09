@@ -31,6 +31,7 @@ public class HistorySavingSseEventPublisher implements SseEventPublisher {
     public void publish(SseEvent<?> sseEvent) {
         SseHistoryEntry savedEntry;
         try{
+            // 공통 계약의 DTO 본문만 JSON 트리로 바꾸고 수신자·이벤트 UUID·이름은 유지한다.
             JsonNode jsonData = objectMapper.valueToTree(sseEvent.data());
             SseEvent<JsonNode> historyEvent = sseEvent.toHistoryData(jsonData);
             savedEntry = historyStore.append(historyEvent);
@@ -40,7 +41,8 @@ public class HistorySavingSseEventPublisher implements SseEventPublisher {
                  | IllegalStateException e){
             throw new SsePublishException(e);
         }
-        // 중복 저장이면 기존에 저장한 이벤트를 사용한다. 브로커 신호 자체는 다시 발행될 수 있다.
+        // 저장된 이벤트를 브로커 신호로 보낸다. 중복 저장이면 기존 본문을 사용하되 신호는 다시 발행될 수 있다.
+        // 발행 실패는 delegate가 전달한다. 여기서 이력을 되돌리지 않으므로 이후 복구 조회에 사용할 수 있다.
         delegate.publish(savedEntry.event());
     }
 }

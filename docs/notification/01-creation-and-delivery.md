@@ -2,7 +2,7 @@
 
 [#51](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/51)은 **저장이 커밋된 알림을 수신자에게 실시간으로 전달**하는 연결 작업입니다.
 알림 생성 요청부터 읽고, 트랜잭션 경계와 실패 처리를 확인하면 코드를 따라가기 쉽습니다.
-연결·전송은 [공통 SSE 가이드](../sse/README.md), 이력과 복구 정책은 [공유 이력 계약](../sse/09-shared-history.md)을 참고합니다.
+연결부터 전달까지는 [SSE 전체 흐름](../sse/00-overall-flow.md), 이력과 복구 정책은 [공유 이력 계약](../sse/09-shared-history.md)을 참고합니다.
 
 ## 역할부터 구분하기
 
@@ -14,7 +14,7 @@
 | 사용자 조회 | `NotificationUserReader` | `UserService.getById`에 조회를 위임하고 User 반환 |
 | 저장 결과 전달 | `NotificationCreatedEvent` | 별도 이벤트 ID와 저장된 알림의 DTO 스냅샷 보관 |
 | 알림 커밋 후 처리 | `NotificationSseEventListener` | `notifications` 이벤트로 변환하여 공통 발행 계약 호출 |
-| 서버 간 전송 | `SseEventPublisher` | 현재 Redis 구현체를 통해 수신자가 연결된 서버까지 전달 |
+| 이력 저장·전송 진입점 | `SseEventPublisher` | 기본 발행기가 공유 이력을 저장한 뒤 Redis 전송 구현체에 위임 |
 
 알림 목록 조회와 SSE는 같은 `NotificationDto`를 사용합니다.
 전송 리스너는 엔티티를 받거나 DB를 다시 조회하지 않고 저장 당시의 DTO를 사용합니다.
@@ -88,8 +88,9 @@ DTO에는 `id`, `createdAt`, `receiverId`, `title`, `content`, `level`이 들어
 알림 코드는 로컬 연결 유무를 확인하지 않습니다. 발행 서버 A에 연결이 없어도 수신자가 서버 B에 연결되어 있을 수 있기 때문입니다.
 Redis 신호를 받은 서버는 연결별 위치에서 이력을 읽습니다. `NotificationReplayFilter`가
 DTO의 DB 알림 ID를 수신자 조건으로 일괄 조회하여 현재 남아 있는 알림만 원래 순서로 전달합니다.
+`data.id`를 UUID로 읽을 수 없는 항목은 제외하고, 유효한 ID가 하나도 없으면 DB를 조회하지 않습니다.
 읽음 처리로 DB 알림을 삭제해도 Redis 커서 매핑은 보관 정책에 따라 남아 복구 기준으로 사용됩니다.
-필터가 제외한 마지막 항목까지 처리 위치는 진행합니다. 상세 계약은 [복구와 필터](../sse/10-recovery-and-retry.md#필터와-보관-범위-밖의-이력)를 참고합니다.
+필터가 모든 항목을 제외해도 원본 이력의 마지막 위치까지 진행합니다. 상세 계약은 [복구와 필터](../sse/10-recovery-and-retry.md#필터와-보관-범위-밖의-이력)를 참고합니다.
 
 ## 실패했을 때 남는 것
 

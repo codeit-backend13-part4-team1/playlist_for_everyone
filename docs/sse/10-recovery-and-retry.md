@@ -8,14 +8,17 @@
 ```mermaid
 sequenceDiagram
     participant C as 연결 서비스
-    participant D as 전송 조정자
+    participant D as 전송 조정기
+    participant L as emitter 저장소
     participant R as 복구 서비스
     participant H as 공유 이력
     participant E as SSE emitter
-    C->>D: 연결 상태 등록
+    C->>D: register(userId, connection, emitter)
+    D->>L: 상태 잠금 안에서 emitter 저장
     C->>E: connected 주석 준비
     C->>D: recover(userId, connection, lastEventId)
-    D->>R: 초기 복구
+    D->>L: 현재 emitter 조회
+    D->>R: recover(userId, emitter, lastEventId)
     R->>H: snapshot
     R->>R: 도메인 필터 적용
     R->>E: 원래 순서로 전송
@@ -29,6 +32,8 @@ MVC 초기화 전의 `send`는 버퍼에 쌓일 수 있으므로 브라우저 �
 
 초기 복구 후 Pub/Sub 신호가 들어오면 각 연결의 마지막 위치부터 `readAfter`를 실행합니다.
 다른 서버로 재연결해도 같은 공유 이력을 읽지만, 새 연결 ID와 독립 상태를 만듭니다.
+조정기의 `recover`는 연결 ID로 상태를 찾고, 복구 서비스에는 사용자·emitter·이벤트 커서만 전달합니다.
+후속 복구의 `recoverAfter`에는 이력 공백 로그에 사용할 연결 ID도 전달합니다.
 
 ## 연결별 상태와 동시성
 
@@ -40,19 +45,25 @@ MVC 초기화 전의 `send`는 버퍼에 쌓일 수 있으므로 브라우저 �
 | `pendingDelivery` | 복구·전송·재시도 중 들어온 신호를 재조회 필요 여부 하나로 합침 |
 | `retryFuture`, 횟수·간격 | 예약 중복 방지, 취소, 제한된 재시도 관리 |
 
-`synchronized(state)`는 해당 연결의 상태 전환을 보호합니다.
+emitter는 state의 필드가 아닙니다. 초기 복구와 매 후속 전송 시 저장소에서 조회하며,
+emitter가 없으면 남은 상태·재시도 예약을 제거하고 조회·전송을 중단합니다.
+
+`synchronized(state)`는 해당 연결의 상태 전환과 로컬 저장소 등록·조회를 보호합니다.
 같은 state를 쓰는 작업은 잠금 구간에서 기다리지만, 다른 연결의 state는 독립적입니다.
-Redis·DB 조회와 emitter 전송은 잠금 밖에서 실행합니다.
+등록 직후 신호가 와도 조정기를 통한 조회는 저장 완료까지 기다립니다.
+Redis·DB 조회, emitter 전송과 HTTP 종료 요청은 잠금 밖에서 실행합니다.
 다만 같은 호출 스레드가 연결들을 순회하므로 이것이 모든 연결을 병렬 전송한다는 뜻은 아닙니다.
 
-조회 목록은 복구 메서드의 지역 변수이며 coordinator에 캐시하지 않습니다.
-정리 시 Map의 state 동일성을 확인해 늦은 작업이 제거된 상태를 다시 사용하지 않게 합니다.
+조회 목록은 복구 메서드의 지역 변수이며 조정기에 캐시하지 않습니다.
+처리 결과 기록과 예약 실행·정리 시 Map의 state 동일성을 확인해 늦은 작업이 제거된 상태를 다시 사용하지 않게 합니다.
 이미 실행 중인 I/O의 즉시 중단까지 보장하지는 않습니다.
 
 ## 필터와 보관 범위 밖의 이력
 
 알림 필터는 `data.id`의 DB 알림 ID를 수신자 조건으로 일괄 조회합니다.
 읽음 처리로 삭제된 알림은 제외하지만 Redis 커서 매핑을 함께 삭제하지는 않습니다.
+data·id가 없거나 id가 문자열 UUID로 읽히지 않는 항목도 제외하며, 유효한 ID가 하나도 없으면 DB를 조회하지 않습니다.
+잘못된 항목 때문에 나머지 정상 알림의 복구를 중단하지 않습니다. DB 조회 자체의 실패는 그대로 전달합니다.
 필터 조회는 전송 전에 모두 끝내고, 허용된 항목은 원본 순서로 전송합니다.
 
 필터가 마지막 항목 또는 모든 항목을 제외해도 원본 끝 위치까지 진행합니다.
@@ -77,18 +88,20 @@ Redis·DB 조회와 emitter 전송은 잠금 밖에서 실행합니다.
 | 후속 조회의 같은 두 예외 | 연결 유지, 마지막 처리 위치에서 지연 재시도 |
 | 재시도 성공·정상 빈 조회 | 횟수와 간격 초기화 |
 | 허용 재시도 모두 실패 | 해당 상태·예약 정리 후 emitter 종료 요청 |
-| 전송 I/O·상태 오류 | 조회 재시도로 취급하지 않고 해당 연결 정리 |
+| 그 외 후속 전송 RuntimeException (I/O 래핑·상태·필터 오류 등) | 재시도하지 않고 해당 연결의 HTTP 종료와 정리 요청 |
 
 후속 조회 재시도에는 Redis 조회뿐 아니라 알림 필터의 DB 조회가 같은 예외로 실패한 경우도 포함됩니다.
 기본값은 최초 시도 **외에 3회**, 대기 간격은 `1s → 2s → 4s`입니다.
 최대 간격 `30s`는 재시도 횟수를 늘렸을 때도 적용됩니다.
 대기 중 새 신호가 와도 예약을 추가하지 않으며, 성공하면 다음 장애는 새 횟수·초기 간격으로 시작합니다.
 
-완료·타임아웃·오류·서버 종료 시 해당 연결의 상태와 예약, emitter 저장소 참조를 정리합니다.
+일반 후속 전송의 실패 처리는 로컬 전송 서비스가 조정기에 위임하고, 예약 작업의 실패는 조정기가 처리합니다.
+상태·예약 정리 후 종료 컴포넌트에 HTTP 종료와 저장소 삭제를 맡깁니다.
+완료·타임아웃·오류·서버 종료의 처리 차이는 [종료 요청과 참조 정리](01-connection-lifecycle.md#종료-요청과-참조-정리)를 참고합니다.
 `cancel(false)`는 실행 중인 스레드를 interrupt하지 않으며, 늦은 예약 작업은 상태를 재확인합니다.
 다른 연결과 Redis 공유 이력은 유지합니다. 재시도 성공으로 emitter를 새로 만들거나 타임아웃을 갱신하지 않습니다.
 
-구현: [전송 조정자](../../src/main/java/com/codeit/sb13/playlist_for_everyone/global/sse/service/SseDeliveryCoordinator.java),
+구현: [전송 조정기](../../src/main/java/com/codeit/sb13/playlist_for_everyone/global/sse/service/SseDeliveryCoordinator.java),
 [복구 서비스](../../src/main/java/com/codeit/sb13/playlist_for_everyone/global/sse/service/SseRecoveryService.java),
 [알림 필터](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/notification/sse/NotificationReplayFilter.java).
 

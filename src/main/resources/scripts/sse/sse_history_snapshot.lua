@@ -42,6 +42,7 @@ local function getEventJson(entry)
     error('저장된 SSE 이력에 event 필드가 없습니다.')
 end
 
+-- 조회 전에 만료된 본문과 UUID 매핑을 함께 정리한다. 읽기 요청이어도 이 정리 과정은 Redis 데이터를 변경한다.
 local function removeHistoryEntries(entries)
     for _, entry in ipairs(entries) do
         local position = entry[1]
@@ -63,6 +64,7 @@ end
 
 local latestEntries = redis.call('XREVRANGE', streamKey, '+', '-', 'COUNT', 1)
 if #latestEntries == 0 then
+    -- 남은 이력이 없으면 빈 Stream·매핑 키를 함께 제거한다. Java에서는 빈 끝 위치를 null로 해석한다.
     redis.call('DEL', streamKey, mappingKey)
     return{'', {}}
 end
@@ -79,6 +81,7 @@ end
 
 local cursorEntries =redis.call('XRANGE', streamKey, cursorPosition, cursorPosition)
 if #cursorEntries == 0 then
+    -- UUID 매핑만으로 커서가 유효하다고 판단하지 않는다. 실제 항목이 없으면 과거 전체 재전송을 하지 않는다.
     redis.call('HDEL', mappingKey, lastEventId)
     return {upperBound, {}}
 end

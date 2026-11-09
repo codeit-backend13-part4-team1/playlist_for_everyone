@@ -8,10 +8,10 @@
 | 테스트 | 현재 검증 대상 |
 | --- | --- |
 | SsePropertiesTest | 연결·하트비트 설정값의 정상값·경계값·실패 |
-| InMemorySseEmitterRepositoryTest | 실제 저장소 등록·삭제·조회 사본·동시 변경 |
-| SseConnectionServiceTest | 연결 ID, 콜백, 상태·저장소 등록, 초기 복구와 실패 정리 |
-| SseDeliveryServiceTest | 수신자별 연결의 coordinator 호출, 실패한 연결 정리, 하트비트 |
-| SseConnectionLifecycleTest | 컨텍스트 종료 이벤트의 연결 정리 호출 |
+| InMemorySseEmitterRepositoryTest | 실제 저장소 등록·중복 거부·단건 조회·삭제·조회 사본·동시 변경 |
+| SseConnectionServiceTest | 새 연결 ID, 콜백, 조정기에 등록·복구·정리 위임, 등록 실패 시 기존 연결 보존을 위한 호출 계약 |
+| SseDeliveryServiceTest | 수신자별 연결의 조정기 호출, 일반 실패의 종료 위임과 하트비트 실패의 정리 위임 |
+| SseConnectionLifecycleTest | 실제 컨텍스트 종료 이벤트에서 emitter 종료 요청과 조정기 정리 위임 |
 | SseHeartbeatSchedulerTest / SseHeartbeatSchedulingTest | 하트비트 요청과 지정 실행기 등록 |
 | SchedulerConfigTest | 실제 하트비트 실행기 스레드·종료·취소 |
 | SseControllerTest | 인증 사용자·쿼리·응답·ASYNC 종료 계약 |
@@ -39,8 +39,9 @@ ApplicationContextRunner는 필요한 설정 클래스만 등록하고 withPrope
 | --- | --- |
 | MockedConstruction으로 emitter 관찰 | 서비스 내부에서 생성한 객체의 콜백·호출을 확인 |
 | ArgumentCaptor로 콜백 실행 | 등록된 정리 동작을 확인. MVC가 그 시각에 실제 종료했다는 뜻은 아님 |
-| Mock coordinator·저장소 | 해당 계층의 요청 계약 검증. 실제 Redis·상태 처리는 별도 테스트 |
-| 실제 메모리 저장소·coordinator | 연결별 상태와 취소된 예약의 늦은 실행 검증 |
+| Mock 조정기·저장소 | 연결 서비스·생명주기 테스트의 위임 검증. 실제 상태·저장소 정리를 검증하지 않음 |
+| 실제 저장소·조정기 + Mock closer | 조정기 테스트의 등록·상태 전환·정리 위임. Mock closer 호출만으로 저장소가 삭제되지는 않음 |
+| 실제 저장소·조정기·closer | 재시도 생명주기·소진 테스트의 실제 저장소 삭제와 늦은 예약 차단 |
 | 실제 HTTP reader | 프레임 id·event·data와 스트림 종료 확인 |
 
 SseStreamingIntegrationTest의 인증 의존성 대체와 NotificationSseIntegrationTest의 실제 JWT 검증은 구분합니다.
@@ -82,6 +83,7 @@ Docker가 필요한 통합 테스트를 실행하기 전에 Docker 엔진을 켭
 동시성 테스트는 지정한 경합 상황을 재현하며 모든 가능한 실행 순서를 검증하지 않습니다.
 Mock 예약 작업을 직접 실행한 결과를 실제 대기시간 측정으로 해석하지 않습니다.
 ContextClosedEvent의 정리 검증도 실행 중인 모든 하트비트·I/O가 먼저 끝났다는 보장은 아닙니다.
+이 테스트의 emitter는 Mock이므로 실제 HTTP 종료 여부는 HTTP 통합 테스트와 구분합니다.
 실제 부하·메모리 조정은 [운영 가이드](11-history-operations.md)에서 구분합니다.
 
 ---

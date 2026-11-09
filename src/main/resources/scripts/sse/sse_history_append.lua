@@ -45,6 +45,7 @@ local function getEventJson(entry)
     error('저장 된 SSE 이력에 event 필드가 없습니다.')
 end
 
+-- 시간 만료와 건수 초과가 같은 삭제 경로를 쓴다. 본문만 지우면 UUID 매핑이 사라진 위치를 계속 가리키게 된다.
 local function removeHistoryEntries(entries)
     for _, entry in ipairs(entries) do
         local position = entry[1]
@@ -77,6 +78,7 @@ if existingPosition then
         end
         return {'CONFLICT', existingPosition, existingJson}
     end
+    -- 매핑만 남은 항목은 중복 저장으로 반환할 수 없으므로 매핑을 정리하고 신규 저장으로 진행한다.
     redis.call('HDEL', mappingKey, eventId)
 end
 

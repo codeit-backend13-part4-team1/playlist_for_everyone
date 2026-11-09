@@ -38,6 +38,12 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+/**
+ * 실제 메모리 저장소와 조정기로 연결별 상태를 검증하고, 복구 서비스·예약 실행기·종료 컴포넌트는 Mock으로 둔다.
+ * Mock closer의 cleanUp 호출은 실제 저장소 삭제를 수행하지 않는다. 정리 후 전송 차단과 위임을 검증하는 구성이다.
+ * 실제 저장소 삭제까지 이어지는 조합은 SseRetryLifecycleTest와 SseRetryExhaustionTest에서 확인한다.
+ * 예약 Runnable은 직접 실행하므로 테스트를 위해 실제 재시도 시간을 기다리지 않는다.
+ */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("SSE 복구·실시간 전송 조정")
 class SseDeliveryCoordinatorTest {
@@ -1554,6 +1560,7 @@ class SseDeliveryCoordinatorTest {
         verify(retryTaskScheduler).schedule(taskCaptor.capture(), any(Instant.class));
         repository.delete(userId, connection);
 
+        // 조정기를 거치지 않고 저장소만 비워 상태·예약이 남은 상황을 만든 뒤, 각 진입 경로의 정리를 확인한다.
         switch (entryPoint) {
             case "delivery" -> coordinator.requestDelivery(userId, connection);
             case "retry" -> taskCaptor.getValue().run();
@@ -1561,6 +1568,7 @@ class SseDeliveryCoordinatorTest {
             case "close" -> coordinator.closeConnection(userId, connection);
             default -> throw new AssertionError(entryPoint);
         }
+        // retry 경로는 예약을 소비하고 실행 중이므로 취소를 검증하지 않는다. 나머지는 대기 중 예약의 취소를 확인한다.
         if (!entryPoint.equals("retry")) verify(retryFuture).cancel(false);
         taskCaptor.getValue().run();
         coordinator.requestDelivery(userId, connection);
@@ -1580,6 +1588,7 @@ class SseDeliveryCoordinatorTest {
         CountDownLatch registrationStarted = new CountDownLatch(1);
         CountDownLatch allowRegistration = new CountDownLatch(1);
         CountDownLatch recoveryRequested = new CountDownLatch(1);
+        // 상태는 공개됐지만 저장소에는 emitter가 아직 없는 구간을 고정한다. 실제 save는 허용 신호 뒤에 실행한다.
         doAnswer(invocation -> {
             registrationStarted.countDown();
             assertThat(allowRegistration.await(5, TimeUnit.SECONDS)).isTrue();
@@ -1594,6 +1603,8 @@ class SseDeliveryCoordinatorTest {
                 registeringCoordinator.recover(userId, connection, lastEventId);
             });
             assertThat(recoveryRequested.await(5, TimeUnit.SECONDS)).isTrue();
+            // 등록이 멈춰 있는 동안 복구가 반환하거나 조회 서비스를 호출하지 않아야 한다.
+            // 유한 시간 관찰이며 가능한 모든 스레드 순서를 증명하는 테스트는 아니다.
             assertThatThrownBy(() -> recovery.get(100, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
             verifyNoInteractions(recoveryService);
             allowRegistration.countDown();

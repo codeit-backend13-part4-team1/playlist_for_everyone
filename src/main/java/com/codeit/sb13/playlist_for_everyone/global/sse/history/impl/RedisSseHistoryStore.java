@@ -23,6 +23,9 @@ import java.util.UUID;
  * {사용자UUID} 해시 태그로 두 키의 Redis Cluster 슬롯을 맞춘다. 서로 다른 환경은 접두사로 구분한다.
  * Lua의 배열 응답은 내부 record로 검사한 뒤 공통 계약으로 변환하며, 비정상 응답을 빈 결과로 숨기지 않는다.
  * 조회 중에도 보관기간이 지난 이벤트를 정리하므로 조회가 Redis 데이터 변경을 전혀 하지 않는 것은 아니다.
+ *
+ * <p>Stream은 순서와 본문을, Hash는 이벤트 UUID를 Stream ID로 찾는 매핑을 보관한다.
+ * Java는 직렬화·호출·반환값 검증을 담당하고, 삭제·중복 판단·저장·만료 처리는 Lua 안에서 수행한다.
  */
 @Repository
 public class RedisSseHistoryStore implements SseHistoryStore {
@@ -68,6 +71,7 @@ public class RedisSseHistoryStore implements SseHistoryStore {
                 Integer.toString(historyProperties.maxEventsPerUser())
         );
         AppendScriptResult result = AppendScriptResult.parse(rawResult);
+        // 중복은 기존 위치·본문을 반환하고 충돌만 실패한다. 생성한 입력을 그대로 반환하지 않는 이유다.
         if (AppendStatus.isConflict(result.status)){
             throw new SseHistoryConflictException(event.receiverId(), event.eventId());
         }
@@ -79,6 +83,7 @@ public class RedisSseHistoryStore implements SseHistoryStore {
 
     @Override
     public SseHistorySnapshot snapshot(UUID receiverId, UUID lastEventId) {
+        // Lua에 null을 넘기지 않고 빈 문자열로 커서 부재를 표현한다. 반환된 끝 위치의 빈 문자열은 다시 null로 바꾼다.
         List<?> rawResult = redisTemplate.execute(
                 snapshotScript,
                 getHistoryKeys(receiverId),
@@ -107,6 +112,7 @@ public class RedisSseHistoryStore implements SseHistoryStore {
         return new SseHistoryReadResult(result.gapDetected, entries);
     }
 
+    // 두 키에 동일한 {사용자UUID}를 넣어 Redis Cluster에서도 한 Lua 호출의 키가 같은 슬롯에 놓이게 한다.
     private String streamKey(UUID receiverId){
         return "%s:{%s}:stream".formatted(
                 historyProperties.keyPrefix(),
@@ -121,6 +127,7 @@ public class RedisSseHistoryStore implements SseHistoryStore {
         );
     }
 
+    /** Lua의 {상태, 위치, JSON} 배열을 검증한다. 중복·충돌·신규 저장 결과를 빈 이력과 혼동하지 않게 한다. */
     private record AppendScriptResult(
             AppendStatus status,
             String position,
@@ -149,6 +156,7 @@ public class RedisSseHistoryStore implements SseHistoryStore {
         }
 
     }
+    /** Lua의 {끝 위치, 항목 목록}을 해석한다. 정상적인 빈 문자열·빈 목록과 잘못된 응답 구조를 구분한다. */
     private record SnapshotScriptResult(
             String upperBound,
             List<HistoryScriptEntry> entries
@@ -171,6 +179,7 @@ public class RedisSseHistoryStore implements SseHistoryStore {
         }
 
     }
+    /** Redis가 돌려주는 정수 0/1만 gap 플래그로 허용한다. 다른 값은 정상 빈 조회로 숨기지 않는다. */
     private record ReadAfterScriptResult(
             boolean gapDetected,
             List<HistoryScriptEntry> entries
@@ -194,6 +203,7 @@ public class RedisSseHistoryStore implements SseHistoryStore {
             return new ReadAfterScriptResult(gapFlag == 1L, entries);
         }
     }
+    /** 스크립트가 정리한 {Stream ID, 이벤트 JSON} 한 쌍. Redis의 원시 필드 배열을 서비스 계층에 노출하지 않는다. */
     private record HistoryScriptEntry(
             String position,
             String eventJson
@@ -243,6 +253,7 @@ public class RedisSseHistoryStore implements SseHistoryStore {
                 .toList();
     }
 
+    /** 순서는 Lua의 KEYS[1]=Stream, KEYS[2]=UUID 매핑 계약과 일치해야 한다. */
     private List<String> getHistoryKeys(UUID receiverId) {
         return List.of(
                 streamKey(receiverId),
