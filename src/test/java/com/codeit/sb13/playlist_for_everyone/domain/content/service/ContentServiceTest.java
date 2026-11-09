@@ -241,6 +241,47 @@ public class ContentServiceTest {
     }
 
     @Test
+    @DisplayName("S3 썸네일이 있는 콘텐츠는 조회 시 Presigned URL을 생성한다.")
+    void getContent_generatePresignedUrl() {
+        // given
+        UUID contentId = UUID.randomUUID();
+        UUID fileId = UUID.randomUUID();
+
+        FileInfo fileInfo = mock(FileInfo.class);
+        given(fileInfo.getId()).willReturn(fileId);
+
+        Content content = Content.createAdminContent(
+                ContentType.tvSeries,
+                "너말고다른연애",
+                "KBS 드라마 입니다.",
+                null,
+                fileInfo
+        );
+
+        ContentDetailProjection detail = mock(ContentDetailProjection.class);
+
+        given(contentRepository.findDetailById(contentId))
+                .willReturn(Optional.of(detail));
+        given(detail.getContent()).willReturn(content);
+
+        given(fileService.getFileUrl(fileId))
+                .willReturn("https://example.com/thumbnail.jpg");
+
+        // when
+        ContentDto result = contentService.getById(contentId);
+
+        // then
+        // 엔터티에는 URL이 저장되지 않는다.
+        assertThat(content.getThumbnailUrl()).isNull();
+
+        // API 응답에는 새로 생성한 URL이 포함된다.
+        assertThat(result.thumbnailUrl())
+                .isEqualTo("https://example.com/thumbnail.jpg");
+
+        verify(fileService).getFileUrl(fileId);
+    }
+
+    @Test
     @DisplayName("콘텐츠 수정 시 변경 사항과 집계 정보가 반영된다.")
     void update_success() {
         // given
