@@ -191,4 +191,41 @@ public class JwtTokenProvider {
             throw new JwtException("토큰의 사용자 ID 형식이 올바르지 않습니다.", exception);
         }
     }
+
+    // =========== 변경 ================
+
+    /**
+     *
+     * 사용자 ID, 로그인 세션 ID, 고유 토큰 ID를 담은 Access Token을 발급한다.
+     */
+    public  String createAccessToken(UUID userId, UUID sessionId) {
+        throw new UnsupportedOperationException("구현 예정");
+    }
+
+    /**
+     * 사용자 ID, 로그인 세션 ID, 고유 토큰 ID를 담은 Refresh Token을 발급한다.
+     *
+     * Redis 저장과 쿠키 발급은 호출하는 쪽에서 처리한다.
+     */
+    public  String createRefreshToken(UUID userId, UUID sessionId) {
+        throw new UnsupportedOperationException("구현 예정");
+    }
+
+    /**
+     * Access Token의 서명, 만료, 종류, 사용자 ID, 로그인 세션 ID를 검증한다.
+     *
+     * 실패하면 JwtException 계열 예외를 발생시킨다.
+     */
+    public AccessTokenClaims parseAccess(String token) {
+        throw new UnsupportedOperationException("구현 예정");
+    }
+
+    /**
+     * Refresh Token의 서명, 만료, 종류, 식별자, 사용자 ID, 로그인 세션 ID를 검증한다.
+     *
+     * Redis에 등록된 토큰인지, 현재 로그인 세션인지는 서비스에서 검증한다.
+     */
+    public RefreshTokenClaims parseRefresh(String token) {
+        throw new UnsupportedOperationException("구현 예정");
+    }
 }

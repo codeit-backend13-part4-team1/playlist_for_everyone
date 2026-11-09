@@ -232,5 +232,85 @@ class JwtRefreshTokenProviderTest {
                 .compact();
     }
 
+    // ===== 로그인 세션 ID(sid) =====
+
+    private static final UUID SESSION_ID =
+            UUID.fromString("22222222-2222-2222-2222-222222222222");
+
+    @Test
+    @DisplayName("Refresh Token에 로그인 세션 ID를 담는다")
+    void Refresh_Token에_세션_ID를_담는다() {
+        String token = jwtTokenProvider.createRefreshToken(USER_ID, SESSION_ID);
+
+        Claims claims = readClaims(token);
+
+        assertThat(claims.getSubject()).isEqualTo(USER_ID.toString());
+        assertThat(claims.get("sid", String.class)).isEqualTo(SESSION_ID.toString());
+        assertThat(claims.getId()).isNotBlank();
+        assertThat(claims.get("tokenType", String.class)).isEqualTo("REFRESH");
+        assertThat(claims.getExpiration().toInstant()).isEqualTo(NOW.plus(REFRESH_TOKEN_VALIDITY));
+    }
+
+    @Test
+    @DisplayName("유효한 Refresh Token을 검증하면 사용자 ID와 로그인 세션 ID를 반환한다")
+    void 유효한_Refresh_Token에서_세션_정보를_반환한다() {
+        String token = jwtTokenProvider.createRefreshToken(USER_ID, SESSION_ID);
+
+        RefreshTokenClaims claims = jwtTokenProvider.parseRefresh(token);
+
+        assertThat(claims).isEqualTo(new RefreshTokenClaims(USER_ID, SESSION_ID));
+    }
+
+    @Test
+    @DisplayName("로그인 세션 ID가 없는 Refresh Token은 거절한다")
+    void 세션_ID가_없는_Refresh_Token은_거절한다() {
+        String token = Jwts.builder()
+                .subject(USER_ID.toString())
+                .id(UUID.randomUUID().toString())
+                .claim("tokenType", "REFRESH")
+                .issuedAt(Date.from(NOW))
+                .expiration(Date.from(NOW.plus(REFRESH_TOKEN_VALIDITY)))
+                .signWith(signingKey, Jwts.SIG.HS256)
+                .compact();
+
+        assertThatThrownBy(() -> jwtTokenProvider.parseRefresh(token))
+                .isInstanceOf(JwtException.class);
+    }
+
+    @Test
+    @DisplayName("jti가 없는 Refresh Token은 거절한다")
+    void jti가_없는_Refresh_Token은_거절한다() {
+        String token = Jwts.builder()
+                .subject(USER_ID.toString())
+                .claim("sid", SESSION_ID.toString())
+                .claim("tokenType", "REFRESH")
+                .issuedAt(Date.from(NOW))
+                .expiration(Date.from(NOW.plus(REFRESH_TOKEN_VALIDITY)))
+                .signWith(signingKey, Jwts.SIG.HS256)
+                .compact();
+
+        assertThatThrownBy(() -> jwtTokenProvider.parseRefresh(token))
+                .isInstanceOf(JwtException.class);
+    }
+
+    @Test
+    @DisplayName("Access Token은 Refresh Token 검증을 통과하지 못한다")
+    void Access_Token은_parseRefresh를_통과하지_못한다() {
+        String accessToken = jwtTokenProvider.createAccessToken(USER_ID, SESSION_ID);
+
+        assertThatThrownBy(() -> jwtTokenProvider.parseRefresh(accessToken))
+                .isInstanceOf(JwtException.class);
+    }
+
+    @Test
+    @DisplayName("로그인 세션 ID 없이 Refresh Token을 발급할 수 없다")
+    void 세션_ID_없이_Refresh_Token을_발급할_수_없다() {
+        assertThatThrownBy(() -> jwtTokenProvider.createRefreshToken(USER_ID, null))
+                .isInstanceOf(NullPointerException.class);
+    }
+
+
+
+
 
 }
