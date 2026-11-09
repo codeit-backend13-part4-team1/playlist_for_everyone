@@ -3,11 +3,15 @@ package com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener
 import com.codeit.sb13.playlist_for_everyone.domain.follow.event.UserFollowedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationCreateRequestedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.NotificationLevel;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistSubscribedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
+import com.codeit.sb13.playlist_for_everyone.domain.user.event.UserRoleChangedEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
@@ -132,6 +136,125 @@ class NotificationDomainEventListenerTest {
                         "exceptionType=IllegalStateException"
                 ).doesNotContain(event.followerName(),failureMessage);
     }
+
+    @ParameterizedTest(name = "{0} → {1}")
+    @CsvSource({
+            "USER, ADMIN, 회원님의 권한이 USER에서 ADMIN으로 변경되었습니다.",
+            "ADMIN, USER, 회원님의 권한이 ADMIN에서 USER로 변경되었습니다."
+    })
+    @DisplayName("권한 변경 이벤트를 변경 대상 사용자의 INFO 알림 요청으로 한 번 발행한다.")
+    void publishesNotificationRequestForRoleChangedUser(Role previousRole, Role newRole, String expectedContent){
+        UUID userId = UUID.randomUUID();
+        UserRoleChangedEvent event = new UserRoleChangedEvent(userId, previousRole, newRole);
+
+        listener.handleUserRoleChanged(event);
+
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+
+        NotificationCreateRequestedEvent request = eventCaptor.getValue();
+        assertThat(request.receiverId()).isEqualTo(userId);
+        assertThat(request.title()).isEqualTo("권한 변경");
+        assertThat(request.content()).isEqualTo(expectedContent);
+        assertThat(request.level()).isEqualTo(NotificationLevel.INFO);
+    }
+
+    @Test
+    @DisplayName("구독 이벤트의 이름과 제목으로 소유자에게 INFO 알림 요청을 한 번 발행한다.")
+    void publishesNotificationRequestForPlaylistOwner(){
+        UUID playListId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID subscriberId = UUID.randomUUID();
+
+        PlaylistSubscribedEvent event = new PlaylistSubscribedEvent(playListId, "퇴근 후 영화", ownerId, subscriberId, "홍길동");
+
+        listener.handlePlaylistSubscribed(event);
+
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        NotificationCreateRequestedEvent request = eventCaptor.getValue();
+
+        assertThat(request.receiverId()).isEqualTo(ownerId);
+        assertThat(request.title()).isEqualTo("새로운 구독자");
+        assertThat(request.content())
+                .isEqualTo(
+                        "홍길동님이 \"퇴근 후 영화\" 플레이리스트를 구독했습니다.");
+
+        assertThat(request.level()).isEqualTo(NotificationLevel.INFO);
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {" ", "\t", "\n"})
+    @DisplayName("구독자 이름이 없거나 공백이면 사용자라는 이름으로 알림을 생성한다.")
+    void usesDefaultSubscriberNameWhenMissingOrBlank(String subscriberName){
+        PlaylistSubscribedEvent event = new PlaylistSubscribedEvent(UUID.randomUUID(), "퇴근 후 영화", UUID.randomUUID(), UUID.randomUUID(), subscriberName);
+        listener.handlePlaylistSubscribed(event);
+
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().content())
+                .isEqualTo("사용자님이 \"퇴근 후 영화\" 플레이리스트를 구독했습니다.");
+    }
+
+    @Test
+    @DisplayName("플레이리스트 소유자와 구독자가 같으면 알림 요청을 발행하지 않는다.")
+    void doesNotPublishNotificationForOwnPlaylistSubscription(){
+        UUID userId = UUID.randomUUID();
+        PlaylistSubscribedEvent event = new PlaylistSubscribedEvent(UUID.randomUUID(), "퇴근 후 영화", userId, userId, "홍길동");
+        listener.handlePlaylistSubscribed(event);
+        verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
+    @DisplayName("권한 변경 알림 요청 발행이 실패해도 예외를 전파하지 않고 다음 이벤트를 처리한다.")
+    void publishesNextRoleChangeNotificationRequestAfterFailure(){
+        UserRoleChangedEvent failedEvent = new UserRoleChangedEvent(UUID.randomUUID(), Role.USER, Role.ADMIN);
+        UserRoleChangedEvent nextEvent = new UserRoleChangedEvent(UUID.randomUUID(), Role.ADMIN, Role.USER);
+
+        doThrow(new IllegalStateException("테스트용 권한 변경 알림 발행 실패"))
+                .doNothing()
+                .when(eventPublisher)
+                .publishEvent(any(NotificationCreateRequestedEvent.class));
+
+        assertThatCode(() -> {
+            listener.handleUserRoleChanged(failedEvent);
+            listener.handleUserRoleChanged(nextEvent);
+        }).doesNotThrowAnyException();
+
+        verify(eventPublisher, times(2))
+                .publishEvent(eventCaptor.capture());
+
+        assertThat(eventCaptor.getAllValues())
+                .extracting(NotificationCreateRequestedEvent::receiverId)
+                .containsExactly(failedEvent.userId(), nextEvent.userId());
+        assertThat(eventCaptor.getAllValues().get(1).content())
+                .isEqualTo("회원님의 권한이 ADMIN에서 USER로 변경되었습니다.");
+
+    }
+
+    @Test
+    @DisplayName("구독 알림 요청 발행이 실패해도 예외를 전파하지 않고 다음 이벤트를 처리한다.")
+    void publishesNextSubscriptionNotificationRequestAfterFailure(){
+        PlaylistSubscribedEvent failedEvent = new PlaylistSubscribedEvent(UUID.randomUUID(), "퇴근 후 영화", UUID.randomUUID(), UUID.randomUUID(), "첫 구독자");
+        PlaylistSubscribedEvent nextEvent = new PlaylistSubscribedEvent(UUID.randomUUID(), "주말 영화", UUID.randomUUID(), UUID.randomUUID(), "다음 구독자");
+
+        doThrow(new IllegalStateException("테스트용 구독 알림 발행 실패"))
+                .doNothing()
+                .when(eventPublisher)
+                .publishEvent(any(NotificationCreateRequestedEvent.class));
+
+        assertThatCode(() -> {
+            listener.handlePlaylistSubscribed(failedEvent);
+            listener.handlePlaylistSubscribed(nextEvent);
+        }).doesNotThrowAnyException();
+
+        verify(eventPublisher, times(2)).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getAllValues())
+                .extracting(NotificationCreateRequestedEvent::receiverId)
+                .containsExactly(failedEvent.ownerId(), nextEvent.ownerId());
+
+        assertThat(eventCaptor.getAllValues().get(1).content())
+                .isEqualTo("다음 구독자님이 \"주말 영화\" 플레이리스트를 구독했습니다.");
+    }
+
 
     private UserFollowedEvent createUserFollowedEvent(String followerName) {
         return new UserFollowedEvent(UUID.randomUUID(), followerName, UUID.randomUUID());

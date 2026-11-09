@@ -15,6 +15,11 @@ import com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener.
 import com.codeit.sb13.playlist_for_everyone.domain.notification.repository.NotificationRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationService;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationUserReader;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistSubscribedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.PlaylistService;
+import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
+import com.codeit.sb13.playlist_for_everyone.domain.user.event.UserRoleChangedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserAdministrationService;
 import com.codeit.sb13.playlist_for_everyone.global.exception.sse.SsePublishException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
@@ -26,10 +31,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.EnumSource;
-import org.junit.jupiter.params.provider.MethodSource;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.*;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -126,6 +128,12 @@ class NotificationIntegrationTest {
     @Autowired
     private FollowRepository followRepository;
 
+    @Autowired
+    private UserAdministrationService userAdministrationService;
+
+    @Autowired
+    private PlaylistService playlistService;
+
     // 외부 전송 경계의 호출 횟수·데이터·실패를 제어하며 Redis나 브라우저로는 전송하지 않는다.
     @MockitoBean
     private SseEventPublisher sseEventPublisher;
@@ -136,6 +144,7 @@ class NotificationIntegrationTest {
 
     private TransactionTemplate transactionTemplate;
     private static final UUID FOLLOWER_ID = UUID.randomUUID();
+    private static final UUID PLAYLIST_ID = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
@@ -157,6 +166,8 @@ class NotificationIntegrationTest {
         // 서비스가 실제 커밋한 행을 정리한다. 두 테이블이 사용자를 참조하므로 사용자 삭제 전에 지운다.
         notificationRepository.deleteAllInBatch();
         followRepository.deleteAllInBatch();
+        jdbcTemplate.update("DELETE FROM subscriptions WHERE playlist_id =?", PLAYLIST_ID);
+        jdbcTemplate.update("DELETE FROM playlists WHERE id = ?", PLAYLIST_ID);
         jdbcTemplate.update("DELETE FROM users WHERE id IN (?, ?)", RECEIVER_ID , FOLLOWER_ID);
     }
 
@@ -583,6 +594,105 @@ class NotificationIntegrationTest {
 
     }
 
+    @ParameterizedTest(name = "{0} → {1}")
+    @CsvSource({
+            "USER, ADMIN",
+            "ADMIN, USER"
+    })
+    @DisplayName("실제 권한 변경이 커밋되면 대상 사용자에게 알림을 저장하고 SSE 발행을 요청한다.")
+    void savesNotificationAfterActualRoleChangeCommits(Role previousRole, Role newRole){
+        jdbcTemplate.update("UPDATE users SET role = ? WHERE id = ?",previousRole.name(), RECEIVER_ID);
+
+        transactionTemplate.executeWithoutResult(status ->{
+            userAdministrationService.updateRole(RECEIVER_ID, newRole);
+            assertThat(notificationRepository.count()).isZero();
+            verifyNoInteractions(sseEventPublisher);
+        });
+
+        assertThat(jdbcTemplate.queryForObject("SELECT role FROM users WHERE id = ?", String.class, RECEIVER_ID))
+                .isEqualTo(newRole.name());
+
+        Notification saved = findOnlyNotification();
+        assertThat(saved.getReceiverId()).isEqualTo(RECEIVER_ID);
+        assertThat(saved.getTitle()).isEqualTo("권한 변경");
+        verify(sseEventPublisher).publish(any());
+    }
+
+    @Test
+    @DisplayName("실제 구독이 커밋되면 플레이리스트 소유자에게 알림을 저장하고 SSE 알림을 요청한다.")
+    void savesNotificationAfterActualPlaylistSubscriptionCommits(){
+        insertPlaylist();
+        UUID subscriberId = FOLLOWER_ID;
+
+        transactionTemplate.executeWithoutResult(status ->{
+            playlistService.subscribe(PLAYLIST_ID, subscriberId);
+            assertThat(notificationRepository.count()).isZero();
+            verifyNoInteractions(sseEventPublisher);
+        });
+
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM subscriptions
+                WHERE playlist_id = ? AND
+                subscriber_id = ?
+                """, Long.class, PLAYLIST_ID, subscriberId))
+                .isEqualTo(1L);
+
+        Notification saved = findOnlyNotification();
+        assertThat(saved.getReceiverId()).isEqualTo(RECEIVER_ID);
+        assertThat(saved.getTitle()).isEqualTo("새로운 구독자");
+        verify(sseEventPublisher).publish(any());
+    }
+
+    @Test
+    @DisplayName("실제 권한 변경이 롤백되면 기존 권한을 유지하고 알림을 생성하지 않는다.")
+    void doesNotSaveNotificationWhenActualRoleChangeRollsBack(ApplicationEvents applicationEvents){
+        transactionTemplate.executeWithoutResult(status -> {
+            userAdministrationService.updateRole(RECEIVER_ID, Role.ADMIN);
+            status.setRollbackOnly();
+        });
+
+        assertThat(jdbcTemplate.queryForObject("SELECT role FROM users WHERE id = ?",
+                String.class, RECEIVER_ID))
+                .isEqualTo(Role.USER.name());
+
+        assertThat(applicationEvents.stream(UserRoleChangedEvent.class))
+                .containsExactly(new UserRoleChangedEvent(RECEIVER_ID, Role.USER, Role.ADMIN));
+        assertThat(applicationEvents.stream(NotificationCreateRequestedEvent.class))
+                .isEmpty();
+        assertThat(notificationRepository.count()).isZero();
+        verifyNoInteractions(sseEventPublisher);
+    }
+
+    @Test
+    @DisplayName("실제 구독이 롤백되면 구독 정보와 구독자 수를 되돌리고 알림을 생성하지 않는다.")
+    void doesNotSaveNotificationWhenActualPlaylistSubscriptionRollsBack(ApplicationEvents applicationEvents){
+        insertPlaylist();
+        UUID subscriberId = FOLLOWER_ID;
+
+        transactionTemplate.executeWithoutResult(status ->{
+            playlistService.subscribe(PLAYLIST_ID, subscriberId);
+            status.setRollbackOnly();
+        });
+
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM subscriptions
+                WHERE playlist_id = ? AND
+                subscriber_id = ?
+                """, Long.class, PLAYLIST_ID, subscriberId))
+                .isZero();
+
+        assertThat(jdbcTemplate.queryForObject("SELECT subscriber_count FROM playlists WHERE id = ?",
+                Long.class, PLAYLIST_ID))
+                .isZero();
+
+        assertThat(applicationEvents.stream(PlaylistSubscribedEvent.class))
+                .containsExactly(new PlaylistSubscribedEvent(PLAYLIST_ID, "퇴근 후 영화", RECEIVER_ID, subscriberId, "홍길동"));
+        assertThat(applicationEvents.stream(NotificationCreateRequestedEvent.class))
+                .isEmpty();
+        assertThat(notificationRepository.count()).isZero();
+        verifyNoInteractions(sseEventPublisher);
+    }
+
     private NotificationCreateRequestedEvent event(UUID receiverId, String title, NotificationLevel level) {
         return new NotificationCreateRequestedEvent(receiverId, title, CONTENT, level);
     }
@@ -606,6 +716,13 @@ class NotificationIntegrationTest {
     private String receiverNickname() {
         return jdbcTemplate.queryForObject(
                 "SELECT nickname FROM users WHERE id = ?", String.class, RECEIVER_ID);
+    }
+
+    private void insertPlaylist(){
+        jdbcTemplate.update("""
+            INSERT INTO playlists (id, owner_id, title, description, subscriber_count, created_at, updated_at)
+            VALUES (?, ?, '퇴근 후 영화', '알림 연동 테스트', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        """, PLAYLIST_ID, RECEIVER_ID);
     }
 
 }

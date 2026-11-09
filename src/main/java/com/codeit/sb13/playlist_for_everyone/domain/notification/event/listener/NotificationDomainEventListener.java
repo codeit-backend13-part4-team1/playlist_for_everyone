@@ -3,6 +3,8 @@ package com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener
 import com.codeit.sb13.playlist_for_everyone.domain.follow.event.UserFollowedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationCreateRequestedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.NotificationLevel;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistSubscribedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.user.event.UserRoleChangedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -54,6 +56,16 @@ public class NotificationDomainEventListener {
                     e.getClass().getSimpleName()
             );
         }
+    }
+
+    @TransactionalEventListener
+    public void handleUserRoleChanged(UserRoleChangedEvent event){
+
+    }
+
+    @TransactionalEventListener
+    public void handlePlaylistSubscribed(PlaylistSubscribedEvent event){
+
     }
 
 }
