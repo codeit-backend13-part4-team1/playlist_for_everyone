@@ -5,6 +5,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.collector.TmdbClient
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.TmdbContentMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.CollectedContentData;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.TmdbMovieResponse;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.TmdbTvResponse;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.core.job.Job;
 import org.springframework.batch.core.job.builder.JobBuilder;
@@ -23,10 +24,12 @@ public class TmdbBatchConfig {
     @Bean
     public Job tmdbCollectionJob(
             JobRepository jobRepository,
-            @Qualifier("tmdbMovieCollectionStep") Step movieStep
+            @Qualifier("tmdbMovieCollectionStep") Step movieStep,
+            @Qualifier("tmdbTvCollectionStep") Step tvStep
     ) {
         return new JobBuilder("tmdbCollectionJob", jobRepository)
                 .start(movieStep)
+                .next(tvStep)
                 .build();
     }
 
@@ -59,6 +62,43 @@ public class TmdbBatchConfig {
                 .transactionManager(transactionManager)
                 .reader(reader)
                 .processor(mapper::fromMovie)
+                .writer(chunk -> {
+                    for (var data : chunk.getItems()) {
+                        collectionService.save(data);
+                    }
+                })
+                .build();
+    }
+
+    @Bean
+    @StepScope
+    public TmdbTvReader tmdbTvReader(
+            TmdbClient tmdbClient,
+            @Value("#{jobParameters['maxPages']}") Integer maxPages
+    ) {
+        if (maxPages == null) {
+            throw new IllegalArgumentException(
+                    "수집할 페이지 수는 필수입니다."
+            );
+        }
+
+        return new TmdbTvReader(tmdbClient, maxPages);
+    }
+
+    @Bean
+    public Step tmdbTvCollectionStep(
+            JobRepository jobRepository,
+            PlatformTransactionManager transactionManager,
+            @Qualifier("tmdbTvReader") TmdbTvReader reader,
+            ContentCollectionService collectionService
+    ) {
+        var mapper = new TmdbContentMapper();
+
+        return new StepBuilder("tmdbTvCollectionStep", jobRepository)
+                .<TmdbTvResponse, CollectedContentData>chunk(1)
+                .transactionManager(transactionManager)
+                .reader(reader)
+                .processor(mapper::fromTv)
                 .writer(chunk -> {
                     for (var data : chunk.getItems()) {
                         collectionService.save(data);
