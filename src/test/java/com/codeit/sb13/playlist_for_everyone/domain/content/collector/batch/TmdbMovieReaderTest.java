@@ -302,4 +302,33 @@ class TmdbMovieReaderTest {
         verify(client, times(1)).getPopularMovies(1);
         verifyNoMoreInteractions(client);
     }
+
+    @Test
+    void 저장된_영화_읽기_위치가_응답_크기를_초과하면_예외가_발생한다() {
+        TmdbClient client = mock(TmdbClient.class);
+
+        var movie = new TmdbMovieResponse(
+                1L, "첫 번째 영화", "설명", "/first.jpg", List.of(28)
+        );
+
+        when(client.getPopularMovies(1))
+                .thenReturn(new TmdbPageResponse<>(
+                        1, List.of(movie), 1, 1
+                ));
+
+        var context = new ExecutionContext();
+        context.putInt("tmdbMovieReader.index", 2);
+
+        var reader = new TmdbMovieReader(client, 5);
+        reader.open(context);
+
+        assertThatThrownBy(reader::read)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("TMDB 영화 목록이 변경되어 읽기 위치를 복원할 수 없습니다.");
+
+        reader.close();
+
+        verify(client, times(1)).getPopularMovies(1);
+        verifyNoMoreInteractions(client);
+    }
 }
