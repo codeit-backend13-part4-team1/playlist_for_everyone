@@ -28,6 +28,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.ResourceAccessException;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -174,5 +175,94 @@ class TmdbCollectionJobTest {
         );
 
         assertThat(executionCount).isEqualTo(1L);
+    }
+
+    @Test
+    void 수집_실패_후_재시작하면_기존_저장을_유지하고_나머지를_저장한다()
+            throws Exception {
+
+        var first = new TmdbMovieResponse(
+                990001L, "첫 번째 영화", "설명", "/first.jpg", List.of(28)
+        );
+        var second = new TmdbMovieResponse(
+                990002L, "두 번째 영화", "설명", "/second.jpg", List.of(18)
+        );
+
+        when(tmdbClient.getPopularMovies(1))
+                .thenReturn(new TmdbPageResponse<>(
+                        1, List.of(first), 2, 2
+                ));
+
+        // 첫 요청은 실패하고, 재시작 후 요청은 성공한다.
+        when(tmdbClient.getPopularMovies(2))
+                .thenThrow(new ResourceAccessException("테스트용 연결 실패"))
+                .thenReturn(new TmdbPageResponse<>(
+                        2, List.of(second), 2, 2
+                ));
+
+        // 이번 테스트에서는 영화 수집의 실패·재시작에 집중한다.
+        when(tmdbClient.getPopularTvShows(1))
+                .thenReturn(new TmdbPageResponse<TmdbTvResponse>(
+                        1, List.of(), 0, 0
+                ));
+
+        var parameters = new JobParametersBuilder()
+                .addLong("maxPages", 2L)
+                .addString("run.id", UUID.randomUUID().toString())
+                .toJobParameters();
+
+        var failedExecution = jobOperator.start(job, parameters);
+
+        assertThat(failedExecution.getStatus())
+                .isEqualTo(BatchStatus.FAILED);
+
+        var firstSaved = contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.TMDB, ContentType.movie, "990001"
+        );
+
+        assertThat(firstSaved).isPresent();
+
+        var firstId = firstSaved.orElseThrow().getId();
+
+        assertThat(contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.TMDB, ContentType.movie, "990002"
+        )).isEmpty();
+
+        // 새 작업을 만들지 않고, 실패한 실행을 재시작한다.
+        var restartedExecution = jobOperator.restart(failedExecution);
+
+        assertThat(restartedExecution.getStatus())
+                .isEqualTo(BatchStatus.COMPLETED);
+
+        var firstAfterRestart =
+                contentRepository.findByProviderAndTypeAndProviderItemId(
+                        ContentSource.TMDB, ContentType.movie, "990001"
+                );
+
+        assertThat(firstAfterRestart).isPresent();
+        assertThat(firstAfterRestart.orElseThrow().getId())
+                .isEqualTo(firstId);
+
+        var secondSaved =
+                contentRepository.findByProviderAndTypeAndProviderItemId(
+                        ContentSource.TMDB, ContentType.movie, "990002"
+                );
+
+        assertThat(secondSaved).isPresent();
+        assertThat(secondSaved.orElseThrow().getTitle())
+                .isEqualTo("두 번째 영화");
+
+        var savedCount = jdbcTemplate.queryForObject(
+                """
+                SELECT COUNT(*)
+                FROM contents
+                WHERE provider = 'TMDB'
+                  AND type = 'movie'
+                  AND provider_item_id IN ('990001', '990002')
+                """,
+                Long.class
+        );
+
+        assertThat(savedCount).isEqualTo(2L);
     }
 }
