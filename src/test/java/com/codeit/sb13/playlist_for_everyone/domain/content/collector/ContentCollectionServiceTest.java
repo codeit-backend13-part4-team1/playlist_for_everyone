@@ -1,10 +1,8 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.collector;
 
-import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.TmdbMovieReader;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.exception.CollectedContentValidationException;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.CollectedContentData;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.SportsDbEventResponse;
-import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.TmdbMovieResponse;
-import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.TmdbPageResponse;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentSource;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentTag;
@@ -101,7 +99,7 @@ class ContentCollectionServiceTest {
         );
 
         assertThatThrownBy(() -> service.save(data))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(CollectedContentValidationException.class)
                 .hasMessage("수집한 콘텐츠에는 제목이 필요합니다.");
     }
 
@@ -173,7 +171,7 @@ class ContentCollectionServiceTest {
         );
 
         assertThatThrownBy(() -> service.save(data))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(CollectedContentValidationException.class)
                 .hasMessage("수집한 콘텐츠 제목은 100자 이하여야 합니다.");
     }
 
@@ -187,7 +185,7 @@ class ContentCollectionServiceTest {
         );
 
         assertThatThrownBy(() -> service.save(data))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(CollectedContentValidationException.class)
                 .hasMessage("수집한 콘텐츠 태그는 50자 이하여야 합니다.");
     }
 
