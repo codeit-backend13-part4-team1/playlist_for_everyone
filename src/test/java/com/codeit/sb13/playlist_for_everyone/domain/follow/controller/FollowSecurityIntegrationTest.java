@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.follow.controller;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtProperties;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.event.UserFollowedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener.NotificationDomainEventListener;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
@@ -25,6 +26,7 @@ import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.event.ApplicationEvents;
 import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.test.web.servlet.MockMvc;
@@ -99,6 +101,9 @@ public class FollowSecurityIntegrationTest {
 
     @Autowired
     private JwtProperties jwtProperties;
+
+    @MockitoBean
+    private NotificationDomainEventListener notificationDomainEventListener;
 
     private final UUID followerId = UUID.randomUUID();
 

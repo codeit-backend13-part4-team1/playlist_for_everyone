@@ -26,7 +26,7 @@ public class NotificationEventListener {
      * 기본 AFTER_COMMIT, fallbackExecution=false를 사용한다.
      * 업무 롤백·트랜잭션 외 발행 시에는 호출되지 않으며, @Async 없이 커밋 처리 스레드에서 실행된다.
      */
-    @TransactionalEventListener
+    @TransactionalEventListener(fallbackExecution = true)
     public void handleNotification(NotificationCreateRequestedEvent event){
         NotificationCommand command = NotificationCommand.from(event);
         try {

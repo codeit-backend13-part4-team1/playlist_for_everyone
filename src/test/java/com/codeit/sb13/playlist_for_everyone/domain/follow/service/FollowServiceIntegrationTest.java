@@ -8,6 +8,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.follow.entity.Follow;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.event.UserFollowedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.repository.FollowRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.service.impl.FollowSaver;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener.NotificationDomainEventListener;
 import com.codeit.sb13.playlist_for_everyone.global.exception.ApiErrorCode;
 import com.codeit.sb13.playlist_for_everyone.global.exception.follow.FollowNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.follow.SelfFollowNotAllowedException;
@@ -27,6 +28,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.context.event.ApplicationEvents;
 import org.springframework.test.context.event.RecordApplicationEvents;
@@ -99,6 +101,9 @@ public class FollowServiceIntegrationTest {
 
     @Autowired
     private CommittedFollowEventRecorder eventRecorder;
+
+    @MockitoBean
+    private NotificationDomainEventListener notificationDomainEventListener;
 
     private final UUID followerId = UUID.randomUUID();
     private final UUID followeeId = UUID.randomUUID();
