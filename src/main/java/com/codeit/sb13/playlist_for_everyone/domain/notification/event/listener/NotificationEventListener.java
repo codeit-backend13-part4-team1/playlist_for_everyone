@@ -9,11 +9,15 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 /**
- * 업무 트랜잭션의 커밋 이후 공통 알림 생성 요청을 저장 서비스에 연결한다.
+ * 공통 알림 생성 요청을 받아 독립된 트랜잭션으로 알림을 저장하는 리스너.
  *
- * <p>별도 Spring 빈인 NotificationService를 호출하므로 save의 REQUIRES_NEW가 적용된다.
- * 이미 끝난 업무 트랜잭션에 추가 저장하지 않고, 알림만의 새 트랜잭션으로 저장을 확정한다.
- * SSE 전송은 저장 중 발행된 NotificationCreatedEvent를 다른 리스너가 받아 처리한다.
+ * <p>업무 이벤트의 커밋 여부는 NotificationDomainEventListener가 확인한다.
+ * 이 리스너는 업무 커밋 후 별도 변환 트랜잭션 없이 재발행된 요청도 처리하도록
+ * fallbackExecution=true를 사용한다.
+ *
+ * <p>별도 Spring 빈인 NotificationService.save를 호출하여 REQUIRES_NEW로 저장한다.
+ * 저장 중 발행한 NotificationCreatedEvent는 알림 커밋 후
+ * NotificationSseEventListener가 받아 SSE 발행을 요청한다.
  */
 @Component
 @RequiredArgsConstructor
@@ -23,8 +27,11 @@ public class NotificationEventListener {
     private final NotificationService service;
 
     /**
-     * 기본 AFTER_COMMIT, fallbackExecution=false를 사용한다.
-     * 업무 롤백·트랜잭션 외 발행 시에는 호출되지 않으며, @Async 없이 커밋 처리 스레드에서 실행된다.
+     * AFTER_COMMIT, fallbackExecution=true로 공통 생성 요청을 처리한다.
+     *
+     * <p>트랜잭션에 등록된 요청은 커밋 후 실행하며, 롤백되면 실행하지 않는다.
+     * 트랜잭션 없이 발행된 요청은 발행 스레드에서 즉시 처리한다.
+     * 두 경로 모두 @Async를 사용하지 않는다.
      */
     @TransactionalEventListener(fallbackExecution = true)
     public void handleNotification(NotificationCreateRequestedEvent event){

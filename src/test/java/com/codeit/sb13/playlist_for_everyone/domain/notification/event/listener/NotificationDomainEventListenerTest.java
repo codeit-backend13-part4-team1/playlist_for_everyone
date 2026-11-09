@@ -26,6 +26,13 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+/**
+ * 업무 이벤트를 공통 알림 요청으로 변환하는 규칙과 재발행 실패 처리를 검증한다.
+ * 발행자는 Mock으로 대체하여 수신자·문구·수준, 빈 이름 대체, 실패 후 처리와 로그를 확인한다.
+ *
+ * <p>리스너 메서드를 직접 호출하므로 Spring의 AFTER_COMMIT 실행 시점은 검증하지 않는다.
+ * 트랜잭션 경계와 실제 팔로우부터 알림 저장까지의 연동은 NotificationIntegrationTest가 담당한다.
+ */
 @Slf4j
 @ExtendWith(MockitoExtension.class)
 @DisplayName("업무 이벤트 기반 알림 변환 리스너")

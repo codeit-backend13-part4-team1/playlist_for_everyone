@@ -61,14 +61,19 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 /**
- * 실제 PostgreSQL·Flyway와 Spring 트랜잭션으로 공통 생성 요청부터 커밋 후 SSE 발행 요청까지 검증한다.
+ * 실제 PostgreSQL·Flyway와 Spring 빈으로 알림 저장 및 커밋 후 SSE 발행 요청을 검증한다.
+ * 직접 발행한 이벤트의 처리 경계와 실제 팔로우 등록부터 알림 저장까지의 연동을 함께 확인한다.
  *
- * <p>SseEventPublisher만 Mock으로 대체하므로 Redis·HTTP 수신은 이 클래스의 검증 범위가 아니다.
- * 테스트 전체를 @Transactional로 감싸지 않고 TransactionTemplate으로 커밋·롤백 시점을 제어한다.
- * 사용자 닉네임 변경은 알림 처리 실패에도 원래 업무의 커밋이 보존되는지 확인하기 위한 업무 대역이다.
+ * <p>SseEventPublisher는 Mock으로 대체하여 발행 요청을 확인한다. Redis·HTTP 수신은 범위 밖이다.
+ * 공통 요청 리스너의 Spy는 기본적으로 실제 메서드를 실행하며, 재발행 실패 사례에서만 예외를 유도한다.
+ * 업무 이벤트를 변환하는 NotificationDomainEventListener는 실제 빈을 사용한다.
  *
- * <p>NotificationUserReader와 UserService는 실제 빈을 사용한다. 입력 검증·사용자 조회·DB 저장의
- * 실패 지점이 서로 다르므로 각각 업무 커밋 유지, SSE 미발행, 후속 정상 알림 처리를 검증한다.
+ * <p>직접 이벤트를 발행하는 사례는 TransactionTemplate으로 커밋·롤백을 제어한다.
+ * 실제 팔로우 등록 사례는 FollowSaver의 REQUIRES_NEW 커밋을 사용한다.
+ * 테스트 전체를 @Transactional로 감싸지 않으며, 직접 발행 사례의 닉네임 변경은 업무 대역이다.
+ *
+ * <p>입력 검증·사용자 조회·DB 저장의 실패 지점은 실제 저장 서비스를 통해 구분한다.
+ * 각 실패가 업무 커밋을 보존하고, 후속 정상 알림의 저장·SSE 발행을 막지 않는지 확인한다.
  */
 @RecordApplicationEvents
 @SpringBootTest(properties = {
@@ -121,10 +126,11 @@ class NotificationIntegrationTest {
     @Autowired
     private FollowRepository followRepository;
 
-    // DB와 리스너는 실제 빈을 사용하되, 외부 전송 경계의 호출 횟수·데이터·실패를 제어한다.
+    // 외부 전송 경계의 호출 횟수·데이터·실패를 제어하며 Redis나 브라우저로는 전송하지 않는다.
     @MockitoBean
     private SseEventPublisher sseEventPublisher;
 
+    // 기본 동작은 유지하고, 공통 요청 수신 중 예외를 던져 재발행 실패를 재현할 때만 대체한다.
     @MockitoSpyBean
     private NotificationEventListener notificationEventListener;
 
@@ -134,7 +140,7 @@ class NotificationIntegrationTest {
     @BeforeEach
     void setUp() {
         transactionTemplate = new TransactionTemplate(transactionManager);
-        // 새 트랜잭션에서 알림을 저장할 때 참조할 수 있도록 수신자를 먼저 커밋한다.
+        // 팔로우와 알림의 독립 트랜잭션에서 조회할 수 있도록 두 사용자를 먼저 커밋한다.
         jdbcTemplate.update("""
                 INSERT INTO users (id, email, nickname, role, enabled, created_at)
                 VALUES (?, ?, ?, 'USER', true, CURRENT_TIMESTAMP)
@@ -148,6 +154,7 @@ class NotificationIntegrationTest {
 
     @AfterEach
     void cleanUp() {
+        // 서비스가 실제 커밋한 행을 정리한다. 두 테이블이 사용자를 참조하므로 사용자 삭제 전에 지운다.
         notificationRepository.deleteAllInBatch();
         followRepository.deleteAllInBatch();
         jdbcTemplate.update("DELETE FROM users WHERE id IN (?, ?)", RECEIVER_ID , FOLLOWER_ID);
@@ -220,6 +227,7 @@ class NotificationIntegrationTest {
     @Test
     @DisplayName("팔로우 이벤트를 발행한 트랜잭션의 커밋 후 알림을 저장한다.")
     void savesNotificationFromFollowEventAfterBusinessCommit(ApplicationEvents applicationEvents) {
+        // 이벤트를 직접 발행해 커밋 전후의 소비 시점을 관찰한다. 실제 팔로우 등록은 별도 사례로 검증한다.
         UserFollowedEvent event = new UserFollowedEvent(UUID.randomUUID(), "홍길동", RECEIVER_ID);
         NotificationCreateRequestedEvent expectedRequest = new NotificationCreateRequestedEvent(
                 RECEIVER_ID,
@@ -496,6 +504,7 @@ class NotificationIntegrationTest {
     @Test
     @DisplayName("팔로우 이벤트를 발행한 트랜잭션이 롤백되면 공통 알림 요청을 발행하지 않는다.")
     void doesNotCreateNotificationWhenFollowEventTransactionRollsBack(ApplicationEvents applicationEvents){
+        // 닉네임 변경과 이벤트 발행을 같은 트랜잭션에 넣어 생산 업무의 롤백을 재현한다.
         UserFollowedEvent event = new UserFollowedEvent(UUID.randomUUID(), "홍길동", RECEIVER_ID);
         transactionTemplate.executeWithoutResult(status ->{
             changeReceiverNickname();
@@ -532,6 +541,7 @@ class NotificationIntegrationTest {
     void savesNotificationAfterActualFollowRegistrationCommits(){
         FollowCommand command = new FollowCommand(RECEIVER_ID, FOLLOWER_ID);
 
+        // FollowSaver의 독립 트랜잭션이 커밋된 뒤 반환되므로 별도 TransactionTemplate으로 감싸지 않는다.
         FollowResult result = followService.follow(command);
         assertThat(result.created()).isTrue();
         assertThat(followRepository.existsById(result.followDto().id())).isTrue();
@@ -548,6 +558,7 @@ class NotificationIntegrationTest {
     @Test
     @DisplayName("알림 요청 재발행이 실패해도 커밋된 팔로우를 유지하고 실패를 기록한다.")
     void keepsFollowWhenNotificationRequestPublishFails(CapturedOutput output){
+        // 공통 요청을 수신하는 쪽에서 예외를 던져 실제 업무 이벤트 리스너의 재발행 실패 처리를 확인한다.
         doThrow(new IllegalStateException("테스트용 알림 요청 재발행 실패"))
                 .when(notificationEventListener)
                 .handleNotification(any(NotificationCreateRequestedEvent.class));
@@ -562,6 +573,7 @@ class NotificationIntegrationTest {
         assertThat(notificationRepository.count()).isZero();
 
         verifyNoInteractions(sseEventPublisher);
+        // 팔로우 유지와 함께 도메인 리스너가 예외를 처리하고 기록한 사실까지 확인한다.
         assertThat(output.getOut()).contains(
                 "팔로우 알림 변환·재발행 실패.",
                 "followerId=" + FOLLOWER_ID,
@@ -575,7 +587,7 @@ class NotificationIntegrationTest {
         return new NotificationCreateRequestedEvent(receiverId, title, CONTENT, level);
     }
 
-    /** 업무 트랜잭션의 정상 종료를 재현하여 첫 번째 AFTER_COMMIT 리스너부터 실행한다. */
+    /** 공통 생성 요청을 트랜잭션 안에서 직접 발행하고 커밋해 NotificationEventListener부터 실행한다. */
     private void publishAndCommit(NotificationCreateRequestedEvent event) {
         transactionTemplate.executeWithoutResult(status -> eventPublisher.publishEvent(event));
     }
