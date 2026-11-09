@@ -3,15 +3,19 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.watching;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
+import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
+import com.codeit.sb13.playlist_for_everyone.domain.user.mapper.UserSummaryMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketAuthInvalidException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketDestinationInvalidException;
 import com.codeit.sb13.playlist_for_everyone.global.service.MatchRule;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionData;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.ConnectionRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.*;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
 import lombok.RequiredArgsConstructor;
@@ -24,7 +28,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
-
+import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WebSocketUtils.check;
 
 /**
  * 동시 시청 도메인의 서비스를 큰 틀로 담당하는 클래스.
@@ -48,7 +52,7 @@ public class WatchingSession {
     private final ContentService contentService;
     private final WatchingSessionService watchingSessionService;
     private final ConnectionRegistry connectionRegistry;
-
+    private final UserSummaryMapper userSummaryMapper;
 
     public String topic(SessionInfo info){
         return watchingSessionService.topic(info);
@@ -71,11 +75,11 @@ public class WatchingSession {
      */
     public WatchingSessionChange joinViewerSession(SessionInfo info){
         SessionData session = connectionRegistry.get(
-                Objects.requireNonNull(info.session()),
-                Objects.requireNonNull(info.subscription())
+                check(info.session()),
+                check(info.subscription())
         );
         if(session == null) throw new WebSocketSessionNotFoundException();
-        SecurityUser auth = Objects.requireNonNull(session.user());
+        SecurityUser auth = check(session.user());
         String contentId = getContentIdFromDestination(info);
 
         return getWatchingSessionChange(
@@ -96,11 +100,11 @@ public class WatchingSession {
      */
     public WatchingSessionChange leaveViewerSession(SessionInfo info){
         SessionData session = connectionRegistry.get(
-                Objects.requireNonNull(info.session()),
-                Objects.requireNonNull(info.subscription())
+                check(info.session()),
+                check(info.subscription())
         );
         if(session == null) throw new WebSocketSessionNotFoundException();
-        SecurityUser auth = Objects.requireNonNull(session.user());
+        SecurityUser auth = check(session.user());
 
         // unsubscribe 혹은 disconnect 프레임에서 인증, 경로정보 복원.
         info.wrap(session);
@@ -114,6 +118,53 @@ public class WatchingSession {
                 UUID.fromString(contentId)
         );
     }
+
+    /**
+     * 세션 정보를 바탕으로 동시 시청 채팅 채널에 등록 한다.
+     * @param info 세션 정보.
+     */
+    public void joinChatSession(SessionInfo info){
+        check(info.destination());
+        getContentIdFromDestination(info);
+
+        SecurityUser auth = check(info.user());
+        User user = userService.getById(auth.getUserId());
+        if (user.isLocked()) throw new WebSocketAuthInvalidException();
+
+        watchingSessionService.joinChatSession(info);
+    }
+
+
+    /**
+     * 세션 정보를 바탕으로 동시 시청 채팅 채널에서 탈퇴 한다.
+     * @param info 세션 정보.
+     */
+    public void leaveChatSession(SessionInfo info){
+        check(info.destination());
+        getContentIdFromDestination(info);
+
+        watchingSessionService.leaveChatSession(info);
+    }
+
+    /**
+     * 유저 id 와 채팅 내용을 바탕으로 채팅 메세지 객체를 조립한다.
+     * @param info 세션 정보..
+     * @param content 보내질 메세지.
+     */
+    public ContentChatDto getContentChatDto(SessionInfo info, String content){
+        SecurityUser auth = check(info.user());
+
+        User user = userService.getById(auth.getUserId());
+
+        // 유저 락 정보 확인.
+        if (user.isLocked()) throw new WebSocketAuthInvalidException();
+
+        UserSummary userSummary = userSummaryMapper.toSummary(user);
+        return new ContentChatDto(userSummary,content);
+    }
+
+
+
 
     private WatchingSessionChange getWatchingSessionChange(
             ChangeType type,
@@ -157,7 +208,7 @@ public class WatchingSession {
 
     private String getContentIdFromDestination(SessionInfo info){
         try{
-            String destination = Objects.requireNonNull(info.destination());
+            String destination = check(info.destination());
             List<String> extract =
                     VIEW_DESTINATION_PATTERN.extract(destination);
 

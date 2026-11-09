@@ -6,7 +6,6 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.Playlis
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistSearchRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.PlaylistResponse;
-import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Playlist;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistContent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistSortBy;
@@ -19,7 +18,9 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.Playlist
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistSearchCondition;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.SubscriptionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.PlaylistService;
+import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
+import com.codeit.sb13.playlist_for_everyone.domain.user.mapper.UserSummaryMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
@@ -31,7 +32,6 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListS
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscriptionNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
-import com.codeit.sb13.playlist_for_everyone.global.file.storage.FileStorage;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.HashSet;
@@ -57,7 +57,7 @@ public class PlaylistServiceImpl implements PlaylistService {
   private final PlaylistContentRepository playlistContentRepository;
   private final ContentRepository contentRepository;
   private final ApplicationEventPublisher eventPublisher;
-  private final FileStorage fileStorage;
+  private final UserSummaryMapper  userSummaryMapper;
 
   private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
 
@@ -78,7 +78,7 @@ public class PlaylistServiceImpl implements PlaylistService {
         user.getId(),
         user.getName()));
 
-    UserSummary userSummary = toUserSummary(user);
+    UserSummary userSummary = userSummaryMapper.toSummary(user);
 
     return PlaylistResponse.from(saved, userSummary, false);
     // 방금 생성된 플레이리스트라 구독 정보가 없으므로 항상 false이다.
@@ -97,7 +97,7 @@ public class PlaylistServiceImpl implements PlaylistService {
     boolean subscribedByMe = subscriptionRepository
         .existsByPlaylistIdAndSubscriberId(playlistId, requesterId);
 
-    UserSummary userSummary = toUserSummary(owner);
+    UserSummary userSummary = userSummaryMapper.toSummary(owner);
 
     return PlaylistResponse.from(playlist, userSummary, subscribedByMe);
   }
@@ -298,7 +298,7 @@ public class PlaylistServiceImpl implements PlaylistService {
 
   private PlaylistResponse toResponse(Playlist playlist, boolean subscribedByMe) {
     User owner = playlist.getOwner();
-    UserSummary userSummary = toUserSummary(owner);
+    UserSummary userSummary = userSummaryMapper.toSummary(owner);
     return PlaylistResponse.from(playlist, userSummary, subscribedByMe);
   }
 
@@ -311,13 +311,4 @@ public class PlaylistServiceImpl implements PlaylistService {
     }
     return false;
   }
-
-  private UserSummary toUserSummary(User owner) {
-    FileInfo profileImage = owner.getProfileImage();
-    String profileImageUrl = profileImage == null
-        ? null
-        : fileStorage.getFileUrl(profileImage.getKey());
-    return new UserSummary(owner.getId(), owner.getName(), profileImageUrl);
-  }
-
 }

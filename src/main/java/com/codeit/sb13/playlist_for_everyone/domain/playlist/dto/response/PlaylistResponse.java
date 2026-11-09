@@ -1,8 +1,10 @@
 package com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response;
 
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Playlist;
+import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserSummary;
 import java.time.LocalDateTime;
 import java.util.UUID;
+
 
 public record PlaylistResponse(
     UUID id,

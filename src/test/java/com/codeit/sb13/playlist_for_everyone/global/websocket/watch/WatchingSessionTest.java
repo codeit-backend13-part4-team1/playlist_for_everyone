@@ -3,17 +3,20 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.watch;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
+import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
+import com.codeit.sb13.playlist_for_everyone.domain.user.mapper.UserSummaryMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.exception.EveryOneException;
-import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketDestinationInvalidException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketAuthInvalidException;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionData;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.ConnectionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.InMemoryConnectionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSession;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSessionMapper;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.ChangeType;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.WatchingSessionChange;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
@@ -56,6 +59,8 @@ public class WatchingSessionTest {
     UserService userService;
     @Mock
     ContentService contentService;
+    @Mock
+    UserSummaryMapper userSummaryMapper;
 
     // interface 단은 setup 에서 설정.
     WatchingSessionService watchingSessionService;
@@ -91,12 +96,6 @@ public class WatchingSessionTest {
         accessor.setDestination(destination);
         accessor.setLeaveMutable(true);
 
-        Message<byte[]> message =  MessageBuilder.createMessage(
-                new byte[0],
-                accessor.getMessageHeaders()
-        );
-
-        SessionInfo info = new SessionInfo(message);
 
         SecurityUser user = new SecurityUser(
                 UUID.randomUUID(),
@@ -107,9 +106,14 @@ public class WatchingSessionTest {
         );
         UsernamePasswordAuthenticationToken authentication =
                 new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
-        info.principal(authentication);
 
-        return info;
+        accessor.setUser(authentication);
+
+        Message<byte[]> message =  MessageBuilder.createMessage(
+                new byte[0],
+                accessor.getMessageHeaders()
+        );
+        return new SessionInfo(message);
     }
 
 
@@ -117,10 +121,10 @@ public class WatchingSessionTest {
      * redis 구독 등록을 위한 테스트용 편의 매서드
      */
     // 테스트용 서비스 타입
-    final String WATCH_SERVICE = "watch";
-    final String CHAT_SERVICE = "chat";
+    static final String WATCH_SERVICE = "watch";
+    static final String CHAT_SERVICE = "chat";
 
-    String testDestination(String contentId, String serviceType){
+    static String testDestination(String contentId, String serviceType){
         return switch (serviceType) {
             case WATCH_SERVICE -> "/sub/contents/" + contentId + "/watch";
             case CHAT_SERVICE -> "/sub/contents/" + contentId + "/chat";
@@ -146,6 +150,10 @@ public class WatchingSessionTest {
     }
 
     void userServiceLogicSet(SecurityUser auth){
+        userServiceLogicSet(auth,false);
+    }
+
+    void userServiceLogicSet(SecurityUser auth, boolean setSummary){
         User user = User.builder()
                 .name("김숙희")
                 .email(auth.getUsername())
@@ -157,6 +165,12 @@ public class WatchingSessionTest {
         ReflectionTestUtils.setField(user, "id", auth.getUserId());
 
         given(userService.getById(any(UUID.class))).willReturn(user);
+        if (setSummary)
+            given(userSummaryMapper.toSummary(eq(user))).willReturn(new UserSummary(
+                    user.getId(),
+                    user.getName(),
+                    null
+        ));
     }
 
     // todo - ContentService 에서 컨텐츠를 조회하는 매서드가 생기면 활성화.
@@ -180,7 +194,8 @@ public class WatchingSessionTest {
                 userService,
                 contentService,
                 watchingSessionService,
-                connectionRegistry
+                connectionRegistry,
+                userSummaryMapper
         );
 
         // 커넥션 세션 저장
@@ -308,7 +323,7 @@ public class WatchingSessionTest {
                 connectionRegistry.register(data);
 
                 assertThatThrownBy(() -> watchingSession.joinViewerSession(info))
-                        .isInstanceOf(WebSocketDestinationInvalidException.class); // InvalidAuthException
+                        .isInstanceOf(EveryOneException.class); // InvalidAuthException
 
                 // 실제 세션 저장부는 호출되지 않음.
                 verify(watchingSessionService, times(0)).joinViewerSession(any());
@@ -419,7 +434,7 @@ public class WatchingSessionTest {
                 connectionRegistry.register(data);
 
                 assertThatThrownBy(() -> watchingSession.leaveViewerSession(info))
-                        .isInstanceOf(WebSocketDestinationInvalidException.class); // InvalidAuthException
+                        .isInstanceOf(EveryOneException.class); // InvalidAuthException
 
                 // 실제 세션 저장부는 호출되지 않음.
                 verify(watchingSessionService, times(0)).leaveViewerSession(any());
@@ -429,6 +444,194 @@ public class WatchingSessionTest {
     }
 
 
+    /**
+     * ChatSession 테스트
+     * 외부에서 세션 정보를 받아와서, 같은 채팅방(redis 메세지 퍼블리셔)를 구독하는 로직
+     * 해당 클래스의 역할은
+     * 1. 인증, 인가 검사
+     * 2. 경로 검사
+     * 3. 이벤트 발신 및 기타 로직 수행
+     */
+    @Nested
+    @DisplayName("ChatSession 테스트")
+    class ChatSessionTest {
+
+        static String sessionId = "test-session";
+        static String subscriptionId = "test-sub";
+        static String contentId = UUID.randomUUID().toString();
+        static String destination = testDestination(contentId, CHAT_SERVICE);
+
+
+        @Nested
+        @DisplayName("join 검사")
+        class JoinTest {
+
+            @Test
+            @DisplayName("세션 정보를 바탕으로, 토픽을 받아오고, ChatSession 을 구독한다.")
+            void joinSessionTest(){
+                SessionInfo info = getSessionInfo(
+                        sessionId,
+                        subscriptionId,
+                        destination,
+                        Role.USER
+                );
+
+                // 현재 유저 정보를 통한 인증, 인가 검사용 호출
+                userServiceLogicSet(Objects.requireNonNull(info.user()));
+
+                watchingSession.joinChatSession(info);
+
+                verify(watchingSessionService).joinChatSession(eq(info));
+            }
+
+            // 경로 정보만 검사함.
+            static Stream<Arguments> nullableTestArgv(){
+                return Stream.of(
+                        Arguments.of(sessionId, subscriptionId, null),
+                        Arguments.of(sessionId, subscriptionId, "/test/pattern/123")
+                );
+            }
+
+            @ParameterizedTest
+            @MethodSource("nullableTestArgv")
+            @DisplayName("경로 정보가 없거나, 경로 정보가 지정된 형식이 아니면, 리소스를 등록하기 전에 예외를 반환한다.")
+            void leaveTestWithNoArgv(String session, String subscription, String destination){
+                SessionInfo info = getSessionInfo(
+                        session,
+                        subscription,
+                        destination,
+                        Role.USER
+                );
+
+                // 리소스 조회는 아예 하지 않는다.
+                assertThatThrownBy(() -> watchingSession.joinChatSession(info))
+                        .isInstanceOf(EveryOneException.class);
+
+                verifyNoInteractions(watchingSessionService);
+                verifyNoInteractions(userService);
+            }
+
+            // 우선은 잠김만 검사함.
+            static Stream<Arguments> authenticationTestArgv(){
+                return Stream.of(
+                        Arguments.of(Role.USER,true)
+                );
+            }
+
+            @ParameterizedTest
+            @MethodSource("authenticationTestArgv")
+            @DisplayName("유저의 인가 권한이 없거나, 유저가 잠겨있으면 리소스를 등록하기 전에 예외를 반환한다.")
+            void leaveTestWithLockedUser(Role role, boolean isLocked){
+                SessionInfo info = getSessionInfo(
+                        sessionId,
+                        subscriptionId,
+                        destination,
+                        role,
+                        isLocked
+                );
+
+                userServiceLogicSet(info.user());
+
+                assertThatThrownBy(() -> watchingSession.joinChatSession(info))
+                        .isInstanceOf(EveryOneException.class);
+
+                verifyNoInteractions(watchingSessionService);
+            }
+
+        }
+
+        @Nested
+        @DisplayName("leave 검사")
+        class Leave{
+
+            @Test
+            @DisplayName("세션 정보를 바탕으로, 토픽을 받아오고, ChatSession 을 구독 취소 한다.")
+            void joinSessionTest(){
+                SessionInfo info = getSessionInfo(
+                        sessionId,
+                        subscriptionId,
+                        destination,
+                        Role.USER
+                );
+
+                watchingSession.leaveChatSession(info);
+
+                verify(watchingSessionService).leaveChatSession(eq(info));
+            }
+
+            // 경로 정보만 검사함.
+            static Stream<Arguments> nullableTestArgv(){
+                return Stream.of(
+                        Arguments.of(sessionId, subscriptionId, null),
+                        Arguments.of(sessionId, subscriptionId, "/test/pattern/123")
+                );
+            }
+
+            @ParameterizedTest
+            @MethodSource("nullableTestArgv")
+            @DisplayName("세션 정보나, 경로 정보가 없거나, 경로 정보가 지정된 형식이 아니면, 리소스를 등록하기 전에 예외를 반환한다.")
+            void leaveTestWithNoArgv(String session, String subscription, String destination){
+                SessionInfo info = getSessionInfo(
+                        session,
+                        subscription,
+                        destination,
+                        Role.USER
+                );
+
+                // 리소스 조회는 아예 하지 않는다.
+                assertThatThrownBy(() -> watchingSession.leaveChatSession(info))
+                        .isInstanceOf(EveryOneException.class);
+
+                verifyNoInteractions(watchingSessionService);
+                verifyNoInteractions(userService);
+            }
+        }
+
+
+        @Nested
+        @DisplayName("send 객체 조립 기능 검사.")
+        class Send{
+
+            @Test
+            @DisplayName("send 로 보낼 메세지 객체를 조립한다.")
+            void testGettingChatDto(){
+                SessionInfo info = getSessionInfo(
+                        sessionId,
+                        subscriptionId,
+                        destination,
+                        Role.USER
+                );
+                String content = "content";
+
+                userServiceLogicSet(info.user(),true);
+
+                ContentChatDto chat = watchingSession.getContentChatDto(info, content);
+
+                assertThat(chat.content()).isEqualTo(content);
+                assertThat(chat.sender()).isNotNull();
+            }
+
+            @Test
+            @DisplayName("유저가 잠긴 유저라면, 예외를 던진다.")
+            void exceptionTestWithLockedUser(){
+                SessionInfo info = getSessionInfo(
+                        sessionId,
+                        subscriptionId,
+                        destination,
+                        Role.USER,
+                        true
+                );
+                String content = "content";
+
+                userServiceLogicSet(info.user());
+
+                assertThatThrownBy(() -> watchingSession.getContentChatDto(info, content))
+                        .isInstanceOf(WebSocketAuthInvalidException.class);
+            }
+
+        }
+
+    }
 
 
 }

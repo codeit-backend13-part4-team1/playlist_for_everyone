@@ -7,11 +7,10 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.EveryOneException;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSession;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.ChangeType;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.WatchingSessionChange;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionEventListener;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionJoinEvent;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionLeaveEvent;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -85,13 +84,6 @@ public class WatchingSessionEventListenerTest {
         accessor.setDestination(destination);
         accessor.setLeaveMutable(true);
 
-        Message<byte[]> message =  MessageBuilder.createMessage(
-                new byte[0],
-                accessor.getMessageHeaders()
-        );
-
-        SessionInfo info = new SessionInfo(message);
-
         SecurityUser user = new SecurityUser(
                 UUID.randomUUID(),
                 "test@email.com",
@@ -101,9 +93,15 @@ public class WatchingSessionEventListenerTest {
         );
         UsernamePasswordAuthenticationToken authentication =
                 new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
-        info.principal(authentication);
 
-        return info;
+        accessor.setUser(authentication);
+
+        Message<byte[]> message =  MessageBuilder.createMessage(
+                new byte[0],
+                accessor.getMessageHeaders()
+        );
+
+        return new SessionInfo(message);
     }
 
 
@@ -369,6 +367,107 @@ public class WatchingSessionEventListenerTest {
 
     }
 
+    @Nested
+    @DisplayName("ChatSession 계열 이벤트 테스트")
+    class ChatSessionEvent {
+        String sessionId = "test-session";
+        String subscriptionId = "test-subscription";
+        String contentId = UUID.randomUUID().toString();
+        String destination = "/pub/contents/" + contentId + "/chat";
 
+        @Nested
+        @DisplayName("Join 테스트")
+        class Join {
+
+            @Test
+            @DisplayName("참여 이벤트가 호출되면, 채팅 세션 참여 매서드를 호출한다.")
+            void joinEventQueryTest(){
+                SessionInfo info = getSessionInfo(
+                        sessionId,
+                        subscriptionId,
+                        destination,
+                        Role.USER
+                );
+
+                eventListener.chatJoinEvent(new WatchingChatJoinEvent(info));
+
+                verify(watchingSession,times(1)).joinChatSession(eq(info));
+            }
+
+        }
+
+        @Nested
+        @DisplayName("Leave 테스트")
+        class Leave {
+
+            @Test
+            @DisplayName("이탈 이벤트가 호출되면, 채팅 세션 이탈 매서드를 호출한다.")
+            void joinEventQueryTest(){
+                SessionInfo info = getSessionInfo(
+                        sessionId,
+                        subscriptionId,
+                        destination,
+                        Role.USER
+                );
+
+                eventListener.chatLeaveEvent(new WatchingChatLeaveEvent(info));
+
+                verify(watchingSession,times(1)).leaveChatSession(eq(info));
+            }
+
+        }
+
+        @Nested
+        @DisplayName("Send 테스트")
+        class Send {
+
+            @Test
+            @DisplayName("Send 이벤트가 호출되면, 세션 정보를 바탕으로 채팅 메세지를 브로커에 전송한다.")
+            void joinEventQueryTest(){
+                String message = "Message";
+                SessionInfo info = getSessionInfo(
+                        sessionId,
+                        subscriptionId,
+                        destination,
+                        Role.USER
+                );
+
+                String topic = assertionTopicAnswer(contentId, CHAT_SERVICE);
+
+                // user, message
+                ContentChatDto chat = new ContentChatDto(null, message);
+
+                // destination, payload
+                String targetDestination = testDestination(contentId,CHAT_SERVICE);
+                RedisMessageDto<ContentChatDto> dto = new RedisMessageDto<>(targetDestination, chat);
+
+                given(watchingSession.topic(info)).willReturn(topic);
+                given(watchingSession.getContentChatDto(info, message)).willReturn(chat);
+
+                eventListener.chatSendEvent(new WatchingChatSendEvent(info, message));
+
+                verify(template,times(1)).convertAndSend(eq(topic),eq(dto));
+            }
+
+            @Test
+            @DisplayName("경로가 지정된 형식이 아니면 예외 발생. 별도의 리소스를 사용하지 않는다.")
+            void exceptTestWithNotValidateDestination(){
+                String message = "Message";
+                SessionInfo info = getSessionInfo(
+                        sessionId,
+                        subscriptionId,
+                        "/test/path/for/nonvalid/path",
+                        Role.USER
+                );
+
+                assertThatThrownBy(() -> eventListener.chatSendEvent(new WatchingChatSendEvent(info, message)))
+                        .isInstanceOf(EveryOneException.class);
+
+                verifyNoInteractions(template);
+            }
+
+        }
+
+    }
 
 }

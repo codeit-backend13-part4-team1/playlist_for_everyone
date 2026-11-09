@@ -33,6 +33,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.Playlist
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.SubscriptionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
+import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserSummary;
+import com.codeit.sb13.playlist_for_everyone.domain.user.mapper.UserSummaryMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
@@ -87,7 +89,7 @@ public class PlaylistServiceImplTest {
   private PlaylistServiceImpl playlistService;
 
   @Mock
-  private FileStorage fileStorage;
+  private UserSummaryMapper userSummaryMapper;
 
   @Test
   @DisplayName("요청한 값과 소유자 ID로 플레이리스트를 저장한다.")
@@ -120,20 +122,20 @@ public class PlaylistServiceImplTest {
     UUID ownerId = UUID.randomUUID();
     User owner = createUser(ownerId);
     PlaylistCreateRequest request = new PlaylistCreateRequest("title", "description");
+    UserSummary summary = new UserSummary(ownerId, "tester", null);
 
     given(userRepository.findById(ownerId)).willReturn(Optional.of(owner));
     given(playlistRepository.save(any(Playlist.class)))
         .willAnswer(invocation -> invocation.getArgument(0));
+    given(userSummaryMapper.toSummary(owner)).willReturn(summary);
 
-    // when
+// when
     PlaylistResponse response = playlistService.create(ownerId, request);
 
-    // then
+// then
     assertThat(response.title()).isEqualTo("title");
     assertThat(response.description()).isEqualTo("description");
-    assertThat(response.owner().userId()).isEqualTo(ownerId);
-    assertThat(response.owner().name()).isEqualTo("tester");
-    assertThat(response.owner().profileImageUrl()).isNull();
+    assertThat(response.owner()).isEqualTo(summary);
     assertThat(response.subscriberCount()).isZero();
     assertThat(response.subscribedByMe()).isFalse();
   }
@@ -195,9 +197,11 @@ public class PlaylistServiceImplTest {
     UUID playlistId = UUID.randomUUID();
     User owner = createUser(ownerId);
     Playlist playlist = createPlaylist(owner, playlistId);
+    UserSummary summary = new UserSummary(ownerId, "tester", null);
 
     given(playlistRepository.findWithOwnerById(playlistId))
         .willReturn(Optional.of(playlist));
+    given(userSummaryMapper.toSummary(owner)).willReturn(summary);
 
     // when
     PlaylistResponse playlistResponse = playlistService.getPlaylist(playlistId, requesterId);
@@ -208,8 +212,7 @@ public class PlaylistServiceImplTest {
     assertThat(playlistResponse.description()).isEqualTo("description");
     assertThat(playlistResponse.subscriberCount()).isEqualTo(3L);
     assertThat(playlistResponse.updatedAt()).isEqualTo(LocalDateTime.of(2026, 10, 26, 12, 0));
-    assertThat(playlistResponse.owner().userId()).isEqualTo(ownerId);
-    assertThat(playlistResponse.owner().name()).isEqualTo("tester");
+    assertThat(playlistResponse.owner()).isEqualTo(summary);
   }
 
   @Test
@@ -489,11 +492,14 @@ public class PlaylistServiceImplTest {
     // given
     UUID ownerId = UUID.randomUUID();
     UUID playlistId = UUID.randomUUID();
-    Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
+    User owner = createUser(ownerId);
+    Playlist playlist = createPlaylist(owner, playlistId);
     PlaylistUpdateRequest request = new PlaylistUpdateRequest("새 제목", "새 설명");
+    UserSummary summary = new UserSummary(ownerId, "tester", null);
 
     given(playlistRepository.findWithOwnerById(playlistId))
         .willReturn(Optional.of(playlist));
+    given(userSummaryMapper.toSummary(owner)).willReturn(summary);
 
     // when
     PlaylistResponse response = playlistService.updatePlaylist(playlistId, request, ownerId);
@@ -503,6 +509,8 @@ public class PlaylistServiceImplTest {
     assertThat(response.title()).isEqualTo("새 제목");
     assertThat(response.description()).isEqualTo("새 설명");
     assertThat(response.owner().userId()).isEqualTo(ownerId);
+    assertThat(response.owner()).isEqualTo(summary);
+
   }
 
   @Test
@@ -1027,11 +1035,12 @@ public class PlaylistServiceImplTest {
     // given
     UUID ownerId = UUID.randomUUID();
     User owner = createUserWithProfileImage(ownerId, "profile/owner.png");
+    UserSummary summary = new UserSummary(
+        ownerId, "tester", "https://cdn.test/profile/owner.png");
     given(userRepository.findById(ownerId)).willReturn(Optional.of(owner));
     given(playlistRepository.save(any(Playlist.class)))
         .willAnswer(invocation -> invocation.getArgument(0));
-    given(fileStorage.getFileUrl("profile/owner.png"))
-        .willReturn("https://cdn.test/profile/owner.png");
+    given(userSummaryMapper.toSummary(owner)).willReturn(summary);
 
     // when
     PlaylistResponse response = playlistService.create(
@@ -1050,11 +1059,13 @@ public class PlaylistServiceImplTest {
     UUID playlistId = UUID.randomUUID();
     UUID requesterId = UUID.randomUUID();
     User owner = createUserWithProfileImage(ownerId, "profile/owner.png");
+    UserSummary summary = new UserSummary(
+        ownerId, "tester", "https://cdn.test/profile/owner.png");
     Playlist playlist = createPlaylist(owner, playlistId);
     given(playlistRepository.findWithOwnerById(playlistId))
         .willReturn(Optional.of(playlist));
-    given(fileStorage.getFileUrl("profile/owner.png"))
-        .willReturn("https://cdn.test/profile/owner.png");
+    given(userSummaryMapper.toSummary(owner))
+        .willReturn(summary);
 
     // when
     PlaylistResponse response = playlistService.getPlaylist(playlistId, requesterId);
@@ -1075,22 +1086,26 @@ public class PlaylistServiceImplTest {
     Playlist second = createPlaylist(withoutImage, UUID.randomUUID());
     PlaylistSearchRequest request =
         createSearchRequest(2, PlaylistSortBy.UPDATED_AT, SortDirection.DESCENDING);
+    UserSummary withImageSummary = new UserSummary(
+        withImage.getId(), "tester", "https://cdn.test/profile/owner.png");
+    UserSummary withoutImageSummary = new UserSummary(
+        withoutImage.getId(), "tester", null);
 
     given(playlistRepository.search(any(PlaylistSearchCondition.class)))
         .willReturn(List.of(first, second));
     given(playlistRepository.count(any(PlaylistSearchCondition.class))).willReturn(2L);
     given(subscriptionRepository.findSubscribedPlaylistIds(eq(requesterId), anyCollection()))
         .willReturn(List.of());
-    given(fileStorage.getFileUrl("profile/owner.png"))
-        .willReturn("https://cdn.test/profile/owner.png");
+    given(userSummaryMapper.toSummary(withImage)).willReturn(withImageSummary);
+    given(userSummaryMapper.toSummary(withoutImage)).willReturn(withoutImageSummary);
 
     // when
     CursorResponse<PlaylistResponse> response = playlistService.getPlaylists(request, requesterId);
 
     // then
     assertThat(response.data())
-        .extracting(playlistResponse -> playlistResponse.owner().profileImageUrl())
-        .containsExactly("https://cdn.test/profile/owner.png", null);
+        .extracting(PlaylistResponse::owner)
+        .containsExactly(withImageSummary, withoutImageSummary);
   }
 
 
