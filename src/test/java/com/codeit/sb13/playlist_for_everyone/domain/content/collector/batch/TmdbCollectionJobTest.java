@@ -32,11 +32,17 @@ import org.springframework.web.client.ResourceAccessException;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.batch.core.job.parameters.InvalidJobParametersException;
 
 import java.util.List;
 import java.util.UUID;
 import java.util.ArrayList;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -380,6 +386,28 @@ class TmdbCollectionJobTest {
 
         // 영화 Step이 실패했으므로 TV Step은 실행하지 않는다.
         verify(tmdbClient, never()).getPopularTvShows(1);
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(longs = {0L, -1L})
+    void 수집_페이지_수가_없거나_잘못되면_배치_실행을_거부한다(
+            Long maxPages
+    ) {
+        var builder = new JobParametersBuilder()
+                .addString("run.id", UUID.randomUUID().toString());
+
+        if (maxPages != null) {
+            builder.addLong("maxPages", maxPages);
+        }
+
+        var parameters = builder.toJobParameters();
+
+        assertThatThrownBy(() -> jobOperator.start(job, parameters))
+                .isInstanceOf(InvalidJobParametersException.class)
+                .hasMessage("maxPages는 1 이상의 정수여야 합니다.");
+
+        verifyNoInteractions(tmdbClient);
     }
 
 }
