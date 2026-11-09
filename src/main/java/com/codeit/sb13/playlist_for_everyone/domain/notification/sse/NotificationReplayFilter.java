@@ -6,11 +6,9 @@ import com.codeit.sb13.playlist_for_everyone.global.sse.history.SseHistoryEntry;
 import com.codeit.sb13.playlist_for_everyone.global.sse.replay.SseReplayFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.JsonNode;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 
 /**
  * Redis에는 남아 있지만 DB에서 읽음 처리로 삭제된 알림을 SSE 전송 대상에서 제외한다.
@@ -35,7 +33,12 @@ public class NotificationReplayFilter implements SseReplayFilter {
 
         List<UUID> notificationIds = entries.stream()
                 .map(this::extractNotificationId)
+                .filter(Objects::nonNull)
                 .toList();
+
+        if (notificationIds.isEmpty()) {
+            return List.of();
+        }
 
         Set<UUID> existingIds = new HashSet<>(notificationRepository
                 .findExistingIds(receiverId, notificationIds));
@@ -46,6 +49,18 @@ public class NotificationReplayFilter implements SseReplayFilter {
     }
 
     private UUID extractNotificationId(SseHistoryEntry entry){
-        return UUID.fromString(entry.event().data().get("id").asString());
+        JsonNode data = entry.event().data();
+        if (data == null){
+            return null;
+        }
+        JsonNode id = data.path("id");
+        if (!id.isString()){
+            return null;
+        }
+        try {
+            return UUID.fromString(id.asString());
+        } catch (IllegalArgumentException e){
+            return null;
+        }
     }
 }
