@@ -49,13 +49,16 @@ public interface PlaylistApi {
       @ApiResponse(responseCode = "201", description = "플레이리스트 생성 성공",
           content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
               schema = @Schema(implementation = PlaylistResponse.class))),
-      @ApiResponse(responseCode = "400", description = "요청 본문 검증 실패(title·description이 비었거나 길이 초과)",
+      @ApiResponse(
+          responseCode = "400",
+          description = "요청 본문 검증 실패(title·description이 비었거나 길이 초과)",
           content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
               schema = @Schema(implementation = ApiErrorResponse.class)))
   })
   ResponseEntity<PlaylistResponse> create(
       @Parameter(hidden = true) SecurityUser principal,
       @Valid @RequestBody PlaylistCreateRequest request);
+
 
   @Operation(
       summary = "플레이리스트 단건 조회",
@@ -68,9 +71,11 @@ public interface PlaylistApi {
       @ApiResponse(responseCode = "200", description = "플레이리스트 조회 성공",
           content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
               schema = @Schema(implementation = PlaylistResponse.class))),
+
       @ApiResponse(responseCode = "400", description = "playlistId가 UUID 형식이 아님",
           content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
               schema = @Schema(implementation = ApiErrorResponse.class))),
+
       @ApiResponse(responseCode = "404", description = "플레이리스트를 찾을 수 없음",
           content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
               schema = @Schema(implementation = ApiErrorResponse.class)))
@@ -80,15 +85,16 @@ public interface PlaylistApi {
       @PathVariable UUID playlistId,
       @Parameter(hidden = true) SecurityUser principal);
 
+
   @Operation(
       summary = "플레이리스트 목록 조회",
       description = """
                 플레이리스트 목록을 커서 기반으로 조회합니다.\n
                 keywordLike(제목 검색어), ownerIdEqual(소유자), subscriberIdEqual(구독자)로 필터링할 수 있습니다.\n
-                sortBy는 UPDATED_AT(수정 시각) 또는 SUBSCRIBE_COUNT(구독자 수), sortDirection은 ASCENDING 또는 DESCENDING입니다.\n
+                sortBy는 updatedAt(수정 시각) 또는 subscribeCount(구독자 수), sortDirection은 ASCENDING 또는 DESCENDING입니다.\n
                 limit은 1~100이며 sortBy·sortDirection·limit은 필수입니다.\n
                 다음 페이지는 응답의 nextCursor와 nextIdAfter를 cursor와 idAfter로 함께 전달해서 조회합니다.\n
-                cursor 형식은 UPDATED_AT이면 ISO 날짜시간, SUBSCRIBE_COUNT이면 0 이상의 정수입니다.
+                cursor 형식은 sortBy가 updatedAt이면 ISO 날짜시간, subscribeCount이면 0 이상의 정수입니다.
                 """
   )
   @ApiResponses({
@@ -101,6 +107,7 @@ public interface PlaylistApi {
   ResponseEntity<CursorResponse<PlaylistResponse>> getPlaylists(
       @ParameterObject @Valid PlaylistSearchRequest request,
       @Parameter(hidden = true) SecurityUser principal);
+
 
   @Operation(
       summary = "플레이리스트 수정",
@@ -131,6 +138,7 @@ public interface PlaylistApi {
       @Valid @RequestBody PlaylistUpdateRequest request,
       @Parameter(hidden = true) SecurityUser principal);
 
+
   @Operation(
       summary = "플레이리스트 삭제",
       description = "플레이리스트를 삭제합니다. 소유자만 삭제할 수 있습니다."
@@ -151,6 +159,7 @@ public interface PlaylistApi {
       @Parameter(description = "삭제할 플레이리스트 ID", required = true)
       @PathVariable UUID playlistId,
       @Parameter(hidden = true) SecurityUser principal);
+
 
   @Operation(
       summary = "플레이리스트에 콘텐츠 추가",
@@ -175,6 +184,7 @@ public interface PlaylistApi {
       @PathVariable UUID contentId,
       @Parameter(hidden = true) SecurityUser principal);
 
+
   @Operation(
       summary = "플레이리스트에서 콘텐츠 제거",
       description = "플레이리스트에 담긴 콘텐츠를 제거합니다. 소유자만 제거할 수 있으며 담기지 않은 콘텐츠는 제거할 수 없습니다."
@@ -198,6 +208,7 @@ public interface PlaylistApi {
       @PathVariable UUID contentId,
       @Parameter(hidden = true) SecurityUser principal);
 
+
   @Operation(
       summary = "플레이리스트 구독",
       description = "플레이리스트를 구독합니다. 본인의 플레이리스트와 이미 구독한 플레이리스트는 구독할 수 없습니다."
@@ -215,6 +226,7 @@ public interface PlaylistApi {
       @Parameter(description = "구독할 플레이리스트 ID", required = true)
       @PathVariable UUID playlistId,
       @Parameter(hidden = true) SecurityUser principal);
+
 
   @Operation(
       summary = "플레이리스트 구독 취소",
