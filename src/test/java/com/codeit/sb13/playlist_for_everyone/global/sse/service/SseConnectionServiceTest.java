@@ -62,7 +62,7 @@ class SseConnectionServiceTest {
         UUID userId = UUID.randomUUID();
         ArgumentCaptor<Connection> connectionCaptor = ArgumentCaptor.forClass(Connection.class);
 
-        SseEmitter emitter = service.connect(userId);
+        SseEmitter emitter = service.connect(userId, null);
 
         assertThat(emitter).isNotNull();
         verify(deliveryCoordinator).register(eq(userId), connectionCaptor.capture(), same(emitter));
@@ -80,7 +80,7 @@ class SseConnectionServiceTest {
         IllegalStateException failure = new IllegalStateException("테스트용 등록 실패");
         doThrow(failure).when(deliveryCoordinator).register(eq(userId), any(), any());
         try (MockedConstruction<SseEmitter> construction = mockConstruction(SseEmitter.class)) {
-            assertThatThrownBy(() -> service.connect(userId)).isSameAs(failure);
+            assertThatThrownBy(() -> service.connect(userId, null)).isSameAs(failure);
             SseEmitter emitter = construction.constructed().get(0);
             ArgumentCaptor<Connection> connectionCaptor = ArgumentCaptor.forClass(Connection.class);
             verify(deliveryCoordinator).register(eq(userId), connectionCaptor.capture(), same(emitter));
@@ -116,8 +116,8 @@ class SseConnectionServiceTest {
         ArgumentCaptor<Connection> firstConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
         ArgumentCaptor<Connection> secondConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
 
-        SseEmitter firstEmitter = service.connect(userId);
-        SseEmitter secondEmitter = service.connect(userId);
+        SseEmitter firstEmitter = service.connect(userId, null);
+        SseEmitter secondEmitter = service.connect(userId, null);
 
         assertThat(secondEmitter).isNotSameAs(firstEmitter);
         verify(deliveryCoordinator).register(eq(userId), firstConnectionCaptor.capture(), same(firstEmitter));
@@ -137,8 +137,8 @@ class SseConnectionServiceTest {
         ArgumentCaptor<Connection> firstConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
         ArgumentCaptor<Connection> secondConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
 
-        SseEmitter firstEmitter = service.connect(firstUserId);
-        SseEmitter secondEmitter = service.connect(secondUserId);
+        SseEmitter firstEmitter = service.connect(firstUserId, null);
+        SseEmitter secondEmitter = service.connect(secondUserId, null);
 
         verify(deliveryCoordinator).register(eq(firstUserId), firstConnectionCaptor.capture(), same(firstEmitter));
         verify(deliveryCoordinator).register(eq(secondUserId), secondConnectionCaptor.capture(), same(secondEmitter));
@@ -156,7 +156,7 @@ class SseConnectionServiceTest {
         UUID userId = UUID.randomUUID();
 
         try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
-            SseEmitter emitter = service.connect(userId);
+            SseEmitter emitter = service.connect(userId, null);
             ArgumentCaptor<Connection> connectionCaptor = ArgumentCaptor.forClass(Connection.class);
             verify(deliveryCoordinator).register(eq(userId), connectionCaptor.capture(), same(emitter));
 
@@ -183,8 +183,8 @@ class SseConnectionServiceTest {
         UUID userId = UUID.randomUUID();
 
         try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
-            SseEmitter firstEmitter = service.connect(userId);
-            SseEmitter secondEmitter = service.connect(userId);
+            SseEmitter firstEmitter = service.connect(userId, null);
+            SseEmitter secondEmitter = service.connect(userId, null);
             ArgumentCaptor<Connection> firstConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
             ArgumentCaptor<Connection> secondConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
             verify(deliveryCoordinator).register(eq(userId), firstConnectionCaptor.capture(), same(firstEmitter));
@@ -209,8 +209,8 @@ class SseConnectionServiceTest {
         UUID secondUserId = UUID.randomUUID();
 
         try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
-            SseEmitter firstEmitter = service.connect(firstUserId);
-            SseEmitter secondEmitter = service.connect(secondUserId);
+            SseEmitter firstEmitter = service.connect(firstUserId, null);
+            SseEmitter secondEmitter = service.connect(secondUserId, null);
             ArgumentCaptor<Connection> firstConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
             ArgumentCaptor<Connection> secondConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
             verify(deliveryCoordinator).register(eq(firstUserId), firstConnectionCaptor.capture(), same(firstEmitter));
@@ -233,7 +233,7 @@ class SseConnectionServiceTest {
         UUID userId = UUID.randomUUID();
 
         try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
-            SseEmitter oldEmitter = service.connect(userId);
+            SseEmitter oldEmitter = service.connect(userId, null);
             ArgumentCaptor<Connection> oldConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
             verify(deliveryCoordinator).register(eq(userId), oldConnectionCaptor.capture(), same(oldEmitter));
 
@@ -244,7 +244,7 @@ class SseConnectionServiceTest {
             oldCompletion.run();
             verify(deliveryCoordinator).cleanupConnection(eq(userId), eq(oldConnectionCaptor.getValue()));
 
-            SseEmitter newEmitter = service.connect(userId);
+            SseEmitter newEmitter = service.connect(userId, null);
             ArgumentCaptor<Connection> newConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
             verify(deliveryCoordinator).register(eq(userId), newConnectionCaptor.capture(), same(newEmitter));
             assertThat(newConnectionCaptor.getValue()).isNotEqualTo(oldConnectionCaptor.getValue());
@@ -265,7 +265,7 @@ class SseConnectionServiceTest {
         UUID userId = UUID.randomUUID();
 
         try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
-            SseEmitter emitter = service.connect(userId);
+            SseEmitter emitter = service.connect(userId, null);
             ArgumentCaptor<Connection> connectionCaptor = ArgumentCaptor.forClass(Connection.class);
             verify(deliveryCoordinator).register(eq(userId), connectionCaptor.capture(), same(emitter));
 
@@ -290,8 +290,8 @@ class SseConnectionServiceTest {
         UUID userId = UUID.randomUUID();
 
         try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
-            SseEmitter firstEmitter = service.connect(userId);
-            SseEmitter secondEmitter = service.connect(userId);
+            SseEmitter firstEmitter = service.connect(userId, null);
+            SseEmitter secondEmitter = service.connect(userId, null);
             ArgumentCaptor<Connection> firstConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
             ArgumentCaptor<Connection> secondConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
             verify(deliveryCoordinator).register(eq(userId), firstConnectionCaptor.capture(), same(firstEmitter));
@@ -318,7 +318,7 @@ class SseConnectionServiceTest {
         UUID userId = UUID.randomUUID();
 
         try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
-            SseEmitter oldEmitter = service.connect(userId);
+            SseEmitter oldEmitter = service.connect(userId, null);
             ArgumentCaptor<Connection> oldConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
             verify(deliveryCoordinator).register(eq(userId), oldConnectionCaptor.capture(), same(oldEmitter));
 
@@ -331,7 +331,7 @@ class SseConnectionServiceTest {
             verify(deliveryCoordinator).cleanupConnection(eq(userId), eq(oldConnectionCaptor.getValue()));
             verify(oldEmitter).complete();
 
-            SseEmitter newEmitter = service.connect(userId);
+            SseEmitter newEmitter = service.connect(userId, null);
             ArgumentCaptor<Connection> newConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
             verify(deliveryCoordinator).register(eq(userId), newConnectionCaptor.capture(), same(newEmitter));
             assertThat(newConnectionCaptor.getValue()).isNotEqualTo(oldConnectionCaptor.getValue());
@@ -352,7 +352,7 @@ class SseConnectionServiceTest {
         UUID userId = UUID.randomUUID();
 
         try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
-            SseEmitter emitter = service.connect(userId);
+            SseEmitter emitter = service.connect(userId, null);
             ArgumentCaptor<Connection> connectionCaptor = ArgumentCaptor.forClass(Connection.class);
             verify(deliveryCoordinator).register(eq(userId), connectionCaptor.capture(), same(emitter));
 
@@ -376,8 +376,8 @@ class SseConnectionServiceTest {
         UUID userId = UUID.randomUUID();
 
         try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
-            SseEmitter firstEmitter = service.connect(userId);
-            SseEmitter secondEmitter = service.connect(userId);
+            SseEmitter firstEmitter = service.connect(userId, null);
+            SseEmitter secondEmitter = service.connect(userId, null);
             ArgumentCaptor<Connection> firstConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
             ArgumentCaptor<Connection> secondConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
             verify(deliveryCoordinator).register(eq(userId), firstConnectionCaptor.capture(), same(firstEmitter));
@@ -403,7 +403,7 @@ class SseConnectionServiceTest {
         UUID userId = UUID.randomUUID();
 
         try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
-            SseEmitter emitter = service.connect(userId);
+            SseEmitter emitter = service.connect(userId, null);
             ArgumentCaptor<SseEmitter.SseEventBuilder> eventCaptor =
                     ArgumentCaptor.forClass(SseEmitter.SseEventBuilder.class);
 
@@ -432,7 +432,7 @@ class SseConnectionServiceTest {
                     throw sendFailure;
                 }).when(emitter).send(any(SseEmitter.SseEventBuilder.class))
         )) {
-            assertThatThrownBy(() -> service.connect(userId))
+            assertThatThrownBy(() -> service.connect(userId, null))
                     .isInstanceOf(UncheckedIOException.class)
                     .cause()
                     .isSameAs(sendFailure);
@@ -478,7 +478,7 @@ class SseConnectionServiceTest {
                     throw sendFailure;
                 }).when(emitter).send(any(SseEmitter.SseEventBuilder.class))
         )){
-            assertThatThrownBy(()-> service.connect(userId))
+            assertThatThrownBy(()-> service.connect(userId, null))
                     .isSameAs(sendFailure);
 
             verify(deliveryCoordinator).cleanupConnection(eq(userId), eq(connectionCaptor.getValue()));
@@ -555,7 +555,7 @@ class SseConnectionServiceTest {
 
         ArgumentCaptor<Connection> connectionCaptor = ArgumentCaptor.forClass(Connection.class);
 
-        SseEmitter emitter = service.connect(userId);
+        SseEmitter emitter = service.connect(userId, null);
 
         verify(deliveryCoordinator)
                 .register(eq(userId), connectionCaptor.capture(), same(emitter));

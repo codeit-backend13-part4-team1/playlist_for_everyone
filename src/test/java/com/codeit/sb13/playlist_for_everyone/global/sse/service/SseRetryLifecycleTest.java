@@ -113,7 +113,7 @@ public class SseRetryLifecycleTest {
                     .doesNotContainKey(userId);
 
             verify(recoveryService)
-                    .recover(userId, connection, emitter, lastEventId);
+                    .recover(userId, emitter, lastEventId);
             verify(recoveryService).recoverAfter(userId, connection, emitter, upperBound);
             verifyNoMoreInteractions(recoveryService, retryFuture);
             verify(retryTaskScheduler).schedule(any(Runnable.class), any(Instant.class));
@@ -158,7 +158,7 @@ public class SseRetryLifecycleTest {
                     .doesNotContainKey(userId);
 
             verify(recoveryService)
-                    .recover(userId, connection, emitter, lastEventId);
+                    .recover(userId, emitter, lastEventId);
             verify(recoveryService).recoverAfter(userId, connection, emitter, upperBound);
             verifyNoMoreInteractions(recoveryService, retryFuture);
             verify(retryTaskScheduler).schedule(any(Runnable.class), any(Instant.class));
@@ -202,7 +202,7 @@ public class SseRetryLifecycleTest {
                     .doesNotContainKey(userId);
 
             verify(recoveryService)
-                    .recover(userId, connection, emitter, lastEventId);
+                    .recover(userId, emitter, lastEventId);
             verify(recoveryService).recoverAfter(userId, connection, emitter, upperBound);
             verifyNoMoreInteractions(recoveryService, retryFuture);
             verify(retryTaskScheduler).schedule(any(Runnable.class), any(Instant.class));
@@ -255,7 +255,7 @@ public class SseRetryLifecycleTest {
                     .doesNotContainKey(userId);
 
             verify(recoveryService)
-                    .recover(userId, connection, emitter, lastEventId);
+                    .recover(userId, emitter, lastEventId);
             verify(recoveryService).recoverAfter(userId, connection, emitter, upperBound);
             verifyNoMoreInteractions(recoveryService, retryFuture);
             verify(retryTaskScheduler).schedule(any(Runnable.class), any(Instant.class));
@@ -302,7 +302,7 @@ public class SseRetryLifecycleTest {
         assertThat(emitter.getTimeout()).isEqualTo(expectedTimeout);
 
         verify(recoveryService)
-                .recover(userId, connection, emitter, lastEventId);
+                .recover(userId, emitter, lastEventId);
         verify(recoveryService, times(2))
                 .recoverAfter(userId, connection, emitter, upperBound);
         verifyNoMoreInteractions(recoveryService);
@@ -326,7 +326,7 @@ public class SseRetryLifecycleTest {
                 .when(retryTaskScheduler)
                 .schedule(any(Runnable.class), any(Instant.class));
 
-        when(recoveryService.recover(eq(userId), any(Connection.class), any(SseEmitter.class), eq(lastEventId)))
+        when(recoveryService.recover(eq(userId), any(SseEmitter.class), eq(lastEventId)))
                 .thenReturn(upperBound);
 
     }

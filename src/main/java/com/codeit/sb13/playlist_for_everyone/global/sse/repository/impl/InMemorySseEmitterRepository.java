@@ -51,11 +51,7 @@ public class InMemorySseEmitterRepository implements SseEmitterRepository {
 
     @Override
     public void delete(UUID userId, Connection connection) {
-        // 연결 제거와 빈 사용자 Map 정리를 save와 같은 키의 원자적 변경 안에서 처리한다.
-        sseEmitters.compute(userId, (id, connections)->{
-            if (connections == null){
-                return null;
-            }
+        sseEmitters.computeIfPresent(userId, (id, connections)->{
             connections.remove(connection);
             return removeEmptyConnections(connections);
         });

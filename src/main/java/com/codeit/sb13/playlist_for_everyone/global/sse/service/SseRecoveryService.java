@@ -32,7 +32,6 @@ public class SseRecoveryService {
     /** 초기 스냅샷을 복구한다. 필터가 모두 제외해도 원본 끝 위치를 반환하여 후속 조회 기준을 유지한다. */
     public SseHistoryPosition recover(
             UUID userId,
-            Connection connection,
             SseEmitter emitter,
             UUID lastEventId
     ){

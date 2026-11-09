@@ -67,7 +67,9 @@ class SseRetryExhaustionTest {
         ));
         doReturn(retryFuture)
                 .when(retryTaskScheduler).schedule(any(Runnable.class), any(Instant.class));
-        when(recoveryService.recover(eq(userId), any(Connection.class), any(SseEmitter.class), eq(lastEventId))).thenReturn(upperBound);
+        when(recoveryService.recover(
+                eq(userId), any(SseEmitter.class), eq(lastEventId)
+        )).thenReturn(upperBound);
 
         try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
             SseEmitter emitter = service.connect(userId, lastEventId);
@@ -101,7 +103,7 @@ class SseRetryExhaustionTest {
                     .doesNotThrowAnyException();
             assertThatCode(taskCaptor.getValue()::run).doesNotThrowAnyException();
 
-            verify(recoveryService).recover(userId, connection, emitter, lastEventId);
+            verify(recoveryService).recover(userId, emitter, lastEventId);
             verify(recoveryService, times(2)).recoverAfter(userId, connection, emitter, upperBound);
             verifyNoMoreInteractions(recoveryService);
             verify(retryTaskScheduler).schedule(any(Runnable.class), any(Instant.class));

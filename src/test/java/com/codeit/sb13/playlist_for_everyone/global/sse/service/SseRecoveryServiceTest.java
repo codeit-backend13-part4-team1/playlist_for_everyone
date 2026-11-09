@@ -58,7 +58,7 @@ class SseRecoveryServiceTest {
         when(historyStore.snapshot(userId,lastEventId))
                 .thenReturn(new SseHistorySnapshot(null, List.of()));
 
-        service.recover(userId, connection, emitter, lastEventId);
+        service.recover(userId, emitter, lastEventId);
 
         verify(historyStore).snapshot(userId, lastEventId);
     }
@@ -72,7 +72,7 @@ class SseRecoveryServiceTest {
         when(historyStore.snapshot(userId, null))
                 .thenReturn(snapshot);
 
-        SseHistoryPosition result = service.recover(userId, connection, emitter, null);
+        SseHistoryPosition result = service.recover(userId, emitter, null);
 
         assertThat(result).isEqualTo(upperBound);
         verify(historyStore).snapshot(userId, null);
@@ -107,7 +107,7 @@ class SseRecoveryServiceTest {
         when(historyStore.snapshot(userId, lastEventId))
                 .thenReturn(new SseHistorySnapshot(secondEntry.position(), List.of(firstEntry, secondEntry)));
 
-        SseHistoryPosition result = service.recover(userId, connection, emitter, lastEventId);
+        SseHistoryPosition result = service.recover(userId, emitter, lastEventId);
 
         ArgumentCaptor<SseEmitter.SseEventBuilder> eventCaptor = ArgumentCaptor.forClass(SseEmitter.SseEventBuilder.class);
         verify(emitter, times(2)).send(eventCaptor.capture());
@@ -124,7 +124,6 @@ class SseRecoveryServiceTest {
     @Test
     @DisplayName("같은 사용자의 두 연결에 각자의 마지막 이벤트 ID 이후 복구 목록만 전송한다.")
     void replaysSnapshotsIndependentlyForConnectionsOfSameUser() throws IOException {
-        Connection secondConnection = Connection.create();
         SseEmitter secondEmitter = mock(SseEmitter.class);
         SseEvent<JsonNode> firstEvent = SseEvent.createNotificationEvent(
                 UUID.randomUUID(),
@@ -153,8 +152,8 @@ class SseRecoveryServiceTest {
         when(historyStore.snapshot(userId, firstEvent.eventId()))
                 .thenReturn(new SseHistorySnapshot(secondEntry.position(), List.of(secondEntry)));
 
-        service.recover(userId, connection, emitter, lastEventId);
-        service.recover(userId, secondConnection, secondEmitter, firstEvent.eventId());
+        service.recover(userId, emitter, lastEventId);
+        service.recover(userId, secondEmitter, firstEvent.eventId());
 
         ArgumentCaptor<SseEmitter.SseEventBuilder> firstCaptor = ArgumentCaptor.forClass(SseEmitter.SseEventBuilder.class);
         ArgumentCaptor<SseEmitter.SseEventBuilder> secondCaptor = ArgumentCaptor.forClass(SseEmitter.SseEventBuilder.class);
@@ -178,7 +177,7 @@ class SseRecoveryServiceTest {
 
         when(historyStore.snapshot(userId, lastEventId)).thenThrow(failure);
 
-        assertThatThrownBy(() -> service.recover(userId, connection, emitter, lastEventId))
+        assertThatThrownBy(() -> service.recover(userId, emitter, lastEventId))
                 .isSameAs(failure);
 
         verify(historyStore).snapshot(userId, lastEventId);
@@ -210,7 +209,7 @@ class SseRecoveryServiceTest {
                 .when(emitter)
                 .send(any(SseEmitter.SseEventBuilder.class));
 
-        assertThatThrownBy(() -> service.recover(userId, connection, emitter, lastEventId))
+        assertThatThrownBy(() -> service.recover(userId, emitter, lastEventId))
                 .isInstanceOf(UncheckedIOException.class)
                 .hasCause(failure);
 
@@ -247,7 +246,7 @@ class SseRecoveryServiceTest {
                 .when(emitter)
                 .send(any(SseEmitter.SseEventBuilder.class));
 
-        assertThatThrownBy(() -> service.recover(userId, connection, emitter, lastEventId))
+        assertThatThrownBy(() -> service.recover(userId, emitter, lastEventId))
                 .isSameAs(failure);
 
         ArgumentCaptor<SseEmitter.SseEventBuilder> eventCaptor = ArgumentCaptor.forClass(SseEmitter.SseEventBuilder.class);
@@ -416,7 +415,7 @@ class SseRecoveryServiceTest {
         when(replayFilter.filter(userId, entries))
                 .thenReturn(List.of(retainedEntry));
 
-        SseHistoryPosition result = service.recover(userId, connection, emitter, lastEventId);
+        SseHistoryPosition result = service.recover(userId, emitter, lastEventId);
         ArgumentCaptor<SseEmitter.SseEventBuilder> captor = ArgumentCaptor.forClass(SseEmitter.SseEventBuilder.class);
 
         verify(emitter).send(captor.capture());
@@ -443,7 +442,7 @@ class SseRecoveryServiceTest {
         when(replayFilter.filter(userId, entries))
                 .thenReturn(List.of());
 
-        SseHistoryPosition result = service.recover(userId, connection, emitter, lastEventId);
+        SseHistoryPosition result = service.recover(userId, emitter, lastEventId);
         verify(emitter, never()).send(any(SseEmitter.SseEventBuilder.class));
         assertThat(result).isEqualTo(upperBound);
         verify(replayFilter).filter(userId, entries);
@@ -482,7 +481,7 @@ class SseRecoveryServiceTest {
                 .thenReturn(false);
         when(replayFilter.filter(userId, notifications))
                 .thenReturn(List.of(firstNotification, lastNotification));
-        SseHistoryPosition result = service.recover(userId, connection, emitter, lastEventId);
+        SseHistoryPosition result = service.recover(userId, emitter, lastEventId);
 
         ArgumentCaptor<SseEmitter.SseEventBuilder> captor = ArgumentCaptor.forClass(SseEmitter.SseEventBuilder.class);
         verify(emitter, times(3)).send(captor.capture());
@@ -526,7 +525,7 @@ class SseRecoveryServiceTest {
         when(replayFilter.filter(userId, notifications))
                 .thenThrow(failure);
 
-        assertThatThrownBy(()-> service.recover(userId, connection, emitter, lastEventId))
+        assertThatThrownBy(()-> service.recover(userId, emitter, lastEventId))
                 .isSameAs(failure);
 
         verify(emitter, never()).send(any(SseEmitter.SseEventBuilder.class));

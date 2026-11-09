@@ -137,8 +137,4 @@ public class SseConnectionService {
     private void cleanupConnection(UUID userId, Connection connection){
         deliveryCoordinator.cleanupConnection(userId, connection);
     }
-    public SseEmitter connect(UUID userId){
-        return connect(userId, null);
-    }
-
 }

@@ -87,7 +87,7 @@ public class SseDeliveryCoordinator {
         if (emitter.isEmpty()) return;
 
         SseHistoryPosition recoveredPosition = recoveryService
-                .recover(userId, connection, emitter.get(), lastEventId);
+                .recover(userId, emitter.get(), lastEventId);
         boolean hasPendingDelivery;
 
         synchronized (state){
@@ -354,14 +354,5 @@ public class SseDeliveryCoordinator {
         );
     }
 
-
-    public void remove(UUID userId, Connection connection){
-        ConnectionKey key = new ConnectionKey(userId, connection);
-        ConnectionState state = connectionStates.get(key);
-
-        if (state == null) return;
-
-        removeConnectionState(key, state);
-    }
 
 }
