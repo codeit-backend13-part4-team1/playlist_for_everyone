@@ -41,7 +41,7 @@ public class ContentController implements ContentApi {
     public ResponseEntity<CursorResponse<ContentSummary>> search(
             ContentSearchCondition condition
     ) {
-        return null;
+        return ResponseEntity.ok(contentSearchService.search(condition));
     }
 
     @Override
