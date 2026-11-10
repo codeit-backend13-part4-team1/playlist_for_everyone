@@ -33,6 +33,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.nio.charset.StandardCharsets;
@@ -277,6 +278,23 @@ class SecurityConfigTest {
         verifyNoInteractions(jwtTokenProvider, userService);
     }
 
+    @Test
+    @DisplayName("웹소켓 핸드셰이크는 토큰 없이 접근할 수 있다.")
+    void 웹소켓_핸드셰이크는_인증_없이_허용한다() throws Exception {
+        mockMvc.perform(get("/ws/info"))
+                .andExpect(status().isOk());
+
+        // 핸드셰이크 단계에서는 JWT를 검사하지 않는다. 인증은 STOMP CONNECT에서 한다.
+        verifyNoInteractions(jwtTokenProvider, userService);
+    }
+
+    @Test
+    @DisplayName("SockJS 폴백 요청은 CSRF 토큰 없이 허용한다.")
+    void SockJS_폴백_요청은_CSRF를_검사하지_않는다() throws Exception {
+        mockMvc.perform(post("/ws/000/test-session/xhr_send"))
+                .andExpect(status().isOk());
+    }
+
 
     /**
      *  보안 설정을 검증하기 위한 테스트 전용 Controller.
@@ -304,6 +322,17 @@ class SecurityConfigTest {
         public Map<String, Boolean> users() {
             // 실제 관리자 목록 구현 대신 URL 접근 권한만 검증한다.
             return Map.of("allowed", true);
+        }
+
+        // SockJS가 연결 전에 보내는 정보 요청. 토큰 없이 들어온다.
+        @GetMapping("/ws/info")
+        public Map<String, Boolean> sockJsInfo() {
+            return Map.of("websocket", true);
+        }
+
+        // 웹소켓을 쓸 수 없을 때 SockJS가 사용하는 폴백 전송. CSRF 헤더 없이 POST로 들어온다.
+        @PostMapping("/ws/{serverId}/{sessionId}/xhr_send")
+        public void sockJsSend() {
         }
 
     }
