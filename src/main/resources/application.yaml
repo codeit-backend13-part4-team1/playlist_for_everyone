@@ -4,6 +4,15 @@ spring:
 
   profiles:
     default: dev
+
+  batch:
+    job:
+      # 앱 시작 시 배치를 자동 실행하지 않는다.
+      enabled: false
+    jdbc:
+      # 배치 테이블은 Flyway로 생성한다.
+      initialize-schema: never
+
   jpa:
     open-in-view: false
     properties:
