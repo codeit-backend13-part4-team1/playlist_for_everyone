@@ -35,12 +35,16 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 /**
- * 팔로우·권한 변경·플레이리스트 구독 이벤트의 알림 변환 규칙과 재발행 실패 처리를 검증한다.
- * 발행자는 Mock으로 대체하여 수신자·문구·수준, 빈 이름 대체, 자기 구독 알림 제외를 확인한다.
- * 세 이벤트 모두 실패 후 다음 이벤트 처리를 확인하며, 로그 필드와 민감 정보 제외의 직접 검증은 팔로우 사례에 있다.
+ * 팔로우·권한 변경과 플레이리스트 구독·생성·콘텐츠 추가 이벤트의 알림 변환 규칙을 검증한다.
+ * 발행자와 수신자 조회 컴포넌트를 Mock으로 대체하여 수신자·문구·수준과 이름 보정 규칙을 확인한다.
+ *
+ * <p>플레이리스트 생성·콘텐츠 추가에서는 조회 결과의 중복과 행위자를 제외하는지,
+ * 조회 실패 시 발행을 중단하고 개별 발행 실패 시 나머지 수신자를 처리하는지 확인한다.
+ * 실패 로그의 업무 식별자·예외 타입과 조회 실패 로그의 이름·제목·원본 메시지 제외도 검증한다.
  *
  * <p>리스너 메서드를 직접 호출하므로 Spring의 AFTER_COMMIT 실행 시점은 검증하지 않는다.
- * 세 업무의 트랜잭션 경계와 실제 서비스 호출부터 알림 저장까지의 연동은 NotificationIntegrationTest가 담당한다.
+ * 실제 업무 커밋부터 알림 저장·SSE 발행 요청까지의 연동은 NotificationIntegrationTest와
+ * NotificationPlaylistIntegrationTest가 담당한다.
  */
 @Slf4j
 @ExtendWith(MockitoExtension.class)

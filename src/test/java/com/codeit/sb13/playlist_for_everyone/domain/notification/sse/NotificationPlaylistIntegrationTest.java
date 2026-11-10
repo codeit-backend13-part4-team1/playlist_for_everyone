@@ -43,6 +43,21 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
+/**
+ * 실제 플레이리스트 생성·콘텐츠 추가 서비스부터 알림 저장과 SSE 발행 요청까지 검증한다.
+ * PostgreSQL·Flyway와 실제 Spring 빈을 사용하며, SseEventPublisher는 Mock으로 대체한다.
+ * Redis 전송이나 브라우저 수신 완료는 검증 범위에 포함하지 않는다.
+ *
+ * <p>수신자 조회 컴포넌트와 알림 저장소의 Spy는 기본적으로 실제 구현을 실행한다.
+ * 조회·저장 실패 사례에서만 예외를 유도하여 업무 커밋 유지와 후속 수신자 처리를 확인한다.
+ *
+ * <p>테스트 전체를 @Transactional로 감싸지 않는다. 커밋·롤백 시점을 확인하는 사례는
+ * TransactionTemplate으로 업무 경계를 제어하고, 실패 처리 사례는 서비스 자체의 트랜잭션을 사용한다.
+ * 알림은 별도의 REQUIRES_NEW 트랜잭션으로 저장된다.
+ *
+ * <p>ApplicationEvents에는 롤백된 업무의 발행 기록도 남는다. 이벤트 기록과 함께
+ * 알림 생성 요청·DB 저장·SSE 발행 요청 여부를 확인하여 커밋 후 소비 여부를 구분한다.
+ */
 @SpringBootTest(properties = {
         "spring.flyway.enabled=true",
         "spring.jpa.hibernate.ddl-auto=validate",
@@ -97,6 +112,7 @@ public class NotificationPlaylistIntegrationTest {
     void setUp(){
         transactionTemplate = new TransactionTemplate(transactionManager);
 
+        // 알림 저장의 독립 트랜잭션에서도 수신자를 조회할 수 있도록 사용자 준비를 먼저 커밋한다.
         transactionTemplate.executeWithoutResult(status ->{
             insertUser(ownerId, "홍길동");
             insertUser(firstReceiverId, "첫 번째 수신자");
@@ -154,6 +170,7 @@ public class NotificationPlaylistIntegrationTest {
             assertThat(applicationEvents.stream(PlaylistCreatedEvent.class))
                     .hasSize(1);
 
+            // 이벤트 발생 후 관계를 추가하여 수신자를 커밋 후 처리 시점에 조회하는지 확인한다.
             insertFollow(secondReceiverId, ownerId);
             assertThat(notificationRepository.count()).isZero();
             verifyNoInteractions(sseEventPublisher);
@@ -188,6 +205,7 @@ public class NotificationPlaylistIntegrationTest {
             assertThat(applicationEvents.stream(PlaylistContentAddedEvent.class))
                     .hasSize(1);
 
+            // 이벤트에 수신자를 고정하지 않고, 처리 시점의 구독 관계를 사용하는지 확인한다.
             insertSubscription(secondReceiverId);
             assertThat(notificationRepository.count()).isZero();
             verifyNoInteractions(sseEventPublisher);
@@ -325,6 +343,7 @@ public class NotificationPlaylistIntegrationTest {
                 .extracting(Notification::getReceiverId)
                 .containsExactlyInAnyOrder(firstReceiverId, secondReceiverId);
 
+        // 조회 순서를 가정하지 않고, 실제 저장 호출 순서로 실패·성공 수신자를 구분한다.
         UUID failedReceiverId = saveCaptor.getAllValues().get(0).getReceiverId();
         UUID successfulReceiverId = saveCaptor.getAllValues().get(1).getReceiverId();
 
@@ -362,6 +381,7 @@ public class NotificationPlaylistIntegrationTest {
                 .extracting(Notification::getReceiverId)
                 .containsExactlyInAnyOrder(firstReceiverId, secondReceiverId);
 
+        // 조회 순서를 가정하지 않고, 실제 저장 호출 순서로 실패·성공 수신자를 구분한다.
         UUID failedReceiverId = saveCaptor.getAllValues().get(0).getReceiverId();
         UUID successfulReceiverId = saveCaptor.getAllValues().get(1).getReceiverId();
         assertThat(notificationRepository.findAll())
@@ -479,7 +499,12 @@ public class NotificationPlaylistIntegrationTest {
         );
     }
 
+    /**
+     * 저장 경계의 첫 호출만 실패시키고, 이후 호출은 실제 저장소로 위임한다.
+     * Spy로 저장 예외를 유도하는 테스트이며 DB 제약 위반 자체를 재현하는 것은 아니다.
+     */
     private void failFirstNotificationSave() {
+        // Spring Data 저장소 프록시로 위임하는 Spy의 기본 응답을 보존한다.
         Answer<?> defaultAnswer =
                 mockingDetails(notificationRepository)
                         .getMockCreationSettings()
