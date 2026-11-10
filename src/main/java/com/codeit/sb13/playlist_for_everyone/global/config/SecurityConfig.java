@@ -132,6 +132,8 @@ public class SecurityConfig {
                         .spa()
                         // SPA 기본 설정 후, 쿠키 이름, 헤더, 경로 설정을 적용한다.
                         .csrfTokenRepository(csrfTokenRepository)
+                        // SockJS 폴백 전송은 POST지만 인증은 STOMP 헤더 토큰으로 하므로 CSRF 대상이 아니다.
+                        .ignoringRequestMatchers("/ws/**")
                 )
                 .httpBasic(basic -> basic.disable())
                 .logout(logout -> logout
@@ -178,13 +180,13 @@ public class SecurityConfig {
                             // 사용자 목록 조회는 관리자 권한이 필요하다.
                             .requestMatchers(HttpMethod.GET, "/api/users")
                             .hasRole("ADMIN")
-                      
+
                             // 사용자 권한과 계정 잠금 상태는 관리자만 변경할 수 있다.
                             .requestMatchers(HttpMethod.PATCH,
                                     "/api/users/{userId}/role",
                                     "/api/users/{userId}/locked"
                             ).hasRole("ADMIN")
-                      
+
                             // 콘텐츠 생성, 수정, 삭제는 관리자 권한이 필요하다.
                             .requestMatchers(HttpMethod.POST, "/api/contents")
                             .hasRole("ADMIN")
@@ -204,6 +206,8 @@ public class SecurityConfig {
                                     "/favicon.svg",
                                     "/placeholder-movie.png"
                             ).permitAll()
+                            .requestMatchers("/ws", "/ws/**")
+                            .permitAll()
 
                             .anyRequest().authenticated();
                 })
