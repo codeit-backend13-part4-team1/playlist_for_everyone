@@ -20,10 +20,11 @@
 | 공통 보안 | JWT 필터와 경로별 인증·인가 적용. 팔로우·알림 API는 인증 필요, 쿠키 기반 CSRF 보호 활성화 |
 | SSE | 다중 연결·하트비트·종료 정리, 공유 이력 저장·재연결 복구, 연결별 후속 조회·제한된 재시도. [SSE 구현 가이드](sse/README.md) 참고 |
 | 알림 전송 | 공통 생성 요청 → 독립 저장·커밋 → 공유 이력 → Pub/Sub → 이력 조회·삭제 필터 → SSE 수신. [알림 전송 흐름](notification/01-creation-and-delivery.md) 참고 |
+| 팔로우 알림 | #155의 업무 커밋 후 공통 요청 재발행·독립 저장 연결. 실제 팔로우부터 SSE 발행 요청까지는 [알림 연동 가이드](notification/07-domain-event-integration.md) 참고 |
 | 알림 수신자 | 사용자 조회 컴포넌트를 통해 User 연관관계로 저장. 요청·응답의 수신자 UUID 계약 유지. [연관관계와 검증](notification/06-receiver-association.md) 참고 |
 | 알림 조회·읽음 | JWT 사용자를 수신자 조건으로 사용하여 목록·전체 개수를 조회하고 알림 삭제로 읽음 처리. [조회·인증 흐름](notification/03-query-and-security.md) 참고 |
-| SSE·알림 후속 | 업무별 알림 생성 요청 변환(#45)·DM 본문 연동·Kafka·연결 수 제한·보관 초기값의 운영 부하 검증 |
-| 후속 기능 | 팔로우 CSRF 연동·검증은 #114, 알림 CSRF 연동·검증은 #124, 팔로우 이벤트의 알림 생성 연동은 #45. 다른 기능의 진행 상태는 개별 이슈 참고 |
+| SSE·알림 후속 | 팔로우 외 업무 이벤트의 알림 연동(#45)·DM 본문 연동·Kafka·연결 수 제한·보관 초기값의 운영 부하 검증 |
+| 후속 기능 | 팔로우 CSRF 연동·검증은 #114, 알림 CSRF 연동·검증은 #124. 다른 기능의 진행 상태는 개별 이슈 참고 |
 
 라이브러리 의존성과 로컬 인프라를 준비한 상태와 기능 구현 완료를 구분합니다. Redis 서비스는 Compose에 포함되어 있으며, 이를 사용하는 캐시·세션 기능은 구현 전입니다. Kafka와 Elasticsearch는 현재 Compose에 포함되어 있지 않습니다.
 
@@ -370,6 +371,7 @@ Docker Desktop 또는 Docker 엔진을 실행한 뒤 프로젝트 루트에서 �
 공통 테스트는 `test` 프로필과 H2를 사용합니다. 알림 통합 테스트는 Testcontainers로 별도의 PostgreSQL 16 컨테이너를 실행하고 실제 Flyway 마이그레이션을 적용합니다.
 SSE Redis 통합 테스트는 별도의 Redis 7.4 컨테이너로 실제 Pub/Sub을 검증합니다. 전체 테스트와 빌드에는 Docker가 필요하며, 로컬 PostgreSQL·Redis나 `.env.dev`는 필요하지 않습니다.
 `NotificationSseIntegrationTest`는 PostgreSQL과 Redis를 함께 사용하여 알림 저장부터 실제 HTTP 수신까지 확인합니다. [검증 범위와 실행 명령](notification/02-testing.md)을 참고합니다.
+실제 팔로우 등록·이벤트 변환·알림 저장과 실패 격리는 `NotificationIntegrationTest`가 검증하며, 이 클래스의 SSE 발행자는 Mock입니다.
 조회·삭제는 서비스 단위 테스트, PostgreSQL 저장소·서비스 통합 테스트와 실제 JWT 필터를 거치는 MockMvc 통합 테스트로 확인합니다.
 [조회·인증 테스트 가이드](notification/04-query-and-security-testing.md)에 역할별 실행 명령과 CSRF 임시 제외 범위를 정리했습니다.
 같은 알림을 동시에 읽음 처리할 때의 DB 잠금 대기와 커밋 순서는 [동시 삭제 검증](notification/05-concurrent-deletion-testing.md)을 참고합니다.
@@ -439,7 +441,8 @@ CI는 성공한 빌드의 JaCoCo XML에서 전체 LINE 수치로 SVG 배지를 �
 
 `NotificationSseIntegrationTest`는 실제 JWT·사용자 조회·PostgreSQL·Redis·HTTP를 연결해 DTO와 이벤트 ID 보존, 다른 사용자 미전달, A에서 저장한 알림의 B 수신을 확인합니다.
 삭제된 알림 필터, 다른 서버 재연결, 중복·역순 신호, 연결별 복구와 이력 만료 후 신규 수신도 포함합니다.
-A·B는 동일 JVM의 독립 컨텍스트와 서로 다른 HTTP 포트이며, 이 검증에 로그인 API·업무별 알림 생성 요청 변환(#45)·DM 연동은 포함하지 않습니다.
+A·B는 동일 JVM의 독립 컨텍스트와 서로 다른 HTTP 포트이며, 이 검증에 로그인 API·업무 이벤트 변환·DM 연동은 포함하지 않습니다.
+팔로우 이벤트 변환부터 SSE 발행 요청까지는 #155의 `NotificationIntegrationTest`에서 별도로 검증합니다.
 공통 Redis 전송 테스트와 알림 연동 테스트의 차이는 [알림 테스트 가이드](notification/02-testing.md)에 정리합니다.
 최신 결과와 수치는 각자의 코드에서 명령을 실행해 보고서로 확인합니다.
 
@@ -567,10 +570,10 @@ RUN_SPORTSDB_LIVE_TEST=true ./gradlew test --tests '*SportsDbClientLiveTest' --r
 다음 항목은 후속 작업으로 관리합니다.
 
 - 도메인별 API·서비스·엔티티와 PostgreSQL/Flyway 검증
-- 활성화된 공통 CSRF 기반을 사용하는 팔로우 연동·검증(#114), 알림 연동·검증(#124)과 이벤트의 알림 생성 연동(#45)
+- 활성화된 공통 CSRF 기반을 사용하는 팔로우 연동·검증(#114), 알림 연동·검증(#124)
 - 목록 API의 커서 규칙 확정과 직렬화·페이징 테스트
 - Redis 기반 캐시·세션 기능 구현과 데이터 보관 정책 결정
 - 배치, S3, WebSocket 등 기능별 구현과 필요한 인프라 추가
-- 업무별 알림 생성 요청 변환(#45), DM 본문 전송 연동, SSE Kafka 구현체, 이력 보관 초기값의 운영 부하 검증, [동시 연결 수 제한·모니터링 #107](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/107)
+- #155 팔로우 연동 이후의 나머지 업무 이벤트 알림 연동(#45), DM 본문 전송 연동, SSE Kafka 구현체, 이력 보관 초기값의 운영 부하 검증, [동시 연결 수 제한·모니터링 #107](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/107)
 - README 배지 자동 게시 방식 확정 및 연결
 - 배포 파이프라인 구성

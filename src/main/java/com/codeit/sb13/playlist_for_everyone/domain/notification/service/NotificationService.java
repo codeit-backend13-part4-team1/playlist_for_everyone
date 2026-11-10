@@ -42,14 +42,17 @@ public class NotificationService {
     /**
      * 검증된 요청을 독립 트랜잭션으로 저장하고, 커밋 후 전송할 DTO 스냅샷을 이벤트로 발행한다.
      *
-     * <p>다른 빈에서 이 메서드를 호출하면 REQUIRES_NEW가 적용된다. 공통 생성 경로에서는
-     * 업무 커밋 후 리스너가 호출하므로 알림 저장 실패가 원래 업무의 커밋을 되돌리지 않는다.
-     * 이벤트 발행은 이 트랜잭션 안에서 하고, 실제 SSE 발행은 AFTER_COMMIT 리스너에 맡긴다.
+     * <p>다른 빈에서 이 메서드를 호출하면 REQUIRES_NEW가 적용된다. 업무 커밋 후 재발행한
+     * 공통 요청과 트랜잭션 없이 직접 발행한 공통 요청 모두 여기서 새 저장 트랜잭션을 시작한다.
+     * 업무 커밋 후 호출하는 경로에서는 알림 저장 실패가 이미 커밋된 업무를 되돌리지 않는다.
      * 이 메서드를 업무 커밋 전에 직접 호출하면 두 저장의 커밋 결과는 독립적이라는 점에 주의한다.
+     *
+     * <p>생성 이벤트는 이 트랜잭션 안에서 발행한다. NotificationSseEventListener는
+     * AFTER_COMMIT, fallbackExecution=false로 알림 저장 커밋 후에만 SSE 발행을 요청한다.
      *
      * <p>같은 알림 트랜잭션에서 NotificationUserReader로 수신자를 조회한 뒤 엔티티에 연결한다.
      * 사용자가 없으면 UserNotFoundException을 그대로 전파하며, 알림 저장·생성 이벤트 발행은 수행하지 않는다.
-     * 공통 생성 경로의 요청 리스너가 이 실패를 기록하고 이미 커밋된 업무를 유지한다.
+     * 공통 생성 경로에서는 요청 리스너가 이 저장 실패를 기록한다.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void save(@Valid @NotNull NotificationCommand command){
