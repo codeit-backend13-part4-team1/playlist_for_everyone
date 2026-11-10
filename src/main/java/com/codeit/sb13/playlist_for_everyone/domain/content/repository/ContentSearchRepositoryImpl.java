@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.repository;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.condition.ContentSearchCondition;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSearchResult;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
@@ -54,7 +55,7 @@ public class ContentSearchRepositoryImpl implements ContentSearchRepository {
      * 다음 페이지 존재 여부를 확인하기 위해 limit + 1개를 조회한다.
      */
     @Override
-    public List<ContentSummary> search(
+    public List<ContentSearchResult> search(
             ContentSearchCondition condition
     ) {
         // 리뷰 수 및 평점
@@ -78,13 +79,13 @@ public class ContentSearchRepositoryImpl implements ContentSearchRepository {
                         ),
                         // 정렬값이 동일한 경우 UUID로 순서 보장
                         condition.sortDirection() == SortDirection.ASCENDING
-                        ? content.id.asc() : content.id.desc()
+                                ? content.id.asc() : content.id.desc()
                 )
                 .limit(condition.limit() + 1L)
                 .fetch();
 
         return results.stream()
-                .map(tuple -> mapper.toSummary(
+                .map(tuple -> new ContentSearchResult(
                         tuple.get(content),
                         tuple.get(rating),
                         tuple.get(reviewCount).intValue()

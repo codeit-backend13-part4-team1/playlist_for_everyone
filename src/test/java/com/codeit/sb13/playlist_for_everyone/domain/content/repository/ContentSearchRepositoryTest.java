@@ -1,8 +1,10 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.repository;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.condition.ContentSearchCondition;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSearchResult;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
+import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentTag;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.review.entity.Review;
@@ -145,9 +147,11 @@ public class ContentSearchRepositoryTest {
 
         // then
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).title()).isEqualTo("액션시리즈");
-        assertThat(result.get(0).type()).isEqualTo(ContentType.movie);
-        assertThat(result.get(0).tags()).contains("액션");
+        assertThat(result.get(0).content().getTitle()).isEqualTo("액션시리즈");
+        assertThat(result.get(0).content().getType()).isEqualTo(ContentType.movie);
+        assertThat(result.get(0).content().getTags())
+                .extracting(ContentTag::getTag)
+                .contains("액션");
     }
 
     @Test
@@ -209,7 +213,7 @@ public class ContentSearchRepositoryTest {
 
         // then
         assertThat(result)
-                .extracting(ContentSummary::contentId)
+                .extracting(searchResult -> searchResult.content().getId())
                 .containsExactly(
                         latest.getId(),
                         middle.getId(),
@@ -238,7 +242,7 @@ public class ContentSearchRepositoryTest {
         // then
         assertThat(result).hasSize(6);
         assertThat(result)
-                .extracting(ContentSummary::title)
+                .extracting(searchResult -> searchResult.content().getTitle())
                 .containsExactly(
                         "스포츠1",
                         "영화시리즈1",
@@ -285,14 +289,14 @@ public class ContentSearchRepositoryTest {
         var firstPage = contentRepository.search(firstCondition);
 
         // limit + 1개 조회하므로 실제 페이지의 마지막 콘텐츠는 index 1
-        ContentSummary lastContent = firstPage.get(1);
+        ContentSearchResult lastContent = firstPage.get(1);
 
         ContentSearchCondition nextCondition = new ContentSearchCondition(
                 null,
                 null,
                 null,
                 String.valueOf(lastContent.averageRating()),
-                lastContent.contentId(),
+                lastContent.content().getId(),
                 2,
                 SortDirection.DESCENDING,
                 "rate"
@@ -303,7 +307,7 @@ public class ContentSearchRepositoryTest {
 
         // then
         assertThat(result)
-                .extracting(ContentSummary::title)
+                .extracting(searchResult -> searchResult.content().getTitle())
                 .containsExactly(
                         "드라마시리즈1",
                         "영화시리즈2",
