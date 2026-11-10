@@ -2,15 +2,17 @@
 
 알림 테스트는 **발행할 데이터 → 실제 커밋 경계 → Redis를 거친 HTTP 수신** 순서로 읽습니다.
 설계 흐름은 [알림 생성·저장과 SSE 전송](01-creation-and-delivery.md), 공통 SSE 테스트는 [SSE 테스트 가이드](../sse/05-testing.md)를 참고합니다.
+팔로우 생산 코드부터 확인하려면 [업무 이벤트 연동](07-domain-event-integration.md)을 먼저 읽습니다.
 
 ## 테스트별 책임
 
 | 테스트 | 실제로 검증하는 것 | 대체하거나 포함하지 않는 것 |
 | --- | --- | --- |
 | `NotificationCommandTest` | 제목 길이 경계, 말줄임과 이모지의 서로게이트 쌍 보존 | 생성자 직접 호출. Bean Validation·DB 검증 없음 |
+| `NotificationDomainEventListenerTest` | 팔로우 수신자·문구·수준, 빈 이름 대체, 재발행 실패·후속 처리·로그 | 발행자는 Mock, 리스너 직접 호출. Spring 트랜잭션 실행 없음 |
 | `NotificationServiceTest` | 조회한 User 연결, 수신자 미존재 시 저장·발행 미호출, 저장 결과의 DTO·이벤트 구성 | 사용자 조회 컴포넌트·저장소·이벤트 발행자는 Mock. DB·Auditing·트랜잭션 실행 없음 |
 | `NotificationSseEventListenerTest` | ID·수신자·이벤트 이름·DTO 보존, 실패 처리·후속 발행·로그 | 발행자는 Mock, 리스너 직접 호출. AFTER_COMMIT 실행 시점 검증 없음 |
-| `NotificationIntegrationTest` | 실제 사용자 조회·PostgreSQL·Flyway, 커밋·롤백, 발행 요청과 실패 격리 | `SseEventPublisher`만 Mock으로 교체. Redis·HTTP 수신 검증 없음 |
+| `NotificationIntegrationTest` | 실제 팔로우 등록·이벤트 변환·알림 저장, PostgreSQL·Flyway, 커밋·롤백·실패 격리 | SSE 발행자는 Mock, 공통 요청 리스너는 Spy. Redis·HTTP 수신 검증 없음 |
 | `NotificationSseIntegrationTest` | 실제 JWT·DB·Redis·HTTP, 알림 프레임·서버 간 전달·보관 이력 복구 | 별도 OS 프로세스·로그인 API·부하 검증 없음 |
 
 테스트 코드는 [알림 테스트 패키지](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/notification)에 있습니다.
@@ -23,13 +25,19 @@ User 연관관계의 저장·삭제·DTO 변환 검증은 [수신자 연관관�
 ## 커밋·롤백 검증 읽기
 
 `NotificationIntegrationTest`는 테스트 전체에 `@Transactional`을 붙이지 않습니다.
-기본 롤백으로 끝나는 테스트에서는 `AFTER_COMMIT` 경로를 관찰할 수 없으므로 `TransactionTemplate`으로 종료 시점을 직접 만듭니다.
+직접 이벤트를 발행하는 사례는 `TransactionTemplate`으로 커밋·롤백을 제어하고,
+실제 `FollowService.follow()` 호출은 내부 `FollowSaver`의 `REQUIRES_NEW` 커밋을 사용합니다.
 
 | 시나리오 | 확인하는 결과 |
 | --- | --- |
 | 업무 커밋 전·후 | 커밋 전에는 알림 없음, 커밋 후에는 생성시각을 가진 알림과 SSE 발행 요청 |
 | 업무 롤백 | 업무 변경 복구, 알림 미저장, SSE 미발행 |
-| 생성 요청·생성 이벤트를 트랜잭션 밖에서 발행 | 각 AFTER_COMMIT 리스너 미실행 |
+| 팔로우 이벤트의 커밋 전·후와 롤백 | 커밋 후에만 공통 요청으로 변환, 롤백 시 알림 미생성 |
+| `UserFollowedEvent`를 트랜잭션 밖에서 발행 | 업무 이벤트 리스너 미실행, 공통 요청 없음 |
+| `NotificationCreateRequestedEvent`를 트랜잭션 밖에서 발행 | 즉시 처리하여 알림 저장·SSE 발행 요청 |
+| `NotificationCreatedEvent`를 트랜잭션 밖에서 발행 | SSE 리스너 미실행 |
+| 실제 팔로우 등록 | 관계 저장·커밋 후 대상 사용자 알림 저장, SSE 발행 요청 한 번 |
+| 공통 요청 재발행 실패 | 실제 팔로우 유지, 실패 로그, 알림·SSE 발행 없음 |
 | 알림 저장 트랜잭션 커밋 전·후 | 커밋 전 미발행, 커밋 후 한 번 발행 |
 | 알림 저장 트랜잭션 롤백 | 알림 미저장, 생성 이벤트가 등록되었어도 SSE 미발행 |
 | 입력 검증 실패 | ConstraintViolationException 기록, 원래 업무 커밋 유지, 실패 알림 미저장·미발행 |
@@ -41,12 +49,15 @@ User 연관관계의 저장·삭제·DTO 변환 검증은 [수신자 연관관�
 DB 실패 사례는 존재하는 수신자와 정상 본문에 `(char) 0`을 덧붙인 값을 사용합니다.
 이는 Java의 `null`이 아닌 **NUL 문자**로, 입력 검증을 통과한 뒤 PostgreSQL 저장이 실패하도록 준비한 값입니다.
 
+업무 이벤트 리스너는 실제 빈입니다. 공통 요청 리스너의 Spy도 기본적으로 실제 동작합니다.
+재발행 실패 사례에서만 공통 요청 수신 시 예외를 던지도록 하며, 팔로우 유지와 도메인 리스너의 실패 로그를 함께 확인합니다.
+
 커밋 전 상태를 검사하는 사례는 저장소와 생성 이벤트를 테스트 트랜잭션 안에서 직접 사용합니다.
 `save` 서비스의 `REQUIRES_NEW`는 반환 시 이미 커밋되므로, 이 방식으로 저장 트랜잭션 내부를 관찰합니다.
 별도의 공통 생성 요청 사례가 실제 리스너 → 서비스 경로를 함께 검증합니다.
 
-사용자 닉네임 변경은 원래 업무의 저장을 대신하는 검증용 동작입니다.
-수신자는 새 알림 트랜잭션에서도 참조할 수 있게 먼저 저장하고, 커밋된 테스트 데이터는 실행 후 직접 삭제합니다.
+직접 발행 사례의 사용자 닉네임 변경은 원래 업무의 저장을 대신하는 검증용 동작입니다.
+두 사용자를 먼저 커밋해 팔로우·알림의 독립 트랜잭션에서 조회하게 하고, 종료 시 알림·팔로우 관계를 지운 뒤 사용자를 삭제합니다.
 단위 테스트가 직접 넣은 생성시각과 실제 JPA Auditing이 채운 생성시각의 검증을 구분합니다.
 
 ## 실제 HTTP 수신 검증 읽기
@@ -58,6 +69,9 @@ DB에 사용자를 준비하고 실제 `JwtTokenProvider`로 토큰을 발급합
 2. 업무 트랜잭션에서 공통 생성 요청을 발행하고 커밋합니다.
 3. 기록된 `NotificationCreatedEvent`의 ID와 실제 SSE `id`를 비교하고, `event:notifications`를 확인합니다.
 4. `data`를 JSON으로 읽어 DTO와 비교합니다. 내부 이벤트 객체로 감싸거나 JSON 문자열로 이중 인코딩하면 일치하지 않습니다.
+
+이 테스트는 공통 요청에서 시작합니다. 실제 팔로우부터 SSE 발행 요청까지는 `NotificationIntegrationTest`가 검증하며,
+팔로우 등록부터 브라우저 수신까지를 하나의 테스트로 실행한 것은 아닙니다.
 
 #53에서는 삭제된 알림 제외, 삭제된 기준 알림의 커서 유지, 다른 서버 재연결, 복구 중 도착한 신호,
 중복·역순 신호, 연결별 커서, 한 연결 종료와 전체 이력 만료 후 새 알림 수신도 검증합니다.
@@ -91,6 +105,7 @@ Redis CLI의 PUBLISH만으로는 현재 이력·DB 필터 경로의 알림 수�
 
 ```bash
 ./gradlew test --tests '*NotificationCommandTest' \
+  --tests '*NotificationDomainEventListenerTest' \
   --tests '*NotificationServiceTest' \
   --tests '*NotificationSseEventListenerTest' --no-daemon --console=plain
 ```
@@ -103,14 +118,24 @@ Docker를 실행한 뒤 실제 트랜잭션과 Redis·HTTP 통합 테스트를 �
   --tests '*NotificationSseIntegrationTest' --no-daemon --console=plain
 ```
 
-생성 입력부터 실제 전송까지 위 다섯 클래스를 함께 확인하려면 다음을 사용합니다.
+생성 입력·팔로우 이벤트 변환부터 실제 전송까지 위 테스트를 함께 확인하려면 다음을 사용합니다.
 
 ```bash
 ./gradlew test --tests '*NotificationCommandTest' \
+  --tests '*NotificationDomainEventListenerTest' \
   --tests '*NotificationServiceTest' \
   --tests '*NotificationSseEventListenerTest' \
   --tests '*NotificationIntegrationTest' \
   --tests '*NotificationSseIntegrationTest' --no-daemon --console=plain
+```
+
+#155의 알림 연동과 기존 팔로우의 격리를 함께 확인하려면 다음을 실행합니다.
+
+```bash
+./gradlew test --tests '*NotificationDomainEventListenerTest' \
+  --tests '*NotificationIntegrationTest' \
+  --tests '*FollowServiceIntegrationTest' \
+  --tests '*FollowSecurityIntegrationTest' --no-daemon --console=plain
 ```
 
 실행 결과는 `build/reports/tests/test/index.html`과 `build/test-results/test/`에서 확인합니다.
