@@ -28,6 +28,13 @@ public class SportsDbEventReader implements ItemReader<SportsDbEventResponse> {
     public SportsDbEventResponse read() {
         if (events == null) {
             var response = client.getEventsBySeason(leagueId, season);
+
+            if (response == null) {
+                throw new IllegalStateException(
+                        "TheSportsDB 경기 목록 응답이 없습니다."
+                );
+            }
+
             events = response.events().iterator();
         }
 
