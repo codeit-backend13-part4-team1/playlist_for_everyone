@@ -3,6 +3,7 @@
 권한 변경이 커밋되면 변경 대상 사용자에게, 구독이 커밋되면 플레이리스트 소유자에게 알림을 생성합니다.
 [#156](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/156)은 기존 업무 이벤트를 공통 알림 생성 경로에 연결합니다.
 팔로우 예시는 [7번 페이지](07-domain-event-integration.md), 전체 업무 이벤트 연동 범위는 [#45](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/45)에서 확인합니다.
+구독자들에게 콘텐츠 추가를 알리거나 팔로워들에게 새 플레이리스트를 알리는 흐름은 [9번 페이지](09-playlist-event-integration.md)에서 설명합니다.
 
 ## 누가 이벤트를 발행하나요?
 
@@ -85,4 +86,4 @@ flowchart TD
 
 ---
 
-[알림 목차](README.md) · [팔로우 알림 연동](07-domain-event-integration.md) · [다음: 공통 저장·전송 →](01-creation-and-delivery.md)
+[알림 목차](README.md) · [팔로우 알림 연동](07-domain-event-integration.md) · [공통 저장·전송](01-creation-and-delivery.md) · [다음: 플레이리스트 생성·콘텐츠 추가 알림 →](09-playlist-event-integration.md)

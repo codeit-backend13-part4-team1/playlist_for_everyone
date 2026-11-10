@@ -2,17 +2,19 @@
 
 알림 테스트는 **발행할 데이터 → 실제 커밋 경계 → Redis를 거친 HTTP 수신** 순서로 읽습니다.
 설계 흐름은 [알림 생성·저장과 SSE 전송](01-creation-and-delivery.md), 공통 SSE 테스트는 [SSE 테스트 가이드](../sse/05-testing.md)를 참고합니다.
-생산 코드부터 확인하려면 [팔로우 연동](07-domain-event-integration.md) 또는 [권한 변경·구독 연동](08-role-subscription-integration.md)을 먼저 읽습니다.
+생산 코드부터 확인하려면 [팔로우 연동](07-domain-event-integration.md), [권한 변경·구독 연동](08-role-subscription-integration.md),
+[플레이리스트 생성·콘텐츠 추가 연동](09-playlist-event-integration.md) 중 해당 가이드를 먼저 읽습니다.
 
 ## 테스트별 책임
 
 | 테스트 | 실제로 검증하는 것 | 대체하거나 포함하지 않는 것 |
 | --- | --- | --- |
 | `NotificationCommandTest` | 제목 길이 경계, 말줄임과 이모지의 서로게이트 쌍 보존 | 생성자 직접 호출. Bean Validation·DB 검증 없음 |
-| `NotificationDomainEventListenerTest` | 팔로우·권한 변경·구독의 수신자·문구·수준, 이름 대체, 자기 구독 제외, 재발행 실패 후 처리 | 발행자는 Mock, 리스너 직접 호출. Spring 트랜잭션 실행 없음 |
+| `NotificationDomainEventListenerTest` | 다섯 업무 이벤트의 수신자·문구·수준, 이름 대체, 중복·행위자 제외, 조회·재발행 실패 처리 | 발행자·수신자 조회는 Mock, 리스너 직접 호출. Spring 트랜잭션 실행 없음 |
 | `NotificationServiceTest` | 조회한 User 연결, 수신자 미존재 시 저장·발행 미호출, 저장 결과의 DTO·이벤트 구성 | 사용자 조회 컴포넌트·저장소·이벤트 발행자는 Mock. DB·Auditing·트랜잭션 실행 없음 |
 | `NotificationSseEventListenerTest` | ID·수신자·이벤트 이름·DTO 보존, 실패 처리·후속 발행·로그 | 발행자는 Mock, 리스너 직접 호출. AFTER_COMMIT 실행 시점 검증 없음 |
 | `NotificationIntegrationTest` | 실제 팔로우·권한 변경·구독과 알림 저장, PostgreSQL·Flyway, 커밋·롤백·실패 격리 | SSE 발행자는 Mock, 공통 요청 리스너는 Spy. Redis·HTTP 수신 검증 없음 |
+| `NotificationPlaylistIntegrationTest` | 실제 플레이리스트 생성·콘텐츠 추가, 커밋·롤백, 처리 시점 수신자 조회와 첫 저장 실패 후 처리 | SSE 발행자는 Mock, 수신자 조회·알림 저장소는 Spy. Redis·HTTP 수신 검증 없음 |
 | `NotificationSseIntegrationTest` | 실제 JWT·DB·Redis·HTTP, 알림 프레임·서버 간 전달·보관 이력 복구 | 별도 OS 프로세스·로그인 API·부하 검증 없음 |
 | `UserAdministrationServiceIntegrationTest` | 실제 권한 변경·계정 잠금 저장, 권한 변경 이벤트의 발행 조건과 커밋 후 수신 | 알림 저장·SSE 발행 결과를 검증하는 테스트는 아님 |
 | `PlaylistSubscriptionIntegrationTest` | 실제 구독·취소·동시 요청, 구독 이벤트의 발행 횟수와 값 | 알림 변환 리스너는 Mock. 후속 알림 저장·SSE 전송은 실행하지 않음 |
@@ -24,7 +26,8 @@
 
 권한 변경 단위 테스트는 `USER → ADMIN`, `ADMIN → USER`의 문구를 각각 확인합니다.
 구독은 소유자 수신·이름 대체·자기 알림 제외를 검증하며, 세 업무 모두 재발행 실패가 다음 이벤트 처리를 막지 않는지 확인합니다.
-업무 이벤트 리스너의 로그 필드와 민감 정보 제외를 직접 검증하는 사례는 팔로우에 있습니다.
+로그 필드와 민감 정보 제외는 팔로우뿐 아니라 플레이리스트 생성·콘텐츠 추가의 조회 실패 사례에서도 확인합니다.
+두 신규 이벤트의 수신자별 처리와 저장소 Spy 사용 목적은 [플레이리스트 알림 테스트](10-playlist-event-testing.md)에 정리했습니다.
 
 제목·내용의 필수 값 검증은 `NotificationIntegrationTest`의 실제 서비스 호출에서 확인합니다.
 같은 `NotificationServiceTest`의 조회·삭제 사례와 JWT 검증은 [조회·인증 테스트 문서](04-query-and-security-testing.md)에서 다룹니다.
@@ -89,7 +92,8 @@ DB에 사용자를 준비하고 실제 `JwtTokenProvider`로 토큰을 발급합
 3. 기록된 `NotificationCreatedEvent`의 ID와 실제 SSE `id`를 비교하고, `event:notifications`를 확인합니다.
 4. `data`를 JSON으로 읽어 DTO와 비교합니다. 내부 이벤트 객체로 감싸거나 JSON 문자열로 이중 인코딩하면 일치하지 않습니다.
 
-이 테스트는 공통 요청에서 시작합니다. 실제 팔로우·권한 변경·구독부터 SSE 발행 요청까지는 `NotificationIntegrationTest`가 검증하며,
+이 테스트는 공통 요청에서 시작합니다. 실제 팔로우·권한 변경·구독부터 SSE 발행 요청까지는 `NotificationIntegrationTest`,
+플레이리스트 생성·콘텐츠 추가부터는 `NotificationPlaylistIntegrationTest`가 검증합니다.
 각 업무 서비스부터 브라우저 수신까지를 하나의 테스트로 실행한 것은 아닙니다.
 
 #53에서는 삭제된 알림 제외, 삭제된 기준 알림의 커서 유지, 다른 서버 재연결, 복구 중 도착한 신호,
@@ -134,6 +138,7 @@ Docker를 실행한 뒤 실제 트랜잭션과 Redis·HTTP 통합 테스트를 �
 
 ```bash
 ./gradlew test --tests '*NotificationIntegrationTest' \
+  --tests '*NotificationPlaylistIntegrationTest' \
   --tests '*NotificationSseIntegrationTest' --no-daemon --console=plain
 ```
 
@@ -145,6 +150,7 @@ Docker를 실행한 뒤 실제 트랜잭션과 Redis·HTTP 통합 테스트를 �
   --tests '*NotificationServiceTest' \
   --tests '*NotificationSseEventListenerTest' \
   --tests '*NotificationIntegrationTest' \
+  --tests '*NotificationPlaylistIntegrationTest' \
   --tests '*NotificationSseIntegrationTest' --no-daemon --console=plain
 ```
 
@@ -165,6 +171,8 @@ Docker를 실행한 뒤 실제 트랜잭션과 Redis·HTTP 통합 테스트를 �
   --tests '*UserAdministrationServiceIntegrationTest' \
   --tests '*PlaylistSubscriptionIntegrationTest' --no-daemon --console=plain
 ```
+
+#157만 확인하는 실행 명령과 커밋·실패 사례의 해석은 [플레이리스트 알림 테스트](10-playlist-event-testing.md#실행-방법)에 있습니다.
 
 실행 결과는 `build/reports/tests/test/index.html`과 `build/test-results/test/`에서 확인합니다.
 여기에는 실행 방법과 검증 범위를 기록하며, 특정 실행의 성공 건수를 고정된 최신 결과로 기록하지 않습니다.
