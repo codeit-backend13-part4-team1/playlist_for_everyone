@@ -39,7 +39,7 @@ public class NotificationDomainEventListener {
     @TransactionalEventListener
     public void handleUserFollowed(UserFollowedEvent event){
         try {
-            String followerName = StringUtils.hasText(event.followerName()) ? event.followerName() : "사용자";
+            String followerName = resolveUserName(event.followerName());
             NotificationCreateRequestedEvent requestedEvent = new NotificationCreateRequestedEvent(
                     event.followeeId(),
                     "새로운 팔로워",
@@ -60,12 +60,63 @@ public class NotificationDomainEventListener {
 
     @TransactionalEventListener
     public void handleUserRoleChanged(UserRoleChangedEvent event){
+        try {
+            String postposition = switch (event.newRole()){
+                case ADMIN -> "으로";
+                case USER -> "로";
+            };
+            NotificationCreateRequestedEvent requestedEvent = new NotificationCreateRequestedEvent(
+                    event.userId(), "권한 변경",
+                    "회원님의 권한이 %s에서 %s%s 변경되었습니다.".formatted(event.previousRole(), event.newRole(), postposition),
+                    NotificationLevel.INFO
+                );
 
+            eventPublisher.publishEvent(requestedEvent);
+        } catch (RuntimeException e){
+            log.warn(
+                    "권한 변경 알림 변환·재발행 실패. userId={}, exceptionType={}",
+                    event.userId(),
+                    e.getClass().getSimpleName()
+            );
+        }
     }
 
     @TransactionalEventListener
     public void handlePlaylistSubscribed(PlaylistSubscribedEvent event){
+        try {
+            if (event.ownerId().equals(event.subscriberId())){
+                return;
+            }
+            String subscriberName = resolveUserName(event.subscriberName());
+            NotificationCreateRequestedEvent requestedEvent = new NotificationCreateRequestedEvent(
+                    event.ownerId(), "새로운 구독자",
+                    "%s님이 \"%s\" 플레이리스트를 구독했습니다.".formatted(subscriberName, event.playlistTitle())
+                    , NotificationLevel.INFO);
 
+            eventPublisher.publishEvent(requestedEvent);
+        } catch (RuntimeException e){
+            log.warn(
+                    """
+                    플레이리스트 구독 알림 변환·재발행 실패.
+                    playlistId={}, ownerId={}, subscriberId={}, exceptionType={}
+                    """,
+                    event.playlistId(),
+                    event.ownerId(),
+                    event.subscriberId(),
+                    e.getClass().getSimpleName()
+            );
+        }
+    }
+
+    private String resolveUserName(String name, String defaultName){
+        if (!StringUtils.hasText(name)){
+            return defaultName;
+        }
+        return name;
+    }
+
+    private String resolveUserName(String name){
+       return resolveUserName(name, "사용자");
     }
 
 }

@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.playlist.service.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener.NotificationDomainEventListener;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.PlaylistResponse;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistSubscribedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.PlaylistService;
@@ -28,6 +29,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.event.ApplicationEvents;
 import org.springframework.test.context.event.RecordApplicationEvents;
 import org.testcontainers.junit.jupiter.Container;
@@ -66,6 +68,9 @@ class PlaylistSubscriptionIntegrationTest {
 
   @Autowired
   private ApplicationEvents applicationEvents;
+
+  @MockitoBean
+  private NotificationDomainEventListener notificationDomainEventListener;
 
   private final UUID ownerId = UUID.randomUUID();
   private final UUID playlistId = UUID.randomUUID();
