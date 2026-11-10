@@ -8,6 +8,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.follow.entity.Follow;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.event.UserFollowedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.repository.FollowRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.service.impl.FollowSaver;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener.NotificationDomainEventListener;
 import com.codeit.sb13.playlist_for_everyone.global.exception.ApiErrorCode;
 import com.codeit.sb13.playlist_for_everyone.global.exception.follow.FollowNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.follow.SelfFollowNotAllowedException;
@@ -27,6 +28,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.context.event.ApplicationEvents;
 import org.springframework.test.context.event.RecordApplicationEvents;
@@ -52,6 +54,9 @@ import static org.mockito.Mockito.verify;
 /**
  * PostgreSQL 16과 실제 서비스 빈을 연결해 중복 등록, 동시성, 취소, 조회 및 트랜잭션 이벤트를 확인한다.
  * 일부 충돌 시나리오는 FollowSaver Spy로 실행 순서를 조정하며, 커밋 후 처리는 테스트 전용 리스너가 기록한다.
+ *
+ * <p>알림 소비 리스너는 Mock으로 격리하여 실제 알림 저장이 팔로우 테스트에 영향을 주지 않게 한다.
+ * 업무 이벤트 발행과 커밋 후 관찰은 유지하며, 실제 알림 연동은 NotificationIntegrationTest가 담당한다.
  *
  * <p>HTTP 요청이나 실제 JWT를 사용하지 않는다. 이 테스트의 통과를 JWT HTTP 통합 검증이나
  * 운영 알림 리스너·SSE 연동 완료로 해석하지 않는다.
@@ -99,6 +104,10 @@ public class FollowServiceIntegrationTest {
 
     @Autowired
     private CommittedFollowEventRecorder eventRecorder;
+
+    // 팔로우의 저장·이벤트 발행을 검증하고, 알림 저장과 외부 전송은 실행하지 않는다.
+    @MockitoBean
+    private NotificationDomainEventListener notificationDomainEventListener;
 
     private final UUID followerId = UUID.randomUUID();
     private final UUID followeeId = UUID.randomUUID();

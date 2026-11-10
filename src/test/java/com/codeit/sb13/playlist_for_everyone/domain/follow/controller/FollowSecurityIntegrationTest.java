@@ -6,6 +6,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionR
 import com.codeit.sb13.playlist_for_everyone.domain.follow.event.UserFollowedEvent;
 import com.codeit.sb13.testsupport.auth.InMemoryUserSessionConfig;
 import com.codeit.sb13.testsupport.auth.TestTokens;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener.NotificationDomainEventListener;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
@@ -28,6 +29,7 @@ import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.event.ApplicationEvents;
 import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.test.web.servlet.MockMvc;
@@ -62,6 +64,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>ApplicationEvents는 이벤트 발행 기록이다. 커밋 후 수신 여부는
  * FollowServiceIntegrationTest의 테스트 전용 AFTER_COMMIT 리스너에서 확인한다.
  * CSRF와 실제 알림 저장·SSE 전달은 이 테스트의 검증 범위에 포함하지 않는다.
+ * 알림 소비 리스너를 Mock으로 격리하며, 실제 팔로우부터 알림 저장까지는 NotificationIntegrationTest가 담당한다.
  */
 @RecordApplicationEvents
 @SpringBootTest(
@@ -109,6 +112,10 @@ public class FollowSecurityIntegrationTest {
 
     @Autowired
     private JwtProperties jwtProperties;
+
+    // JWT 요청의 관계 저장과 이벤트 발행은 실제로 수행하고, 후속 알림 처리는 격리한다.
+    @MockitoBean
+    private NotificationDomainEventListener notificationDomainEventListener;
 
     private final UUID followerId = UUID.randomUUID();
 

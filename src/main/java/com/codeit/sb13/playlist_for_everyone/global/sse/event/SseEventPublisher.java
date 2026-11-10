@@ -10,7 +10,8 @@ package com.codeit.sb13.playlist_for_everyone.global.sse.event;
  *
  * <p>로컬 emitter 관리와 브로커 발행은 서로 다른 책임이다.
  * 알림 저장 커밋 후 NotificationSseEventListener가 이 계약을 호출한다.
- * 업무별 알림 생성 요청 변환과 DM 본문 전송 연동, Kafka 구현체는 별도 작업이다.
+ * 업무 이벤트의 수신자 결정과 알림 생성 요청 변환은 알림 도메인이 담당한다.
+ * DM 본문 전송 연동과 Kafka 구현체는 별도 작업이다.
  */
 public interface SseEventPublisher {
     /**
