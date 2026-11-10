@@ -24,6 +24,9 @@ Spring의 Compose 자동 실행은 컨테이너 안에서 비활성화되며, �
 
 [compose.sse.yml](../../compose.sse.yml)은 두 서버에 `dev` 프로필, Redis 전송, SSE 자동 구독을 지정합니다.
 두 서버는 같은 bootJar를 읽고 같은 채널을 구독합니다. 채널은 `.env.dev`의 설정 또는 기본값을 사용합니다.
+공유 이력의 접두사도 같아야 합니다. dev 기본값은 `everyone:dev:sse:history`이며,
+`.env.dev`에 `EVERYONE_SSE_HISTORY_KEY_PREFIX`를 지정하면 두 서버 모두 그 값을 사용합니다.
+접두사 변경은 기존 키를 이전하지 않습니다. [환경 설정 기준](11-history-operations.md#설정값과-환경-구분)을 참고합니다.
 호스트 포트를 변경해도 컨테이너끼리는 서비스 이름과 내부 포트를 사용합니다.
 
 ## 빌드와 실행
@@ -74,7 +77,8 @@ docker compose --env-file .env.dev \
 
 ## 검증과 종료
 
-두 서버가 준비되면 [로그인·SSE 연결·샘플 발행](08-redis-verification.md)을 진행합니다.
+두 서버가 준비되면 [CSRF 준비·로그인·SSE 연결 확인](08-redis-verification.md)을 진행합니다.
+이력 저장부터 실제 이벤트 수신까지는 같은 문서의 별도 자동 통합 테스트로 확인합니다.
 검증이 끝나면 SSE를 연결한 각 터미널에서 `Ctrl+C`로 클라이언트를 종료하고 두 앱을 중지합니다.
 
 ```bash
