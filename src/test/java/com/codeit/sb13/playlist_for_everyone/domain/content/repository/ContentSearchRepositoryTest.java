@@ -1,10 +1,12 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.repository;
 
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.condition.ContentSearchCondition;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
+import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -74,10 +76,19 @@ public class ContentSearchRepositoryTest {
     @DisplayName("콘텐츠 타입으로 검색할 수 있다")
     void searchContents_byType() {
         // given
-        ContentType type = ContentType.movie;
+        ContentSearchCondition condition = new ContentSearchCondition(
+                ContentType.movie,
+                null,
+                null,
+                null,
+                null,
+                10,
+                SortDirection.DESCENDING,
+                "createdAt"
+        );
 
         // when
-        var result = contentSearchRepository.search();
+        var result = contentSearchRepository.search(condition);
 
         // then
         assertThat(result).hasSize(2);
@@ -90,7 +101,16 @@ public class ContentSearchRepositoryTest {
     @DisplayName("태그로 검색하면 해당 태그를 가진 콘텐츠만 조회된다")
     void searchByTags() {
         // given
-        List<String> tags = List.of("액션");
+        ContentSearchCondition condition = new ContentSearchCondition(
+                null,
+                null,
+                List.of("액션"),
+                null,
+                null,
+                10,
+                SortDirection.DESCENDING,
+                "createdAt"
+        );
 
         // 태그를 가진 콘텐츠 저장
         Content movie = createContent(
@@ -98,7 +118,6 @@ public class ContentSearchRepositoryTest {
                 "액션영화",
                 "액션영화 설명"
         );
-
         movie.addTag("액션");
         movie.addTag("스릴러");
 
@@ -107,14 +126,13 @@ public class ContentSearchRepositoryTest {
         em.clear();
 
         // when
-        // tagsIn 조건으로 검색
-        var result = contentSearchRepository.search();
+        var result = contentSearchRepository.search(condition);
 
         // then
         assertThat(result).hasSize(1);
         assertThat(result)
                 .extracting(ContentSummary::title)
-                .containsExactly("영화시리즈1");
+                .containsExactly("액션영화");
         assertThat(result.get(0).tags())
                 .contains("액션");
     }
@@ -123,10 +141,19 @@ public class ContentSearchRepositoryTest {
     @DisplayName("키워드 기준으로 검색한다.")
     void searchKeywords() {
         // given
-        String keywords = "시리즈";
+        ContentSearchCondition condition = new ContentSearchCondition(
+                null,
+                "시리즈",
+                null,
+                null,
+                null,
+                10,
+                SortDirection.DESCENDING,
+                "createdAt"
+        );
 
         // when
-        var result = contentSearchRepository.search();
+        var result = contentSearchRepository.search(condition);
 
         // then
         assertThat(result).hasSize(3);

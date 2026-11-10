@@ -7,6 +7,6 @@ import java.util.List;
 
 public interface ContentSearchRepository {
 
-    List<ContentSummary> search();
+    List<ContentSummary> search(ContentSearchCondition condition);
 
 }

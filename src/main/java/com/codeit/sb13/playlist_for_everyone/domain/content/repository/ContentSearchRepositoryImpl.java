@@ -13,7 +13,7 @@ public class ContentSearchRepositoryImpl implements ContentSearchRepository {
     private final JPAQueryFactory queryFactory;
 
     @Override
-    public List<ContentSummary> search() {
+    public List<ContentSummary> search(ContentSearchCondition condition) {
         return null;
     }
 
