@@ -35,7 +35,17 @@ public class ContentSearchRepositoryImpl implements ContentSearchRepository {
 
     @Override
     public long countBySearchCondition(ContentSearchCondition condition) {
-        return 0;
+        Long count = queryFactory
+                .select(content.count())
+                .from(content)
+                .where(
+                        typeContains(condition.typeEqual()),
+                        keywordContains(condition.keywordLike()),
+                        tagsInContains(condition.tagsIn())
+                )
+                .fetchOne();
+
+        return count != null ? count : 0L;
     }
 
     /**
