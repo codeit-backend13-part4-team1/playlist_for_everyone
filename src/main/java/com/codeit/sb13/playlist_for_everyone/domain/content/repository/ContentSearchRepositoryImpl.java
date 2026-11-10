@@ -33,6 +33,11 @@ public class ContentSearchRepositoryImpl implements ContentSearchRepository {
     private final JPAQueryFactory queryFactory;
     private final ContentMapper mapper;
 
+    @Override
+    public long countBySearchCondition(ContentSearchCondition condition) {
+        return 0;
+    }
+
     /**
      * 검색 조건에 따라 콘텐츠를 조회한다.
      * 리뷰 평균 평점과 리뷰 수를 함께 조회하며,

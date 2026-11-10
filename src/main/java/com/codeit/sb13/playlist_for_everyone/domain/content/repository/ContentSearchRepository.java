@@ -9,4 +9,6 @@ public interface ContentSearchRepository {
 
     List<ContentSummary> search(ContentSearchCondition condition);
 
+    long countBySearchCondition(ContentSearchCondition condition);
+
 }

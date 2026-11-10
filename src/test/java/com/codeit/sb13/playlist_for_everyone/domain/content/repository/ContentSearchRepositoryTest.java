@@ -311,4 +311,26 @@ public class ContentSearchRepositoryTest {
                 );
     }
 
+    @Test
+    @DisplayName("콘텐츠 검색 시 필터 조건에 일치하는 전체 콘텐츠 수를 조회한다.")
+    void countContents_bySearchCondition() {
+        // given
+        ContentSearchCondition condition = new ContentSearchCondition(
+                ContentType.movie,
+                "시리즈",
+                null,
+                null,
+                null,
+                2,
+                SortDirection.DESCENDING,
+                "rate"
+        );
+
+        // when
+        long count = contentRepository.countBySearchCondition(condition);
+
+        // then
+        assertThat(count).isEqualTo(2L);
+    }
+
 }
