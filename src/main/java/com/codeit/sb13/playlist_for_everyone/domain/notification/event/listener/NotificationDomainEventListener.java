@@ -15,6 +15,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.util.StringUtils;
 
+import java.util.List;
+import java.util.UUID;
+
 /**
  * 팔로우·권한 변경·플레이리스트 구독 이벤트를 공통 알림 생성 요청으로 변환하여 재발행한다.
  * 생산 도메인은 업무 사실을 전달하고, 이 리스너가 수신자와 알림 문구를 결정한다.
@@ -133,12 +136,95 @@ public class NotificationDomainEventListener {
 
     @TransactionalEventListener
     public void handlePlaylistCreated(PlaylistCreatedEvent event){
+        List<UUID> followerIds = getFollowerIdsOrEmpty(event);
+        if (followerIds.isEmpty()){
+            return;
+        }
 
+        String ownerName = resolveUserName(event.ownerName());
+        followerIds.stream()
+                .distinct()
+                .filter(receiverId -> !event.ownerId().equals(receiverId))
+                .forEach(receiverId ->
+                        publishPlaylistCreatedNotification(event, receiverId, ownerName));
     }
 
     @TransactionalEventListener
     public void handlePlaylistContentAdded(PlaylistContentAddedEvent event){
+        getSubscriberIdsOrEmpty(event)
+                .stream()
+                .distinct()
+                .filter(receiverId -> !event.actorId().equals(receiverId))
+                .forEach(receiverId -> publishPlaylistContentAddedNotification(event, receiverId));
+    }
 
+    private List<UUID> getFollowerIdsOrEmpty(PlaylistCreatedEvent event) {
+        try {
+            return targetReader.findFollowerIds(event.ownerId());
+        } catch (RuntimeException e){
+            log.warn(
+                    "플레이리스트 생성 알림 수신자 조회실패. playlistId={}, ownerId={}, exceptionType={}",
+                    event.playlistId(),
+                    event.ownerId(),
+                    e.getClass().getSimpleName()
+            );
+            return List.of();
+        }
+    }
+
+    private void publishPlaylistCreatedNotification(PlaylistCreatedEvent event, UUID receiverId, String ownerName) {
+        try {
+            eventPublisher.publishEvent(new NotificationCreateRequestedEvent(
+                    receiverId,
+                    "팔로우한 사용자의 새 플레이리스트",
+                    "%s님이 \"%s\" 플레이리스트를 만들었습니다.".formatted(ownerName, event.playlistTitle()),
+                    NotificationLevel.INFO)
+            );
+        } catch (RuntimeException e){
+            log.warn(
+                    "플레이리스트 생성 알림 변환·재발행 실패. playlistId={}, ownerId={}, receiverId={}, exceptionType={}",
+                    event.playlistId(),
+                    event.ownerId(),
+                    receiverId,
+                    e.getClass().getSimpleName()
+            );
+        }
+    }
+
+    private List<UUID> getSubscriberIdsOrEmpty(PlaylistContentAddedEvent event) {
+        try {
+            return targetReader.findSubscriberIds(event.playlistId());
+        } catch (RuntimeException e) {
+            log.warn(
+                    "콘텐츠 추가 알림 수신자 조회 실패. playlistId={}, contentId={}, actorId={}, exceptionType={}",
+                    event.playlistId(),
+                    event.contentId(),
+                    event.actorId(),
+                    e.getClass().getSimpleName()
+            );
+            return List.of();
+        }
+    }
+
+    private void publishPlaylistContentAddedNotification(PlaylistContentAddedEvent event, UUID receiverId) {
+        try {
+            eventPublisher.publishEvent(
+                    new NotificationCreateRequestedEvent(
+                            receiverId,
+                            "구독한 플레이리스트에 새 콘텐츠",
+                            "\"%s\" 플레이리스트에 \"%s\" 콘텐츠가 추가되었습니다.".formatted(event.playlistTitle(), event.contentTitle()),
+                            NotificationLevel.INFO)
+            );
+        } catch (RuntimeException e){
+            log.warn(
+                    "콘텐츠 추가 알림 변환·재발행 실패. playlistId={}, contentId={}, actorId={}, receiverId={}, exceptionType={}",
+                    event.playlistId(),
+                    event.contentId(),
+                    event.actorId(),
+                    receiverId,
+                    e.getClass().getSimpleName()
+            );
+        }
     }
 
     /** null·빈 문자열·공백뿐인 이름은 기본값으로 대체하고, 그 외에는 앞뒤 공백도 그대로 유지한다. */

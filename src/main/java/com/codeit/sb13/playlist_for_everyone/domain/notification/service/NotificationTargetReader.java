@@ -15,10 +15,10 @@ public class NotificationTargetReader {
     private final PlaylistService playlistService;
 
     public List<UUID> findFollowerIds(UUID followeeId){
-        return List.of();
+        return followService.findFollowerIds(followeeId);
     }
 
     public List<UUID> findSubscriberIds(UUID playlistId){
-        return List.of();
+        return playlistService.findSubscriberIds(playlistId);
     }
 }
