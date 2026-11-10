@@ -59,50 +59,6 @@ public class JwtTokenProvider {
                 .build();
     }
 
-    /**
-     * 서명, 만료 시각, 토큰 종류와 사용자 ID를 검증한다.
-     *
-     * 검증에 성공하면 사용자 ID를 반환하고,
-     * 실패하면 JwtException 계열 예외를 발생시킨다.
-     */
-    public UUID parseAccessToken(String token) {
-
-        if (token == null || token.isBlank()) {
-            throw new JwtException("토큰이 비어 있습니다");
-        }
-
-        // 서명된 JWT만 허용한다.
-        // 서명 불일치, 잘못된 형식, 만료 등의 오류는 JJWT가 예외로 반환한다.
-        Claims claims = jwtParser.parseSignedClaims(token).getPayload();
-
-        // 서명이 유효하더라도 Refresh Token이면 사용할 수 없다.
-        String tokenType = claims.get(TOKEN_TYPE_CLAIM, String.class);
-
-        if (!ACCESS_TOKEN_TYPE.equals(tokenType)) {
-            throw new JwtException("Access Token이 아닙니다");
-        }
-
-        // JJWT의 만료 검사는 exp가 있을 때 적용되므로,
-        // 우리 서비스에서는 exp 자체도 필수로 검증한다.
-        if (claims.getExpiration() == null) {
-            throw new JwtException("토큰에 만료 시각이 없습니다.");
-        }
-
-        String subject = claims.getSubject();
-
-        if (subject == null ||  subject.isBlank()) {
-            throw new JwtException("토큰에 사용자 ID가 없습니다");
-        }
-
-        try {
-            return UUID.fromString(subject);
-        } catch (IllegalArgumentException exception) {
-            throw new JwtException(
-                    "토큰의 사용자 ID 형식이 올바르지 않습니다.", exception
-            );
-        }
-    }
-
 
     /**
      * 사용자 ID, 로그인 세션 ID, 고유 토큰 ID를 담은 Access Token을 발급한다.

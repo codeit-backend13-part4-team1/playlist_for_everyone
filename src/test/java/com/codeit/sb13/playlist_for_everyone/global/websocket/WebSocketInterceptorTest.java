@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket;
 
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.AccessTokenClaims;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
@@ -88,14 +89,14 @@ public class WebSocketInterceptorTest {
 
     private void tokenSimulateSetup(String token){
         // 토큰이 있다고 가정한다.
-        given(tokenProvider.parseAccessToken(eq(token))).willAnswer(
+        given(tokenProvider.parseAccess(eq(token))).willAnswer(
                 inv -> {
                     String gettedToken = inv.getArgument(0);
 
                     if (!token.equals(gettedToken))
                         throw new JwtException("유효하지 않은 토큰입니다.");
 
-                    return UUID.randomUUID();
+                    return new AccessTokenClaims(UUID.randomUUID(), UUID.randomUUID());
                 });
 
         given(userService.getById(any(UUID.class))).willAnswer(
