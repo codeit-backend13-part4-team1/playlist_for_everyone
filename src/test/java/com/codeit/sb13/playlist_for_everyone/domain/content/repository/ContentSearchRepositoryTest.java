@@ -273,4 +273,42 @@ public class ContentSearchRepositoryTest {
         assertThat(result.get(0).reviewCount()).isZero();
     }
 
+    @Test
+    @DisplayName("평점 커서 이후의 콘텐츠를 조회한다")
+    void searchContents_afterRatingCursor() {
+        // given
+        ContentSearchCondition firstCondition = new ContentSearchCondition(
+                null, null, null, null, null,
+                2, SortDirection.DESCENDING, "rate"
+        );
+
+        var firstPage = contentRepository.search(firstCondition);
+
+        // limit + 1개 조회하므로 실제 페이지의 마지막 콘텐츠는 index 1
+        ContentSummary lastContent = firstPage.get(1);
+
+        ContentSearchCondition nextCondition = new ContentSearchCondition(
+                null,
+                null,
+                null,
+                String.valueOf(lastContent.averageRating()),
+                lastContent.contentId(),
+                2,
+                SortDirection.DESCENDING,
+                "rate"
+        );
+
+        // when
+        var result = contentRepository.search(nextCondition);
+
+        // then
+        assertThat(result)
+                .extracting(ContentSummary::title)
+                .containsExactly(
+                        "드라마시리즈1",
+                        "영화시리즈2",
+                        "스포츠드라마2"
+                );
+    }
+
 }
