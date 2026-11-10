@@ -21,7 +21,9 @@ import com.querydsl.jpa.impl.JPAQueryFactory;
 import lombok.RequiredArgsConstructor;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 import static com.codeit.sb13.playlist_for_everyone.domain.content.entity.QContent.content;
 
@@ -31,6 +33,11 @@ public class ContentSearchRepositoryImpl implements ContentSearchRepository {
     private final JPAQueryFactory queryFactory;
     private final ContentMapper mapper;
 
+    /**
+     * 검색 조건에 따라 콘텐츠를 조회한다.
+     * 리뷰 평균 평점과 리뷰 수를 함께 조회하며,
+     * 다음 페이지 존재 여부를 확인하기 위해 limit + 1개를 조회한다.
+     */
     @Override
     public List<ContentSummary> search(
             ContentSearchCondition condition
@@ -45,7 +52,8 @@ public class ContentSearchRepositoryImpl implements ContentSearchRepository {
                 .where(
                         typeContains(condition.typeEqual()),
                         keywordContains(condition.keywordLike()),
-                        tagsInContains(condition.tagsIn())
+                        tagsInContains(condition.tagsIn()),
+                        cursorCondition(condition, rating)
                 )
                 .orderBy(
                         getOrderSpecifier(
@@ -53,6 +61,7 @@ public class ContentSearchRepositoryImpl implements ContentSearchRepository {
                                 condition.sortDirection(),
                                 rating
                         ),
+                        // 정렬값이 동일한 경우 UUID로 순서 보장
                         condition.sortDirection() == SortDirection.ASCENDING
                         ? content.id.asc() : content.id.desc()
                 )
@@ -68,14 +77,14 @@ public class ContentSearchRepositoryImpl implements ContentSearchRepository {
                 .toList();
     }
 
-    // 콘텐츠 타입 필터
+    // 콘텐츠 타입 필터 (null이면 조건 제외)
     private BooleanExpression typeContains(ContentType type) {
         return type != null
                 ? content.type.eq(type)
                 : null;
     }
 
-    // 키워드 검색
+    // 제목 또는 설명에 키워드가 포함된 콘텐츠 검색 (대소문자 무시)
     private BooleanExpression keywordContains(String keyword) {
         if (!StringUtils.hasText(keyword)) {
             return null;
@@ -85,7 +94,8 @@ public class ContentSearchRepositoryImpl implements ContentSearchRepository {
                 .or(content.description.containsIgnoreCase(keyword));
     }
 
-    // 태그 필터
+    // 요청한 태그 중 하나 이상을 가진 콘텐츠 검색
+    // EXISTS 서브쿼리로 콘텐츠 중복 조회 방지
     private BooleanExpression tagsInContains(List<String> tags) {
         if (tags == null || tags.isEmpty()) {
             return null;
@@ -103,7 +113,7 @@ public class ContentSearchRepositoryImpl implements ContentSearchRepository {
                 .exists();
     }
 
-    // 리뷰 수 서브쿼리
+    // 콘텐츠별 리뷰 수 조회 (리뷰가 없으면 0)
     private NumberExpression<Long> reviewCountExpression() {
         QReview review = new QReview("reviewCount");
 
@@ -117,7 +127,7 @@ public class ContentSearchRepositoryImpl implements ContentSearchRepository {
         );
     }
 
-    // 평점 서브쿼리
+    // 콘텐츠별 평균 평점 조회 (리뷰가 없으면 0.0)
     private NumberExpression<Double> ratingExpression() {
         QReview review = new QReview("rating");
 
@@ -131,6 +141,7 @@ public class ContentSearchRepositoryImpl implements ContentSearchRepository {
         );
     }
 
+    // 정렬 기준과 방향에 따라 생성일 또는 평균 평점 정렬 조건 생성
     private OrderSpecifier<?> getOrderSpecifier(
             String sortBy,
             SortDirection direction,
@@ -148,6 +159,69 @@ public class ContentSearchRepositoryImpl implements ContentSearchRepository {
 
             default -> throw new IllegalArgumentException(
                     "지원하지 않는 정렬 기준: " + sortBy
+            );
+        };
+    }
+
+    /**
+     * 커서 이후의 콘텐츠를 조회하기 위한 조건을 생성한다.
+     * 정렬값이 동일한 경우 UUID를 보조 정렬 기준으로 사용한다.
+     */
+    private BooleanExpression cursorCondition(
+            ContentSearchCondition condition,
+            NumberExpression<Double> rating
+    ) {
+        boolean hasCursor = StringUtils.hasText(condition.cursor());
+        boolean hasIdAfter = condition.idAfter() != null;
+
+        // 첫 페이지 요청은 커서 조건 없이 조회
+        if (!hasCursor && !hasIdAfter) {
+            return null;
+        }
+
+        // cursor와 idAfter는 반드시 함께 전달해야 한다.
+        if (hasCursor != hasIdAfter) {
+            throw new IllegalArgumentException(
+                    "cursor와 idAfter는 함께 전달해야 합니다."
+            );
+        }
+
+        boolean ascending =
+                condition.sortDirection() == SortDirection.ASCENDING;
+
+        UUID idAfter = condition.idAfter();
+
+        // 정렬값이 동일한 경우 UUID로 다음 콘텐츠 구분
+        BooleanExpression idCondition = ascending
+                ? content.id.gt(idAfter)
+                : content.id.lt(idAfter);
+
+        return switch (condition.sortBy()) {
+            case "createdAt" -> {
+                LocalDateTime cursor =
+                        LocalDateTime.parse(condition.cursor());
+
+                // 생성일 기준 커서 비교
+                yield ascending
+                        ? content.createdAt.gt(cursor)
+                        .or(content.createdAt.eq(cursor).and(idCondition))
+                        : content.createdAt.lt(cursor)
+                        .or(content.createdAt.eq(cursor).and(idCondition));
+            }
+
+            case "rate" -> {
+                double cursor = Double.parseDouble(condition.cursor());
+
+                // 평균 평점 기준 커서 비교
+                yield ascending
+                        ? rating.gt(cursor)
+                        .or(rating.eq(cursor).and(idCondition))
+                        : rating.lt(cursor)
+                        .or(rating.eq(cursor).and(idCondition));
+            }
+
+            default -> throw new IllegalArgumentException(
+                    "지원하지 않는 정렬 기준: " + condition.sortBy()
             );
         };
     }
