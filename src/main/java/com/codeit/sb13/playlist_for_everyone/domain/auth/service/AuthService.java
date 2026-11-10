@@ -13,6 +13,7 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundE
 import io.jsonwebtoken.JwtException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataAccessException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.stereotype.Service;
 
@@ -88,11 +89,19 @@ public class AuthService {
             throw new BadCredentialsException("유효하지 않은 인증 정보 입니다.");
         }
 
-        boolean extended = userSessionRepository.extendIfCurrent(
-                userId,
-                sessionId,
-                jwtProperties.refreshTokenValidity()
-        );
+        boolean extended;
+        try {
+            extended = userSessionRepository.extendIfCurrent(
+                    userId,
+                    sessionId,
+                    jwtProperties.refreshTokenValidity()
+            );
+        } catch (DataAccessException exception) {
+            // 기존 Refresh Token은 이미 교체되었으므로, 여기서 실패하면 다시 로그인해야 한다.
+            // 연장하지 못해도 세션은 남은 유효기간 동안 유지되므로 새 토큰을 반환한다.
+            log.warn("로그인 세션 연장에 실패했습니다. userId={}", userId, exception);
+            return result;
+        }
 
         if (!extended) {
             throw new BadCredentialsException("유효하지 않은 인증 정보입니다.");
