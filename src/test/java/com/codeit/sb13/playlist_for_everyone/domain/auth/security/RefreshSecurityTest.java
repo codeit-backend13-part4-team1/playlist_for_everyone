@@ -6,6 +6,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.dto.TokenReissueResult;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.dto.response.JwtDto;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AuthService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
@@ -97,6 +98,10 @@ class RefreshSecurityTest {
     @MockitoBean
     private RefreshTokenRepository refreshTokenRepository;
 
+    // SecurityConfig가 로그인 세션 저장소를 주입받는다.
+    @MockitoBean
+    private UserSessionRepository userSessionRepository;
+
     @Test
     @DisplayName("Access Token 없이 Refresh Token 쿠키로 재발급 한다.")
     void 쿠키로_재발급에_성공한다() throws Exception {
@@ -157,7 +162,7 @@ class RefreshSecurityTest {
         givenReissueSuccess();
 
         // 필터가 Access Token을 검사하면 만료 예외가 발생하는 상황이다.
-        given(jwtTokenProvider.parseAccessToken(EXPIRED_ACCESS_TOKEN))
+        given(jwtTokenProvider.parseAccess(EXPIRED_ACCESS_TOKEN))
                 .willThrow(new ExpiredJwtException(
                         null,
                         null,
@@ -173,7 +178,7 @@ class RefreshSecurityTest {
         verify(authService).reissue(OLD_REFRESH_TOKEN);
 
         // 재발급 요청에서는 Access Token 검증을 건너뛰어야 한다.
-        verify(jwtTokenProvider, never()).parseAccessToken(anyString());
+        verify(jwtTokenProvider, never()).parseAccess(anyString());
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.user.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
+import com.codeit.sb13.playlist_for_everyone.domain.user.event.UserLockedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.user.event.UserRoleChangedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
@@ -50,6 +51,10 @@ public class UserAdministrationService {
 
         if (locked) {
             user.lock();
+
+            // 잠금이 커밋되면 인증 도메인이 해당 사용자의 로그인 세션을 종료한다.
+            // 잠금 해제는 로그인 세션을 종료할 이유가 없으므로 발행하지 않는다.
+            eventPublisher.publishEvent(new UserLockedEvent(userId));
         } else {
             user.unlock();
         }

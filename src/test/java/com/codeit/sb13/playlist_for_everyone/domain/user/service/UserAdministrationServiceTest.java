@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.user.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
+import com.codeit.sb13.playlist_for_everyone.domain.user.event.UserLockedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.user.event.UserRoleChangedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
@@ -110,30 +111,6 @@ class UserAdministrationServiceTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
-    @DisplayName("사용자의 계정을 잠그거나 잠금 해제한다")
-    void 계정_잠금_상태를_변경한다(boolean locked) {
-        UUID userId = UUID.randomUUID();
-        User user = createUser(Role.USER);
-
-        // 요청과 반대 상태를 만들어 실제 상태 전환을 검증한다.
-        if (!locked) {
-            user.lock();
-        }
-
-        given(userRepository.findByIdForUpdate(userId))
-                .willReturn(Optional.of(user));
-
-        userAdministrationService.updateLocked(userId, locked);
-
-        assertThat(user.isLocked()).isEqualTo(locked);
-        assertThat(user.getRole()).isEqualTo(Role.USER);
-
-        // 현재 알림 계약에는 계정 잠금 이벤트가 없다.
-        verifyNoInteractions(eventPublisher);
-    }
-
-    @ParameterizedTest
-    @ValueSource(booleans = {true, false})
     @DisplayName("현재와 같은 잠금 상태를 요청하면 기존 상태를 유지한다")
     void 동일한_잠금_상태를_유지한다(boolean locked) {
         UUID userId = UUID.randomUUID();
@@ -164,6 +141,44 @@ class UserAdministrationServiceTest {
                 userAdministrationService.updateLocked(userId, true))
                 .isInstanceOf(UserNotFoundException.class);
 
+        verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
+    @DisplayName("계정을 잠그면 잠금 이벤트를 한 번 발행한다")
+    void 계정을_잠그고_이벤트를_발행한다() {
+        UUID userId = UUID.randomUUID();
+        User user = createUser(Role.USER);
+
+        given(userRepository.findByIdForUpdate(userId))
+                .willReturn(Optional.of(user));
+
+        userAdministrationService.updateLocked(userId, true);
+
+        assertThat(user.isLocked()).isTrue();
+        assertThat(user.getRole()).isEqualTo(Role.USER);
+
+        // 인증 도메인이 커밋 후 이 이벤트로 로그인 세션을 종료한다.
+        verify(eventPublisher).publishEvent(new UserLockedEvent(userId));
+        verifyNoMoreInteractions(eventPublisher);
+    }
+
+    @Test
+    @DisplayName("계정 잠금을 해제하면 이벤트를 발행하지 않는다")
+    void 계정_잠금을_해제하면_이벤트를_발행하지_않는다() {
+        UUID userId = UUID.randomUUID();
+        User user = createUser(Role.USER);
+        user.lock();
+
+        given(userRepository.findByIdForUpdate(userId))
+                .willReturn(Optional.of(user));
+
+        userAdministrationService.updateLocked(userId, false);
+
+        assertThat(user.isLocked()).isFalse();
+        assertThat(user.getRole()).isEqualTo(Role.USER);
+
+        // 잠금 해제는 로그인 세션을 종료할 이유가 없다.
         verifyNoInteractions(eventPublisher);
     }
 

@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtAuthenticationFi
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtProperties;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.JwtAuthenticationFailureHandler;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.JwtAuthenticationSuccessHandler;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.JwtLogoutSuccessHandler;
@@ -14,6 +15,7 @@ import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
@@ -52,6 +54,8 @@ public class SecurityConfig {
                                                    RefreshTokenRepository refreshTokenRepository,
                                                    JwtProperties jwtProperties,
                                                    AuthService authService,
+                                                   UserSessionRepository userSessionRepository,
+                                                   ApplicationEventPublisher eventPublisher,
                                                    @Value("${everyone.jwt.refresh-cookie-secure:true}")
                                                    boolean refreshCookieSecure) throws Exception{
 
@@ -89,13 +93,14 @@ public class SecurityConfig {
         // Servlet 필터로 자동 등록되지 않도록 여기에서 직접 생성한다.
         // 이 필터는 아래에서 Spring Security 체인에만 등록한다.
         JwtAuthenticationFilter jwtAuthenticationFilter =
-                new JwtAuthenticationFilter(jwtTokenProvider, userService, authenticationEntryPoint);
+                new JwtAuthenticationFilter(jwtTokenProvider, userService, userSessionRepository, authenticationEntryPoint);
 
         // JWT 발급, Redis 저장 TTL, 쿠키 보관 기간에 같은 유효기간을 사용한다.
         // Secure 여부는 실행 환경의 설정으로 결정한다.
         JwtAuthenticationSuccessHandler successHandler =
                 new JwtAuthenticationSuccessHandler(jwtTokenProvider, userService, objectMapper,
-                        refreshTokenRepository, jwtProperties.refreshTokenValidity(), refreshCookieSecure
+                        refreshTokenRepository,userSessionRepository, eventPublisher,
+                        jwtProperties.refreshTokenValidity(), refreshCookieSecure
                 );
 
         // Refresh Token 삭제와 쿠키 만료, 로그아웃 응답을 담당한다.

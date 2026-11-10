@@ -56,7 +56,7 @@ class JwtRefreshTokenProviderTest {
     @DisplayName("Refresh Token에 사용자 ID, jti, 종류와 발급·만료 시각을 담는다")
     void Refresh_Token에_필요한_정보를_담는다() {
 
-        String token = jwtTokenProvider.createRefreshToken(USER_ID);
+        String token = jwtTokenProvider.createRefreshToken(USER_ID, SESSION_ID);
 
         // Provider의 검증 메서드와 독립적으로 발급 결과를 확인한다.
         Claims claims = readClaims(token);
@@ -71,8 +71,8 @@ class JwtRefreshTokenProviderTest {
     @Test
     @DisplayName("같은 사용자에게 같은 시각에 발급해도 Refresh Token의 jti는 다르다")
     void Refresh_Token을_발급할_때마다_다른_jti를_사용한다() {
-        String firstToken = jwtTokenProvider.createRefreshToken(USER_ID);
-        String secondToken = jwtTokenProvider.createRefreshToken(USER_ID);
+        String firstToken = jwtTokenProvider.createRefreshToken(USER_ID, SESSION_ID);
+        String secondToken = jwtTokenProvider.createRefreshToken(USER_ID, SESSION_ID);
 
         Claims firstClaims = readClaims(firstToken);
         Claims secondClaims = readClaims(secondToken);
@@ -81,23 +81,6 @@ class JwtRefreshTokenProviderTest {
         assertThat(secondClaims.getId()).isNotBlank();
         assertThat(firstClaims.getId()).isNotEqualTo(secondClaims.getId());
         assertThat(firstToken).isNotEqualTo(secondToken);
-    }
-
-    @Test
-    @DisplayName("유효한 Refresh Token에서 사용자 ID를 반환한다.")
-    void 유효한_Refresh_Token에서_사용자_ID를_반환한다() {
-        // 발급 가능과 독립적으로 검증 기능을 테스트 한다.
-        String token = createSingedToken(
-                USER_ID.toString(),
-                "REFRESH",
-                NOW.plus(REFRESH_TOKEN_VALIDITY),
-                UUID.randomUUID().toString(),
-                signingKey
-        );
-
-        UUID result = jwtTokenProvider.parseRefreshToken(token);
-
-        assertThat(result).isEqualTo(USER_ID);
     }
 
     @Test
@@ -111,7 +94,7 @@ class JwtRefreshTokenProviderTest {
                 signingKey
         );
 
-        assertThatThrownBy(() -> jwtTokenProvider.parseRefreshToken(token))
+        assertThatThrownBy(() -> jwtTokenProvider.parseRefresh(token))
                 .isInstanceOf(ExpiredJwtException.class);
     }
 
@@ -128,23 +111,23 @@ class JwtRefreshTokenProviderTest {
                 anotherKey
         );
 
-        assertThatThrownBy(()-> jwtTokenProvider.parseRefreshToken(token))
+        assertThatThrownBy(()-> jwtTokenProvider.parseRefresh(token))
                 .isInstanceOf(JwtException.class);
     }
 
     @Test
     @DisplayName("JWT 형식이 아닌 문자열은 Refresh Token으로 인정하지 않는다")
     void JWT_형식이_아니면_거절한다() {
-        assertThatThrownBy(()-> jwtTokenProvider.parseRefreshToken("not-a-jwt"))
+        assertThatThrownBy(()-> jwtTokenProvider.parseRefresh("not-a-jwt"))
                 .isInstanceOf(JwtException.class);
     }
 
     @Test
     @DisplayName("Access Token을 Refresh Token으로 사용할 수 없다.")
     void Access_Token을_Refresh_Token으로_인정하지_않는다() {
-        String accessToken = jwtTokenProvider.createAccessToken(USER_ID);
+        String accessToken = jwtTokenProvider.createAccessToken(USER_ID, SESSION_ID);
 
-        assertThatThrownBy(() -> jwtTokenProvider.parseRefreshToken(accessToken))
+        assertThatThrownBy(() -> jwtTokenProvider.parseRefresh(accessToken))
                 .isInstanceOf(JwtException.class);
     }
 
@@ -152,9 +135,9 @@ class JwtRefreshTokenProviderTest {
     @DisplayName("실제로 발급한 Refresh Token을 Access Token으로 사용할 수 없다.")
     void 발급한_Refresh_Token_Access_Token으로_인정하지_않는다() {
         // 기존 테스트의 직접 만든 토큰에 더해 실제 발급 결과도 확인 한다.
-        String refreshToken = jwtTokenProvider.createRefreshToken(USER_ID);
+        String refreshToken = jwtTokenProvider.createRefreshToken(USER_ID, SESSION_ID);
 
-        assertThatThrownBy(() -> jwtTokenProvider.parseAccessToken(refreshToken))
+        assertThatThrownBy(() -> jwtTokenProvider.parseAccess(refreshToken))
                 .isInstanceOf(JwtException.class);
     }
 
@@ -188,7 +171,7 @@ class JwtRefreshTokenProviderTest {
                 signingKey
         );
 
-        assertThatThrownBy(() -> jwtTokenProvider.parseRefreshToken(token))
+        assertThatThrownBy(() -> jwtTokenProvider.parseRefresh(token))
                 .isInstanceOf(JwtException.class);
     }
 
@@ -231,6 +214,86 @@ class JwtRefreshTokenProviderTest {
                 .signWith(key, Jwts.SIG.HS256)
                 .compact();
     }
+
+    // ===== 로그인 세션 ID(sid) =====
+
+    private static final UUID SESSION_ID =
+            UUID.fromString("22222222-2222-2222-2222-222222222222");
+
+    @Test
+    @DisplayName("Refresh Token에 로그인 세션 ID를 담는다")
+    void Refresh_Token에_세션_ID를_담는다() {
+        String token = jwtTokenProvider.createRefreshToken(USER_ID, SESSION_ID);
+
+        Claims claims = readClaims(token);
+
+        assertThat(claims.getSubject()).isEqualTo(USER_ID.toString());
+        assertThat(claims.get("sid", String.class)).isEqualTo(SESSION_ID.toString());
+        assertThat(claims.getId()).isNotBlank();
+        assertThat(claims.get("tokenType", String.class)).isEqualTo("REFRESH");
+        assertThat(claims.getExpiration().toInstant()).isEqualTo(NOW.plus(REFRESH_TOKEN_VALIDITY));
+    }
+
+    @Test
+    @DisplayName("유효한 Refresh Token을 검증하면 사용자 ID와 로그인 세션 ID를 반환한다")
+    void 유효한_Refresh_Token에서_세션_정보를_반환한다() {
+        String token = jwtTokenProvider.createRefreshToken(USER_ID, SESSION_ID);
+
+        RefreshTokenClaims claims = jwtTokenProvider.parseRefresh(token);
+
+        assertThat(claims).isEqualTo(new RefreshTokenClaims(USER_ID, SESSION_ID));
+    }
+
+    @Test
+    @DisplayName("로그인 세션 ID가 없는 Refresh Token은 거절한다")
+    void 세션_ID가_없는_Refresh_Token은_거절한다() {
+        String token = Jwts.builder()
+                .subject(USER_ID.toString())
+                .id(UUID.randomUUID().toString())
+                .claim("tokenType", "REFRESH")
+                .issuedAt(Date.from(NOW))
+                .expiration(Date.from(NOW.plus(REFRESH_TOKEN_VALIDITY)))
+                .signWith(signingKey, Jwts.SIG.HS256)
+                .compact();
+
+        assertThatThrownBy(() -> jwtTokenProvider.parseRefresh(token))
+                .isInstanceOf(JwtException.class);
+    }
+
+    @Test
+    @DisplayName("jti가 없는 Refresh Token은 거절한다")
+    void jti가_없는_Refresh_Token은_거절한다() {
+        String token = Jwts.builder()
+                .subject(USER_ID.toString())
+                .claim("sid", SESSION_ID.toString())
+                .claim("tokenType", "REFRESH")
+                .issuedAt(Date.from(NOW))
+                .expiration(Date.from(NOW.plus(REFRESH_TOKEN_VALIDITY)))
+                .signWith(signingKey, Jwts.SIG.HS256)
+                .compact();
+
+        assertThatThrownBy(() -> jwtTokenProvider.parseRefresh(token))
+                .isInstanceOf(JwtException.class);
+    }
+
+    @Test
+    @DisplayName("Access Token은 Refresh Token 검증을 통과하지 못한다")
+    void Access_Token은_parseRefresh를_통과하지_못한다() {
+        String accessToken = jwtTokenProvider.createAccessToken(USER_ID, SESSION_ID);
+
+        assertThatThrownBy(() -> jwtTokenProvider.parseRefresh(accessToken))
+                .isInstanceOf(JwtException.class);
+    }
+
+    @Test
+    @DisplayName("로그인 세션 ID 없이 Refresh Token을 발급할 수 없다")
+    void 세션_ID_없이_Refresh_Token을_발급할_수_없다() {
+        assertThatThrownBy(() -> jwtTokenProvider.createRefreshToken(USER_ID, null))
+                .isInstanceOf(NullPointerException.class);
+    }
+
+
+
 
 
 }

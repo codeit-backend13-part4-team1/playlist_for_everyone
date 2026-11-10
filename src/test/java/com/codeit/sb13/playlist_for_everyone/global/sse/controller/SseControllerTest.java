@@ -1,7 +1,9 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.controller;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.AccessTokenClaims;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AuthService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
@@ -73,6 +75,10 @@ class SseControllerTest {
     // SecurityConfig가 로그아웃 핸들러를 생성할 때 필요한 의존성이다.
     @MockitoBean
     private AuthService authService;
+
+    // SecurityConfig가 로그인 세션 저장소를 주입받는다.
+    @MockitoBean
+    private UserSessionRepository userSessionRepository;
 
     @Test
     @DisplayName("최초 연결은 마지막 이벤트 ID를 null로 전달하고 캐시가 금지된 SSE 스트림을 반환한다.")
@@ -212,7 +218,10 @@ class SseControllerTest {
         given(user.getRole()).willReturn(Role.USER);
         given(user.isLocked()).willReturn(false);
 
-        given(jwtTokenProvider.parseAccessToken(token)).willReturn(userId);
+        UUID sessionId = UUID.randomUUID();
+        given(jwtTokenProvider.parseAccess(token))
+                .willReturn(new AccessTokenClaims(userId, sessionId));
+        given(userSessionRepository.isCurrent(userId, sessionId)).willReturn(true);
         given(userService.getById(userId)).willReturn(user);
 
         SseEmitter emitter = new SseEmitter(30_000L);

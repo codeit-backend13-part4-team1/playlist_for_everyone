@@ -1,7 +1,9 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.controller;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.AccessTokenClaims;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AuthService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
@@ -141,6 +143,10 @@ public class SseStreamingIntegrationTest {
     // SecurityConfig가 로그아웃 핸들러를 생성할 때 필요한 의존성이다.
     @MockitoBean
     private AuthService authService;
+
+    // SecurityConfig가 로그인 세션 저장소를 주입받는다.
+    @MockitoBean
+    private UserSessionRepository userSessionRepository;
 
     @MockitoBean
     private SseHistoryStore historyStore;
@@ -409,7 +415,10 @@ public class SseStreamingIntegrationTest {
         given(user.getRole()).willReturn(Role.USER);
         given(user.isLocked()).willReturn(false);
 
-        given(jwtTokenProvider.parseAccessToken(token)).willReturn(userId);
+        UUID sessionId = UUID.randomUUID();
+        given(jwtTokenProvider.parseAccess(token))
+                .willReturn(new AccessTokenClaims(userId, sessionId));
+        given(userSessionRepository.isCurrent(userId, sessionId)).willReturn(true);
         given(userService.getById(userId)).willReturn(user);
     }
 

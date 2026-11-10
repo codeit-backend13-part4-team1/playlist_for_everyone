@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.auth.security;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.controller.AuthController;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AuthService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.config.MDCLoggingInterceptor;
@@ -75,6 +76,10 @@ class LogoutSecurityTest {
     @MockitoBean
     private RefreshTokenRepository refreshTokenRepository;
 
+    // SecurityConfig가 로그인 세션 저장소를 주입받는다.
+    @MockitoBean
+    private UserSessionRepository userSessionRepository;
+
     @Test
     @DisplayName("Access Token 없이 Refresh Token 쿠키로 로그아웃한다")
     void 쿠키로_로그아웃한다() throws Exception {
@@ -97,7 +102,7 @@ class LogoutSecurityTest {
     void 만료된_Access_Token이_로그아웃을_막지_않는다()
             throws Exception {
         // Access Token을 검사하면 만료 예외가 발생하는 상황이다.
-        given(jwtTokenProvider.parseAccessToken(EXPIRED_ACCESS_TOKEN))
+        given(jwtTokenProvider.parseAccess(EXPIRED_ACCESS_TOKEN))
                 .willThrow(new ExpiredJwtException(
                         null,
                         null,
@@ -119,7 +124,7 @@ class LogoutSecurityTest {
         verify(authService).logout(REFRESH_TOKEN);
 
         // Access Token 만료 때문에 로그아웃이 차단되면 안 된다.
-        verify(jwtTokenProvider, never()).parseAccessToken(anyString());
+        verify(jwtTokenProvider, never()).parseAccess(anyString());
 
         assertRefreshCookieDeleted(result);
     }
