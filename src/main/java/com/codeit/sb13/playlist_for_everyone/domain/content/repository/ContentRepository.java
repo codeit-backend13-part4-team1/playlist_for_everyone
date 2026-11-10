@@ -13,7 +13,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-public interface ContentRepository extends JpaRepository<Content, UUID> {
+public interface ContentRepository extends JpaRepository<Content, UUID>, ContentSearchRepository {
 
     @Query("""
         SELECT
