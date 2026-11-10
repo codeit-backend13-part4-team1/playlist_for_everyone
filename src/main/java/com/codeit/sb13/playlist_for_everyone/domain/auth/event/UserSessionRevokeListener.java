@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -48,16 +49,32 @@ public class UserSessionRevokeListener {
     }
 
     private void revoke(UUID userId, RevokeReason reason) {
+        Optional<UUID> revokedSessionId;
+
         try {
-            userSessionRepository.revoke(userId)
-                    .ifPresent(revokedSessionId -> eventPublisher.publishEvent(
-                            new UserSessionRevokedEvent(userId, revokedSessionId, reason)
-                    ));
-        } catch (DataAccessException exception) {
-            // DB 변경은 이미 커밋되었으므로 관리자 요청을 실패로 응답하지 않는다.
+            revokedSessionId = userSessionRepository.revoke(userId);
+        } catch (RuntimeException exception) {
+            // Spring은 AFTER_COMMIT 리스너의 예외를 관리자 요청에 전파하지 않고 일반 로그로만 남긴다.
+            // 추적할 수 있도록 사용자와 사유를 함께 기록한다.
             // 세션이 남아도 JWT 필터가 요청마다 DB의 권한·잠금 상태를 확인하므로
             // 바뀐 권한으로 판단되고, 잠긴 계정은 인증되지 않는다.
             log.error("로그인 세션 종료에 실패했습니다. userId={}, reason={}", userId, reason, exception);
+            return;
+        }
+
+        revokedSessionId.ifPresent(sessionId -> publishRevoked(userId, sessionId, reason));
+    }
+
+    /**
+     * 세션 종료를 알린다. 이 이벤트를 받는 리스너는 발행 스레드에서 실행된다.
+     * 리스너가 실패해도 세션은 이미 종료되었으므로, 실패한 처리만 기록한다.
+     */
+    private void publishRevoked(UUID userId, UUID sessionId, RevokeReason reason) {
+        try {
+            eventPublisher.publishEvent(new UserSessionRevokedEvent(userId, sessionId, reason));
+        } catch (RuntimeException exception) {
+            log.error("로그인 세션 종료 후속 처리에 실패했습니다. userId={}, sessionId={}, reason={}",
+                    userId, sessionId, reason, exception);
         }
     }
 }
