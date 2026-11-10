@@ -4,7 +4,7 @@
 
 > **문서 기준 안내:** 아래에는 공통 기반을 처음 준비하던 시점의 설명이 일부 남아 있습니다.
 > 도메인 구현 현황과 개발용 보안 전환 설명은 최신 코드와 다를 수 있습니다.
-> 현재 SSE 연결·Redis 분산 전송·인증·테스트는 [SSE 구현 가이드](sse/README.md), 알림 생성·전송·조회·읽음 처리와 JWT 인증은 [알림 구현 가이드](notification/README.md)를 기준으로 확인합니다.
+> 현재 SSE 연결·공유 이력·Redis 분산 전송·복구·인증·테스트는 [SSE 구현 가이드](sse/README.md), 알림 생성·전송·조회·읽음 처리와 JWT 인증은 [알림 구현 가이드](notification/README.md)를 기준으로 확인합니다.
 > 팔로우 등록·취소·조회와 인증·이벤트의 구현 및 검증 범위는 [팔로우 구현 가이드](follow/README.md)를 참고합니다.
 
 ## 현재 개발 상태
@@ -18,11 +18,11 @@
 | 팔로우 | 등록·취소·조회, 중복 복구와 생성 이벤트 구현. #76의 실제 JWT HTTP 통합 검증 및 Swagger 정리 완료 |
 | 로컬 인프라 | Docker Compose에 PostgreSQL과 Redis 서비스 정의 |
 | 공통 보안 | JWT 필터와 경로별 인증·인가 적용. 팔로우·알림 API는 인증 필요, 쿠키 기반 CSRF 보호 활성화 |
-| SSE | 인증된 사용자의 다중 연결, 하트비트, 종료 정리와 Redis Pub/Sub 분산 전송 구현. [SSE 구현 가이드](sse/README.md) 참고 |
-| 알림 전송 | 공통 알림 생성 요청 → 독립 저장·커밋 → Redis → 실제 SSE 수신 연동 구현. [알림 전송 흐름](notification/01-creation-and-delivery.md) 참고 |
+| SSE | 다중 연결·하트비트·종료 정리, 공유 이력 저장·재연결 복구, 연결별 후속 조회·제한된 재시도. [SSE 구현 가이드](sse/README.md) 참고 |
+| 알림 전송 | 공통 생성 요청 → 독립 저장·커밋 → 공유 이력 → Pub/Sub → 이력 조회·삭제 필터 → SSE 수신. [알림 전송 흐름](notification/01-creation-and-delivery.md) 참고 |
 | 알림 수신자 | 사용자 조회 컴포넌트를 통해 User 연관관계로 저장. 요청·응답의 수신자 UUID 계약 유지. [연관관계와 검증](notification/06-receiver-association.md) 참고 |
 | 알림 조회·읽음 | JWT 사용자를 수신자 조건으로 사용하여 목록·전체 개수를 조회하고 알림 삭제로 읽음 처리. [조회·인증 흐름](notification/03-query-and-security.md) 참고 |
-| SSE·알림 후속 | 업무별 알림 생성 요청 변환(#45)·DM 본문 연동·Kafka·이력 복구·연결 수 제한 |
+| SSE·알림 후속 | 업무별 알림 생성 요청 변환(#45)·DM 본문 연동·Kafka·연결 수 제한·보관 초기값의 운영 부하 검증 |
 | 후속 기능 | 팔로우 CSRF 연동·검증은 #114, 알림 CSRF 연동·검증은 #124, 팔로우 이벤트의 알림 생성 연동은 #45. 다른 기능의 진행 상태는 개별 이슈 참고 |
 
 라이브러리 의존성과 로컬 인프라를 준비한 상태와 기능 구현 완료를 구분합니다. Redis 서비스는 Compose에 포함되어 있으며, 이를 사용하는 캐시·세션 기능은 구현 전입니다. Kafka와 Elasticsearch는 현재 Compose에 포함되어 있지 않습니다.
@@ -171,6 +171,12 @@ Swagger UI와 OpenAPI 문서의 GET 조회는 `dev`가 활성화되고 `prod`는
 | `EVERYONE_SSE_TRANSPORT` | `redis` | SSE 브로커 전송 방식. 현재 Redis 구현체 지원 |
 | `EVERYONE_SSE_REDIS_CHANNEL` | `everyone:sse:events` | 같은 환경의 서버가 공유할 SSE 전용 채널 |
 | `EVERYONE_SSE_SUBSCRIPTION_ENABLED` | `true` | SSE 자동 구독 여부. 다른 기능의 Redis 사용까지 끄지 않음 |
+| `EVERYONE_SSE_HISTORY_KEY_PREFIX` | `everyone:dev:sse:history` | dev 기본값. prod는 `everyone:prod:sse:history`, test는 전용 값. 같은 환경 서버끼리 공유 |
+| `EVERYONE_SSE_HISTORY_RETENTION` | `10m` | 개별 이벤트 보관기간·비활성 키 TTL의 초기값 |
+| `EVERYONE_SSE_HISTORY_MAX_EVENTS_PER_USER` | `1000` | 사용자별 이력 상한. 전체 사용자 합계 상한이 아님 |
+| `EVERYONE_SSE_RETRY_INITIAL_DELAY` | `1s` | 후속 조회의 첫 재시도 대기 간격 |
+| `EVERYONE_SSE_RETRY_MAX_DELAY` | `30s` | 재시도 간격의 상한 |
+| `EVERYONE_SSE_RETRY_MAX_RETRIES` | `3` | 최초 시도 제외. 성공하면 횟수·간격 초기화 |
 | `EVERYONE_JPA_DDL_AUTO` | `validate` | 엔티티와 DB 스키마 일치 여부 검증 |
 | `EVERYONE_JPA_FORMAT_SQL` | `true` | 개발 환경 SQL 포맷 설정 |
 | `EVERYONE_JPA_SHOW_SQL` | `false` | 개발 환경 JPA SQL 출력 설정 |
@@ -184,7 +190,9 @@ Swagger UI와 OpenAPI 문서의 GET 조회는 `dev`가 활성화되고 `prod`는
 | `EVERYONE_SPORTSDB_API_KEY` | `123` | TheSportsDB API 키. 생략하면 공개 무료 키 `123` 사용 |
 
 SSE 환경변수를 생략하면 위 기본값을 사용합니다. 개발에서는 `.env.dev`, 운영에서는 외부 환경변수로 조정합니다.
-설정 검증과 시작 실패 조건은 [연결·하트비트 설정](sse/02-delivery-heartbeat.md#설정값과-허용-범위)과 [Redis 전송·구독 설정](sse/06-redis-transport.md#설정과-구독-생명주기)을 참고합니다.
+설정 검증과 시작 실패 조건은 [연결·하트비트](sse/02-delivery-heartbeat.md#설정값과-허용-범위), [Redis 전송·구독](sse/06-redis-transport.md#설정과-구독-생명주기), [이력·재시도 운영 설정](sse/11-history-operations.md)을 참고합니다.
+이력 접두사와 Pub/Sub 채널은 별도 설정입니다. 접두사 변경은 기존 키를 자동 이전하지 않으며,
+보관 초기값은 사용자 수·이벤트 크기·Redis 메모리와 지연을 측정해 조정합니다.
 두 서버를 함께 실행하려면 [다중 서버 실행](sse/07-redis-multi-node.md), 같은 사용자의 두 연결로 이벤트를 보내려면 [실제 수신 검증](sse/08-redis-verification.md)을 따라 진행합니다.
 
 S3 관련 값은 현재 공통 설정에 선언되어 있지만 실제 S3 연동 기능은 구현 전입니다.
@@ -424,11 +432,13 @@ CI는 성공한 빌드의 JaCoCo XML에서 전체 LINE 수치로 SVG 배지를 �
 - `NotificationSecurityIntegrationTest`는 실제 JWT·사용자 조회·서비스·PostgreSQL을 사용하여 본인 데이터 제한과 인증 실패 시 데이터 보존을 확인합니다. 이 클래스의 MockMvc 요청에서만 CSRF 검사를 임시 제외하며, 실제 CSRF 검증은 #124에서 진행합니다.
 - 공통 예외 핸들러·인터셉터의 MVC 테스트는 Security 필터를 제외합니다. 이 테스트의 통과는 인증·인가 동작 검증을 의미하지 않습니다.
 - 팔로우는 단위·MVC·PostgreSQL 저장소·서비스 통합 테스트와 실제 JWT HTTP 통합 테스트를 구분합니다. MVC 테스트의 Principal 준비는 JWT 검증을 대체하지 않습니다. [팔로우 테스트 가이드](follow/05-testing.md)에 검증 범위·실행 명령과 #76의 완료 기록을 정리했습니다.
-- SSE MVC 테스트는 실제 보안 필터를 포함하여 인증 사용자와 ASYNC 종료 시 인증 복원을 확인합니다. 공통 `SseStreamingIntegrationTest`는 인증 의존성을 Mock으로 대체하고, 실제 HTTP 프레임과 JSON 변환 실패 시 기존 연결 유지를 검증합니다.
+- SSE MVC 테스트는 실제 보안 필터를 포함하여 인증 사용자와 ASYNC 종료 시 인증 복원을 확인합니다. 공통 `SseStreamingIntegrationTest`는 인증 의존성을 Mock으로 대체하고, 실제 HTTP 프레임·발행 단계 JSON 변환 실패 후 연결 유지·초기 조회 실패의 503 응답을 검증합니다.
 - SSE 설정 테스트는 연결 설정에 `SseConfig`, 전송 설정에 `SseTransportConfig`를 사용하고 필요한 값을 직접 제공합니다.
 - SSE Redis 통합 테스트는 공통 발행 구현체, JSON 보존, 독립 컨텍스트 간 전달과 구독 연결 복구 후 새 이벤트 수신을 확인합니다. emitter를 Mock으로 사용하는 검증과 실제 HTTP 검증의 차이는 [SSE 테스트 가이드](sse/05-testing.md#redis-테스트의-범위)를 참고합니다.
+- 공유 이력의 저장·중복·만료, 연결별 복구·재시도·종료 정리는 [이력 테스트 가이드](sse/12-history-testing.md)에서 검증 역할과 실행 명령을 구분합니다.
 
 `NotificationSseIntegrationTest`는 실제 JWT·사용자 조회·PostgreSQL·Redis·HTTP를 연결해 DTO와 이벤트 ID 보존, 다른 사용자 미전달, A에서 저장한 알림의 B 수신을 확인합니다.
+삭제된 알림 필터, 다른 서버 재연결, 중복·역순 신호, 연결별 복구와 이력 만료 후 신규 수신도 포함합니다.
 A·B는 동일 JVM의 독립 컨텍스트와 서로 다른 HTTP 포트이며, 이 검증에 로그인 API·업무별 알림 생성 요청 변환(#45)·DM 연동은 포함하지 않습니다.
 공통 Redis 전송 테스트와 알림 연동 테스트의 차이는 [알림 테스트 가이드](notification/02-testing.md)에 정리합니다.
 최신 결과와 수치는 각자의 코드에서 명령을 실행해 보고서로 확인합니다.
@@ -514,6 +524,6 @@ RUN_SPORTSDB_LIVE_TEST=true ./gradlew test --tests '*SportsDbClientLiveTest' --r
 - 목록 API의 커서 규칙 확정과 직렬화·페이징 테스트
 - Redis 기반 캐시·세션 기능 구현과 데이터 보관 정책 결정
 - 배치, S3, WebSocket 등 기능별 구현과 필요한 인프라 추가
-- 업무별 알림 생성 요청 변환(#45), DM 본문 전송 연동, SSE Kafka 구현체, [공유 이력·재연결 복구 #53](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/53), [동시 연결 수 제한·모니터링 #107](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/107)
+- 업무별 알림 생성 요청 변환(#45), DM 본문 전송 연동, SSE Kafka 구현체, 이력 보관 초기값의 운영 부하 검증, [동시 연결 수 제한·모니터링 #107](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/107)
 - README 배지 자동 게시 방식 확정 및 연결
 - 배포 파이프라인 구성

@@ -11,7 +11,7 @@
 | `NotificationServiceTest` | 조회한 User 연결, 수신자 미존재 시 저장·발행 미호출, 저장 결과의 DTO·이벤트 구성 | 사용자 조회 컴포넌트·저장소·이벤트 발행자는 Mock. DB·Auditing·트랜잭션 실행 없음 |
 | `NotificationSseEventListenerTest` | ID·수신자·이벤트 이름·DTO 보존, 실패 처리·후속 발행·로그 | 발행자는 Mock, 리스너 직접 호출. AFTER_COMMIT 실행 시점 검증 없음 |
 | `NotificationIntegrationTest` | 실제 사용자 조회·PostgreSQL·Flyway, 커밋·롤백, 발행 요청과 실패 격리 | `SseEventPublisher`만 Mock으로 교체. Redis·HTTP 수신 검증 없음 |
-| `NotificationSseIntegrationTest` | 실제 JWT·DB·Redis·HTTP, 알림 프레임과 서버 간 전달 | 별도 OS 프로세스·로그인 API·누락 복구 검증 없음 |
+| `NotificationSseIntegrationTest` | 실제 JWT·DB·Redis·HTTP, 알림 프레임·서버 간 전달·보관 이력 복구 | 별도 OS 프로세스·로그인 API·부하 검증 없음 |
 
 테스트 코드는 [알림 테스트 패키지](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/notification)에 있습니다.
 각 클래스의 한글 `@DisplayName`으로 개별 시나리오를 확인할 수 있습니다.
@@ -59,6 +59,12 @@ DB에 사용자를 준비하고 실제 `JwtTokenProvider`로 토큰을 발급합
 3. 기록된 `NotificationCreatedEvent`의 ID와 실제 SSE `id`를 비교하고, `event:notifications`를 확인합니다.
 4. `data`를 JSON으로 읽어 DTO와 비교합니다. 내부 이벤트 객체로 감싸거나 JSON 문자열로 이중 인코딩하면 일치하지 않습니다.
 
+#53에서는 삭제된 알림 제외, 삭제된 기준 알림의 커서 유지, 다른 서버 재연결, 복구 중 도착한 신호,
+중복·역순 신호, 연결별 커서, 한 연결 종료와 전체 이력 만료 후 새 알림 수신도 검증합니다.
+`NotificationReplayFilterTest`는 Mock 저장소로 본인 알림의 필터링, 잘못된 data.id 제외, 유효 ID가 없을 때 DB 미호출을 확인합니다.
+`NotificationRepositoryTest`는 실제 DB에서 수신자 조건을 포함한 알림 ID 일괄 조회를 검증합니다.
+시나리오별 책임과 최근 연결·만료 테스트의 해석은 [이력 테스트 가이드](../sse/12-history-testing.md)에 모았습니다.
+
 수신자 분리 사례는 두 사용자로 연결하고, 다른 사용자 연결에서 읽기 제한 시간 동안 데이터가 오지 않는지 확인합니다.
 하트비트 간격을 `1h`로 늘려 해당 판독에 하트비트가 끼어들지 않도록 합니다.
 이 검증은 관찰한 시간 범위의 미전달을 확인하며 모든 장애 상황의 전달 보장을 뜻하지 않습니다.
@@ -71,10 +77,13 @@ A에 연결이 없는 상태에서도 B의 HTTP 응답에 이벤트가 도착하
 
 테스트 프로필은 SSE 자동 구독을 기본으로 끕니다. 이 클래스는 `subscription-enabled=true`와 전용 채널을 명시합니다.
 직접 생성한 B 컨텍스트에는 A의 `DynamicPropertySource`가 자동 적용되지 않으므로 DB·Redis·SSE 설정을 별도로 전달합니다.
+두 컨텍스트는 test 프로필의 같은 이력 접두사를 사용합니다.
 서버의 연결 정리, 클라이언트 `disconnect`, B 컨텍스트 종료를 모두 수행하여 다음 테스트에 자원을 남기지 않습니다.
 
-별도 프로세스의 수동 검증은 [Compose 실행](../sse/07-redis-multi-node.md)과 [Redis CLI 수신 확인](../sse/08-redis-verification.md)을 참고합니다.
-CLI 절차는 공통 전송 검증이며 알림 DB 저장이나 생성 리스너를 실행하지 않습니다.
+별도 프로세스의 인증·연결·하트비트는 [Compose 실행](../sse/07-redis-multi-node.md)과
+[연결 확인 절차](../sse/08-redis-verification.md)를 참고합니다.
+Redis CLI의 PUBLISH만으로는 현재 이력·DB 필터 경로의 알림 수신을 검증할 수 없습니다.
+저장부터 실제 수신까지는 이 통합 테스트를 사용하며, Compose 서버를 대상으로 실행하는 테스트는 아닙니다.
 
 ## 실행 방법
 
