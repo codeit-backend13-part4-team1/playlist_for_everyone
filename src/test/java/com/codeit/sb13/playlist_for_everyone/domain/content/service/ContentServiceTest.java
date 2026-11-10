@@ -497,8 +497,6 @@ public class ContentServiceTest {
         // given
         UUID contentId = UUID.randomUUID();
 
-        // 기존 파일 정보
-
         Content content = Content.createAdminContent(
                 ContentType.tvSeries,
                 "너말고다른연애",
