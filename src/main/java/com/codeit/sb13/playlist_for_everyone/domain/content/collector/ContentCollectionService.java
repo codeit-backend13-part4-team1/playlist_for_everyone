@@ -8,7 +8,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -49,14 +51,43 @@ public class ContentCollectionService {
                 data.providerItemId()
         );
 
-        if (data.tags() != null) {
-            data.tags().stream()
-                    .filter(StringUtils::hasText)
-                    .map(String::strip)
-                    .distinct()
-                    .forEach(content::addTag);
+        Content existing = contentRepository
+                .findByProviderAndTypeAndProviderItemId(
+                        data.provider(),
+                        data.type(),
+                        data.providerItemId()
+                )
+                .orElse(null);
+
+        if (existing != null) {
+            return existing;
         }
 
-        return contentRepository.save(content);
+        int inserted = contentRepository.insertIfAbsent(
+                UUID.randomUUID(),
+                content.getType().name(),
+                content.getTitle(),
+                content.getDescription(),
+                content.getThumbnailUrl(),
+                content.getProvider().name(),
+                content.getProviderItemId(),
+                LocalDateTime.now()
+        );
+
+        Content saved = contentRepository
+                .findByProviderAndTypeAndProviderItemId(
+                        data.provider(),
+                        data.type(),
+                        data.providerItemId()
+                )
+                .orElseThrow(() ->
+                        new IllegalStateException("수집한 콘텐츠를 조회할 수 없습니다.")
+                );
+
+        if (inserted == 1) {
+            tags.forEach(saved::addTag);
+        }
+
+        return saved;
     }
 }

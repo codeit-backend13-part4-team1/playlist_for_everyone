@@ -21,7 +21,7 @@ public class ContentMapperTest {
                 ContentType.tvSeries,
                 "너말고다른연애",
                 "KBS 드라마 입니다.",
-                "thumbnail-url"
+                null
         );
         content.addTag("드라마");
         content.addTag("로맨스");
@@ -29,6 +29,7 @@ public class ContentMapperTest {
         // when
         ContentDto dto = contentMapper.toDto(
                 content,
+                "thumbnail-url",
                 4.5,
                 10,
                 20L
@@ -38,6 +39,7 @@ public class ContentMapperTest {
         assertThat(dto.type()).isEqualTo(ContentType.tvSeries);
         assertThat(dto.title()).isEqualTo("너말고다른연애");
         assertThat(dto.description()).isEqualTo("KBS 드라마 입니다.");
+        assertThat(content.getThumbnailUrl()).isNull();
         assertThat(dto.thumbnailUrl()).isEqualTo("thumbnail-url");
 
         assertThat(dto.tags())
@@ -56,12 +58,13 @@ public class ContentMapperTest {
                 ContentType.tvSeries,
                 "너말고다른연애",
                 "KBS 드라마 입니다.",
-                "thumbnail-url"
+                null
         );
 
         // when
         ContentDto dto = contentMapper.toDto(
                 content,
+                "thumbnail-url",
                 4.5,
                 10,
                 20L

@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.playlist.controller;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.controller.swagger.PlaylistApi;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistSearchRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistUpdateRequest;
@@ -26,10 +27,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/playlists")
-public class PlaylistController {
+public class PlaylistController implements PlaylistApi {
 
   private final PlaylistService playlistService;
 
+  @Override
   @PostMapping
   public ResponseEntity<PlaylistResponse> create(
       @AuthenticationPrincipal SecurityUser principal,
@@ -38,6 +40,7 @@ public class PlaylistController {
     return ResponseEntity.status(HttpStatus.CREATED).body(playlistResponse);
   }
 
+  @Override
   @GetMapping("/{playlistId}")
   public ResponseEntity<PlaylistResponse> getPlaylist(
       @PathVariable UUID playlistId,
@@ -71,7 +74,7 @@ public class PlaylistController {
       @PathVariable UUID playlistId,
       @AuthenticationPrincipal SecurityUser principal) {
     playlistService.deletePlaylist(playlistId, principal.getUserId());
-    return ResponseEntity.ok().build();
+    return ResponseEntity.noContent().build();
   }
 
   @PostMapping("/{playlistId}/contents/{contentId}")
@@ -89,7 +92,7 @@ public class PlaylistController {
       @PathVariable UUID contentId,
       @AuthenticationPrincipal SecurityUser principal) {
     playlistService.removeContent(playlistId, contentId, principal.getUserId());
-    return ResponseEntity.ok().build();
+    return ResponseEntity.noContent().build();
   }
 
   @PostMapping("/{playlistId}/subscription")
@@ -105,7 +108,7 @@ public class PlaylistController {
       @PathVariable UUID playlistId,
       @AuthenticationPrincipal SecurityUser principal) {
     playlistService.unsubscribe(playlistId, principal.getUserId());
-    return ResponseEntity.ok().build();
+    return ResponseEntity.noContent().build();
   }
 
 }

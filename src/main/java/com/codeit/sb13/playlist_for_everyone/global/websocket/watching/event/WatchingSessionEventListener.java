@@ -1,10 +1,15 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
+import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
+import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketDestinationInvalidException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionRegisterException;
+import com.codeit.sb13.playlist_for_everyone.global.service.MatchRule;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSession;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.WatchingSessionChange;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -14,11 +19,16 @@ import org.springframework.stereotype.Component;
 
 import java.util.Objects;
 
+import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
+import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WebSocketUtils.check;
+
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class WatchingSessionEventListener {
 
+
+    private final UserService userService;
     private final WatchingSession watchingSession;
     private final RedisTemplate<String, Object> redisTemplate;
 
@@ -31,12 +41,11 @@ public class WatchingSessionEventListener {
     public void watchJoinEvent(WatchingSessionJoinEvent event){
         SessionInfo info = event.info();
         try {
-            Objects.requireNonNull(info.destination());
+            check(info.destination());
 
-            String topic = Objects.requireNonNull(watchingSession.topic(info));
+            String topic = check(watchingSession.topic(info));
 
-            WatchingSessionChange data = Objects
-                    .requireNonNull(watchingSession.joinViewerSession(event.info()));
+            WatchingSessionChange data = check(watchingSession.joinViewerSession(event.info()));
 
             RedisMessageDto<WatchingSessionChange> message = new RedisMessageDto<>(info.destination(), data);
 
@@ -62,9 +71,9 @@ public class WatchingSessionEventListener {
     public void watchLeaveEvent(WatchingSessionLeaveEvent event){
         SessionInfo info = event.info();
         try {
-            Objects.requireNonNull(info.destination());
+            check(info.destination());
 
-            String topic = Objects.requireNonNull(watchingSession.topic(info));
+            String topic = check(watchingSession.topic(info));
 
             WatchingSessionChange data = Objects
                     .requireNonNull(watchingSession.leaveViewerSession(event.info()));
@@ -91,9 +100,50 @@ public class WatchingSessionEventListener {
 
     @EventListener
     public void chatJoinEvent(WatchingChatJoinEvent event){
+        SessionInfo info = check(event.info());
+        watchingSession.joinChatSession(info);
     }
 
     @EventListener
     public void chatLeaveEvent(WatchingChatLeaveEvent event){
+        SessionInfo info = check(event.info());
+        watchingSession.leaveChatSession(info);
     }
+
+    @EventListener
+    public void chatSendEvent(WatchingChatSendEvent event){
+        try {
+            SessionInfo info = check(event.info());
+            String payload = event.message();
+            String topic = watchingSession.topic(info);
+            MatchRule contentRule =
+                    MatchRule.builder()
+                            .origin(info.destination())
+                            .prefix("/pub/contents/")
+                            .pattern(UUID_REGEX)
+                            .postfix(CHAT_POSTFIX)
+                            .build();
+
+            if (!contentRule.check()) throw new WebSocketDestinationInvalidException();
+            String destination = PATH_PREFIX + contentRule.extract().get(0) + CHAT_POSTFIX;
+
+            ContentChatDto chat = watchingSession.getContentChatDto(info, payload);
+
+            RedisMessageDto<ContentChatDto> message = new RedisMessageDto<>(
+                    destination,
+                    chat
+            );
+
+            redisTemplate.convertAndSend(topic, message);
+        } catch (RuntimeException e) {
+            log.error("[{}] 메세지 전송 실패.",
+                    getClass().getSimpleName(),
+                    e
+            );
+            // todo - message send exception 작성. 핸들링 때문에 에러를 그대로 반환 안 하고, 여기에서 에러처리 역시 고심.
+            throw new WebSocketSessionNotFoundException();
+        }
+
+    }
+
 }

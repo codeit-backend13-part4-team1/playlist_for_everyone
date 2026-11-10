@@ -13,6 +13,7 @@ import java.util.Objects;
 
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatcherScriptConfig.*;
+import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WebSocketUtils.check;
 
 /**
  * 세션 - 구독  과 컨텐츠 간 관계 를 레디스에 저장하는 클래스
@@ -155,7 +156,7 @@ public class WatchingSessionRepository {
     // 커스텀 예외를 작성한다면 여기에.
     private void validate(String ...args){
         for (String arg : args){
-            Objects.requireNonNull(arg);
+            check(arg);
         }
     }
 

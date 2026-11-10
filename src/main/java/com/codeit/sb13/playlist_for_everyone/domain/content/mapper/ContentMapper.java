@@ -10,6 +10,7 @@ public class ContentMapper {
 
     public ContentDto toDto(
             Content content,
+            String thumbnailUrl,
             double averageRating,
             int reviewCount,
             long watcherCount
@@ -19,7 +20,7 @@ public class ContentMapper {
                 content.getType(),
                 content.getTitle(),
                 content.getDescription(),
-                content.getThumbnailUrl(),
+                thumbnailUrl,
                 content.getTags().stream()
                         .map(ContentTag::getTag)
                         .toList(),

@@ -6,18 +6,17 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocke
 import com.codeit.sb13.playlist_for_everyone.global.service.MatchRule;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisTopicRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.ChatSessionMessageListener;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.ViewSessionMessageListener;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.WatchingSessionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
-import static com.codeit.sb13.playlist_for_everyone.global.service.MatchRule.*;
-
+import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WebSocketUtils.check;
 
 @Component
 @RequiredArgsConstructor
@@ -26,6 +25,7 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
     private final WatchingSessionRepository watchingSessionRepository;
     private final RedisTopicRegistry topicRegistry;
     private final ViewSessionMessageListener viewSessionMessageListener;
+    private final ChatSessionMessageListener chatSessionMessageListener;
 
     enum WatchingSessionType {
         VIEW,
@@ -47,10 +47,12 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
      */
     @Override
     public String topic(SessionInfo info) {
-        String destination = Objects.requireNonNull(info.destination());
+        String destination = check(info.destination());
+
         WatchingSessionType type = WatchingSessionType.DEFAULT;
-        if (check(destination,watchingSessionUrlPattern())) type = WatchingSessionType.VIEW;
-        if (check(destination,watchingChatUrlPattern())) type = WatchingSessionType.CHAT;
+
+        if (MatchRule.check(destination,watchingSessionUrlPattern())) type = WatchingSessionType.VIEW;
+        if (MatchRule.check(destination,watchingChatUrlPattern())) type = WatchingSessionType.CHAT;
 
         return switch (type) {
             case VIEW -> merge(MESSAGE_VIEW_PREFIX, MatchRule.extract(destination,UUID_REGEX));
@@ -71,8 +73,8 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
 
     @Override
     public void joinViewerSession(SessionInfo info) {
-        String session = Objects.requireNonNull(info.session());
-        String subscribe = Objects.requireNonNull(info.subscription());
+        String session = check(info.session());
+        String subscribe = check(info.subscription());
         checkAuth(info);
         destinationCheck(info);
 
@@ -90,8 +92,8 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
 
     @Override
     public void leaveViewerSession(SessionInfo info) {
-        String session = Objects.requireNonNull(info.session());
-        String subscribe = Objects.requireNonNull(info.subscription());
+        String session = check(info.session());
+        String subscribe = check(info.subscription());
         destinationCheck(info);
 
         watchingSessionRepository.unregister(session,subscribe);
@@ -100,28 +102,41 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
 
     @Override
     public void joinChatSession(SessionInfo info) {
+        String session = check(info.session());
+        String subscribe = check(info.subscription());
+        String topic = topic(info);
 
+        topicRegistry.register(topic, session, subscribe, chatSessionMessageListener);
     }
 
     @Override
     public void leaveChatSession(SessionInfo info) {
+        String session = check(info.session());
+        String subscribe = info.subscription();
+
+        if (subscribe == null) {
+            // 구독 없음 - disconnect
+            topicRegistry.disconnect(session);
+        } else {
+            // 구독 있음 - unsubscribe
+            topicRegistry.unregister(session, subscribe);
+        }
 
     }
 
     private void checkAuth(SessionInfo info){
-        SecurityUser user = Objects.requireNonNull(info.user());
+        SecurityUser user = check(info.user());
 
         if (!user.isEnabled())
             throw new WebSocketAuthInvalidException();
     }
 
     private void destinationCheck(SessionInfo info){
-        String destination = Objects.requireNonNull(info.destination());
+        String destination = check(info.destination());
         // chat 이나 view 경로가 아니면 에러 반환.
         if(!(MatchRule.check(destination,watchingSessionUrlPattern())
                 || MatchRule.check(destination,watchingChatUrlPattern())))
             throw new WebSocketDestinationInvalidException();
     }
-
 
 }

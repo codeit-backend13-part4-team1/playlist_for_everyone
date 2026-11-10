@@ -8,12 +8,16 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocke
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageListener;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisTopicRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.ChatSessionMessageListener;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.ViewSessionMessageListener;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.WatchingSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionServiceImpl;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.messaging.Message;
@@ -23,6 +27,7 @@ import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
 import static org.assertj.core.api.Assertions.*;
@@ -46,6 +51,9 @@ public class WatchingSessionServiceTest {
     RedisTopicRegistry redisTopicRegistry;
     @Mock
     ViewSessionMessageListener viewSessionListener;
+    @Mock
+    ChatSessionMessageListener chatSessionListener;
+
 
     /**
      * 테스트를 위한 SessionInfo 제작 매서드
@@ -74,13 +82,6 @@ public class WatchingSessionServiceTest {
         accessor.setDestination(destination);
         accessor.setLeaveMutable(true);
 
-        Message<byte[]> message =  MessageBuilder.createMessage(
-                new byte[0],
-                accessor.getMessageHeaders()
-        );
-
-        SessionInfo info = new SessionInfo(message);
-
         SecurityUser user = new SecurityUser(
                 UUID.randomUUID(),
                 "test@email.com",
@@ -90,9 +91,15 @@ public class WatchingSessionServiceTest {
         );
         UsernamePasswordAuthenticationToken authentication =
                 new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
-        info.principal(authentication);
 
-        return info;
+        accessor.setUser(authentication);
+
+        Message<byte[]> message =  MessageBuilder.createMessage(
+                new byte[0],
+                accessor.getMessageHeaders()
+        );
+
+        return new SessionInfo(message);
     }
 
 
@@ -100,10 +107,10 @@ public class WatchingSessionServiceTest {
      * redis 구독 등록을 위한 테스트용 편의 매서드
      */
     // 테스트용 서비스 타입
-    final String WATCH_SERVICE = "watch";
-    final String CHAT_SERVICE = "chat";
+    static final String WATCH_SERVICE = "watch";
+    static final String CHAT_SERVICE = "chat";
 
-    String testDestination(String contentId, String serviceType){
+    static String testDestination(String contentId, String serviceType){
         return switch (serviceType) {
             case WATCH_SERVICE -> "/sub/contents/" + contentId + "/watch";
             case CHAT_SERVICE -> "/sub/contents/" + contentId + "/chat";
@@ -111,7 +118,7 @@ public class WatchingSessionServiceTest {
         };
     }
 
-    String assertionTopicAnswer(String contentId, String serviceType){
+    static String assertionTopicAnswer(String contentId, String serviceType){
         return switch (serviceType){
             case WATCH_SERVICE -> MESSAGE_VIEW_PREFIX + contentId;
             case CHAT_SERVICE -> MESSAGE_CHAT_PREFIX + contentId;
@@ -133,7 +140,8 @@ public class WatchingSessionServiceTest {
         service = new WatchingSessionServiceImpl(
                 repository,
                 redisTopicRegistry,
-                viewSessionListener
+                viewSessionListener,
+                chatSessionListener
         );
     }
 
@@ -365,4 +373,145 @@ public class WatchingSessionServiceTest {
             }
         }
     }
+
+
+
+    @Nested
+    @DisplayName("동시 시청 채팅 기능 관련 테스트")
+    class Chatting {
+
+        static String sessionId = "test-session-id";
+        static String subscriptionId = "test-sub-1";
+        static String contentId = UUID.randomUUID().toString();
+        static String destination = testDestination(contentId, CHAT_SERVICE);
+
+        /**
+         * 실질적인 구독 로직을 반복하는 테스트
+         * redisTopicRegistry 를 통해서 구독을 추가하는 역할을 담당한다.
+         * 외부 도메인에서 건너오는 리소스는 검정하지 않는다.
+         * 사용 리소스는 contentId, SessionId, subscriptionId.
+         * 세 가지 리소스는 모두 상위 매소드에서 검증 된 것으로,
+         * 인자의 유무와 로직의 정합성에 집중한다.
+         */
+        @Nested
+        @DisplayName("채팅 방 구독 기능 테스트")
+        class Subscribe {
+
+            @Test
+            @DisplayName("세션 정보를 받아오면 채팅 도메인 토픽을 생성 후 메세지 리스너를 구독한다.")
+            void successfullyJoinTest(){
+                SessionInfo info = getSessionInfo(
+                        sessionId,
+                        subscriptionId,
+                        destination,
+                        Role.USER
+                );
+
+                service.joinChatSession(info);
+
+                verify(redisTopicRegistry).register(
+                        eq(assertionTopicAnswer(contentId,CHAT_SERVICE)),
+                        eq(sessionId),
+                        eq(subscriptionId),
+                        eq(chatSessionListener)
+                );
+
+            }
+
+            /** 순차적으로 세션, 구독, 경로(컨텐츠) 정보가 없는 상황을 시뮬레이팅. */
+            static Stream<Arguments> sessionInfoTestVariables(){
+                return Stream.of(
+                        Arguments.of(null,subscriptionId,destination),
+                        Arguments.of(sessionId,null,destination),
+                        Arguments.of(sessionId,subscriptionId,null)
+
+                );
+            }
+
+            @ParameterizedTest
+            @MethodSource("sessionInfoTestVariables")
+            @DisplayName("세션, 혹은 구독 및 경로(컨텐츠) 정보가 없으면, 등록을 진행하기 전에 예외를 반환한다.")
+            void joinTestWithNoArgv(String session, String subscription, String destination){
+                SessionInfo info = getSessionInfo(
+                        session,
+                        subscription,
+                        destination,
+                        Role.USER
+                );
+
+                assertThatThrownBy(() -> service.joinChatSession(info))
+                        .isInstanceOf(EveryOneException.class);
+
+                verifyNoInteractions(redisTopicRegistry);
+            }
+
+        }
+
+        /**
+         * contentId, sessionId 는 없을 수 없으나,
+         * subscriptionId 는 없다면 세션 정보를 전부 다 삭제한다.
+         */
+        @Nested
+        @DisplayName("채팅 방 구독 취소 기능 테스트")
+        class Unsubscribe {
+
+            @Test
+            @DisplayName("세션 정보를 바탕으로 구독을 취소한다.")
+            void unsubscribeSuccessTest(){
+                SessionInfo info = getSessionInfo(
+                        sessionId,
+                        subscriptionId,
+                        destination,
+                        Role.USER
+                );
+
+                service.leaveChatSession(info);
+
+                verify(redisTopicRegistry).unregister(eq(sessionId),eq(subscriptionId));
+            }
+
+            // 구독 취소는 세션 id 만 존재하면 된다.
+            static Stream<Arguments> sessionInfoTestVariables(){
+                return Stream.of(
+                        Arguments.of(null,subscriptionId,destination)
+                );
+            }
+
+            @ParameterizedTest
+            @MethodSource("sessionInfoTestVariables")
+            @DisplayName("특정 인자 가 null 이라면 로직을 진행하기 전에 예외를 받는다.")
+            void leaveTestWithNoArgv(String session, String subscription, String destination){
+                SessionInfo info = getSessionInfo(
+                        session,
+                        subscription,
+                        destination,
+                        Role.USER
+                );
+
+                assertThatThrownBy(() -> service.leaveChatSession(info))
+                        .isInstanceOf(EveryOneException.class);
+
+                verifyNoInteractions(redisTopicRegistry);
+            }
+
+            @Test
+            @DisplayName("세션 id 만 존재하면, 해당 세션에 대한 모든 연결을 끊는다.")
+            void disconnectTest(){
+                SessionInfo info = getSessionInfo(
+                        sessionId,
+                        null,
+                        destination,
+                        Role.USER
+                );
+
+                service.leaveChatSession(info);
+
+                verify(redisTopicRegistry).disconnect(eq(sessionId));
+            }
+
+
+        }
+
+    }
+
 }
