@@ -69,6 +69,7 @@ class PlaylistSubscriptionIntegrationTest {
   @Autowired
   private ApplicationEvents applicationEvents;
 
+  // 이 테스트는 구독 이벤트 생산까지 검증하므로 알림 소비자의 후속 처리는 실행하지 않는다.
   @MockitoBean
   private NotificationDomainEventListener notificationDomainEventListener;
 

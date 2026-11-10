@@ -64,15 +64,19 @@ import static org.mockito.Mockito.*;
 
 /**
  * 실제 PostgreSQL·Flyway와 Spring 빈으로 알림 저장 및 커밋 후 SSE 발행 요청을 검증한다.
- * 직접 발행한 이벤트의 처리 경계와 실제 팔로우 등록부터 알림 저장까지의 연동을 함께 확인한다.
+ * 직접 발행한 이벤트의 처리 경계와 실제 팔로우·권한 변경·구독 서비스부터 알림 저장까지의 연동을 확인한다.
  *
  * <p>SseEventPublisher는 Mock으로 대체하여 발행 요청을 확인한다. Redis·HTTP 수신은 범위 밖이다.
  * 공통 요청 리스너의 Spy는 기본적으로 실제 메서드를 실행하며, 재발행 실패 사례에서만 예외를 유도한다.
  * 업무 이벤트를 변환하는 NotificationDomainEventListener는 실제 빈을 사용한다.
  *
- * <p>직접 이벤트를 발행하는 사례는 TransactionTemplate으로 커밋·롤백을 제어한다.
- * 실제 팔로우 등록 사례는 FollowSaver의 REQUIRES_NEW 커밋을 사용한다.
+ * <p>직접 이벤트를 발행하는 사례와 실제 권한 변경·구독 사례는 TransactionTemplate으로 커밋·롤백을 제어한다.
+ * UserAdministrationService.updateRole과 PlaylistService.subscribe는 이 트랜잭션에 참여한다.
+ * 실제 팔로우 등록은 FollowSaver의 독립적인 REQUIRES_NEW 커밋을 사용한다.
  * 테스트 전체를 @Transactional로 감싸지 않으며, 직접 발행 사례의 닉네임 변경은 업무 대역이다.
+ *
+ * <p>ApplicationEvents에는 롤백된 업무의 발행 기록도 남는다. 이 기록만으로 커밋 후 소비를 판단하지 않고,
+ * 공통 알림 요청·저장 결과·SSE 발행 요청을 함께 확인한다.
  *
  * <p>입력 검증·사용자 조회·DB 저장의 실패 지점은 실제 저장 서비스를 통해 구분한다.
  * 각 실패가 업무 커밋을 보존하고, 후속 정상 알림의 저장·SSE 발행을 막지 않는지 확인한다.
@@ -89,6 +93,7 @@ import static org.mockito.Mockito.*;
 @DisplayName("알림 공통 생성 통합 테스트")
 class NotificationIntegrationTest {
 
+    // 알림 수신자를 권한 변경 대상과 플레이리스트 소유자로도 사용한다.
     private static final UUID RECEIVER_ID = UUID.randomUUID();
     private static final String TITLE = "새 알림";
     private static final String CONTENT = "알림 내용";
@@ -143,13 +148,14 @@ class NotificationIntegrationTest {
     private NotificationEventListener notificationEventListener;
 
     private TransactionTemplate transactionTemplate;
+    // 팔로워 사용자는 구독 사례에서 subscriberId로 재사용한다.
     private static final UUID FOLLOWER_ID = UUID.randomUUID();
     private static final UUID PLAYLIST_ID = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
         transactionTemplate = new TransactionTemplate(transactionManager);
-        // 팔로우와 알림의 독립 트랜잭션에서 조회할 수 있도록 두 사용자를 먼저 커밋한다.
+        // 업무 이벤트 없이 사용자를 준비하고, 팔로우·알림의 독립 트랜잭션에서도 조회할 수 있도록 먼저 커밋한다.
         jdbcTemplate.update("""
                 INSERT INTO users (id, email, nickname, role, enabled, created_at)
                 VALUES (?, ?, ?, 'USER', true, CURRENT_TIMESTAMP)
@@ -163,7 +169,8 @@ class NotificationIntegrationTest {
 
     @AfterEach
     void cleanUp() {
-        // 서비스가 실제 커밋한 행을 정리한다. 두 테이블이 사용자를 참조하므로 사용자 삭제 전에 지운다.
+        // 사용자를 참조하는 알림·팔로우·구독·플레이리스트를 먼저 지운다.
+        // 구독은 플레이리스트도 참조하므로 플레이리스트보다 먼저 삭제한다.
         notificationRepository.deleteAllInBatch();
         followRepository.deleteAllInBatch();
         jdbcTemplate.update("DELETE FROM subscriptions WHERE playlist_id =?", PLAYLIST_ID);
@@ -601,6 +608,7 @@ class NotificationIntegrationTest {
     })
     @DisplayName("실제 권한 변경이 커밋되면 대상 사용자에게 알림을 저장하고 SSE 발행을 요청한다.")
     void savesNotificationAfterActualRoleChangeCommits(Role previousRole, Role newRole){
+        // 초기 권한은 JDBC로 준비하여 검증 대상 변경 외에 권한 변경 이벤트가 발생하지 않게 한다.
         jdbcTemplate.update("UPDATE users SET role = ? WHERE id = ?",previousRole.name(), RECEIVER_ID);
 
         transactionTemplate.executeWithoutResult(status ->{
@@ -718,6 +726,10 @@ class NotificationIntegrationTest {
                 "SELECT nickname FROM users WHERE id = ?", String.class, RECEIVER_ID);
     }
 
+    /**
+     * 구독 사례의 사전 데이터를 JDBC로 준비해 플레이리스트 생성 이벤트가 발생하지 않게 한다.
+     * 구독 트랜잭션을 시작하기 전에 저장하므로 구독이 롤백되어도 플레이리스트는 유지된다.
+     */
     private void insertPlaylist(){
         jdbcTemplate.update("""
             INSERT INTO playlists (id, owner_id, title, description, subscriber_count, created_at, updated_at)
