@@ -438,7 +438,7 @@ public class FollowSecurityIntegrationTest {
     @DisplayName("만료된 JWT로 팔로우를 등록하면 401을 반환하고 관계 저장과 생성 이벤트 발행이 발생하지 않는다.")
     void follow_returnsUnauthorizedWithExpiredJwt(ApplicationEvents applicationEvents) throws Exception {
         String expiredToken = createExpiredAccessToken(followerId);
-        assertThatThrownBy(()-> jwtTokenProvider.parseAccessToken(expiredToken))
+        assertThatThrownBy(()-> jwtTokenProvider.parseAccess(expiredToken))
                 .isInstanceOf(ExpiredJwtException.class);
 
         mockMvc.perform(post("/api/follows")
@@ -483,7 +483,7 @@ public class FollowSecurityIntegrationTest {
         assertThat(beforeRows).hasSize(1);
 
         String expiredToken = createExpiredAccessToken(followerId);
-        assertThatThrownBy(()-> jwtTokenProvider.parseAccessToken(expiredToken))
+        assertThatThrownBy(()-> jwtTokenProvider.parseAccess(expiredToken))
                 .isInstanceOf(ExpiredJwtException.class);
 
         mockMvc.perform(delete("/api/follows/{followId}", followId)
@@ -510,7 +510,7 @@ public class FollowSecurityIntegrationTest {
         followInsert(followId);
 
         String expiredToken = createExpiredAccessToken(followerId);
-        assertThatThrownBy(()-> jwtTokenProvider.parseAccessToken(expiredToken))
+        assertThatThrownBy(()-> jwtTokenProvider.parseAccess(expiredToken))
                 .isInstanceOf(ExpiredJwtException.class);
 
         mockMvc.perform(get("/api/follows/followed-by-me")
@@ -531,7 +531,7 @@ public class FollowSecurityIntegrationTest {
         followInsert(followId);
 
         String expiredToken = createExpiredAccessToken(followerId);
-        assertThatThrownBy(()-> jwtTokenProvider.parseAccessToken(expiredToken))
+        assertThatThrownBy(()-> jwtTokenProvider.parseAccess(expiredToken))
                 .isInstanceOf(ExpiredJwtException.class);
 
         mockMvc.perform(get("/api/follows/count")
@@ -549,7 +549,7 @@ public class FollowSecurityIntegrationTest {
     @DisplayName("변조된 JWT로 팔로우를 등록하면 401을 반환하고 관계 저장과 생성 이벤트 발행이 발생하지 않는다.")
     void follow_returnsUnauthorizedWithTamperedJwt(ApplicationEvents applicationEvents) throws Exception {
         String tamperedToken = createTamperedAccessToken(followerId);
-        assertThatThrownBy(()-> jwtTokenProvider.parseAccessToken(tamperedToken))
+        assertThatThrownBy(()-> jwtTokenProvider.parseAccess(tamperedToken))
                 .isInstanceOf(SignatureException.class);
 
         mockMvc.perform(post("/api/follows")
@@ -594,7 +594,7 @@ public class FollowSecurityIntegrationTest {
         assertThat(beforeRows).hasSize(1);
 
         String tamperedToken = createTamperedAccessToken(followerId);
-        assertThatThrownBy(()-> jwtTokenProvider.parseAccessToken(tamperedToken))
+        assertThatThrownBy(()-> jwtTokenProvider.parseAccess(tamperedToken))
                 .isInstanceOf(SignatureException.class);
 
         mockMvc.perform(delete("/api/follows/{followId}", followId)
@@ -620,7 +620,7 @@ public class FollowSecurityIntegrationTest {
         followInsert(followId);
 
         String tamperedToken = createTamperedAccessToken(followerId);
-        assertThatThrownBy(()-> jwtTokenProvider.parseAccessToken(tamperedToken))
+        assertThatThrownBy(()-> jwtTokenProvider.parseAccess(tamperedToken))
                 .isInstanceOf(SignatureException.class);
 
         mockMvc.perform(get("/api/follows/followed-by-me")
@@ -641,7 +641,7 @@ public class FollowSecurityIntegrationTest {
         followInsert(followId);
 
         String tamperedToken = createTamperedAccessToken(followerId);
-        assertThatThrownBy(()-> jwtTokenProvider.parseAccessToken(tamperedToken))
+        assertThatThrownBy(()-> jwtTokenProvider.parseAccess(tamperedToken))
                 .isInstanceOf(SignatureException.class);
 
         mockMvc.perform(get("/api/follows/count")

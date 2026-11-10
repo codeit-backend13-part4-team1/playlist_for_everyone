@@ -309,7 +309,7 @@ public class NotificationSecurityIntegrationTest {
     void getNotifications_returnsUnauthorizedWithExpiredToken() throws Exception {
         String expiredToken = createExpiredAccessToken(receiverId);
 
-        assertThatThrownBy(()-> jwtTokenProvider.parseAccessToken(expiredToken))
+        assertThatThrownBy(()-> jwtTokenProvider.parseAccess(expiredToken))
                 .isInstanceOf(ExpiredJwtException.class);
 
         mockMvc.perform(get("/api/notifications")
@@ -332,7 +332,7 @@ public class NotificationSecurityIntegrationTest {
         insertNotification(notificationId, receiverId, getNotificationTimestamp());
         String expiredToken = createExpiredAccessToken(receiverId);
 
-        assertThatThrownBy(()-> jwtTokenProvider.parseAccessToken(expiredToken))
+        assertThatThrownBy(()-> jwtTokenProvider.parseAccess(expiredToken))
                 .isInstanceOf(ExpiredJwtException.class);
 
         mockMvc.perform(delete("/api/notifications/{notificationId}", notificationId)
@@ -352,7 +352,7 @@ public class NotificationSecurityIntegrationTest {
     void getNotifications_returnsUnauthorizedWithTamperedToken() throws Exception {
         String tamperedToken = createTamperedAccessToken(receiverId);
 
-        assertThatThrownBy(()-> jwtTokenProvider.parseAccessToken(tamperedToken))
+        assertThatThrownBy(()-> jwtTokenProvider.parseAccess(tamperedToken))
                 .isInstanceOf(SignatureException.class);
 
         mockMvc.perform(get("/api/notifications")
@@ -376,7 +376,7 @@ public class NotificationSecurityIntegrationTest {
         insertNotification(notificationId, receiverId, getNotificationTimestamp());
         String tamperedToken = createTamperedAccessToken(receiverId);
 
-        assertThatThrownBy(()-> jwtTokenProvider.parseAccessToken(tamperedToken))
+        assertThatThrownBy(()-> jwtTokenProvider.parseAccess(tamperedToken))
                 .isInstanceOf(SignatureException.class);
 
         mockMvc.perform(delete("/api/notifications/{notificationId}", notificationId)
