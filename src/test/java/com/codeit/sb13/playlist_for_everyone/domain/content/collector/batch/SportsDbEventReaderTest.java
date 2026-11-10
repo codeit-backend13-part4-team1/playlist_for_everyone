@@ -112,4 +112,72 @@ class SportsDbEventReaderTest {
         verify(client, times(2)).getEventsBySeason("4328", "2025-2026");
         verifyNoMoreInteractions(client);
     }
+
+    @Test
+    void 끝까지_읽은_뒤_재시작하면_종료한다() {
+        SportsDbClient client = mock(SportsDbClient.class);
+
+        var event = new SportsDbEventResponse(
+                "1001", "첫 번째 경기", "Soccer",
+                "English Premier League", "2025-2026",
+                "2025-08-16", null
+        );
+
+        when(client.getEventsBySeason("4328", "2025-2026"))
+                .thenReturn(new SportsDbEventsResponse(List.of(event)));
+
+        var context = new ExecutionContext();
+        var reader = new SportsDbEventReader(client, "4328", "2025-2026");
+        reader.open(context);
+
+        assertThat(reader.read()).isEqualTo(event);
+        assertThat(reader.read()).isNull();
+
+        reader.update(context);
+        reader.close();
+
+        var restartedReader =
+                new SportsDbEventReader(client, "4328", "2025-2026");
+        restartedReader.open(context);
+
+        assertThat(restartedReader.read()).isNull();
+        assertThat(restartedReader.read()).isNull();
+
+        verify(client, times(2)).getEventsBySeason("4328", "2025-2026");
+        verifyNoMoreInteractions(client);
+    }
+
+    @Test
+    void 재조회한_목록이_저장된_위치보다_짧으면_예외가_발생한다() {
+        SportsDbClient client = mock(SportsDbClient.class);
+
+        var event = new SportsDbEventResponse(
+                "1001", "첫 번째 경기", "Soccer",
+                "English Premier League", "2025-2026",
+                "2025-08-16", null
+        );
+
+        when(client.getEventsBySeason("4328", "2025-2026"))
+                .thenReturn(new SportsDbEventsResponse(List.of(event)))
+                .thenReturn(new SportsDbEventsResponse(List.of()));
+
+        var context = new ExecutionContext();
+        var reader = new SportsDbEventReader(client, "4328", "2025-2026");
+        reader.open(context);
+
+        assertThat(reader.read()).isEqualTo(event);
+
+        reader.update(context);
+        reader.close();
+
+        var restartedReader =
+                new SportsDbEventReader(client, "4328", "2025-2026");
+        restartedReader.open(context);
+
+        assertThatThrownBy(() -> restartedReader.read())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage(
+                        "TheSportsDB 경기 목록이 변경되어 읽기 위치를 복원할 수 없습니다."
+                );
+    }
 }
