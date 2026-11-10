@@ -8,7 +8,11 @@ import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import org.springframework.util.StringUtils;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeParseException;
+import java.util.Arrays;
 import java.util.UUID;
 
 public record UserSearchRequest(
@@ -36,8 +40,16 @@ public record UserSearchRequest(
      */
     @AssertTrue(message = "cursor 형식이 정렬 기준과 맞지 않습니다")
     public boolean isValidCursor() {
-        // RED: 다음 단계에서 구현
-        return true;
+        if (!StringUtils.hasText(cursor) || sortBy == null) {
+            return true;
+        }
+
+        return switch (sortBy) {
+            case NAME, EMAIL -> true;
+            case CREATED_AT -> isDateTime(cursor);
+            case IS_LOCKED -> "true".equals(cursor) || "false".equals(cursor);
+            case ROLE -> isRole(cursor);
+        };
     }
 
     /**
@@ -45,8 +57,21 @@ public record UserSearchRequest(
      */
     @AssertTrue(message = "cursor와 idAfter는 함께 제공해야 합니다")
     public boolean isCursorPairValid() {
-        // RED: 다음 단계에서 구현
-        return true;
+        return StringUtils.hasText(cursor) == (idAfter != null);
+    }
+
+    private static boolean isDateTime(String value) {
+        try {
+            LocalDateTime.parse(value);
+            return true;
+        } catch (DateTimeParseException e) {
+            return false;
+        }
+    }
+
+    private static boolean isRole(String value) {
+        return Arrays.stream(Role.values())
+                .anyMatch(role -> role.name().equals(value));
     }
 
     public UserSearchCondition toCondition() {
