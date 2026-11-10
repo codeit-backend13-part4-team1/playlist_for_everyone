@@ -1,10 +1,15 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.controller;
 
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.condition.ContentSearchCondition;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
+import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentSearchService;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
+import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
+import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
 import org.mockito.ArgumentCaptor;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -26,6 +31,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.BDDMockito.given;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -45,6 +51,9 @@ public class ContentControllerTest {
 
     @MockitoBean
     private ContentService contentService;
+
+    @MockitoBean
+    private ContentSearchService contentSearchService;
 
     @Test
     @WithMockUser(roles = "ADMIN")
@@ -214,6 +223,71 @@ public class ContentControllerTest {
                 .andExpect(status().isBadRequest());
 
         verifyNoInteractions(contentService);
+    }
+
+    @Test
+    @WithMockUser
+    @DisplayName("콘텐츠 검색 요청 시 검색 결과를 반환한다.")
+    void searchContent_success() throws Exception {
+        // given
+        UUID contentId = UUID.randomUUID();
+        UUID contentId2 = UUID.randomUUID();
+
+        ContentSearchCondition condition = new ContentSearchCondition(
+                null,
+                null,
+                null,
+                null,
+                null,
+                2,
+                SortDirection.DESCENDING,
+                "createdAt"
+        );
+
+        ContentSummary summary1 = new ContentSummary(
+                contentId,
+                ContentType.movie,
+                "테스트 영화",
+                "테스트 설명",
+                "https://example.com/thumbnail.jpg",
+                List.of("액션"),
+                4.5,
+                2
+        );
+
+        ContentSummary summary2 = new ContentSummary(
+                contentId2, ContentType.movie,
+                "영화2", "설명2", "thumbnail2",
+                List.of("드라마"), 4.5, 3
+        );
+
+        given(contentSearchService.search(condition))
+                .willReturn(new CursorResponse<>(
+                        List.of(summary1, summary2),
+                        "2026-11-10T09:00:00",
+                        contentId2,
+                        true,
+                        3L,
+                        condition.sortBy(),
+                        condition.sortDirection()
+                ));
+
+        // when & then
+        mockMvc.perform(get("/api/contents")
+                        .param("limit", "2")
+                        .param("sortBy", "createdAt")
+                        .param("sortDirection", "DESCENDING"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.hasNext").value(true))
+                .andExpect(jsonPath("$.nextCursor")
+                        .value("2026-11-10T09:00:00"))
+                .andExpect(jsonPath("$.nextIdAfter")
+                        .value(contentId2.toString()))
+                .andExpect(jsonPath("$.totalCount").value(3));
+
+        verify(contentSearchService).search(condition);
     }
 
     @Test
