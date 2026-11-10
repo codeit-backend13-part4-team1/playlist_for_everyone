@@ -65,7 +65,7 @@ class UserControllerTest {
             UUID.fromString("22222222-2222-2222-2222-222222222222");
 
     private static final UUID SESSION_ID =
-            UUID.fromString("22222222-2222-2222-2222-222222222222");
+            UUID.fromString("33333333-3333-3333-3333-333333333333");
 
     private static final String TOKEN = "test-access-token";
 

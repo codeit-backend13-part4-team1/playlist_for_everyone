@@ -1,7 +1,9 @@
 package com.codeit.sb13.playlist_for_everyone.global.config;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.AccessTokenClaims;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtProperties;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.RefreshTokenClaims;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
@@ -61,7 +63,8 @@ class JwtConfigTest {
                             context.getBean(JwtTokenProvider.class);
 
                     UUID userId = UUID.randomUUID();
-                    String token = provider.createAccessToken(userId, UUID.randomUUID());
+                    UUID sessionId = UUID.randomUUID();
+                    String token = provider.createAccessToken(userId, sessionId);
 
                     // 설정으로 전달한 키로 서명을 검증한다.
                     // Config가 임의의 다른 키를 사용하면 이 검증이 실패한다
@@ -87,8 +90,9 @@ class JwtConfigTest {
 
                     // 등록된 Provider로 검증까지 수행할 수 있어야 한다.
 
-                    assertThat(provider.parseAccess(token).userId())
-                            .isEqualTo(userId);
+                    // 등록된 Provider로 사용자 ID와 로그인 세션 ID까지 검증할 수 있어야 한다.
+                    assertThat(provider.parseAccess(token))
+                            .isEqualTo(new AccessTokenClaims(userId, sessionId));
                 });
     }
 
@@ -215,8 +219,8 @@ class JwtConfigTest {
 
                     UUID userId = UUID.randomUUID();
 
-                    // 직접 생성한 객체가 아니라 Spring이 등록한 Bean을 사용한다.
-                    String token = provider.createRefreshToken(userId, UUID.randomUUID());
+                    UUID sessionId = UUID.randomUUID();
+                    String token = provider.createRefreshToken(userId, sessionId);
 
                     // 설정한 키로 실제 서명을 검증하고 토큰 내용을 읽는다.
                     Claims claims = Jwts.parser().verifyWith(Keys.hmacShaKeyFor(
@@ -237,8 +241,8 @@ class JwtConfigTest {
                     );
 
                     assertThat(actualValidity).isEqualTo(Duration.ofDays(3));
-                    assertThat(provider.parseRefresh(token).userId())
-                            .isEqualTo(userId);
+                    assertThat(provider.parseRefresh(token))
+                            .isEqualTo(new RefreshTokenClaims(userId, sessionId));
                 });
     }
 

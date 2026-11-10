@@ -5,6 +5,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionR
 
 import java.time.Duration;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -23,8 +24,11 @@ public class InMemoryUserSessionRepository implements UserSessionRepository {
 
     @Override
     public SessionStartResult start(UUID userId, Duration ttl) {
-        UUID sessionId = UUID.randomUUID();
+        // 저장 기간은 다루지 않지만, Redis 구현과 같은 입력 규칙을 지킨다.
+        // 테스트에서만 통과하고 운영에서 실패하는 호출을 막기 위함이다.
+        validateTtl(ttl);
 
+        UUID sessionId = UUID.randomUUID();
         UUID previous = sessions.put(userId, sessionId);
 
         return new SessionStartResult(sessionId, previous);
@@ -41,7 +45,7 @@ public class InMemoryUserSessionRepository implements UserSessionRepository {
 
     @Override
     public boolean extendIfCurrent(UUID userId, UUID sessionId, Duration ttl) {
-        // TTL을 다루지 않으므로 현재 세션인지만 반환한다.
+        validateTtl(ttl);
         return isCurrent(userId, sessionId);
     }
 
@@ -54,5 +58,16 @@ public class InMemoryUserSessionRepository implements UserSessionRepository {
     @Override
     public Optional<UUID> revoke(UUID userId) {
         return Optional.ofNullable(sessions.remove(userId));
+    }
+
+    /**
+     * RedisUserSessionRepository와 같은 기준으로 유효기간을 검증한다.
+     */
+    private void validateTtl(Duration ttl) {
+        Objects.requireNonNull(ttl, "세션 유효기간은 필수입니다.");
+
+        if (ttl.toMillis() <= 0) {
+            throw new IllegalArgumentException("세션 유효기간은 1밀리초 이상이어야 합니다.");
+        }
     }
 }
