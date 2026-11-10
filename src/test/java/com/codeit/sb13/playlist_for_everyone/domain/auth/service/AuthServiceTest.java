@@ -19,6 +19,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.security.authentication.BadCredentialsException;
 
 import java.time.Duration;
@@ -397,6 +398,28 @@ class AuthServiceTest {
         // 세션을 알 수 없으므로 종료하지 않고, 로그아웃 자체는 실패시키지 않는다.
         verifyNoInteractions(userSessionRepository);
         verify(refreshTokenRepository).delete(OLD_REFRESH_TOKEN);
+    }
+
+    @Test
+    @DisplayName("토큰 교체 후 세션 연장 중 저장소 오류가 나도 교체된 토큰을 반환한다.")
+    void 세션_연장_오류에도_교체된_토큰을_반환한다() {
+        givenRegisteredToken();
+        givenNewTokens();
+        given(refreshTokenRepository.rotate(
+                USER_ID,
+                OLD_REFRESH_TOKEN,
+                NEW_REFRESH_TOKEN,
+                REFRESH_VALIDITY
+        )).willReturn(true);
+
+        // 교체 직후 Redis 오류. 기존 토큰은 이미 삭제되었으므로 새 토큰을 전달해야 한다.
+        given(userSessionRepository.extendIfCurrent(USER_ID, SESSION_ID, REFRESH_VALIDITY))
+                .willThrow(new RedisConnectionFailureException("테스트용 Redis 연결 실패"));
+
+        TokenReissueResult result = authService.reissue(OLD_REFRESH_TOKEN);
+
+        assertThat(result.jwtDto().accessToken()).isEqualTo(NEW_ACCESS_TOKEN);
+        assertThat(result.refreshToken()).isEqualTo(NEW_REFRESH_TOKEN);
     }
 
 
