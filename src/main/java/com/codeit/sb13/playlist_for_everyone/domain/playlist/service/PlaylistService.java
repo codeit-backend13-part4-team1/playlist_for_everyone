@@ -5,6 +5,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.Playlis
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.PlaylistResponse;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
+
+import java.util.List;
 import java.util.UUID;
 
 public interface PlaylistService {
@@ -26,5 +28,7 @@ public interface PlaylistService {
   void subscribe(UUID playlistId, UUID subscriberId);
 
   void unsubscribe(UUID playlistId, UUID subscriberId);
+
+  List<UUID> findSubscriberIds(UUID playlistId);
 
 }

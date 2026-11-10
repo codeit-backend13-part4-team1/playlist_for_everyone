@@ -271,6 +271,11 @@ public class PlaylistServiceImpl implements PlaylistService {
     playlistRepository.decreaseSubscriberCount(playlistId);
   }
 
+  @Override
+  public List<UUID> findSubscriberIds(UUID playlistId) {
+    return subscriptionRepository.findSubscriberIds(playlistId);
+  }
+
 
   //---------[헬퍼 메서드]
   private PlaylistSearchCondition toCondition(PlaylistSearchRequest request) {

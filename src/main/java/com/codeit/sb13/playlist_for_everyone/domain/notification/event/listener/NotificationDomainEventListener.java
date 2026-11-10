@@ -3,6 +3,9 @@ package com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener
 import com.codeit.sb13.playlist_for_everyone.domain.follow.event.UserFollowedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationCreateRequestedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.NotificationLevel;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationTargetReader;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistContentAddedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistCreatedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistSubscribedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.user.event.UserRoleChangedEvent;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +32,8 @@ import org.springframework.util.StringUtils;
 public class NotificationDomainEventListener {
 
     private final ApplicationEventPublisher eventPublisher;
+
+    private final NotificationTargetReader targetReader;
 
     /**
      * 팔로우받은 사용자(followeeId)에게 INFO 수준의 알림 생성을 요청한다.
@@ -124,6 +129,16 @@ public class NotificationDomainEventListener {
                     e.getClass().getSimpleName()
             );
         }
+    }
+
+    @TransactionalEventListener
+    public void handlePlaylistCreated(PlaylistCreatedEvent event){
+
+    }
+
+    @TransactionalEventListener
+    public void handlePlaylistContentAdded(PlaylistContentAddedEvent event){
+
     }
 
     /** null·빈 문자열·공백뿐인 이름은 기본값으로 대체하고, 그 외에는 앞뒤 공백도 그대로 유지한다. */
