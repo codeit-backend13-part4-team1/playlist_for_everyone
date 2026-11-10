@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.mapper;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentTag;
 import org.springframework.stereotype.Component;
@@ -27,6 +28,25 @@ public class ContentMapper {
                 averageRating,
                 reviewCount,
                 watcherCount
+        );
+    }
+
+    public ContentSummary toSummary(
+            Content content,
+            double averageRating,
+            int reviewCount
+    ) {
+        return new ContentSummary(
+                content.getId(),
+                content.getType(),
+                content.getTitle(),
+                content.getDescription(),
+                content.getThumbnailUrl(),
+                content.getTags().stream()
+                        .map(ContentTag::getTag)
+                        .toList(),
+                averageRating,
+                reviewCount
         );
     }
 

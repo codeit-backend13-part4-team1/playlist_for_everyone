@@ -4,6 +4,10 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.dto.condition.Conten
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
+import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
+import com.codeit.sb13.playlist_for_everyone.domain.review.entity.Review;
+import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
+import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
@@ -21,6 +25,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -33,7 +38,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ActiveProfiles("test")
 @Import({
         JpaAuditingConfig.class,
-        QueryDslConfig.class
+        QueryDslConfig.class,
+        ContentMapper.class
 })
 @Testcontainers
 @DisplayName("ContentSearchRepository 테스트")
@@ -44,7 +50,7 @@ public class ContentSearchRepositoryTest {
     static PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:16");
 
     @Autowired
-    private ContentSearchRepository contentSearchRepository;
+    private ContentRepository contentRepository;
 
     @Autowired
     private TestEntityManager em;
@@ -58,65 +64,63 @@ public class ContentSearchRepositoryTest {
         );
     }
 
+    private User createAuthor(int number) {
+        return User.builder()
+                .email("test" + number + "@example.com")
+                .name("테스트 사용자" + number)
+                .password("encodedPassword")
+                .role(Role.USER)
+                .build();
+    }
+
+    private Review createReview(Content content, User author, String text, double rating) {
+        return Review.builder()
+                .content(content)
+                .author(author)
+                .text(text)
+                .rating(rating)
+                .build();
+    }
+
     @BeforeEach
     void setUp() {
-        em.persist(createContent(ContentType.movie, "영화시리즈1", "설명1"));
-        em.persist(createContent(ContentType.movie, "영화시리즈2", "설명2"));
-        em.persist(createContent(ContentType.sport, "스포츠1", "설명3"));
-        em.persist(createContent(ContentType.sport, "스포츠드라마2", "설명4"));
-        em.persist(createContent(ContentType.sport, "스포츠3", "설명5"));
-        em.persist(createContent(ContentType.tvSeries, "드라마시리즈1", "설명6"));
+        Content movie1 = createContent(ContentType.movie, "영화시리즈1", "설명1");
+        Content movie2 = createContent(ContentType.movie, "영화시리즈2", "설명2");
+        Content sport1 = createContent(ContentType.sport, "스포츠1", "설명3");
+        Content sport2 = createContent(ContentType.sport, "스포츠드라마2", "시리즈설명4");
+        Content sport3 = createContent(ContentType.sport, "스포츠3", "설명5");
+        Content tvSeries1 = createContent(ContentType.tvSeries, "드라마시리즈1", "설명6");
+
+        List.of(movie1, movie2, sport1, sport2, sport3, tvSeries1)
+                .forEach(em::persist);
+
+        User user1 = createAuthor(1);
+        User user2 = createAuthor(2);
+
+        List.of(user1, user2).forEach(em::persist);
+
+        List.of(
+                createReview(movie1, user1, "재미있어요", 5),
+                createReview(movie1, user2, "좋아요", 4),
+                createReview(movie2, user1, "보통이에요", 3),
+                createReview(movie2, user2, "괜찮아요", 3),
+                createReview(sport1, user1, "최고예요", 5),
+                createReview(sport2, user1, "아쉬워요", 2),
+                createReview(tvSeries1, user1, "재미있어요", 4)
+        ).forEach(em::persist);
 
         em.flush();
         em.clear();
     }
 
-
     @Test
-    @DisplayName("콘텐츠 타입으로 검색할 수 있다")
-    void searchContents_byType() {
+    @DisplayName("콘텐츠 타입, 키워드, 태그 조건을 모두 만족하는 콘텐츠를 검색한다")
+    void searchContents_byMultipleConditions() {
         // given
-        ContentSearchCondition condition = new ContentSearchCondition(
-                ContentType.movie,
-                null,
-                null,
-                null,
-                null,
-                10,
-                SortDirection.DESCENDING,
-                "createdAt"
-        );
-
-        // when
-        var result = contentSearchRepository.search(condition);
-
-        // then
-        assertThat(result).hasSize(2);
-        assertThat(result)
-                .extracting(ContentSummary::type)
-                .containsOnly(ContentType.movie);
-    }
-
-    @Test
-    @DisplayName("태그로 검색하면 해당 태그를 가진 콘텐츠만 조회된다")
-    void searchByTags() {
-        // given
-        ContentSearchCondition condition = new ContentSearchCondition(
-                null,
-                null,
-                List.of("액션"),
-                null,
-                null,
-                10,
-                SortDirection.DESCENDING,
-                "createdAt"
-        );
-
-        // 태그를 가진 콘텐츠 저장
         Content movie = createContent(
                 ContentType.movie,
-                "액션영화",
-                "액션영화 설명"
+                "액션시리즈",
+                "액션 영화 설명"
         );
         movie.addTag("액션");
         movie.addTag("스릴러");
@@ -125,25 +129,73 @@ public class ContentSearchRepositoryTest {
         em.flush();
         em.clear();
 
+        ContentSearchCondition condition = new ContentSearchCondition(
+                ContentType.movie,
+                "시리즈",
+                List.of("액션"),
+                null,
+                null,
+                10,
+                SortDirection.DESCENDING,
+                "createdAt"
+        );
+
         // when
-        var result = contentSearchRepository.search(condition);
+        var result = contentRepository.search(condition);
 
         // then
         assertThat(result).hasSize(1);
-        assertThat(result)
-                .extracting(ContentSummary::title)
-                .containsExactly("액션영화");
-        assertThat(result.get(0).tags())
-                .contains("액션");
+        assertThat(result.get(0).title()).isEqualTo("액션시리즈");
+        assertThat(result.get(0).type()).isEqualTo(ContentType.movie);
+        assertThat(result.get(0).tags()).contains("액션");
     }
 
     @Test
-    @DisplayName("키워드 기준으로 검색한다.")
-    void searchKeywords() {
+    @DisplayName("생성일 기준으로 내림차순 정렬하여 검색한다")
+    void searchContents_orderByCreatedAtDescending() {
         // given
+        Content oldest = createContent(
+                ContentType.movie, "정렬테스트 오래된 영화", "설명"
+        );
+        Content middle = createContent(
+                ContentType.movie, "정렬테스트 중간 영화", "설명"
+        );
+        Content latest = createContent(
+                ContentType.movie, "정렬테스트 최신 영화", "설명"
+        );
+
+        em.persist(oldest);
+        em.persist(middle);
+        em.persist(latest);
+        em.flush();
+
+        // 생성일을 명시적으로 설정
+        em.getEntityManager().createNativeQuery(
+                        "UPDATE contents SET created_at = :date WHERE id = :id"
+                )
+                .setParameter("date", LocalDateTime.of(2024, 1, 1, 0, 0))
+                .setParameter("id", oldest.getId())
+                .executeUpdate();
+
+        em.getEntityManager().createNativeQuery(
+                        "UPDATE contents SET created_at = :date WHERE id = :id"
+                )
+                .setParameter("date", LocalDateTime.of(2025, 1, 1, 0, 0))
+                .setParameter("id", middle.getId())
+                .executeUpdate();
+
+        em.getEntityManager().createNativeQuery(
+                        "UPDATE contents SET created_at = :date WHERE id = :id"
+                )
+                .setParameter("date", LocalDateTime.of(2026, 1, 1, 0, 0))
+                .setParameter("id", latest.getId())
+                .executeUpdate();
+
+        em.clear();
+
         ContentSearchCondition condition = new ContentSearchCondition(
-                null,
-                "시리즈",
+                ContentType.movie,
+                "정렬테스트",
                 null,
                 null,
                 null,
@@ -153,18 +205,72 @@ public class ContentSearchRepositoryTest {
         );
 
         // when
-        var result = contentSearchRepository.search(condition);
+        var result = contentRepository.search(condition);
 
         // then
-        assertThat(result).hasSize(3);
         assertThat(result)
-                .extracting(ContentSummary::title)
-                .containsExactlyInAnyOrder(
-                        "영화시리즈1",
-                        "영화시리즈2",
-                        "드라마시리즈1"
+                .extracting(ContentSummary::contentId)
+                .containsExactly(
+                        latest.getId(),
+                        middle.getId(),
+                        oldest.getId()
                 );
     }
 
+    @Test
+    @DisplayName("평점 기준으로 내림차순 정렬하여 검색한다.")
+    void searchContents_orderByRatingDescending() {
+        // given
+        ContentSearchCondition condition = new ContentSearchCondition(
+                null,
+                null,
+                null,
+                null,
+                null,
+                10,
+                SortDirection.DESCENDING,
+                "rate"
+        );
+
+        // when
+        var result = contentRepository.search(condition);
+
+        // then
+        assertThat(result).hasSize(6);
+        assertThat(result)
+                .extracting(ContentSummary::title)
+                .containsExactly(
+                        "스포츠1",
+                        "영화시리즈1",
+                        "드라마시리즈1",
+                        "영화시리즈2",
+                        "스포츠드라마2",
+                        "스포츠3"
+                );
+    }
+
+    @Test
+    @DisplayName("리뷰가 없는 콘텐츠는 평점과 리뷰 수가 0으로 조회된다")
+    void searchContents_withoutReviews() {
+        // given
+        ContentSearchCondition condition = new ContentSearchCondition(
+                ContentType.sport,
+                "스포츠3",
+                null,
+                null,
+                null,
+                10,
+                SortDirection.DESCENDING,
+                "createdAt"
+        );
+
+        // when
+        var result = contentRepository.search(condition);
+
+        // then
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).averageRating()).isZero();
+        assertThat(result.get(0).reviewCount()).isZero();
+    }
 
 }
