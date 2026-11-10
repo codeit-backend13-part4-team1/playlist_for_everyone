@@ -21,6 +21,8 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.ArgumentMatchers.any;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("권한 변경·계정 잠금 시 로그인 세션 종료")
@@ -85,6 +87,35 @@ class UserSessionRevokeListenerTest {
 
         // 권한·잠금은 필터가 요청마다 DB에서 확인하므로, 세션이 남아도 권한 판단은 바뀐 값으로 한다.
         assertThatCode(() -> listener.onLocked(new UserLockedEvent(USER_ID)))
+                .doesNotThrowAnyException();
+
+        verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
+    @DisplayName("세션 종료 후 이벤트 처리에 실패해도 예외를 전파하지 않는다")
+    void 이벤트_처리_실패를_전파하지_않는다() {
+        given(userSessionRepository.revoke(USER_ID)).willReturn(Optional.of(SESSION_ID));
+        // 나중에 붙을 SSE·웹소켓 리스너가 실패한 상황이다. @EventListener는 발행 스레드에서 실행된다.
+        willThrow(new IllegalStateException("테스트용 연결 종료 실패"))
+                .given(eventPublisher).publishEvent(any(UserSessionRevokedEvent.class));
+
+        assertThatCode(() -> listener.onLocked(new UserLockedEvent(USER_ID)))
+                .doesNotThrowAnyException();
+
+        // 이벤트 처리 실패와 관계없이 세션은 이미 종료되었다.
+        verify(userSessionRepository).revoke(USER_ID);
+    }
+
+    @Test
+    @DisplayName("세션 저장소의 예상하지 못한 오류도 전파하지 않는다")
+    void 세션_저장소의_다른_오류도_전파하지_않는다() {
+        // 저장된 값이 UUID 형식이 아닌 경우 등
+        given(userSessionRepository.revoke(USER_ID))
+                .willThrow(new IllegalArgumentException("테스트용 잘못된 세션 값"));
+
+        assertThatCode(() -> listener.onRoleChanged(
+                new UserRoleChangedEvent(USER_ID, Role.USER, Role.ADMIN)))
                 .doesNotThrowAnyException();
 
         verifyNoInteractions(eventPublisher);
