@@ -147,8 +147,8 @@ class AuthServiceTest {
 
         // JWT 검증에 실패한 요청은 저장소와 사용자 조회까지 진행하지 않는다.
         verifyNoInteractions(userSessionRepository, refreshTokenRepository, userService);
-        verify(jwtTokenProvider, never()).createAccessToken(any());
-        verify(jwtTokenProvider, never()).createRefreshToken(any());
+        verify(jwtTokenProvider, never()).createAccessToken(any(), any());
+        verify(jwtTokenProvider, never()).createRefreshToken(any(), any());
     }
 
     @Test

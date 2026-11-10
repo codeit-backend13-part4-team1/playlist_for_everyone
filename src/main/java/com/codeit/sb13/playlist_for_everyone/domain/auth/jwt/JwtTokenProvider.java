@@ -60,29 +60,6 @@ public class JwtTokenProvider {
     }
 
     /**
-     * 사용자 ID와 고유 토큰 ID를 담은 Access Token을 발급한다.
-     */
-    public String createAccessToken(UUID userId) {
-        Objects.requireNonNull(userId, "사용자 ID는 필수입니다");
-
-        Instant now = clock.instant();
-        Instant expiration = now.plus(accessTokenValidity);
-
-        return Jwts.builder()
-                // sub: 이 토큰의 대상 사용자.
-                .subject(userId.toString())
-                // jti: 개별 토큰 식별자. 발급할 때마다 새로 생성한다
-                .id(UUID.randomUUID().toString())
-                // Refresh Token과 구분하기 위한 토큰 종류
-                .claim(TOKEN_TYPE_CLAIM, ACCESS_TOKEN_TYPE)
-                .issuedAt(Date.from(now))
-                .expiration(Date.from(expiration))
-                // HS256 알고리즘과 서버의 비밀 키로 서명한다.
-                .signWith(signingKey, Jwts.SIG.HS256)
-                .compact();
-    }
-
-    /**
      * 서명, 만료 시각, 토큰 종류와 사용자 ID를 검증한다.
      *
      * 검증에 성공하면 사용자 ID를 반환하고,
@@ -123,75 +100,6 @@ public class JwtTokenProvider {
             throw new JwtException(
                     "토큰의 사용자 ID 형식이 올바르지 않습니다.", exception
             );
-        }
-    }
-
-    /**
-     * 사용자 ID와 고유 jti를 포함하는 Refresh Token을 발급한다.
-     *
-     * Redis 저장과 쿠키 발급은 호출하는 쪽에서 처리한다.
-     */
-    public String createRefreshToken(UUID userId) {
-        Objects.requireNonNull(userId, "사용자 ID는 필수입니다");
-
-        Instant now = clock.instant();
-        Instant expiration = now.plus(refreshTokenValidity);
-
-        return Jwts.builder()
-                .subject(userId.toString())
-                .id(UUID.randomUUID().toString())
-                .claim(TOKEN_TYPE_CLAIM, REFRESH_TOKEN_TYPE)
-                .issuedAt(Date.from(now))
-                .expiration(Date.from(expiration))
-                .signWith(signingKey, Jwts.SIG.HS256)
-                .compact();
-    }
-
-    /**
-     * Refresh Token의 서명, 만료, 종류와 필수 정보를 검증한다.
-     *
-     * 성공하면 사용자 ID를 반환한다.
-     * Redis에 저장된 토큰인지, 이미 폐기되었는지는 서비스에서 검증한다.
-     */
-
-    public UUID parseRefreshToken(String token) {
-        if (token == null || token.isBlank()) {
-            throw new JwtException("토큰이 비어 있습니다.");
-        }
-
-        // 서명 불일치, 만료, 잘못된 JWT 형식은 JJWT가 예외로 처리한다.
-        // ExpiredJwtException도 그대로 호출부에 전달한다.
-        Claims claims = jwtParser.parseSignedClaims(token).getPayload();
-
-        // 같은 키로 서명된 Access Token도 재발급 용도로 사용할 수 없다.
-        String tokenType = claims.get(TOKEN_TYPE_CLAIM, String.class);
-
-        if (!REFRESH_TOKEN_TYPE.equals(tokenType)) {
-            throw new JwtException("Refresh Token이 아닙니다.");
-        }
-
-        // JJWT는 exp가 있을 때 만료를 검사하므로, 존재 여부도 확인 한다.
-        if (claims.getExpiration() == null) {
-            throw new JwtException("토큰에 만료 시각이 없습니다.");
-        }
-
-        // 개별 Refresh Token을 식별할 수 있어야 한다.
-        String jti = claims.getId();
-
-        if (jti == null || jti.isBlank()) {
-            throw new JwtException("토큰에 식별자가 없습니다.");
-        }
-
-        String subject = claims.getSubject();
-
-        if (subject == null || subject.isBlank()) {
-            throw new JwtException("토큰에 사용자 ID가 없습니다.");
-        }
-
-        try {
-            return UUID.fromString(subject);
-        } catch (IllegalArgumentException exception) {
-            throw new JwtException("토큰의 사용자 ID 형식이 올바르지 않습니다.", exception);
         }
     }
 

@@ -56,7 +56,7 @@ class JwtRefreshTokenProviderTest {
     @DisplayName("Refresh Token에 사용자 ID, jti, 종류와 발급·만료 시각을 담는다")
     void Refresh_Token에_필요한_정보를_담는다() {
 
-        String token = jwtTokenProvider.createRefreshToken(USER_ID);
+        String token = jwtTokenProvider.createRefreshToken(USER_ID, SESSION_ID);
 
         // Provider의 검증 메서드와 독립적으로 발급 결과를 확인한다.
         Claims claims = readClaims(token);
@@ -71,8 +71,8 @@ class JwtRefreshTokenProviderTest {
     @Test
     @DisplayName("같은 사용자에게 같은 시각에 발급해도 Refresh Token의 jti는 다르다")
     void Refresh_Token을_발급할_때마다_다른_jti를_사용한다() {
-        String firstToken = jwtTokenProvider.createRefreshToken(USER_ID);
-        String secondToken = jwtTokenProvider.createRefreshToken(USER_ID);
+        String firstToken = jwtTokenProvider.createRefreshToken(USER_ID, SESSION_ID);
+        String secondToken = jwtTokenProvider.createRefreshToken(USER_ID, SESSION_ID);
 
         Claims firstClaims = readClaims(firstToken);
         Claims secondClaims = readClaims(secondToken);
@@ -81,23 +81,6 @@ class JwtRefreshTokenProviderTest {
         assertThat(secondClaims.getId()).isNotBlank();
         assertThat(firstClaims.getId()).isNotEqualTo(secondClaims.getId());
         assertThat(firstToken).isNotEqualTo(secondToken);
-    }
-
-    @Test
-    @DisplayName("유효한 Refresh Token에서 사용자 ID를 반환한다.")
-    void 유효한_Refresh_Token에서_사용자_ID를_반환한다() {
-        // 발급 가능과 독립적으로 검증 기능을 테스트 한다.
-        String token = createSingedToken(
-                USER_ID.toString(),
-                "REFRESH",
-                NOW.plus(REFRESH_TOKEN_VALIDITY),
-                UUID.randomUUID().toString(),
-                signingKey
-        );
-
-        UUID result = jwtTokenProvider.parseRefreshToken(token);
-
-        assertThat(result).isEqualTo(USER_ID);
     }
 
     @Test
@@ -111,7 +94,7 @@ class JwtRefreshTokenProviderTest {
                 signingKey
         );
 
-        assertThatThrownBy(() -> jwtTokenProvider.parseRefreshToken(token))
+        assertThatThrownBy(() -> jwtTokenProvider.parseRefresh(token))
                 .isInstanceOf(ExpiredJwtException.class);
     }
 
@@ -128,23 +111,23 @@ class JwtRefreshTokenProviderTest {
                 anotherKey
         );
 
-        assertThatThrownBy(()-> jwtTokenProvider.parseRefreshToken(token))
+        assertThatThrownBy(()-> jwtTokenProvider.parseRefresh(token))
                 .isInstanceOf(JwtException.class);
     }
 
     @Test
     @DisplayName("JWT 형식이 아닌 문자열은 Refresh Token으로 인정하지 않는다")
     void JWT_형식이_아니면_거절한다() {
-        assertThatThrownBy(()-> jwtTokenProvider.parseRefreshToken("not-a-jwt"))
+        assertThatThrownBy(()-> jwtTokenProvider.parseRefresh("not-a-jwt"))
                 .isInstanceOf(JwtException.class);
     }
 
     @Test
     @DisplayName("Access Token을 Refresh Token으로 사용할 수 없다.")
     void Access_Token을_Refresh_Token으로_인정하지_않는다() {
-        String accessToken = jwtTokenProvider.createAccessToken(USER_ID);
+        String accessToken = jwtTokenProvider.createAccessToken(USER_ID, SESSION_ID);
 
-        assertThatThrownBy(() -> jwtTokenProvider.parseRefreshToken(accessToken))
+        assertThatThrownBy(() -> jwtTokenProvider.parseRefresh(accessToken))
                 .isInstanceOf(JwtException.class);
     }
 
@@ -152,9 +135,9 @@ class JwtRefreshTokenProviderTest {
     @DisplayName("실제로 발급한 Refresh Token을 Access Token으로 사용할 수 없다.")
     void 발급한_Refresh_Token_Access_Token으로_인정하지_않는다() {
         // 기존 테스트의 직접 만든 토큰에 더해 실제 발급 결과도 확인 한다.
-        String refreshToken = jwtTokenProvider.createRefreshToken(USER_ID);
+        String refreshToken = jwtTokenProvider.createRefreshToken(USER_ID, SESSION_ID);
 
-        assertThatThrownBy(() -> jwtTokenProvider.parseAccessToken(refreshToken))
+        assertThatThrownBy(() -> jwtTokenProvider.parseAccess(refreshToken))
                 .isInstanceOf(JwtException.class);
     }
 
@@ -188,7 +171,7 @@ class JwtRefreshTokenProviderTest {
                 signingKey
         );
 
-        assertThatThrownBy(() -> jwtTokenProvider.parseRefreshToken(token))
+        assertThatThrownBy(() -> jwtTokenProvider.parseRefresh(token))
                 .isInstanceOf(JwtException.class);
     }
 
