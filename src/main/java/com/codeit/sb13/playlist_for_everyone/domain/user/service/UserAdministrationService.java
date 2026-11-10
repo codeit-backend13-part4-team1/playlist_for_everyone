@@ -1,16 +1,21 @@
 package com.codeit.sb13.playlist_for_everyone.domain.user.service;
 
+import com.codeit.sb13.playlist_for_everyone.domain.user.dto.UserSearchCondition;
+import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.event.UserLockedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.user.event.UserRoleChangedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.user.mapper.UserDtoMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
+import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -21,6 +26,7 @@ public class UserAdministrationService {
 
     private final UserRepository userRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final UserDtoMapper userDtoMapper;
 
 
     @Transactional
@@ -66,4 +72,12 @@ public class UserAdministrationService {
                         Map.of("userId", userId)
                 ));
     }
+
+    @Transactional(readOnly = true)
+    public CursorResponse<UserDto> getUsers(UserSearchCondition condition) {
+        // RED: 다음 단계에서 구현
+        return new CursorResponse<>(List.of(), null, null,
+                false, 0L, null, null);
+    }
+
 }
