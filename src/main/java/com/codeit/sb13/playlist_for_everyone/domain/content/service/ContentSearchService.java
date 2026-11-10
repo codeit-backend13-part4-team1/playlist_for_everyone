@@ -22,7 +22,57 @@ public class ContentSearchService {
 
     @Transactional(readOnly = true)
     public CursorResponse<ContentSummary> search(ContentSearchCondition condition) {
-        return null;
+        List<ContentSearchResult> results = contentRepository.search(condition);
+
+        // 다음 페이지 존재 여부 확인
+        boolean hasNext = results.size() > condition.limit();
+
+        // 요청한 개수만 반환
+        List<ContentSearchResult> page = results.stream()
+                .limit(condition.limit())
+                .toList();
+
+        // 다음 페이지 커서 생성
+        String nextCursor = null;
+        UUID nextIdAfter = null;
+
+        if (hasNext && !page.isEmpty()) {
+            ContentSearchResult lastResult = page.get(page.size() - 1);
+
+            nextCursor = switch (condition.sortBy()) {
+                case "createdAt" ->
+                        lastResult.content().getCreatedAt().toString();
+                case "rate" ->
+                        String.valueOf(lastResult.averageRating());
+                default -> throw new IllegalArgumentException(
+                        "지원하지 않는 정렬 기준: " + condition.sortBy()
+                );
+            };
+
+            nextIdAfter = lastResult.content().getId();
+        }
+
+        // ContentSearchResult -> ContentSummary 변환
+        List<ContentSummary> contents = page.stream()
+                .map(result -> contentMapper.toSummary(
+                        result.content(),
+                        result.averageRating(),
+                        result.reviewCount()
+                ))
+                .toList();
+
+        // 전체 검색 결과 개수 조회
+        long totalCount = contentRepository.countBySearchCondition(condition);
+
+        return new CursorResponse<>(
+                contents,
+                nextCursor,
+                nextIdAfter,
+                hasNext,
+                totalCount,
+                condition.sortBy(),
+                condition.sortDirection()
+        );
     }
 
 }
