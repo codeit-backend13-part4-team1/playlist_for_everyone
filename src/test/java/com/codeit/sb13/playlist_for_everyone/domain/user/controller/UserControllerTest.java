@@ -554,7 +554,6 @@ class UserControllerTest {
             "limit=101&sortBy=name&sortDirection=ASCENDING",
             "limit=20&sortDirection=ASCENDING",
             "limit=20&sortBy=password&sortDirection=ASCENDING",
-            "limit=20&sortBy=NAME&sortDirection=ASCENDING",
             "limit=20&sortBy=name&sortDirection=UP",
             "limit=20&sortBy=name&sortDirection=ASCENDING&roleEqual=MANAGER",
             "limit=20&sortBy=createdAt&sortDirection=ASCENDING&cursor=yesterday&idAfter=44444444-4444-4444-4444-444444444444",

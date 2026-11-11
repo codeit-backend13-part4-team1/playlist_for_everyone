@@ -3,9 +3,11 @@ package com.codeit.sb13.playlist_for_everyone.domain.user.controller;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.request.UserCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.request.UserLockUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.request.UserRoleUpdateRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.user.dto.request.UserSearchRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserAdministrationService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
+import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -29,6 +31,18 @@ public class UserController {
         UserDto response = userService.create(request.toCommand());
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    /**
+     * 관리자 사용자 목록 조회
+     * 권한은 SecurityConfig의 URL 규칙(GET /api/users -> ADMIN)으로 확인 한다.
+     */
+    @GetMapping
+    public ResponseEntity<CursorResponse<UserDto>> getUsers(@Valid UserSearchRequest request) {
+
+        CursorResponse<UserDto> response = userAdministrationService.getUsers(request.toCondition());
+
+        return ResponseEntity.ok(response);
     }
 
     @PatchMapping("/{userId}/role")
