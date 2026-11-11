@@ -8,8 +8,8 @@ import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Collectors;
 
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatcherScriptConfig.*;
@@ -35,6 +35,7 @@ public class WatchingSessionRepository {
     private final RedisScript<Long> deleteScript;
     private final RedisScript<Long> countScript;
     private final RedisScript<Long> deleteFromContentScript;
+    private final RedisScript<List> countMultipleContentsScript;
 
     @RequiredArgsConstructor
     static public class SetKey{
@@ -60,7 +61,9 @@ public class WatchingSessionRepository {
             @Qualifier("lua-script-count")
             RedisScript<Long> countScript,
             @Qualifier("lua-script-delete-with-contentId")
-            RedisScript<Long> deleteFromContentScript
+            RedisScript<Long> deleteFromContentScript,
+            @Qualifier("lua-count-multiple-contents")
+            RedisScript<List> countMultipleContents
     ){
         this.redis = redis;
         this.registerScript = registerScript;
@@ -69,6 +72,7 @@ public class WatchingSessionRepository {
         this.deleteScript = deleteScript;
         this.countScript = countScript;
         this.deleteFromContentScript = deleteFromContentScript;
+        this.countMultipleContentsScript = countMultipleContents;
     }
 
     /*
@@ -161,6 +165,33 @@ public class WatchingSessionRepository {
         return redis.execute(countScript,
                 List.of(contentKey(content))
         );
+    }
+
+    /**
+     * 컨텐츠 별 시청자 수를 map 으로 반환.
+     * List 에 null 이 올 경우, NullPointException 반환
+     * @param contents contentId 리스트
+     * @return contentId 가 비어있을 경우, 빈 map 반환.
+     */
+    public Map<String, Long> getWatcherCountWithMultipleContents(List<String> contents){
+        Objects.requireNonNull(contents);
+
+        if(contents.isEmpty()) return Map.of();
+
+        List<?> query = redis.execute(countMultipleContentsScript,
+                contents,
+                STORAGE_CONTENT_PREFIX
+        );
+
+        if (query == null || query.size() != contents.size()) {
+            throw new IllegalStateException("redis 조회 컬럼이 요청된 컨텐츠 컬럼과 일치하지 않습니다.");
+        }
+
+        return query.stream().map(item -> (List<?>) item)
+                .collect(Collectors.toMap(
+                        item -> (String) item.get(0),
+                        item -> (Long) item.get(1)
+                ));
     }
 
     // 세션 - 구독 쌍에 해당하는 컨텐츠 반환
