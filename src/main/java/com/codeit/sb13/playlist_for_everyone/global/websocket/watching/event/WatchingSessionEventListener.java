@@ -7,10 +7,17 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocke
 import com.codeit.sb13.playlist_for_everyone.global.service.MatchRule;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.event.WebSocketAuthRevokeEvent;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSession;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.WatchingSessionChange;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.chat.WatchingChatJoinEvent;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.chat.WatchingChatLeaveEvent;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.chat.WatchingChatSendEvent;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.view.WatchingSessionJoinEvent;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.view.WatchingSessionLeaveEvent;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.view.WatchingSessionRefreshEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
@@ -182,7 +189,7 @@ public class WatchingSessionEventListener {
      * @param event contentID 를 담고있다.
      */
     @EventListener
-    public void contentDeleteEvent(WatchingSessionDisconnectEvent event){
+    public void contentDeleteEvent(WatchingSessionContentDeleteEvent event){
         UUID content = event.contentId();
         watchingSession.disconnectWithContentId(content);
     }
@@ -193,7 +200,7 @@ public class WatchingSessionEventListener {
      * 세션에 연관된 리소스를 해지하고 연결을 종료한다.
      */
     @EventListener
-    public void revokeAuthEvent(WatchingSessionAuthRevokeEvent event){
+    public void revokeAuthEvent(WebSocketAuthRevokeEvent event){
         String sessionId = check(event.sessionId());
         watchingSession.disconnectWithSessionIds(sessionId);
     }
