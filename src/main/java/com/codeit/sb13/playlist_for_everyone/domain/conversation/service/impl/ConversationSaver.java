@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.conversation.service.impl;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.command.ConversationCreateCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.response.ConversationDto;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.repository.ConversationRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.user.mapper.UserSummaryMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
@@ -13,6 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class ConversationSaver {
 
     private final ConversationRepository conversationRepository;
+    private final ConversationUserReader conversationUserReader;
+    private final UserSummaryMapper userSummaryMapper;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public ConversationDto save(ConversationCreateCommand command){
