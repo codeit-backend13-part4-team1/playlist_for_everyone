@@ -5,11 +5,13 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.global.domain.CreatedAtEntity;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Table(name = "conversations")
 @Entity
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+@Getter
 public class Conversation extends CreatedAtEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
