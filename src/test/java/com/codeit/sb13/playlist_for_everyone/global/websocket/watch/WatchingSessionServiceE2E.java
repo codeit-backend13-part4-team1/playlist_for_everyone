@@ -10,7 +10,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatSendRequest;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionDisconnectEvent;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionContentDeleteEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -354,7 +354,7 @@ public class WatchingSessionServiceE2E {
             String message = received.get(5, TimeUnit.SECONDS);
             log.info("Received message: {}", message);
 
-            applicationEventPublisher.publishEvent(new WatchingSessionDisconnectEvent(contentId));
+            applicationEventPublisher.publishEvent(new WatchingSessionContentDeleteEvent(contentId));
 
 
             assertThat(session.isConnected()).isFalse();

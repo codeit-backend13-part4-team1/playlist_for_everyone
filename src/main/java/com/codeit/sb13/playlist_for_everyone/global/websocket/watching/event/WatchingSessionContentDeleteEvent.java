@@ -8,7 +8,7 @@ import java.util.UUID;
  * todo - 활성 세션이 남아있어도 등록 세션과 브로커 구독을 꺼야하는지 추후 고려.
  * @param contentId
  */
-public record WatchingSessionDisconnectEvent(
+public record WatchingSessionContentDeleteEvent(
         UUID contentId
 ) {
 }
