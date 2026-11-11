@@ -489,4 +489,86 @@ class SportsDbCollectionJobTest {
 
         verifyNoInteractions(sportsDbClient);
     }
+
+    @Test
+    void 같은_경기를_다시_수집해도_콘텐츠와_태그가_중복되지_않는다()
+            throws Exception {
+        var event = new SportsDbEventResponse(
+                "446001", "재수집 테스트 경기", "Soccer",
+                "English Premier League", "2014-2015",
+                "2014-08-16", null
+        );
+
+        when(sportsDbClient.getEventsBySeason("4328", "2014-2015"))
+                .thenReturn(new SportsDbEventsResponse(List.of(event)));
+
+        var firstParameters = new JobParametersBuilder()
+                .addString("leagueId", "4328")
+                .addString("season", "2014-2015")
+                .addString("run.id", UUID.randomUUID().toString())
+                .toJobParameters();
+
+        var firstExecution = jobOperator.start(job, firstParameters);
+
+        assertThat(firstExecution.getStatus())
+                .isEqualTo(BatchStatus.COMPLETED);
+
+        var firstSaved = contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.THE_SPORTS_DB,
+                ContentType.sport,
+                "446001"
+        );
+
+        assertThat(firstSaved).isPresent();
+        var firstContentId = firstSaved.orElseThrow().getId();
+
+        var secondParameters = new JobParametersBuilder()
+                .addString("leagueId", "4328")
+                .addString("season", "2014-2015")
+                .addString("run.id", UUID.randomUUID().toString())
+                .toJobParameters();
+
+        var secondExecution = jobOperator.start(job, secondParameters);
+
+        assertThat(secondExecution.getStatus())
+                .isEqualTo(BatchStatus.COMPLETED);
+
+        var secondSaved = contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.THE_SPORTS_DB,
+                ContentType.sport,
+                "446001"
+        );
+
+        assertThat(secondSaved).isPresent();
+        assertThat(secondSaved.orElseThrow().getId())
+                .isEqualTo(firstContentId);
+
+        var contentCount = jdbcTemplate.queryForObject(
+                """
+                SELECT COUNT(*)
+                FROM contents
+                WHERE provider = ?
+                  AND type = ?
+                  AND provider_item_id = ?
+                """,
+                Long.class,
+                ContentSource.THE_SPORTS_DB.name(),
+                ContentType.sport.name(),
+                "446001"
+        );
+
+        assertThat(contentCount).isEqualTo(1L);
+
+        var tags = jdbcTemplate.queryForList(
+                "SELECT tag FROM content_tags WHERE content_id = ?",
+                String.class,
+                firstContentId
+        );
+
+        assertThat(tags)
+                .containsExactlyInAnyOrder("Soccer", "English Premier League");
+
+        verify(sportsDbClient, times(2))
+                .getEventsBySeason("4328", "2014-2015");
+    }
 }
