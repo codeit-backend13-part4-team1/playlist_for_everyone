@@ -12,6 +12,7 @@ import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
 import com.codeit.sb13.playlist_for_everyone.global.file.repository.FileInfoRepository;
 import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
 import com.codeit.sb13.playlist_for_everyone.global.file.storage.FileStorage;
+import org.hibernate.Hibernate;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -176,6 +177,33 @@ class UserProfileImageResponseIntegrationTest {
 
         // 이미지가 없으면 외부 저장소의 URL 생성도 요청하지 않는다.
         verifyNoInteractions(fileStorage);
+    }
+
+    @Test
+    @DisplayName("getById로 조회한 사용자의 프로필 이미지를 트랜잭션 밖에서 읽을 수 있다")
+    void getById로_조회한_사용자의_프로필_이미지를_트랜잭션_밖에서_읽는다() {
+        UUID userId = saveUser(true);
+
+        assertThat(TransactionSynchronizationManager.isActualTransactionActive())
+                .isFalse();
+
+        User result = userService.getById(userId);
+
+        assertThat(Hibernate.isInitialized(result.getProfileImage())).isTrue();
+        assertThat(result.getProfileImage().getKey()).isEqualTo(FILE_KEY);
+    }
+
+
+    @Test
+    @DisplayName("프로필 이미지가 없는 사용자도 getById로 조회된다.")
+    void 이미지_없는_사용자도_getById로_조회된다() {
+        UUID userId = saveUser(false);
+
+        User result = userService.getById(userId);
+
+        // 이미지 조인 때문에 사용자가 빠지지 않아야 한다(LEFT JOIN).
+        assertThat(result.getId()).isEqualTo(userId);
+        assertThat(result.getProfileImage()).isNull();
     }
 
     /**

@@ -102,7 +102,7 @@ public class UserService {
      */
     @Transactional(readOnly = true)
     public User getById(UUID ownerId) {
-        User owner = userRepository.findById(ownerId)
+        User owner = userRepository.findWithProfileImageById(ownerId)
                 .orElseThrow(() -> new UserNotFoundException(
                         Map.of("userId", ownerId)
                 ));
