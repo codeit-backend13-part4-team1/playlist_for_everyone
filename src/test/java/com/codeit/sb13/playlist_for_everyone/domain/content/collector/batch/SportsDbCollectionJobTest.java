@@ -177,4 +177,61 @@ class SportsDbCollectionJobTest {
 
         verifyNoInteractions(sportsDbClient);
     }
+
+    @Test
+    void 제목이_없는_경기는_건너뛰고_정상_경기는_저장한다() throws Exception {
+        var first = new SportsDbEventResponse(
+                "442101", "첫 번째 경기", "Soccer",
+                "English Premier League", "2014-2015",
+                "2014-08-16", null
+        );
+        var invalid = new SportsDbEventResponse(
+                "442102", "   ", "Soccer",
+                "English Premier League", "2014-2015",
+                "2014-08-17", null
+        );
+        var last = new SportsDbEventResponse(
+                "442103", "마지막 경기", "Soccer",
+                "English Premier League", "2014-2015",
+                "2014-08-18", null
+        );
+
+        when(sportsDbClient.getEventsBySeason("4328", "2014-2015"))
+                .thenReturn(new SportsDbEventsResponse(
+                        List.of(first, invalid, last)
+                ));
+
+        var parameters = new JobParametersBuilder()
+                .addString("leagueId", "4328")
+                .addString("season", "2014-2015")
+                .addString("run.id", UUID.randomUUID().toString())
+                .toJobParameters();
+
+        var execution = jobOperator.start(job, parameters);
+
+        assertThat(execution.getStatus())
+                .isEqualTo(BatchStatus.COMPLETED);
+
+        assertThat(contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.THE_SPORTS_DB,
+                ContentType.sport,
+                "442101"
+        )).isPresent();
+
+        assertThat(contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.THE_SPORTS_DB,
+                ContentType.sport,
+                "442102"
+        )).isEmpty();
+
+        assertThat(contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.THE_SPORTS_DB,
+                ContentType.sport,
+                "442103"
+        )).isPresent();
+
+        var stepExecution = execution.getStepExecutions().iterator().next();
+
+        assertThat(stepExecution.getWriteSkipCount()).isEqualTo(1);
+    }
 }
