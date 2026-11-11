@@ -89,7 +89,7 @@ class TmdbCollectionJobTest {
     private TmdbClient tmdbClient;
 
     @Test
-    void 배치를_실행하면_영화와_TV와_태그가_저장된다() throws Exception {
+    void 영화와_TV와_태그를_저장하고_재수집해도_중복되지_않는다() throws Exception {
         var movie = new TmdbMovieResponse(
                 550L,
                 "테스트 영화",
@@ -184,6 +184,56 @@ class TmdbCollectionJobTest {
         );
 
         assertThat(executionCount).isEqualTo(1L);
+
+        // 새로운 수집 작업으로 같은 데이터를 다시 조회
+        var secondParameters = new JobParametersBuilder()
+                .addLong("maxPages", 1L)
+                .addString("run.id", UUID.randomUUID().toString())
+                .toJobParameters();
+
+        var secondExecution = jobOperator.start(job, secondParameters);
+
+        assertThat(secondExecution.getStatus())
+                .isEqualTo(BatchStatus.COMPLETED);
+
+        // 기존 영화와 TV의 ID가 유지되고, 콘텐츠가 추가되지 않았는지 확인
+        var contentIds = jdbcTemplate.queryForList(
+                """
+                SELECT id
+                FROM contents
+                WHERE provider = ?
+                  AND provider_item_id = ?
+                  AND type IN (?, ?)
+                """,
+                UUID.class,
+                ContentSource.TMDB.name(),
+                "550",
+                ContentType.movie.name(),
+                ContentType.tvSeries.name()
+        );
+
+        assertThat(contentIds)
+                .containsExactlyInAnyOrder(content.getId(), tvContent.getId());
+
+        // 영화 태그 중복 확인
+        var movieTagsAfter = jdbcTemplate.queryForList(
+                "SELECT tag FROM content_tags WHERE content_id = ?",
+                String.class,
+                content.getId()
+        );
+
+        assertThat(movieTagsAfter)
+                .containsExactlyInAnyOrder("액션", "드라마");
+
+        // TV 태그 중복 확인
+        var tvTagsAfter = jdbcTemplate.queryForList(
+                "SELECT tag FROM content_tags WHERE content_id = ?",
+                String.class,
+                tvContent.getId()
+        );
+
+        assertThat(tvTagsAfter)
+                .containsExactlyInAnyOrder("드라마", "코미디");
     }
 
     @Test
@@ -451,6 +501,87 @@ class TmdbCollectionJobTest {
 
         assertThat(execution.getStatus())
                 .isEqualTo(BatchStatus.COMPLETED);
+    }
+
+    @Test
+    void 영화와_TV가_각각_10건씩_잘못되어도_정상_콘텐츠를_저장한다()
+            throws Exception {
+        var movies = new ArrayList<TmdbMovieResponse>();
+        var tvShows = new ArrayList<TmdbTvResponse>();
+
+        for (int i = 0; i < 10; i++) {
+            movies.add(new TmdbMovieResponse(
+                    993010L + i, "   ", "영화 설명",
+                    "/movie.jpg", List.of(28)
+            ));
+
+            tvShows.add(new TmdbTvResponse(
+                    993010L + i, "   ", "TV 설명",
+                    "/tv.jpg", List.of(18)
+            ));
+        }
+
+        movies.add(new TmdbMovieResponse(
+                993099L, "정상 영화", "영화 설명",
+                "/movie.jpg", List.of(28)
+        ));
+
+        tvShows.add(new TmdbTvResponse(
+                993099L, "정상 TV", "TV 설명",
+                "/tv.jpg", List.of(18)
+        ));
+
+        when(tmdbClient.getPopularMovies(1))
+                .thenReturn(new TmdbPageResponse<>(
+                        1, movies, 1, movies.size()
+                ));
+
+        when(tmdbClient.getPopularTvShows(1))
+                .thenReturn(new TmdbPageResponse<>(
+                        1, tvShows, 1, tvShows.size()
+                ));
+
+        var parameters = new JobParametersBuilder()
+                .addLong("maxPages", 1L)
+                .addString("run.id", UUID.randomUUID().toString())
+                .toJobParameters();
+
+        var execution = jobOperator.start(job, parameters);
+
+        assertThat(execution.getStatus())
+                .isEqualTo(BatchStatus.COMPLETED);
+
+        var savedMovie = contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.TMDB,
+                ContentType.movie,
+                "993099"
+        );
+
+        assertThat(savedMovie).isPresent();
+        assertThat(savedMovie.orElseThrow().getTitle())
+                .isEqualTo("정상 영화");
+
+        var savedTv = contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.TMDB,
+                ContentType.tvSeries,
+                "993099"
+        );
+
+        assertThat(savedTv).isPresent();
+        assertThat(savedTv.orElseThrow().getTitle())
+                .isEqualTo("정상 TV");
+
+        assertThat(execution.getStepExecutions())
+                .extracting(step -> step.getStepName())
+                .containsExactlyInAnyOrder(
+                        "tmdbMovieCollectionStep",
+                        "tmdbTvCollectionStep"
+                );
+
+        for (var step : execution.getStepExecutions()) {
+            assertThat(step.getWriteSkipCount()).isEqualTo(10);
+            assertThat(step.getWriteCount()).isEqualTo(1);
+        }
     }
 
 }
