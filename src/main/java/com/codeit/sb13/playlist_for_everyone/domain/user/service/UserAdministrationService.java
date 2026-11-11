@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.dto.UserSearchCondition
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
+import com.codeit.sb13.playlist_for_everyone.domain.user.entity.UserSortBy;
 import com.codeit.sb13.playlist_for_everyone.domain.user.event.UserLockedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.user.event.UserRoleChangedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.user.mapper.UserDtoMapper;
@@ -73,11 +74,49 @@ public class UserAdministrationService {
                 ));
     }
 
+    /**
+     * 관리자 사용자 목록 조회
+     * limit + 1개를 조회해 다음 페이지 여부를 판단하고, 마지막 항목으로 다음 커서를 만든다.
+     */
     @Transactional(readOnly = true)
     public CursorResponse<UserDto> getUsers(UserSearchCondition condition) {
-        // RED: 다음 단계에서 구현
-        return new CursorResponse<>(List.of(), null, null,
-                false, 0L, null, null);
+        List<User> fetched = userRepository.search(condition);
+        long totalCount = userRepository.count(condition);
+
+        boolean hasNext = fetched.size() > condition.limit();
+        List<User> page = hasNext ? fetched.subList(0, condition.limit()) : fetched;
+
+        List<UserDto> data = page.stream()
+                .map(userDtoMapper::toDto)
+                .toList();
+
+        String nextCursor = null;
+        UUID nextIdAfter = null;
+        if (hasNext) {
+            User last = page.get(page.size() - 1);
+            nextCursor = toCursor(last, condition.sortBy());
+            nextIdAfter = last.getId();
+        }
+
+        return new CursorResponse<>(
+                data, nextCursor, nextIdAfter, hasNext, totalCount,
+                condition.sortBy().getSortKey(), condition.sortDirection()
+        );
+
+    }
+
+    /**
+     * 다음 페이지 요청에 사용할 커서 값
+     * 레포지토리가 비교하는 정렬 키와 같은 값이어야 한다.
+     */
+    private String toCursor(User user, UserSortBy sortBy) {
+        return switch (sortBy) {
+            case NAME -> user.getName() == null ? "" : user.getName();
+            case EMAIL -> user.getEmail();
+            case CREATED_AT -> user.getCreatedAt().toString();
+            case IS_LOCKED -> String.valueOf(user.isLocked());
+            case ROLE -> user.getRole().name();
+        };
     }
 
 }
