@@ -2,7 +2,8 @@
 
 팔로우 등록이 커밋되면 팔로우받은 사용자에게 알림을 생성합니다.
 [#155](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/155)에서 연결한 흐름이며,
-다른 업무 이벤트의 계약과 후속 연동은 상위 [#45](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/45)에서 관리합니다.
+권한 변경·플레이리스트 구독의 구현은 [#156 연동 가이드](08-role-subscription-integration.md)에서 설명합니다.
+전체 업무 이벤트의 계약과 후속 연동은 상위 [#45](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/45)에서 관리합니다.
 
 이 페이지 → [공통 저장·전송](01-creation-and-delivery.md) → [테스트 읽기](02-testing.md) 순서로 읽으면 됩니다.
 
@@ -99,7 +100,8 @@ eventPublisher.publishEvent(new UserFollowedEvent(
 
 업무 커밋과 알림 저장은 하나의 원자적 작업이 아닙니다. 그 사이 프로세스가 종료되면 알림이 누락될 수 있습니다.
 자동 재발행·Outbox·모든 장애 상황의 전달 보장은 제공하지 않습니다.
-팔로우 외의 업무 이벤트 연동과 비동기화·Kafka 전환은 이 페이지의 구현 범위에 포함하지 않습니다.
+권한 변경·구독도 같은 공통 생성 경로를 사용하며, 수신자·문구와 생산 서비스의 차이는 [8번 페이지](08-role-subscription-integration.md)에서 설명합니다.
+비동기화·Kafka 전환은 현재 알림 연동의 구현 범위에 포함하지 않습니다.
 
 ## 코드를 확인하는 순서
 
@@ -113,4 +115,4 @@ Redis·HTTP 수신은 별도의 `NotificationSseIntegrationTest`에서 확인합
 
 ---
 
-[알림 목차](README.md) · [팔로우 이벤트](../follow/04-follow-event.md) · [다음: 공통 저장·전송 →](01-creation-and-delivery.md)
+[알림 목차](README.md) · [팔로우 이벤트](../follow/04-follow-event.md) · [권한 변경·구독 알림](08-role-subscription-integration.md) · [다음: 공통 저장·전송 →](01-creation-and-delivery.md)

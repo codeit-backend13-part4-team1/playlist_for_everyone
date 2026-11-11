@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.playlist.service.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener.NotificationDomainEventListener;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.PlaylistResponse;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistSubscribedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.PlaylistService;
@@ -28,6 +29,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.event.ApplicationEvents;
 import org.springframework.test.context.event.RecordApplicationEvents;
 import org.testcontainers.junit.jupiter.Container;
@@ -66,6 +68,10 @@ class PlaylistSubscriptionIntegrationTest {
 
   @Autowired
   private ApplicationEvents applicationEvents;
+
+  // 이 테스트는 구독 이벤트 생산까지 검증하므로 알림 소비자의 후속 처리는 실행하지 않는다.
+  @MockitoBean
+  private NotificationDomainEventListener notificationDomainEventListener;
 
   private final UUID ownerId = UUID.randomUUID();
   private final UUID playlistId = UUID.randomUUID();
