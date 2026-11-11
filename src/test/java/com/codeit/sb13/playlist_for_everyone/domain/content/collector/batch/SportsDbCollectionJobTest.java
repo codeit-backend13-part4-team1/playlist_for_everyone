@@ -342,4 +342,87 @@ class SportsDbCollectionJobTest {
         verify(sportsDbClient, times(2))
                 .getEventsBySeason("4328", "2014-2015");
     }
+
+    @Test
+    void 중간에_실패한_배치를_재시작하면_기존_저장을_유지하고_이어서_저장한다()
+            throws Exception {
+        var first = new SportsDbEventResponse(
+                "445001", "첫 번째 경기", "Soccer",
+                "English Premier League", "2014-2015",
+                "2014-08-16", null
+        );
+        var invalid = new SportsDbEventResponse(
+                null, "두 번째 경기", "Soccer",
+                "English Premier League", "2014-2015",
+                "2014-08-17", null
+        );
+        var corrected = new SportsDbEventResponse(
+                "445002", "두 번째 경기", "Soccer",
+                "English Premier League", "2014-2015",
+                "2014-08-17", null
+        );
+
+        when(sportsDbClient.getEventsBySeason("4328", "2014-2015"))
+                .thenReturn(new SportsDbEventsResponse(List.of(first, invalid)))
+                .thenReturn(new SportsDbEventsResponse(List.of(first, corrected)));
+
+        var parameters = new JobParametersBuilder()
+                .addString("leagueId", "4328")
+                .addString("season", "2014-2015")
+                .addString("run.id", UUID.randomUUID().toString())
+                .toJobParameters();
+
+        var failedExecution = jobOperator.start(job, parameters);
+
+        assertThat(failedExecution.getStatus())
+                .isEqualTo(BatchStatus.FAILED);
+
+        var savedFirst = contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.THE_SPORTS_DB,
+                ContentType.sport,
+                "445001"
+        );
+
+        assertThat(savedFirst).isPresent();
+        var firstId = savedFirst.orElseThrow().getId();
+
+        assertThat(contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.THE_SPORTS_DB,
+                ContentType.sport,
+                "445002"
+        )).isEmpty();
+
+        var restartedExecution = jobOperator.restart(failedExecution);
+
+        assertThat(restartedExecution.getStatus())
+                .isEqualTo(BatchStatus.COMPLETED);
+
+        var firstAfterRestart =
+                contentRepository.findByProviderAndTypeAndProviderItemId(
+                        ContentSource.THE_SPORTS_DB,
+                        ContentType.sport,
+                        "445001"
+                );
+
+        assertThat(firstAfterRestart).isPresent();
+        assertThat(firstAfterRestart.orElseThrow().getId()).isEqualTo(firstId);
+
+        var savedSecond = contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.THE_SPORTS_DB,
+                ContentType.sport,
+                "445002"
+        );
+
+        assertThat(savedSecond).isPresent();
+        assertThat(savedSecond.orElseThrow().getTitle())
+                .isEqualTo("두 번째 경기");
+
+        var restartedStep =
+                restartedExecution.getStepExecutions().iterator().next();
+
+        assertThat(restartedStep.getReadCount()).isEqualTo(1);
+
+        verify(sportsDbClient, times(2))
+                .getEventsBySeason("4328", "2014-2015");
+    }
 }
