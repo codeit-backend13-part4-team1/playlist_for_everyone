@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session;
 
 import org.springframework.web.socket.WebSocketSession;
 
+import java.io.IOException;
 import java.util.Optional;
 
 /**
@@ -35,6 +36,6 @@ public interface WebSocketRegistry {
      * @param sessionId 세션ID
      * @throws Exception IOException 이 반환된다.
      */
-    void close(String sessionId) throws Exception;
+    void close(String sessionId) throws IOException;
 
 }

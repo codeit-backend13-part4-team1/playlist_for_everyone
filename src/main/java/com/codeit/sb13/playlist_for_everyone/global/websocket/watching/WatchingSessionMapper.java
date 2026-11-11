@@ -1,7 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching;
 
-import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
-import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentTag;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.WatchContent;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.Watcher;
@@ -15,7 +14,7 @@ public class WatchingSessionMapper {
 
     public Watcher toWatcher(User user) {
         if(user == null)
-            return new Watcher(null, null, null);
+            return null;
         return new Watcher(
                 user.getId(),
                 user.getName(),
@@ -24,19 +23,18 @@ public class WatchingSessionMapper {
         );
     }
 
-    public WatchContent toWatchContent(Content content) {
+    public WatchContent toWatchContent(ContentDto content) {
         if (content == null)
-            return new WatchContent(null, null, null, null,
-                    null, null, 0.0, 0);
+            return null;
         return new WatchContent(
-                content.getId(),
-                content.getType(),
-                content.getTitle(),
-                content.getDescription(),
-                content.getThumbnailUrl(),
-                content.getTags().stream().map(ContentTag::getTag).toList(),
-                0.0, // 임시. 추후 컨텐츠 도메인에서 평균 평점이 조회되는 매서드 사용.
-                0 // 임시. 리뷰어 카운터.
+                content.id(),
+                content.type(),
+                content.title(),
+                content.description(),
+                content.thumbnailUrl(),
+                content.tags(),
+                content.averageRating(),
+                content.reviewCount()
         );
     }
 

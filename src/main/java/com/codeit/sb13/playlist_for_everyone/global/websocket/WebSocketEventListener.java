@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket;
 
 
+import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.DestinationMatcher;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.SessionMatcher;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistry;
@@ -64,7 +65,7 @@ public class WebSocketEventListener {
     public void onSubscribe(SessionSubscribeEvent event){
         SessionInfo info = new SessionInfo(event.getMessage(), event.getUser());
         subscribe.run(info);
-        subscriptionRegistry.register(info);
+//        subscriptionRegistry.register(info); // todo - 비즈니스 로직 마지막에 등록하는 식으로 변동
     }
 
     /**
@@ -75,11 +76,12 @@ public class WebSocketEventListener {
      */
     @EventListener
     public void onUnsubscribe(SessionUnsubscribeEvent event){
+        // 미리 등록된 저장소에서 경로 정보 복원.
         SessionInfo info = subscriptionRegistry.get(new SessionInfo(event.getMessage(), event.getUser()))
-                .orElseThrow(RuntimeException::new);
+                .orElseThrow(WebSocketSessionNotFoundException::new);
 
         unsubscribe.run(info);
-        subscriptionRegistry.unregister(info);
+//        subscriptionRegistry.unregister(info); // todo - 비즈니스 로직 마지막에 해제하는 식으로 변동.
     }
 
     /**

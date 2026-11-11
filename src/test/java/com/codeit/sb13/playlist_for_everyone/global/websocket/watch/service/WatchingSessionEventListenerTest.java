@@ -6,6 +6,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.global.exception.EveryOneException;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSession;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.ChangeType;
@@ -52,6 +53,9 @@ public class WatchingSessionEventListenerTest {
 
     @Mock
     RedisTemplate<String, Object> template;
+
+    @Mock
+    SubscriptionRegistry subscriptionRegistry;
 
     @InjectMocks
     WatchingSessionEventListener eventListener;
