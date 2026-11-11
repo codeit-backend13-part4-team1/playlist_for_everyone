@@ -2,6 +2,8 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.watch;
 
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.SessionStartResult;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AdminInitializationService;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
@@ -41,6 +43,7 @@ import org.testcontainers.utility.DockerImageName;
 import java.lang.reflect.Type;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -103,6 +106,8 @@ public class WatchingSessionServiceE2E {
 
     @Autowired
     JwtTokenProvider jwtTokenProvider;
+    @Autowired
+    UserSessionRepository userSessionRepository;
 
     String accessToken;
 
@@ -121,7 +126,11 @@ public class WatchingSessionServiceE2E {
         adminInitializationService.initialize("admin@admin.com", "admin", "password");
 
         Optional<User> admin = userRepository.findByEmail("admin@admin.com");
-        admin.ifPresent(user -> accessToken = jwtTokenProvider.createAccessToken(user.getId()));
+
+        admin.ifPresent(user -> {
+            SessionStartResult session = userSessionRepository.start(user.getId(), Duration.ofMinutes(1));
+            accessToken = jwtTokenProvider.createAccessToken(user.getId(),session.sessionId());
+        });
 
         given(contentService.getById(any(UUID.class)))
                 .willReturn(new ContentDto(
