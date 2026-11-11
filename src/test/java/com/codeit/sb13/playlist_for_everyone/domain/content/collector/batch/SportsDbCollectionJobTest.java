@@ -4,6 +4,10 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.collector.ContentCol
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.SportsDbClient;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.SportsDbEventResponse;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.SportsDbEventsResponse;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.TmdbClient;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.TmdbMovieResponse;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.TmdbPageResponse;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.TmdbTvResponse;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentSource;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
@@ -18,6 +22,7 @@ import org.springframework.batch.core.job.Job;
 import org.springframework.batch.core.job.parameters.InvalidJobParametersException;
 import org.springframework.batch.core.job.parameters.JobParametersBuilder;
 import org.springframework.batch.core.launch.JobOperator;
+import org.springframework.batch.core.step.StepExecution;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
@@ -57,7 +62,8 @@ import static org.mockito.Mockito.*;
         JpaAuditingConfig.class,
         QueryDslConfig.class,
         ContentCollectionService.class,
-        SportsDbBatchConfig.class
+        SportsDbBatchConfig.class,
+        TmdbBatchConfig.class
 })
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @Testcontainers
@@ -83,6 +89,13 @@ class SportsDbCollectionJobTest {
 
     @MockitoBean
     private SportsDbClient sportsDbClient;
+
+    @Autowired
+    @Qualifier("tmdbCollectionJob")
+    private Job tmdbJob;
+
+    @MockitoBean
+    private TmdbClient tmdbClient;
 
     @Test
     void 배치를_실행하면_경기와_태그가_저장된다() throws Exception {
@@ -147,6 +160,47 @@ class SportsDbCollectionJobTest {
         );
 
         assertThat(executionCount).isEqualTo(1L);
+
+        assertThat(execution.getStepExecutions())
+                .extracting(StepExecution::getStepName)
+                .containsExactly("sportsDbCollectionStep");
+
+        verifyNoInteractions(tmdbClient);
+    }
+
+    @Test
+    void TMDB_배치를_실행하면_스포츠_클라이언트를_호출하지_않는다()
+            throws Exception {
+        when(tmdbClient.getPopularMovies(1))
+                .thenReturn(new TmdbPageResponse<TmdbMovieResponse>(
+                        1, List.of(), 0, 0
+                ));
+
+        when(tmdbClient.getPopularTvShows(1))
+                .thenReturn(new TmdbPageResponse<TmdbTvResponse>(
+                        1, List.of(), 0, 0
+                ));
+
+        var parameters = new JobParametersBuilder()
+                .addLong("maxPages", 1L)
+                .addString("run.id", UUID.randomUUID().toString())
+                .toJobParameters();
+
+        var execution = jobOperator.start(tmdbJob, parameters);
+
+        assertThat(execution.getStatus())
+                .isEqualTo(BatchStatus.COMPLETED);
+
+        assertThat(execution.getStepExecutions())
+                .extracting(step -> step.getStepName())
+                .containsExactlyInAnyOrder(
+                        "tmdbMovieCollectionStep",
+                        "tmdbTvCollectionStep"
+                );
+
+        verify(tmdbClient, times(1)).getPopularMovies(1);
+        verify(tmdbClient, times(1)).getPopularTvShows(1);
+        verifyNoInteractions(sportsDbClient);
     }
 
     @ParameterizedTest
