@@ -198,6 +198,7 @@ class UserCustomRepositoryTest {
         User b = saveUser("b@test.com", "same", Role.ADMIN);
         User c = saveLockedUser("c@test.com", "zed");
         User d = saveUser("d@test.com", "abe", Role.USER);
+        User e = saveUser("e@test.com", null, Role.USER);
         setCreatedAt(a, LocalDateTime.of(2026, 10, 2, 0, 0));
         setCreatedAt(b, LocalDateTime.of(2026, 10, 2, 0, 0));
         setCreatedAt(c, LocalDateTime.of(2026, 10, 3, 0, 0));
@@ -220,7 +221,7 @@ class UserCustomRepositoryTest {
             idAfter = last.getId();
         }
 
-        assertThat(expected).hasSize(4);
+        assertThat(expected).hasSize(5);
         assertThat(walked).containsExactlyElementsOf(expected);
     }
 

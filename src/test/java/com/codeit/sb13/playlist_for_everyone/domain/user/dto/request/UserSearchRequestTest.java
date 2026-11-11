@@ -80,11 +80,24 @@ class UserSearchRequestTest {
     @CsvSource({
             "CREATED_AT, 어제",
             "IS_LOCKED, yes",
-            "ROLE, MANAGER"
+            "ROLE, MANAGER",
+            "CREATED_AT, ''",
+            "IS_LOCKED, ''"
     })
     @DisplayName("정렬 기준과 맞지 않는 cursor는 거부한다.")
     void 정렬_기준과_맞지_않는_cursor는_거부한다(UserSortBy sortBy, String cursor) {
         assertThat(validator.validate(request(sortBy, cursor, UUID.randomUUID(), 20))).isNotEmpty();
     }
 
+    @Test
+    @DisplayName("이름 정렬에서 빈 cursor와 idAfter를 함꼐 보내면 통과한다.")
+    void 이름이_없는_사용자의_빈_cursor는_통과한다() {
+        assertThat(validator.validate(request(UserSortBy.NAME, "", UUID.randomUUID(), 20))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("첫 페이지의 빈 cursor는 통과한다.")
+    void 첫_페이지의_빈_cursor는_통과한다() {
+        assertThat(validator.validate(request(UserSortBy.NAME, "", null, 20))).isEmpty();
+    }
 }
