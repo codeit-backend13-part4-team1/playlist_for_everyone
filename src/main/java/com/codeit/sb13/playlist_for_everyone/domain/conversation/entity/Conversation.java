@@ -10,7 +10,13 @@ import lombok.NoArgsConstructor;
 
 import java.util.UUID;
 
-@Table(name = "conversations")
+@Table(
+        name = "conversations",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uq_conversations_user_pair",
+                columnNames = {"user_a_id", "user_b_id"}
+        )
+)
 @Entity
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Getter
