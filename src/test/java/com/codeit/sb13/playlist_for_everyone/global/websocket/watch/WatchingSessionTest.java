@@ -14,6 +14,8 @@ import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionData;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.ConnectionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.InMemoryConnectionRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketRegistryImpl;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSession;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSessionMapper;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatDto;
@@ -61,6 +63,8 @@ public class WatchingSessionTest {
     ContentService contentService;
     @Mock
     UserSummaryMapper userSummaryMapper;
+    @Mock
+    WebSocketRegistry socketRegistry;
 
     // interface 단은 setup 에서 설정.
     WatchingSessionService watchingSessionService;
@@ -185,7 +189,8 @@ public class WatchingSessionTest {
 
     @BeforeEach
     void setUp(){
-        connectionRegistry = new InMemoryConnectionRegistry();
+        socketRegistry = new WebSocketRegistryImpl();
+        connectionRegistry = new InMemoryConnectionRegistry(socketRegistry);
         // 별도 모듈 테스트가 있으므로, mock 으로 주입.
         watchingSessionService = mock(WatchingSessionService.class);
         mapper = new WatchingSessionMapper();

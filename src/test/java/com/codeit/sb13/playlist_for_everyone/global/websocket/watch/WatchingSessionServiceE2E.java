@@ -1,0 +1,356 @@
+package com.codeit.sb13.playlist_for_everyone.global.websocket.watch;
+
+
+import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AdminInitializationService;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentCreateRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
+import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
+import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
+import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
+import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.ConnectionRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatSendRequest;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionDisconnectEvent;
+import lombok.extern.slf4j.Slf4j;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.redis.connection.RedisConnection;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.messaging.converter.JacksonJsonMessageConverter;
+import org.springframework.messaging.converter.MappingJackson2MessageConverter;
+import org.springframework.messaging.simp.stomp.StompFrameHandler;
+import org.springframework.messaging.simp.stomp.StompHeaders;
+import org.springframework.messaging.simp.stomp.StompSession;
+import org.springframework.messaging.simp.stomp.StompSessionHandlerAdapter;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.socket.WebSocketHttpHeaders;
+import org.springframework.web.socket.WebSocketSession;
+import org.springframework.web.socket.client.standard.StandardWebSocketClient;
+import org.springframework.web.socket.messaging.WebSocketStompClient;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
+
+import java.lang.reflect.Type;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.sql.DatabaseMetaData;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+@Testcontainers
+@SpringBootTest(
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT
+)
+@ActiveProfiles("test")
+@DirtiesContext(
+        classMode = DirtiesContext.ClassMode.AFTER_CLASS
+)
+@Slf4j
+public class WatchingSessionServiceE2E {
+
+    @LocalServerPort int port;
+
+    @Autowired
+    ConnectionRegistry connectionRegistry;
+
+    WebSocketSession clientSession;
+
+    BlockingQueue<String> response;
+
+    @Container
+    static GenericContainer<?> redis =
+            new GenericContainer<>(
+                    DockerImageName.parse("redis:7.4-alpine")
+            ).withExposedPorts(6379);
+
+    @DynamicPropertySource
+    static void redisProperties(
+            DynamicPropertyRegistry registry
+    ) {
+        registry.add("spring.data.redis.host", redis::getHost);
+        registry.add(
+                "spring.data.redis.port",
+                redis::getFirstMappedPort
+        );
+        registry.add(
+                "spring.data.redis.ssl.enabled",
+                () -> false
+        );
+    }
+
+    // jwt 생성용 의돈성
+    @Autowired
+    UserRepository userRepository;
+
+    @Autowired
+    AdminInitializationService adminInitializationService;
+
+    @Autowired
+    JwtTokenProvider jwtTokenProvider;
+
+    String accessToken;
+
+    @Autowired
+    ContentService contentService;
+
+    //
+    @Autowired
+    ApplicationEventPublisher applicationEventPublisher;
+
+
+
+    @BeforeEach
+    void setup(){
+        // 초기 Admin 계정 설정.
+        adminInitializationService.initialize("admin@admin.com", "admin", "password");
+
+        Optional<User> admin = userRepository.findByEmail("admin@admin.com");
+        admin.ifPresent(user -> accessToken = jwtTokenProvider.createAccessToken(user.getId()));
+    }
+
+
+    StompFrameHandler getStompHandler(CompletableFuture<String> received){
+        return new StompFrameHandler() {
+
+            @Override
+            public Type getPayloadType(StompHeaders headers) {
+                return byte[].class;
+            }
+
+            @Override
+            public void handleFrame(
+                    StompHeaders headers,
+                    Object payload
+            ) {
+                String json = new String(
+                        (byte[]) payload,
+                        StandardCharsets.UTF_8
+                );
+
+                log.info("STOMP 수신 JSON: {}", json);
+                received.complete(json);
+            }
+        };
+    }
+
+    StompFrameHandler getStompHandler(BlockingQueue<String> received){
+        return new StompFrameHandler() {
+
+            @Override
+            public Type getPayloadType(StompHeaders headers) {
+                return byte[].class;
+            }
+
+            @Override
+            public void handleFrame(
+                    StompHeaders headers,
+                    Object payload
+            ) {
+                String json = new String(
+                        (byte[]) payload,
+                        StandardCharsets.UTF_8
+                );
+
+                log.info("STOMP 수신 JSON: {}", json);
+                received.offer(json);
+            }
+        };
+    }
+
+
+    /*
+     * 세션 관련 리소스 반환 매서드
+     */
+
+    CompletableFuture<StompSession> getSession(WebSocketStompClient client){
+        client.setMessageConverter(new JacksonJsonMessageConverter());
+
+        return client.connectAsync(
+                URI.create("ws://localhost:" + port + "/ws"),
+                getHandShakeHeader(accessToken),
+                getStompHeader(accessToken),
+                new StompSessionHandlerAdapter() {}
+        );
+    }
+
+    StompHeaders getStompHeader(String token){
+        StompHeaders header = new StompHeaders();
+        header.add(
+                "Authorization",
+                "Bearer " + token
+        );
+        return header;
+    }
+
+    WebSocketHttpHeaders getHandShakeHeader(String token){
+        WebSocketHttpHeaders header = new WebSocketHttpHeaders();
+        header.setBearerAuth(token);
+        return header;
+    }
+
+    /*
+     * 리소스 세팅 관련 경로 매서드
+     */
+    String viewingSessionDestination(String id){
+        return "/sub/contents/" + id + "/watch";
+    }
+
+    String chattingSessionSubscriptionDst(String id){
+        return "/sub/contents/" + id + "/chat";
+    }
+
+    String chattingSessionSendDst(String id){
+        return "/pub/contents/" + id + "/chat";
+    }
+
+    /**
+     * 1. 연결 성공 여부
+     * 2. 구독 시 초기 데이터 반환 여부
+     * 3. 메세지 전송 시 서버가 처리 여부
+     * 4. 메세지 해지 여부
+     */
+
+    @Test
+    @DisplayName("세션 연결 시 세션 등록이 성혹하는 지 확인.")
+    void connectTest() throws Exception {
+        WebSocketStompClient client = new WebSocketStompClient(new StandardWebSocketClient());
+        // 테스트 용 리소스
+        StompSession session1 = getSession(client).get(5, TimeUnit.SECONDS);
+        StompSession session2 = getSession(client).get(5, TimeUnit.SECONDS);
+
+        try {
+            // 5. 수신 메시지 대기용 Future
+//            CompletableFuture<String> received1 = new CompletableFuture<>();
+//            CompletableFuture<String> received2 = new CompletableFuture<>();
+            BlockingQueue<String> received1 = new LinkedBlockingQueue<>();
+            BlockingQueue<String> received2 = new LinkedBlockingQueue<>();
+
+            UUID contentId = UUID.randomUUID();
+
+            // 6. 채팅방 구독
+            session1.subscribe(
+                    viewingSessionDestination(contentId.toString()),
+                    getStompHandler(received1)
+            );
+
+            StompSession.Subscription sessionSub2 = session2.subscribe(
+                    viewingSessionDestination(contentId.toString()),
+                    getStompHandler(received2)
+            );
+
+
+            // 구독 이후 서버 응답을 최대 5초간 대기
+            String join1 = received1.poll(5, TimeUnit.SECONDS);
+            String join2 = received2.poll(5, TimeUnit.SECONDS);
+
+            log.info("\n===Received===\njoin1: {}\njoin2: {}\n", join1, join2);
+
+            sessionSub2.unsubscribe();
+
+            String response3 = received1.poll(5, TimeUnit.SECONDS);
+            String response4 = received2.poll(5, TimeUnit.SECONDS);
+
+            log.info("Received \nresponse3: {}\n response4: {}", response3, response4);
+
+        } finally {
+            session1.disconnect();
+            session2.disconnect();
+            client.stop();
+        }
+
+    }
+
+    @Test
+    @DisplayName("채팅 채널을 구독하고, 메세지를 전송하면, 같은 채널을 구독한 세션은 메세지를 수신한다. ")
+    void chattingSessionTest() throws Exception {
+        WebSocketStompClient client = new WebSocketStompClient(new StandardWebSocketClient());
+        String contentId = UUID.randomUUID().toString();
+
+        // 테스트용 세션을 생성 한 후, 생성 까지 최대 5초간 대기한다.
+        StompSession receiver = getSession(client).get(5, TimeUnit.SECONDS);
+        StompSession sender = getSession(client).get(5, TimeUnit.SECONDS);
+
+
+        try {
+            CompletableFuture<String> received = new CompletableFuture<>();
+
+            receiver.subscribe(
+                    chattingSessionSubscriptionDst(contentId),
+                    getStompHandler(received)
+            );
+            sender.subscribe(
+                    chattingSessionSubscriptionDst(contentId),
+                    getStompHandler(received)
+            );
+            sender.send(
+                    chattingSessionSendDst(contentId),
+                    new ContentChatSendRequest("this is message.")
+            );
+
+            String gettingMessage = received.get(5, TimeUnit.SECONDS);
+            log.info("Received message: {}", gettingMessage);
+
+        } finally {
+            receiver.disconnect();
+            sender.disconnect();
+            client.stop();
+        }
+
+    }
+
+
+    @Test
+    @DisplayName("컨텐츠가 삭제되었을 때, 관련 컨텐츠에 연결된 세션은 끊긴다.")
+    void contentDeleteTest() throws Exception {
+        WebSocketStompClient client = new WebSocketStompClient(new StandardWebSocketClient());
+
+        UUID contentId = UUID.randomUUID();
+
+
+        StompSession session = getSession(client).get(5, TimeUnit.SECONDS);
+        try {
+
+            CompletableFuture<String> received = new CompletableFuture<>();
+
+            session.subscribe(
+                    viewingSessionDestination(contentId.toString()),
+                    getStompHandler(received)
+            );
+
+            String message = received.get(5, TimeUnit.SECONDS);
+            log.info("Received message: {}", message);
+
+            applicationEventPublisher.publishEvent(new WatchingSessionDisconnectEvent(contentId));
+
+
+
+
+        } finally {
+            if (session.isConnected())
+                session.disconnect();
+            client.stop();
+        }
+    }
+
+
+}
