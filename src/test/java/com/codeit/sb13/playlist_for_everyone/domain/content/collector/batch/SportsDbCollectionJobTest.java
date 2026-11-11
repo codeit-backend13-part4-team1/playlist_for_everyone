@@ -35,6 +35,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -233,5 +234,61 @@ class SportsDbCollectionJobTest {
         var stepExecution = execution.getStepExecutions().iterator().next();
 
         assertThat(stepExecution.getWriteSkipCount()).isEqualTo(1);
+    }
+
+    @Test
+    void 잘못된_경기가_건너뛰기_제한을_초과하면_배치가_실패한다()
+            throws Exception {
+        var events = new ArrayList<SportsDbEventResponse>();
+
+        events.add(new SportsDbEventResponse(
+                "443001", "첫 번째 정상 경기", "Soccer",
+                "English Premier League", "2014-2015",
+                "2014-08-16", null
+        ));
+
+        for (int i = 0; i < 11; i++) {
+            events.add(new SportsDbEventResponse(
+                    String.valueOf(443010 + i), "   ", "Soccer",
+                    "English Premier League", "2014-2015",
+                    "2014-08-17", null
+            ));
+        }
+
+        events.add(new SportsDbEventResponse(
+                "443099", "마지막 정상 경기", "Soccer",
+                "English Premier League", "2014-2015",
+                "2014-08-18", null
+        ));
+
+        when(sportsDbClient.getEventsBySeason("4328", "2014-2015"))
+                .thenReturn(new SportsDbEventsResponse(events));
+
+        var parameters = new JobParametersBuilder()
+                .addString("leagueId", "4328")
+                .addString("season", "2014-2015")
+                .addString("run.id", UUID.randomUUID().toString())
+                .toJobParameters();
+
+        var execution = jobOperator.start(job, parameters);
+
+        assertThat(execution.getStatus())
+                .isEqualTo(BatchStatus.FAILED);
+
+        assertThat(contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.THE_SPORTS_DB,
+                ContentType.sport,
+                "443001"
+        )).isPresent();
+
+        assertThat(contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.THE_SPORTS_DB,
+                ContentType.sport,
+                "443099"
+        )).isEmpty();
+
+        var stepExecution = execution.getStepExecutions().iterator().next();
+
+        assertThat(stepExecution.getWriteSkipCount()).isEqualTo(10);
     }
 }
