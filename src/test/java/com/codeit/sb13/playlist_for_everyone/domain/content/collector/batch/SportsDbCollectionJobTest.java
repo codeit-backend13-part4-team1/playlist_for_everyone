@@ -571,4 +571,61 @@ class SportsDbCollectionJobTest {
         verify(sportsDbClient, times(2))
                 .getEventsBySeason("4328", "2014-2015");
     }
+
+    @Test
+    void 잘못된_경기가_10건이면_건너뛰고_마지막_경기까지_저장한다()
+            throws Exception {
+        var events = new ArrayList<SportsDbEventResponse>();
+
+        events.add(new SportsDbEventResponse(
+                "447001", "첫 번째 정상 경기", "Soccer",
+                "English Premier League", "2014-2015",
+                "2014-08-16", null
+        ));
+
+        for (int i = 0; i < 10; i++) {
+            events.add(new SportsDbEventResponse(
+                    String.valueOf(447010 + i), "   ", "Soccer",
+                    "English Premier League", "2014-2015",
+                    "2014-08-17", null
+            ));
+        }
+
+        events.add(new SportsDbEventResponse(
+                "447099", "마지막 정상 경기", "Soccer",
+                "English Premier League", "2014-2015",
+                "2014-08-18", null
+        ));
+
+        when(sportsDbClient.getEventsBySeason("4328", "2014-2015"))
+                .thenReturn(new SportsDbEventsResponse(events));
+
+        var parameters = new JobParametersBuilder()
+                .addString("leagueId", "4328")
+                .addString("season", "2014-2015")
+                .addString("run.id", UUID.randomUUID().toString())
+                .toJobParameters();
+
+        var execution = jobOperator.start(job, parameters);
+
+        assertThat(execution.getStatus())
+                .isEqualTo(BatchStatus.COMPLETED);
+
+        assertThat(contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.THE_SPORTS_DB,
+                ContentType.sport,
+                "447001"
+        )).isPresent();
+
+        assertThat(contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.THE_SPORTS_DB,
+                ContentType.sport,
+                "447099"
+        )).isPresent();
+
+        var stepExecution = execution.getStepExecutions().iterator().next();
+
+        assertThat(stepExecution.getWriteSkipCount()).isEqualTo(10);
+        assertThat(stepExecution.getWriteCount()).isEqualTo(2);
+    }
 }
