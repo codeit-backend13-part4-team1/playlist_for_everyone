@@ -425,4 +425,56 @@ class SportsDbCollectionJobTest {
         verify(sportsDbClient, times(2))
                 .getEventsBySeason("4328", "2014-2015");
     }
+
+    @Test
+    void 경기_목록이_비어_있으면_저장_없이_배치가_완료된다() throws Exception {
+        when(sportsDbClient.getEventsBySeason("4328", "2014-2015"))
+                .thenReturn(new SportsDbEventsResponse(List.of()));
+
+        var parameters = new JobParametersBuilder()
+                .addString("leagueId", "4328")
+                .addString("season", "2014-2015")
+                .addString("run.id", UUID.randomUUID().toString())
+                .toJobParameters();
+
+        var execution = jobOperator.start(job, parameters);
+
+        assertThat(execution.getStatus())
+                .isEqualTo(BatchStatus.COMPLETED);
+
+        var stepExecution = execution.getStepExecutions().iterator().next();
+
+        assertThat(stepExecution.getReadCount()).isZero();
+        assertThat(stepExecution.getWriteCount()).isZero();
+
+        verify(sportsDbClient, times(1))
+                .getEventsBySeason("4328", "2014-2015");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"leagueId", "season"})
+    void 파라미터가_문자열이_아니면_실행을_거부한다(String parameterName) {
+        var builder = new JobParametersBuilder()
+                .addString("run.id", UUID.randomUUID().toString());
+
+        if ("leagueId".equals(parameterName)) {
+            builder.addLong("leagueId", 4328L)
+                    .addString("season", "2014-2015");
+        } else {
+            builder.addString("leagueId", "4328")
+                    .addLong("season", 2014L);
+        }
+
+        var parameters = builder.toJobParameters();
+
+        String expectedMessage = "leagueId".equals(parameterName)
+                ? "leagueId는 필수입니다."
+                : "season은 필수입니다.";
+
+        assertThatThrownBy(() -> jobOperator.start(job, parameters))
+                .isInstanceOf(InvalidJobParametersException.class)
+                .hasMessage(expectedMessage);
+
+        verifyNoInteractions(sportsDbClient);
+    }
 }
