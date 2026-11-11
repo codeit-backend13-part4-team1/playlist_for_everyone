@@ -135,6 +135,18 @@ class SportsDbCollectionJobTest {
 
         assertThat(tags)
                 .containsExactlyInAnyOrder("Soccer", "English Premier League");
+
+        var executionCount = jdbcTemplate.queryForObject(
+                """
+                SELECT COUNT(*)
+                FROM batch_job_execution
+                WHERE job_execution_id = ?
+                """,
+                Long.class,
+                execution.getId()
+        );
+
+        assertThat(executionCount).isEqualTo(1L);
     }
 
     @ParameterizedTest

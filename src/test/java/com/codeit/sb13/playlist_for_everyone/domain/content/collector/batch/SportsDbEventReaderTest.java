@@ -100,6 +100,9 @@ class SportsDbEventReaderTest {
 
         // 첫 번째 경기까지 처리한 위치 기록
         reader.update(context);
+
+        // 읽었지만 처리 완료 위치는 기록하지 않은 경기
+        assertThat(reader.read()).isEqualTo(second);
         reader.close();
 
         var restartedReader =
@@ -179,5 +182,21 @@ class SportsDbEventReaderTest {
                 .hasMessage(
                         "TheSportsDB 경기 목록이 변경되어 읽기 위치를 복원할 수 없습니다."
                 );
+    }
+
+    @Test
+    void 응답의_events가_null이면_빈_목록으로_처리하고_종료한다() {
+        SportsDbClient client = mock(SportsDbClient.class);
+
+        when(client.getEventsBySeason("4328", "2025-2026"))
+                .thenReturn(new SportsDbEventsResponse(null));
+
+        var reader = new SportsDbEventReader(client, "4328", "2025-2026");
+
+        assertThat(reader.read()).isNull();
+        assertThat(reader.read()).isNull();
+
+        verify(client, times(1)).getEventsBySeason("4328", "2025-2026");
+        verifyNoMoreInteractions(client);
     }
 }
