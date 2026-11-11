@@ -8,7 +8,10 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
+import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
 import jakarta.persistence.EntityManager;
+import org.hibernate.SessionFactory;
+import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -34,7 +37,8 @@ import static org.assertj.core.api.Assertions.assertThat;
         showSql = false,
         properties = {
                 "spring.flyway.enabled=true",
-                "spring.jpa.hibernate.ddl-auto=validate"
+                "spring.jpa.hibernate.ddl-auto=validate",
+                "spring.jpa.properties.hibernate.generate_statistics=true"
         }
 )
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -331,6 +335,65 @@ class ConversationRepositoryTest {
         assertThat(result.getLastMessage()).isNotNull();
         assertThat(result.getLastMessage().getId()).isEqualTo(targetMessageId);
         assertThat(result.getHasUnread()).isFalse();
+    }
+
+    @Test
+    @DisplayName("최신 메시지의 발신자와 수신자 프로필에 접근해도 SQL이 추가되지 않는다.")
+    void findDetailByUserPair_loadsMessageProfilesWithoutAdditionalQueries(){
+        User requester = persistUser("requester@example.com", "요청자");
+        User otherUser = persistUser("other@example.com", "대화 상대");
+
+        FileInfo requesterProfile = FileInfo.createS3File(
+                        "profiles/requester.png",
+                        "requester.png", "image/png", 100L
+                );
+        FileInfo otherProfile = FileInfo.createS3File(
+                        "profiles/other.png", "other.png",
+                        "image/png", 100L
+                );
+
+        entityManager.persist(requesterProfile);
+        entityManager.persist(otherProfile);
+
+        requester.updateProfileImage(requesterProfile);
+        otherUser.updateProfileImage(otherProfile);
+
+        ConversationCommand pair = new ConversationCommand(requester, otherUser);
+        Conversation saved = conversationRepository.saveAndFlush(new Conversation(pair));
+
+        insertMessage(
+                UUID.randomUUID(),
+                saved.getId(),
+                requester.getId(),
+                otherUser.getId(),
+                "프로필 조회 확인 메시지",
+                true,
+                LocalDateTime.of(2026, 11, 11, 10, 0));
+
+        entityManager.clear();
+
+        Statistics statistics = entityManager.getEntityManagerFactory()
+                .unwrap(SessionFactory.class)
+                .getStatistics();
+
+        assertThat(statistics.isStatisticsEnabled())
+                .isTrue();
+        ConversationDetailProjection result = conversationRepository.findDetailByUserPair(
+                pair.userA().getId(),
+                pair.userB().getId(),
+                requester.getId()
+        ).orElseThrow();
+
+        long statementCountBefore = statistics.getPrepareStatementCount();
+        DirectMessage message = result.getLastMessage();
+        assertThat(message.getSender().getProfileImage().getKey())
+                .isEqualTo("profiles/requester.png");
+        assertThat(message.getReceiver().getProfileImage().getKey())
+                .isEqualTo("profiles/other.png");
+
+        assertThat(statistics.getPrepareStatementCount())
+                .isEqualTo(statementCountBefore);
+
     }
 
     private User persistUser(String email, String name) {
