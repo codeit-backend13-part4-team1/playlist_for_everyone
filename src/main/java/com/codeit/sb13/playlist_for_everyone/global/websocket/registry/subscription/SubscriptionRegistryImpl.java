@@ -29,8 +29,7 @@ public class SubscriptionRegistryImpl implements SubscriptionRegistry {
     // 등록, 삭제에 문제가 많아지면 추후 측정 후 변경.
     static private class SessionState {
 
-        private boolean creatable = true;
-        private Map<String, SessionInfo> map;
+        private final Map<String, SessionInfo> map;
 
 
         private SessionState() {

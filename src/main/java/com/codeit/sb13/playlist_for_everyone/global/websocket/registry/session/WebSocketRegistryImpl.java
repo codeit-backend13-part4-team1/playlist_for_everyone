@@ -5,6 +5,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.WebSocketSession;
 
+import java.io.IOException;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -39,7 +40,7 @@ public class WebSocketRegistryImpl implements WebSocketRegistry  {
     }
 
     @Override
-    public void close(String sessionId) throws Exception {
+    public void close(String sessionId) throws IOException {
         if(sessionId != null){
             WebSocketSession session = data.get(sessionId);
             if(session != null){

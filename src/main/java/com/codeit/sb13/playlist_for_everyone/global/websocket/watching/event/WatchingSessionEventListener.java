@@ -39,6 +39,8 @@ public class WatchingSessionEventListener {
     @EventListener
     public void watchJoinEvent(WatchingSessionJoinEvent event){
         SessionInfo info = event.info();
+
+        // 내부 로직에서 등록된 구독을 참고해야 할 수 있으므로 먼저 등록.
         subscriptionRegistry.register(info);
         try {
             check(info.destination());
@@ -51,7 +53,9 @@ public class WatchingSessionEventListener {
 
             redisTemplate.convertAndSend(topic, message);
         } catch (Exception e){
-            // do nothing
+            // 등록에 실패하면 구독 삭제.
+            subscriptionRegistry.unregister(info);
+
             SecurityUser user = info.user();
             log.error("[{}] sessionId : {}(user : {}) - 동시 시청 참여 로직 에러.",
                     this.getClass().getSimpleName(),
@@ -90,7 +94,8 @@ public class WatchingSessionEventListener {
                     user != null ? user.getUserId() : null,
                     e);
         } finally {
-//            connectionRegistry.unregister(new SessionInfo(event.info()).toData());
+            // 비즈니스 로직이 실패하더라도 구독은 해제되어야 한다.
+            subscriptionRegistry.unregister(info);
         }
     }
 
@@ -111,6 +116,7 @@ public class WatchingSessionEventListener {
     @EventListener
     public void chatJoinEvent(WatchingChatJoinEvent event){
         SessionInfo info = check(event.info());
+        subscriptionRegistry.register(info);
         watchingSession.joinChatSession(info);
     }
 
@@ -122,6 +128,7 @@ public class WatchingSessionEventListener {
     public void chatLeaveEvent(WatchingChatLeaveEvent event){
         SessionInfo info = check(event.info());
         watchingSession.leaveChatSession(info);
+        subscriptionRegistry.unregister(info);
     }
 
     /**

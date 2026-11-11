@@ -7,9 +7,7 @@ import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.security.core.Authentication;
 
 import java.security.Principal;
-import java.time.Instant;
 import java.util.Objects;
-import java.util.UUID;
 
 /**
  * 웹 소켓 메세지에서 세션 및 사용자 정보를 추출하는 클래스.

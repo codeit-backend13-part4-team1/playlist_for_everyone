@@ -3,6 +3,8 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.watch;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AdminInitializationService;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
+import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
@@ -26,6 +28,7 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.web.socket.WebSocketHttpHeaders;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.client.standard.StandardWebSocketClient;
@@ -38,6 +41,7 @@ import org.testcontainers.utility.DockerImageName;
 import java.lang.reflect.Type;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
@@ -46,6 +50,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.BDDMockito.*;
 
 @Testcontainers
 @SpringBootTest(
@@ -100,7 +106,7 @@ public class WatchingSessionServiceE2E {
 
     String accessToken;
 
-    @Autowired
+    @MockitoBean
     ContentService contentService;
 
     //
@@ -116,6 +122,19 @@ public class WatchingSessionServiceE2E {
 
         Optional<User> admin = userRepository.findByEmail("admin@admin.com");
         admin.ifPresent(user -> accessToken = jwtTokenProvider.createAccessToken(user.getId()));
+
+        given(contentService.getById(any(UUID.class)))
+                .willReturn(new ContentDto(
+                        UUID.randomUUID(),
+                        ContentType.sport,
+                        "description",
+                        "thumbnail",
+                        "url",
+                        List.of(),
+                        0.0,
+                        0,
+                        1L
+                ));
     }
 
 
@@ -229,9 +248,6 @@ public class WatchingSessionServiceE2E {
         StompSession session2 = getSession(client).get(5, TimeUnit.SECONDS);
 
         try {
-            // 5. 수신 메시지 대기용 Future
-//            CompletableFuture<String> received1 = new CompletableFuture<>();
-//            CompletableFuture<String> received2 = new CompletableFuture<>();
             BlockingQueue<String> received1 = new LinkedBlockingQueue<>();
             BlockingQueue<String> received2 = new LinkedBlockingQueue<>();
 
@@ -250,17 +266,25 @@ public class WatchingSessionServiceE2E {
 
 
             // 구독 이후 서버 응답을 최대 5초간 대기
-            String join1 = received1.poll(5, TimeUnit.SECONDS);
-            String join2 = received2.poll(5, TimeUnit.SECONDS);
+            String joinReceive1 = received1.poll(5, TimeUnit.SECONDS);
+            String joinReceive2 = received1.poll(5, TimeUnit.SECONDS);
 
-            log.info("\n===Received===\njoin1: {}\njoin2: {}\n", join1, join2);
+            assertNotNull(
+                    joinReceive1,
+                    "JOIN 메시지가 도착하지 않았습니다."
+            );
+            assertNotNull(
+                    joinReceive2,
+                    "JOIN 메시지가 도착하지 않았습니다."
+            );
 
             sessionSub2.unsubscribe();
+            String leaveReceive2 = received1.poll(10, TimeUnit.SECONDS);
 
-            String response3 = received1.poll(5, TimeUnit.SECONDS);
-            String response4 = received2.poll(5, TimeUnit.SECONDS);
-
-            log.info("Received \nresponse3: {}\n response4: {}", response3, response4);
+            assertNotNull(
+                    leaveReceive2,
+                    "UNSUBSCRIBE 이후 LEAVE 메시지가 도착하지 않았습니다."
+            );
 
         } finally {
             session1.disconnect();
@@ -333,7 +357,7 @@ public class WatchingSessionServiceE2E {
             applicationEventPublisher.publishEvent(new WatchingSessionDisconnectEvent(contentId));
 
 
-
+            assertThat(session.isConnected()).isFalse();
 
         } finally {
             if (session.isConnected())
