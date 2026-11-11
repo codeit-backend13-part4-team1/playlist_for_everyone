@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public interface WatchingSessionService {
@@ -13,6 +14,14 @@ public interface WatchingSessionService {
      * @return 현재 시청중인 시청자 수
      */
     long getCurrentViewerCount(UUID contentId);
+
+    /**
+     * 현재 컨텐츠의 시청중인 동시 시청자 수를 컨텐츠 id 별로 매핑해서
+     * 반환하는 매서드.
+     * @param contentIds 조회할 content 들의 id 리스트
+     * @return contentId - counter 쌍.
+     */
+    Map<String, Long> getCurrentViewerCountWithContents(List<UUID> contentIds);
 
     /**
      * 현재 컨테츠를 삭제하면 연결이 끊길 세션 리스트.

@@ -13,7 +13,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WebSocketUtils.check;
@@ -38,6 +40,12 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
         return watchingSessionRepository.getWatcherCount(contentId.toString());
     }
 
+    @Override
+    public Map<String, Long> getCurrentViewerCountWithContents(List<UUID> contentIds){
+        List<String> idList = contentIds.stream().map(UUID::toString).toList();
+        return watchingSessionRepository
+                .getWatcherCountWithMultipleContents(idList);
+    }
 
     @Override
     public List<String> disconnectWithContentId(UUID contentId){
