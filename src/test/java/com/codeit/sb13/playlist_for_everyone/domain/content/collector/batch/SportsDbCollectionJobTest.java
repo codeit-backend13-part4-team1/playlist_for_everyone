@@ -10,8 +10,12 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRe
 import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.job.Job;
+import org.springframework.batch.core.job.parameters.InvalidJobParametersException;
 import org.springframework.batch.core.job.parameters.JobParametersBuilder;
 import org.springframework.batch.core.launch.JobOperator;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,6 +39,8 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @DataJpaTest(properties = {
@@ -128,5 +134,47 @@ class SportsDbCollectionJobTest {
 
         assertThat(tags)
                 .containsExactlyInAnyOrder("Soccer", "English Premier League");
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"   "})
+    void 리그_ID가_없으면_배치_실행을_거부한다(String leagueId) {
+        var builder = new JobParametersBuilder()
+                .addString("season", "2014-2015")
+                .addString("run.id", UUID.randomUUID().toString());
+
+        if (leagueId != null) {
+            builder.addString("leagueId", leagueId);
+        }
+
+        var parameters = builder.toJobParameters();
+
+        assertThatThrownBy(() -> jobOperator.start(job, parameters))
+                .isInstanceOf(InvalidJobParametersException.class)
+                .hasMessage("leagueId는 필수입니다.");
+
+        verifyNoInteractions(sportsDbClient);
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"   "})
+    void 시즌이_없으면_배치_실행을_거부한다(String season) {
+        var builder = new JobParametersBuilder()
+                .addString("leagueId", "4328")
+                .addString("run.id", UUID.randomUUID().toString());
+
+        if (season != null) {
+            builder.addString("season", season);
+        }
+
+        var parameters = builder.toJobParameters();
+
+        assertThatThrownBy(() -> jobOperator.start(job, parameters))
+                .isInstanceOf(InvalidJobParametersException.class)
+                .hasMessage("season은 필수입니다.");
+
+        verifyNoInteractions(sportsDbClient);
     }
 }
