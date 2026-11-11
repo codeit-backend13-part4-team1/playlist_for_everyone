@@ -194,15 +194,4 @@ public class WatchingSessionEventListener {
         watchingSession.disconnectWithContentId(content);
     }
 
-
-    /**
-     * 중복 로그인 등에 의해 Session 이 리프레시 되어야 할 때 호출되는 매서드
-     * 세션에 연관된 리소스를 해지하고 연결을 종료한다.
-     */
-    @EventListener
-    public void revokeAuthEvent(WebSocketAuthRevokeEvent event){
-        String sessionId = check(event.sessionId());
-        watchingSession.disconnectWithSessionIds(sessionId);
-    }
-
 }
