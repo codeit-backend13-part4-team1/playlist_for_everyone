@@ -26,6 +26,7 @@ public class WebSocketController {
     ){
         // Send 는 구독id 가 없고, 세션과 destination 만 존재한다.
         SessionInfo info = new SessionInfo(message);
+        log.info("contentChatReceive : {}", payload);
         eventPublisher.publishEvent(
                 new WatchingChatSendEvent(
                         info,

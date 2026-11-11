@@ -3,27 +3,25 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket;
 
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.DestinationMatcher;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.SessionMatcher;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.ConnectionRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.role.*;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.messaging.*;
 
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
+
 /**
  * 웹 소켓의 연결 및 구독상태의 전환을 알리는 이벤트.
  * 리소스가 Spring에 정상적으로 반영되었는지는 알 수 없음.
  */
-
-@Slf4j
 @Component
 @RequiredArgsConstructor
 public class WebSocketEventListener {
 
-    private final ConnectionRegistry connectionRegistry;
+    private final SubscriptionRegistry subscriptionRegistry;
 
     private final DestinationMatcher subscribe;
     private final DestinationMatcher unsubscribe;
@@ -64,7 +62,9 @@ public class WebSocketEventListener {
      */
     @EventListener
     public void onSubscribe(SessionSubscribeEvent event){
-        subscribe.run(new SessionInfo(event.getMessage(), event.getUser()));
+        SessionInfo info = new SessionInfo(event.getMessage(), event.getUser());
+        subscribe.run(info);
+        subscriptionRegistry.register(info);
     }
 
     /**
@@ -75,8 +75,11 @@ public class WebSocketEventListener {
      */
     @EventListener
     public void onUnsubscribe(SessionUnsubscribeEvent event){
-        SessionInfo info = new SessionInfo(event.getMessage(), event.getUser());
+        SessionInfo info = subscriptionRegistry.get(new SessionInfo(event.getMessage(), event.getUser()))
+                .orElseThrow(RuntimeException::new);
+
         unsubscribe.run(info);
+        subscriptionRegistry.unregister(info);
     }
 
     /**
