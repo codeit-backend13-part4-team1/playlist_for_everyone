@@ -1,13 +1,13 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
-import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketDestinationInvalidException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionRegisterException;
 import com.codeit.sb13.playlist_for_everyone.global.service.MatchRule;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSession;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.WatchingSessionChange;
@@ -29,6 +29,7 @@ import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.We
 public class WatchingSessionEventListener {
     private final WatchingSession watchingSession;
     private final RedisTemplate<String, Object> redisTemplate;
+    private final SubscriptionRegistry subscriptionRegistry;
 
     /**
      * 세션 등록 이벤트는 동기 이벤트로 진행한다.
@@ -38,6 +39,7 @@ public class WatchingSessionEventListener {
     @EventListener
     public void watchJoinEvent(WatchingSessionJoinEvent event){
         SessionInfo info = event.info();
+        subscriptionRegistry.register(info);
         try {
             check(info.destination());
 
@@ -87,6 +89,8 @@ public class WatchingSessionEventListener {
                     info.session(),
                     user != null ? user.getUserId() : null,
                     e);
+        } finally {
+//            connectionRegistry.unregister(new SessionInfo(event.info()).toData());
         }
     }
 
@@ -148,7 +152,7 @@ public class WatchingSessionEventListener {
                     destination,
                     chat
             );
-
+            log.info("contentChatSend : {}", message);
             redisTemplate.convertAndSend(topic, message);
         } catch (RuntimeException e) {
             log.error("[{}] 메세지 전송 실패.",

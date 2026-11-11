@@ -61,6 +61,7 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
 
         if (MatchRule.check(destination,watchingSessionUrlPattern())) type = WatchingSessionType.VIEW;
         if (MatchRule.check(destination,watchingChatUrlPattern())) type = WatchingSessionType.CHAT;
+        if (MatchRule.check(destination,watchingChatSendUrlPattern())) type = WatchingSessionType.CHAT;
 
         return switch (type) {
             case VIEW -> merge(MESSAGE_VIEW_PREFIX, MatchRule.extract(destination,UUID_REGEX));
@@ -142,7 +143,9 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
         // 시청에서 content 기반으로 구독 해지
         watchingSessionRepository.deleteWithContentId(contentId);
         // content 기반 메세지 구독 리스트
-        return topicRegistry.disconnectWithContentId(contentId);
+        String chatTopic = MESSAGE_CHAT_PREFIX + contentId;
+        String viewTopic = MESSAGE_VIEW_PREFIX + contentId;
+        return topicRegistry.disconnectWithContentId(viewTopic);
     }
 
     @Override

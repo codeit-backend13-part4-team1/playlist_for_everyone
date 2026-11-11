@@ -27,7 +27,7 @@ public class RedisTopicRegistry {
     private final RedisBrokerRegister redisBroker;
 
     private final Map<String, RedisMessageListener> listenerMap = new ConcurrentHashMap<>();
-    // content 를 기반으로 session - subscription 쌍을 관리
+    // content(topic) 를 기반으로 session - subscription 쌍을 관리
     private final Map<String, Set<KeyPair>> registerMap = new ConcurrentHashMap<>();
     private final Map<KeyPair,String> registerIndex = new ConcurrentHashMap<>();
 
@@ -163,9 +163,11 @@ public class RedisTopicRegistry {
 
     }
 
-    public List<String> disconnectWithContentId(UUID contentId){
+    public List<String> disconnectWithContentId(String contentId){
         List<String> topics = new ArrayList<>();
-        for (KeyPair topic : registerMap.get(contentId.toString())){
+        if (registerMap.get(contentId) == null)
+            return topics;
+        for (KeyPair topic : registerMap.get(contentId)){
             unregister(topic);
             topics.add(topic.session());
         }

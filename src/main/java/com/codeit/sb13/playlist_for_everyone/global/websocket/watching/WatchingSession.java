@@ -14,7 +14,7 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocke
 import com.codeit.sb13.playlist_for_everyone.global.service.MatchRule;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionData;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.ConnectionRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.*;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
@@ -51,7 +51,7 @@ public class WatchingSession {
     private final UserService userService;
     private final ContentService contentService;
     private final WatchingSessionService watchingSessionService;
-    private final ConnectionRegistry connectionRegistry;
+    private final SubscriptionRegistry subscriptionRegistry;
     private final UserSummaryMapper userSummaryMapper;
 
     public String topic(SessionInfo info){
@@ -74,18 +74,14 @@ public class WatchingSession {
      * @return WatchingSessionChange 세션에 일어난 변화 정보와, 세션 내부 정보를 담고있는 객체.
      */
     public WatchingSessionChange joinViewerSession(SessionInfo info){
-        SessionData session = connectionRegistry.get(
-                check(info.session()),
-                check(info.subscription())
-        );
-        if(session == null) throw new WebSocketSessionNotFoundException();
+        SessionInfo session = subscriptionRegistry.get(info)
+                .orElseThrow(WebSocketSessionNotFoundException::new);
         SecurityUser auth = check(session.user());
         String contentId = getContentIdFromDestination(info);
 
         return getWatchingSessionChange(
                 ChangeType.JOIN,
                 auth,
-                session,
                 info,
                 UUID.fromString(contentId)
         );
@@ -99,21 +95,15 @@ public class WatchingSession {
      * @return WatchingSessionChange 세션에 일어난 변화 정보와, 세션 내부 정보를 담고있는 객체.
      */
     public WatchingSessionChange leaveViewerSession(SessionInfo info){
-        SessionData session = connectionRegistry.get(
-                check(info.session()),
-                check(info.subscription())
-        );
-        if(session == null) throw new WebSocketSessionNotFoundException();
+        SessionInfo session = subscriptionRegistry.get(info)
+                .orElseThrow(WebSocketSessionNotFoundException::new);
         SecurityUser auth = check(session.user());
 
-        // unsubscribe 혹은 disconnect 프레임에서 인증, 경로정보 복원.
-        info.wrap(session);
         String contentId = getContentIdFromDestination(info);
 
         return getWatchingSessionChange(
                 ChangeType.LEAVE,
                 auth,
-                session,
                 info,
                 UUID.fromString(contentId)
         );
@@ -164,14 +154,14 @@ public class WatchingSession {
     }
 
     public void disconnectWithContentId(UUID contentId){
-        List<String> sessionIds = watchingSessionService.disconnectWithContentDeleted(contentId);
-        for (String sessionId : sessionIds)
-            connectionRegistry.close(sessionId);
+//        List<String> sessionIds = watchingSessionService.disconnectWithContentDeleted(contentId);
+//        for (String sessionId : sessionIds)
+//            subscriptionRegistry.close(sessionId);
     }
 
     public void disconnectWithSessionIds(String sessionId){
-        watchingSessionService.disconnectWithSessionIds(sessionId);
-        connectionRegistry.close(sessionId);
+//        watchingSessionService.disconnectWithSessionIds(sessionId);
+//        subscriptionRegistry.close(sessionId);
     }
 
 
@@ -180,7 +170,6 @@ public class WatchingSession {
     private WatchingSessionChange getWatchingSessionChange(
             ChangeType type,
             SecurityUser auth,
-            SessionData session,
             SessionInfo info,
             UUID contentId
     ){
@@ -196,8 +185,10 @@ public class WatchingSession {
         Watcher watcher = mapper.toWatcher(user);
         WatchContent watchContent = mapper.toWatchContent(content);
         WatchingSessionDto dto = new WatchingSessionDto(
-                session.id(),
-                session.createdAt(),
+//                session.id(),
+//                session.createdAt(),
+                null,
+                null,
                 watcher,
                 watchContent
         );

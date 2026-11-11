@@ -9,7 +9,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.service.lock.SpreadLock;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.DestinationMatcher;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.SessionMatcher;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.ConnectionRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistry;
 import io.jsonwebtoken.JwtException;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.*;
@@ -53,7 +53,7 @@ public class WebSocketInterceptorTest {
     @Mock
     HeartBeatDelay delay;
     @Mock
-    ConnectionRegistry connectionRegistry;
+    SubscriptionRegistry subscriptionRegistry;
     @Mock
     SessionMatcher sessionMatcher;
     @Mock
@@ -210,10 +210,10 @@ public class WebSocketInterceptorTest {
             interceptor.preSend(message,messageChannel);
 
             // 세션 정보 저장 매서드가 호출됨.
-            verify(connectionRegistry,times(1))
-                    .register(any(SessionData.class));
+            verify(subscriptionRegistry,times(1))
+                    .register(any(SessionInfo.class));
 
-            List<SessionData> sessiondDataList = mockingDetails(connectionRegistry)
+            List<SessionData> sessiondDataList = mockingDetails(subscriptionRegistry)
                     .getInvocations()
                     .stream()
                     .filter(inv -> inv.getMethod().getName().equals("register"))
@@ -239,8 +239,8 @@ public class WebSocketInterceptorTest {
 
             interceptor.preSend(message,messageChannel);
 
-            verify(connectionRegistry,times(1)).unregister(any(SessionData.class));
-            List<SessionData> sessiondDataList = mockingDetails(connectionRegistry)
+            verify(subscriptionRegistry,times(1)).unregister(any(SessionInfo.class));
+            List<SessionData> sessiondDataList = mockingDetails(subscriptionRegistry)
                     .getInvocations()
                     .stream()
                     .filter(inv -> inv.getMethod().getName().equals("unregister"))
@@ -264,8 +264,8 @@ public class WebSocketInterceptorTest {
 
             interceptor.preSend(message,messageChannel);
 
-            verify(connectionRegistry,times(1)).unregister(any(SessionData.class));
-            List<SessionData> sessiondDataList = mockingDetails(connectionRegistry)
+            verify(subscriptionRegistry,times(1)).unregister(any(SessionInfo.class));
+            List<SessionData> sessiondDataList = mockingDetails(subscriptionRegistry)
                     .getInvocations()
                     .stream()
                     .filter(inv -> inv.getMethod().getName().equals("unregister"))

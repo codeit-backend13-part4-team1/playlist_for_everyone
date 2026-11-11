@@ -5,7 +5,6 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.SessionMatcher;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.ConnectionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.role.SessionRefreshRule;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -42,7 +41,6 @@ public class WebSocketInterceptor implements ChannelInterceptor {
 
     private final JwtTokenProvider jwtTokenProvider;
     private final UserService userService;
-    private final ConnectionRegistry connectionRegistry;
 
     // 서버가 올라가기 전, matcher 에 Rule 을 적재하는 구간.
     @PostConstruct
@@ -115,22 +113,18 @@ public class WebSocketInterceptor implements ChannelInterceptor {
 
     private Message<?> connect(StompHeaderAccessor accessor, Message<?> message) {
         authenticate(accessor);
-        connectionRegistry.register(new SessionInfo(message).toData());
         return message;
     }
 
     private Message<?> subscribe(StompHeaderAccessor accessor, Message<?> message) {
-        connectionRegistry.register(new SessionInfo(message).toData());
         return message;
     }
 
     private Message<?> unsubscribe(StompHeaderAccessor accessor,Message<?> message){
-        connectionRegistry.unregister(new SessionInfo(message).toData());
         return message;
     }
 
     private Message<?> disconnect(StompHeaderAccessor accessor,Message<?> message){
-        connectionRegistry.unregister(new SessionInfo(message).toData());
         return message;
     }
 
