@@ -8,6 +8,8 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.util.UUID;
+
 @Table(name = "conversations")
 @Entity
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -29,5 +31,18 @@ public class Conversation extends CreatedAtEntity {
 
     public Conversation(ConversationCommand command){
        this(command.userA(), command.userB());
+    }
+
+    public UUID getUserAId(){
+        if (userA == null) {
+            return null;
+        }
+        return userA.getId();
+    }
+    public UUID getUserBId(){
+        if (userB == null) {
+            return null;
+        }
+        return userB.getId();
     }
 }
