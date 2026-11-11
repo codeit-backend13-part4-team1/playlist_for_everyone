@@ -24,6 +24,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -129,13 +130,22 @@ public class ConversationServiceIntegrationTest {
     }
 
     @Test
-    @DisplayName("신규 대화방을 커밋하고 상대방의 프로필 이미지 URL을 반환한다.")
+    @DisplayName("신규 대화방 저장을 커밋한 후 트랜잭션 밖에서 상대방의 프로필 이미지 URL을 생성한다.")
     void create_commitsNewConversationAndReturnsWithUserProfileImage(){
         insertWithUserProfileImage();
         String profileImageUrl = "https://example.com/profile.png";
 
         when(fileStorage.getFileUrl(profileImageKey))
-                .thenReturn(profileImageUrl);
+                .thenAnswer(invocation -> {
+                    assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+                    Long savedCount = jdbcTemplate.queryForObject("""
+                            SELECT COUNT(*) FROM conversations
+                            WHERE (user_a_id = ? AND user_b_id = ?)
+                               OR (user_a_id = ? AND user_b_id = ?)
+                            """, Long.class, requesterId, withUserId, withUserId, requesterId);
+                    assertThat(savedCount).isEqualTo(1L);
+                    return profileImageUrl;
+                });
 
         ConversationCreateCommand command = new ConversationCreateCommand(requesterId, withUserId);
 
@@ -265,8 +275,8 @@ public class ConversationServiceIntegrationTest {
     }
 
     @Test
-    @DisplayName("프로필 이미지 URL 생성에 실패하면 대화방 저장 트랜잭션을 롤백한다.")
-    void create_rollsBackConversationWhenProfileImageUrlGenerationFails(){
+    @DisplayName("프로필 이미지 URL 생성에 실패해도 커밋된 대화방은 유지된다.")
+    void create_keepsConversationWhenProfileImageUrlGenerationFails(){
         insertWithUserProfileImage();
         IllegalStateException exception = new IllegalStateException("프로필 이미지 URL 생성 실패");
 
@@ -276,7 +286,7 @@ public class ConversationServiceIntegrationTest {
         assertThatThrownBy(() -> conversationService.create(command))
                 .isSameAs(exception);
 
-        assertThat(conversationRepository.count()).isZero();
+        assertThat(conversationRepository.count()).isEqualTo(1L);
     }
 
     @Test
