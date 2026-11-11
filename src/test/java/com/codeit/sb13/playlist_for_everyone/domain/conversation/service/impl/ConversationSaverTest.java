@@ -2,13 +2,10 @@ package com.codeit.sb13.playlist_for_everyone.domain.conversation.service.impl;
 
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.command.ConversationCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.command.ConversationCreateCommand;
-import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.response.ConversationDto;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.entity.Conversation;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.repository.ConversationRepository;
-import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
-import com.codeit.sb13.playlist_for_everyone.domain.user.mapper.UserSummaryMapper;
 import com.codeit.sb13.playlist_for_everyone.global.exception.conversation.ConversationTargetNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,9 +41,6 @@ class ConversationSaverTest {
     @Mock
     private  ConversationUserReader conversationUserReader;
 
-    @Mock
-    private UserSummaryMapper userSummaryMapper;
-
     private ConversationSaver conversationSaver;
     private final UUID requesterId = UUID.randomUUID();
     private final UUID withUserId = UUID.randomUUID();
@@ -55,14 +49,13 @@ class ConversationSaverTest {
     void setUp() {
         conversationSaver = new ConversationSaver(
                 conversationRepository,
-                conversationUserReader,
-                userSummaryMapper
+                conversationUserReader
         );
     }
 
     @ParameterizedTest(name = "요청자가 userA인가:{0}")
     @ValueSource(booleans = {true, false})
-    @DisplayName("요청 방향에 관계없이 사용자 쌍을 정렬하여 저장하고 신규 대화방 응답을 반환한다.")
+    @DisplayName("요청 방향에 관계없이 사용자 쌍을 정렬하여 저장하고 저장소가 반환한 엔티티를 반환한다.")
     void save_returnsNewConversationRegardlessOfRequestDirection(boolean requesterIsUserA){
         UUID userAId = UUID.fromString("7fffffff-ffff-ffff-ffff-ffffffffffff");
         UUID userBId = UUID.fromString("80000000-0000-0000-0000-000000000000");
@@ -78,19 +71,15 @@ class ConversationSaverTest {
         Conversation saved = new Conversation(new ConversationCommand(userA, userB));
         ReflectionTestUtils.setField(saved, "id", conversationId);
 
-        UserSummary expectedWith = new UserSummary(otherUser.getId(), otherUser.getName(), "https://example.com/proile.png");
         given(conversationUserReader.getById(requester.getId()))
                 .willReturn(requester);
         given(conversationUserReader.getById(otherUser.getId()))
                 .willReturn(otherUser);
         given(conversationRepository.save(any(Conversation.class)))
                 .willReturn(saved);
-        given(userSummaryMapper.toSummary(otherUser))
-                .willReturn(expectedWith);
+        Conversation result = conversationSaver.save(command);
 
-        ConversationDto result = conversationSaver.save(command);
-
-        assertThat(result).isEqualTo(new ConversationDto(conversationId, expectedWith, null, false));
+        assertThat(result).isSameAs(saved);
         ArgumentCaptor<Conversation> captor = ArgumentCaptor.forClass(Conversation.class);
         verify(conversationRepository).save(captor.capture());
 
@@ -99,11 +88,10 @@ class ConversationSaverTest {
         assertThat(requested.getUserB()).isSameAs(userB);
         verify(conversationUserReader).getById(requester.getId());
         verify(conversationUserReader).getById(otherUser.getId());
-        verify(userSummaryMapper).toSummary(otherUser);
     }
 
     @Test
-    @DisplayName("요청자가 없으면 사용자 없음 예외를 그대로 전달하고 저장과 응답 변환을 수행하지 않는다.")
+    @DisplayName("요청자가 없으면 사용자 없음 예외를 그대로 전달하고 저장하지 않는다.")
     void save_throwsWhenRequesterNotFound(){
 
 
@@ -114,11 +102,11 @@ class ConversationSaverTest {
         assertThatThrownBy(() -> conversationSaver.save(command))
                 .isSameAs(exception);
         verify(conversationUserReader).getById(requesterId);
-        verifyNoInteractions(conversationRepository, userSummaryMapper);
+        verifyNoInteractions(conversationRepository);
     }
 
     @Test
-    @DisplayName("상대방이 없으면 대화 상대 미존재예외로 변환하고 저장과 응답 변환을 수행하지 않는다.")
+    @DisplayName("상대방이 없으면 대화 상대 미존재 예외로 변환하고 저장하지 않는다.")
     void save_throwsWhenTargetNotFound(){
         User requester = createUser(requesterId, "요청자");
         ConversationCreateCommand command = new ConversationCreateCommand(requesterId, withUserId);
@@ -133,11 +121,11 @@ class ConversationSaverTest {
                                 .containsExactlyEntriesOf(Map.of("withUserId", withUserId)));
         verify(conversationUserReader).getById(requesterId);
         verify(conversationUserReader).getById(withUserId);
-        verifyNoInteractions(conversationRepository, userSummaryMapper);
+        verifyNoInteractions(conversationRepository);
     }
 
     @Test
-    @DisplayName("상대방 조회 중 다른 예외가 발생하면 원본 예외를 전달하고 저장과 응답 변환을 수행하지 않는다.")
+    @DisplayName("상대방 조회 중 다른 예외가 발생하면 원본 예외를 전달하고 저장하지 않는다.")
     void save_propagatesUnexpectedTargetLookupException(){
         User requester = createUser(requesterId, "요청자");
         ConversationCreateCommand command = new ConversationCreateCommand(requesterId, withUserId);
@@ -151,11 +139,11 @@ class ConversationSaverTest {
                 .isSameAs(exception);
         verify(conversationUserReader).getById(requesterId);
         verify(conversationUserReader).getById(withUserId);
-        verifyNoInteractions(conversationRepository, userSummaryMapper);
+        verifyNoInteractions(conversationRepository);
     }
 
     @Test
-    @DisplayName("대화방 저장이 실패하면 원본 예외를 전달하고 응답 변환을 수행하지 않는다.")
+    @DisplayName("대화방 저장이 실패하면 원본 예외를 전달한다.")
     void save_propagatesRepositoryException(){
         User requester = createUser(requesterId, "요청자");
         User otherUser = createUser(withUserId, "대화 상대");
@@ -176,7 +164,6 @@ class ConversationSaverTest {
         verify(conversationUserReader).getById(requesterId);
         verify(conversationUserReader).getById(withUserId);
         verify(conversationRepository).save(any(Conversation.class));
-        verifyNoInteractions(userSummaryMapper);
 
     }
 

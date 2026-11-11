@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.conversation.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.command.ConversationCreateCommand;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.ConversationDetailProjection;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.response.ConversationDto;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.response.MessageDto;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.entity.Conversation;
@@ -302,7 +303,7 @@ public class ConversationServiceIntegrationTest {
         AtomicBoolean firstLookup = new AtomicBoolean(true);
         doAnswer(invocation ->{
             @SuppressWarnings("unchecked")
-            Optional<ConversationDto> found = (Optional<ConversationDto>) invocation.callRealMethod();
+            Optional<ConversationDetailProjection> found = (Optional<ConversationDetailProjection>) invocation.callRealMethod();
 
             if (firstLookup.compareAndSet(true, false)) {
                 assertThat(found).isEmpty();
@@ -340,7 +341,7 @@ public class ConversationServiceIntegrationTest {
         CountDownLatch initialLookups = new CountDownLatch(2);
         doAnswer(invocation ->{
             @SuppressWarnings("unchecked")
-            Optional<ConversationDto> found = (Optional<ConversationDto>) invocation.callRealMethod();
+            Optional<ConversationDetailProjection> found = (Optional<ConversationDetailProjection>) invocation.callRealMethod();
             if (found.isEmpty()) {
                 initialLookups.countDown();
                 if (!initialLookups.await(10, TimeUnit.SECONDS)){
