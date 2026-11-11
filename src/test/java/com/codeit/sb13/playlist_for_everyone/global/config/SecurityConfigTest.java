@@ -1,7 +1,9 @@
 package com.codeit.sb13.playlist_for_everyone.global.config;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.AccessTokenClaims;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AuthService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.controller.UserController;
@@ -31,6 +33,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.nio.charset.StandardCharsets;
@@ -60,6 +63,9 @@ class SecurityConfigTest {
     private static final UUID USER_ID =
             UUID.fromString("11111111-1111-1111-1111-111111111111");
 
+    private static final UUID SESSION_ID =
+            UUID.fromString("22222222-2222-2222-2222-222222222222");
+
     private static final String TOKEN = "test-access-token";
     private static final String ME_URL = "/api/security-test/me";
 
@@ -86,6 +92,10 @@ class SecurityConfigTest {
     // 이 테스트에서는 로그아웃 동작을 검증하지 않으므로 Mock으로 등록한다.
     @MockitoBean
     private AuthService authService;
+
+    // SecurityConfig가 로그인 세션 저장소를 주입받는다.
+    @MockitoBean
+    private UserSessionRepository userSessionRepository;
 
 
     @Test
@@ -152,7 +162,7 @@ class SecurityConfigTest {
     @Test
     @DisplayName("유효하지 않은 JWT로 접근하면 401을 반환한다")
     void 잘못된_JWT는_거절한다() throws Exception {
-        given(jwtTokenProvider.parseAccessToken(TOKEN))
+        given(jwtTokenProvider.parseAccess(TOKEN))
                 .willThrow(new JwtException("내부 토큰 검증 오류"));
 
         mockMvc.perform(get(ME_URL)
@@ -195,10 +205,13 @@ class SecurityConfigTest {
     void 관리자의_관리자_API_접근을_허용한다() throws Exception {
         prepareAuthenticatedUser(Role.ADMIN);
 
+        // 실제 사용자 목록 API로 URL 접근 권한만 검증한다. 응답 내용은 UserControllerTest가 검증한다.
         mockMvc.perform(get("/api/users")
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.allowed").value(true));
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN)
+                        .param("limit", "20")
+                        .param("sortBy", "name")
+                        .param("sortDirection", "ASCENDING"))
+                .andExpect(status().isOk());
     }
 
     @Test
@@ -242,8 +255,12 @@ class SecurityConfigTest {
 
         ReflectionTestUtils.setField(user, "id", USER_ID);
 
-        given(jwtTokenProvider.parseAccessToken(TOKEN))
-                .willReturn(USER_ID);
+        given(jwtTokenProvider.parseAccess(TOKEN))
+                .willReturn(new AccessTokenClaims(USER_ID, SESSION_ID));
+
+        // 현재 로그인 세션의 토큰으로 요청한 상황이다.
+        given(userSessionRepository.isCurrent(USER_ID, SESSION_ID))
+                .willReturn(true);
 
         given(userService.getById(USER_ID))
                 .willReturn(user);
@@ -262,6 +279,23 @@ class SecurityConfigTest {
                 .andExpect(status().isUnauthorized());
 
         verifyNoInteractions(jwtTokenProvider, userService);
+    }
+
+    @Test
+    @DisplayName("웹소켓 핸드셰이크는 토큰 없이 접근할 수 있다.")
+    void 웹소켓_핸드셰이크는_인증_없이_허용한다() throws Exception {
+        mockMvc.perform(get("/ws/info"))
+                .andExpect(status().isOk());
+
+        // 핸드셰이크 단계에서는 JWT를 검사하지 않는다. 인증은 STOMP CONNECT에서 한다.
+        verifyNoInteractions(jwtTokenProvider, userService);
+    }
+
+    @Test
+    @DisplayName("SockJS 폴백 요청은 CSRF 토큰 없이 허용한다.")
+    void SockJS_폴백_요청은_CSRF를_검사하지_않는다() throws Exception {
+        mockMvc.perform(post("/ws/000/test-session/xhr_send"))
+                .andExpect(status().isOk());
     }
 
 
@@ -287,10 +321,15 @@ class SecurityConfigTest {
             );
         }
 
-        @GetMapping("/api/users")
-        public Map<String, Boolean> users() {
-            // 실제 관리자 목록 구현 대신 URL 접근 권한만 검증한다.
-            return Map.of("allowed", true);
+        // SockJS가 연결 전에 보내는 정보 요청. 토큰 없이 들어온다.
+        @GetMapping("/ws/info")
+        public Map<String, Boolean> sockJsInfo() {
+            return Map.of("websocket", true);
+        }
+
+        // 웹소켓을 쓸 수 없을 때 SockJS가 사용하는 폴백 전송. CSRF 헤더 없이 POST로 들어온다.
+        @PostMapping("/ws/{serverId}/{sessionId}/xhr_send")
+        public void sockJsSend() {
         }
 
     }

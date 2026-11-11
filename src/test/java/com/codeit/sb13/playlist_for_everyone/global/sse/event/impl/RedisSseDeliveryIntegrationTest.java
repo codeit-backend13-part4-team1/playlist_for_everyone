@@ -1,15 +1,18 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.event.impl;
 
-import com.codeit.sb13.playlist_for_everyone.global.config.RedisConfig;
-import com.codeit.sb13.playlist_for_everyone.global.config.SseTransportConfig;
+import com.codeit.sb13.playlist_for_everyone.global.config.*;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisBrokerRegister;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Event;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEventPublisher;
+import com.codeit.sb13.playlist_for_everyone.global.sse.history.impl.RedisSseHistoryStore;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.impl.InMemorySseEmitterRepository;
+import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseConnectionCloser;
+import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseDeliveryCoordinator;
 import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseDeliveryService;
+import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseRecoveryService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -35,7 +38,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -49,12 +52,25 @@ import static org.mockito.Mockito.*;
                 RedisSseEventSubscriber.class,
                 RedisSseSubscription.class,
                 SseDeliveryService.class,
-                InMemorySseEmitterRepository.class
+                InMemorySseEmitterRepository.class,
+                SseEventPublisherConfig.class,
+                SseHistoryConfig.class,
+                SseRetryConfig.class,
+                RedisSseHistoryStore.class,
+                SseRecoveryService.class,
+                SseDeliveryCoordinator.class,
+                SseConnectionCloser.class
         },
         properties = {
                 "everyone.sse.transport=redis",
                 "everyone.sse.subscription-enabled=true",
-                "everyone.sse.redis.channel=test:sse:delivery"
+                "everyone.sse.redis.channel=test:sse:delivery",
+                "everyone.sse.history.retention=10m",
+                "everyone.sse.history.max-events-per-user=10",
+                "everyone.sse.history.key-prefix=test:sse:delivery:history",
+                "everyone.sse.retry.initial-delay=1s",
+                "everyone.sse.retry.max-delay=30s",
+                "everyone.sse.retry.max-retries=3"
         }
 )
 @ImportAutoConfiguration({
@@ -86,6 +102,9 @@ public class RedisSseDeliveryIntegrationTest {
     @Autowired
     private SseEmitterRepository sseEmitterRepository;
 
+    @Autowired
+    private SseDeliveryCoordinator deliveryCoordinator;
+
     @Test
     @DisplayName("Redis를 거친 이벤트가 ID·이름·데이터를 보존하며 발행 서버의 연결에 중복 없이 전달된다.")
     void deliversPublishedEventToReceiverConnection() throws IOException {
@@ -100,8 +119,10 @@ public class RedisSseDeliveryIntegrationTest {
                 Map.of("message", "수신자 연결 전송 테스트")
         );
 
-        sseEmitterRepository.save(receiverId, connection, emitter);
         try {
+            deliveryCoordinator.register(receiverId, connection, emitter);
+
+            deliveryCoordinator.recover(receiverId, connection, null);
             ArgumentCaptor<SseEmitter.SseEventBuilder> eventCaptor = ArgumentCaptor.captor();
             publisher.publish(event);
             verify(emitter, timeout(5_000))
@@ -124,7 +145,7 @@ public class RedisSseDeliveryIntegrationTest {
                     .isEqualTo(objectMapper.valueToTree(event.data()));
 
         } finally {
-            sseEmitterRepository.delete(receiverId, connection);
+            deliveryCoordinator.cleanupConnection(receiverId, connection);
         }
     }
 
@@ -145,8 +166,13 @@ public class RedisSseDeliveryIntegrationTest {
                 Map.of("message", "여러 연결 전송 테스트"));
 
         try {
-            sseEmitterRepository.save(receiverId, firstConnection, firstEmitter);
-            sseEmitterRepository.save(receiverId, secondConnection, secondEmitter);
+            deliveryCoordinator.register(receiverId, firstConnection, firstEmitter);
+
+            deliveryCoordinator.recover(receiverId, firstConnection, null);
+
+            deliveryCoordinator.register(receiverId, secondConnection, secondEmitter);
+
+            deliveryCoordinator.recover(receiverId, secondConnection, null);
 
             publisher.publish(event);
             verify(firstEmitter, timeout(5_000))
@@ -155,8 +181,8 @@ public class RedisSseDeliveryIntegrationTest {
                     .send(any(SseEmitter.SseEventBuilder.class));
 
         } finally {
-            sseEmitterRepository.delete(receiverId, firstConnection);
-            sseEmitterRepository.delete(receiverId, secondConnection);
+            deliveryCoordinator.cleanupConnection(receiverId, firstConnection);
+            deliveryCoordinator.cleanupConnection(receiverId, secondConnection);
         }
     }
 
@@ -177,8 +203,13 @@ public class RedisSseDeliveryIntegrationTest {
                 Map.of("message", "수신자 구분 테스트"));
 
         try {
-            sseEmitterRepository.save(receiverId, receiverConnection, receiverEmitter);
-            sseEmitterRepository.save(otherUserId, otherConnection, otherEmitter);
+            deliveryCoordinator.register(receiverId, receiverConnection, receiverEmitter);
+
+            deliveryCoordinator.recover(receiverId, receiverConnection, null);
+
+            deliveryCoordinator.register(otherUserId, otherConnection, otherEmitter);
+
+            deliveryCoordinator.recover(otherUserId, otherConnection, null);
 
             publisher.publish(event);
 
@@ -188,8 +219,8 @@ public class RedisSseDeliveryIntegrationTest {
             verify(otherEmitter, after(500).never())
                     .send(any(SseEmitter.SseEventBuilder.class));
         } finally {
-            sseEmitterRepository.delete(receiverId, receiverConnection);
-            sseEmitterRepository.delete(otherUserId, otherConnection);
+            deliveryCoordinator.cleanupConnection(receiverId, receiverConnection);
+            deliveryCoordinator.cleanupConnection(otherUserId, otherConnection);
         }
 
 
@@ -202,8 +233,10 @@ public class RedisSseDeliveryIntegrationTest {
             assertThat(contextB).hasNotFailed();
 
             SseEmitterRepository repositoryOnB = contextB.getBean(SseEmitterRepository.class);
+            SseDeliveryCoordinator coordinatorOnB = contextB.getBean(SseDeliveryCoordinator.class);
 
             assertThat(repositoryOnB).isNotSameAs(sseEmitterRepository);
+            assertThat(coordinatorOnB).isNotSameAs(deliveryCoordinator);
 
             UUID receiverId = UUID.randomUUID();
             Connection connectionOnA = Connection.create();
@@ -218,8 +251,13 @@ public class RedisSseDeliveryIntegrationTest {
                     Map.of("message", "서버 간 연결 전송 테스트"));
 
             try {
-                sseEmitterRepository.save(receiverId, connectionOnA, emitterOnA);
-                repositoryOnB.save(receiverId, connectionOnB, emitterOnB);
+                deliveryCoordinator.register(receiverId, connectionOnA, emitterOnA);
+
+                deliveryCoordinator.recover(receiverId, connectionOnA, null);
+
+                coordinatorOnB.register(receiverId, connectionOnB, emitterOnB);
+
+                coordinatorOnB.recover(receiverId, connectionOnB, null);
 
                 publisher.publish(event);
                 verify(emitterOnA, timeout(5_000))
@@ -227,8 +265,8 @@ public class RedisSseDeliveryIntegrationTest {
                 verify(emitterOnB, timeout(5_000))
                         .send(any(SseEmitter.SseEventBuilder.class));
             } finally {
-                sseEmitterRepository.delete(receiverId, connectionOnA);
-                repositoryOnB.delete(receiverId, connectionOnB);
+                deliveryCoordinator.cleanupConnection(receiverId, connectionOnA);
+                coordinatorOnB.cleanupConnection(receiverId, connectionOnB);
             }
         });
     }
@@ -239,7 +277,10 @@ public class RedisSseDeliveryIntegrationTest {
         createAdditionalNodeRunner().run(contextB ->{
             assertThat(contextB).hasNotFailed();
             SseEmitterRepository repositoryOnB = contextB.getBean(SseEmitterRepository.class);
+            SseDeliveryCoordinator coordinatorOnB = contextB.getBean(SseDeliveryCoordinator.class);
+
             assertThat(repositoryOnB).isNotSameAs(sseEmitterRepository);
+            assertThat(coordinatorOnB).isNotSameAs(deliveryCoordinator);
 
             UUID receiverId = UUID.randomUUID();
             Connection connectionOnB = Connection.create();
@@ -252,7 +293,10 @@ public class RedisSseDeliveryIntegrationTest {
             );
 
             try {
-                repositoryOnB.save(receiverId, connectionOnB, emitterOnB);
+                coordinatorOnB.register(receiverId, connectionOnB, emitterOnB);
+
+                coordinatorOnB.recover(receiverId, connectionOnB, null);
+
                 assertThat(sseEmitterRepository.findAllByUserId(receiverId)).isEmpty();
                 publisher.publish(event);
 
@@ -260,7 +304,7 @@ public class RedisSseDeliveryIntegrationTest {
                         .send(any(SseEmitter.SseEventBuilder.class));
 
             } finally {
-                repositoryOnB.delete(receiverId, connectionOnB);
+                coordinatorOnB.cleanupConnection(receiverId, connectionOnB);
             }
         });
     }
@@ -279,14 +323,27 @@ public class RedisSseDeliveryIntegrationTest {
                         RedisSseEventSubscriber.class,
                         RedisSseSubscription.class,
                         SseDeliveryService.class,
-                        InMemorySseEmitterRepository.class
+                        InMemorySseEmitterRepository.class,
+                        SseEventPublisherConfig.class,
+                        SseHistoryConfig.class,
+                        SseRetryConfig.class,
+                        RedisSseHistoryStore.class,
+                        SseRecoveryService.class,
+                        SseDeliveryCoordinator.class,
+                        SseConnectionCloser.class
                 )
                 .withPropertyValues(
                         "spring.data.redis.host="+ redis.getHost(),
                         "spring.data.redis.port="+ redis.getMappedPort(6379),
                         "everyone.sse.transport=redis",
                         "everyone.sse.subscription-enabled=true",
-                        "everyone.sse.redis.channel=test:sse:delivery"
+                        "everyone.sse.redis.channel=test:sse:delivery",
+                        "everyone.sse.history.retention=10m",
+                        "everyone.sse.history.max-events-per-user=10",
+                        "everyone.sse.history.key-prefix=test:sse:delivery:history",
+                        "everyone.sse.retry.initial-delay=1s",
+                        "everyone.sse.retry.max-delay=30s",
+                        "everyone.sse.retry.max-retries=3"
                 );
     }
 

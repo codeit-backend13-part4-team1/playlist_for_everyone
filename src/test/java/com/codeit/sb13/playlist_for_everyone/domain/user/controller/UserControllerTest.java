@@ -1,17 +1,23 @@
 package com.codeit.sb13.playlist_for_everyone.domain.user.controller;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.AccessTokenClaims;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AuthService;
+import com.codeit.sb13.playlist_for_everyone.domain.user.dto.UserSearchCondition;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.command.UserCreateCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
+import com.codeit.sb13.playlist_for_everyone.domain.user.entity.UserSortBy;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserAdministrationService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.config.MDCLoggingInterceptor;
 import com.codeit.sb13.playlist_for_everyone.global.config.SecurityConfig;
 import com.codeit.sb13.playlist_for_everyone.global.controller.GlobalExceptionHandler;
+import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
+import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.DuplicateEmailException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import org.junit.jupiter.api.DisplayName;
@@ -33,6 +39,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.http.HttpHeaders;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 import java.util.UUID;
@@ -44,6 +51,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(UserController.class)
@@ -61,6 +69,9 @@ class UserControllerTest {
 
     private static final UUID TARGET_USER_ID =
             UUID.fromString("22222222-2222-2222-2222-222222222222");
+
+    private static final UUID SESSION_ID =
+            UUID.fromString("33333333-3333-3333-3333-333333333333");
 
     private static final String TOKEN = "test-access-token";
 
@@ -84,6 +95,10 @@ class UserControllerTest {
 
     @MockitoBean
     private UserService userService;
+
+    // SecurityConfig가 로그인 세션 저장소를 주입받는다.
+    @MockitoBean
+    private UserSessionRepository userSessionRepository;
 
     @Test
     @DisplayName("정상 요청이면 201과 사용자 정보를 반환한다")
@@ -475,7 +490,111 @@ class UserControllerTest {
         verifyNoInteractions(userAdministrationService);
     }
 
+    // ---------- 사용자 목록 조회
+    private static final String USERS_URL = "/api/users";
 
+    @Test
+    @DisplayName("관리자 사용자 목록을 조회한다.")
+    void 관리자는_사용자_목록을_조회한다() throws Exception {
+        prepareAuthenticatedUser(Role.ADMIN);
+        UserDto user = new UserDto(
+                TARGET_USER_ID, LocalDateTime.of(2026, 10, 1, 9, 30),
+                "target@example.com", "대상 사용자", null, Role.USER, false);
+        given(userAdministrationService.getUsers(any(UserSearchCondition.class)))
+                .willReturn(new CursorResponse<>(
+                        List.of(user), null, null, false, 1L, "name", SortDirection.ASCENDING));
+
+        mockMvc.perform(get(USERS_URL)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN)
+                        .param("limit", "20")
+                        .param("sortBy", "name")
+                        .param("sortDirection", "ASCENDING"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].id").value(TARGET_USER_ID.toString()))
+                .andExpect(jsonPath("$.data[0].email").value("target@example.com"))
+                .andExpect(jsonPath("$.hasNext").value(false))
+                .andExpect(jsonPath("$.totalCount").value(1))
+                .andExpect(jsonPath("$.sortBy").value("name"))
+                .andExpect(jsonPath("$.sortDirection").value("ASCENDING"));
+    }
+
+    @Test
+    @DisplayName("필터 커서 정렬 값을 조회 조건으로 변환해 전달한다.")
+    void 요청_값을_조건으로_전달한다() throws Exception {
+        prepareAuthenticatedUser(Role.ADMIN);
+        UUID idAfter = UUID.fromString("44444444-4444-4444-4444-444444444444");
+        given(userAdministrationService.getUsers(any(UserSearchCondition.class)))
+                .willReturn(new CursorResponse<>(
+                        List.of(), null, null, false, 0L, "cratedAt", SortDirection.DESCENDING
+                ));
+
+        mockMvc.perform(get(USERS_URL)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN)
+                        .param("emailLike", "target")
+                        .param("roleEqual", "ADMIN")
+                        .param("isLocked", "true")
+                        .param("cursor", "2026-10-01T09:30")
+                        .param("idAfter", idAfter.toString())
+                        .param("limit", "10")
+                        .param("sortBy", "createdAt")
+                        .param("sortDirection", "DESCENDING"))
+                .andExpect(status().isOk());
+
+        // API 값 "createdAt"이 CREATED_AT으로 변환되어야 한다.
+        verify(userAdministrationService).getUsers(new UserSearchCondition(
+                "target", Role.ADMIN, true,
+                "2026-10-01T09:30", idAfter, 10,
+                SortDirection.DESCENDING, UserSortBy.CREATED_AT));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "sortBy=name&sortDirection=ASCENDING",
+            "limit=0&sortBy=name&sortDirection=ASCENDING",
+            "limit=101&sortBy=name&sortDirection=ASCENDING",
+            "limit=20&sortDirection=ASCENDING",
+            "limit=20&sortBy=password&sortDirection=ASCENDING",
+            "limit=20&sortBy=name&sortDirection=UP",
+            "limit=20&sortBy=name&sortDirection=ASCENDING&roleEqual=MANAGER",
+            "limit=20&sortBy=createdAt&sortDirection=ASCENDING&cursor=yesterday&idAfter=44444444-4444-4444-4444-444444444444",
+            "limit=20&sortBy=name&sortDirection=ASCENDING&cursor=kim"
+    })
+    @DisplayName("잘못된 목록 조회 요청이면 400을 반환하고 서비스를 호출하지 않는다.")
+    void 잘못된_목록_조회_요청이면_400을_반환한다(String query) throws Exception {
+        prepareAuthenticatedUser(Role.ADMIN);
+
+        mockMvc.perform(get(USERS_URL + "?" + query)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(userAdministrationService);
+    }
+
+    @Test
+    @DisplayName("일반 사용자는 사용자 목록을 조회할 수 없다.")
+    void 일반_사용자는_목록을_조회할_수_없다() throws Exception {
+        prepareAuthenticatedUser(Role.USER);
+
+        mockMvc.perform(get(USERS_URL)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN)
+                        .param("limit", "20")
+                        .param("sortBy", "name")
+                        .param("sortDirection", "ASCENDING"))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(userAdministrationService);
+    }
+
+    @Test
+    @DisplayName("인증되지 않은 사용자는 사용자 목록을 조회할 수 없다.")
+    void 인증되지_않은_사용자는_사용자_목록을_조회할_수_없다() throws Exception {
+        mockMvc.perform(get(USERS_URL)
+                        .param("limit", "20")
+                        .param("sortBy", "name")
+                        .param("sortDirection", "ASCENDING"))
+                .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(userAdministrationService);
+    }
 
     static Stream<String> tooLongPasswords() {
         return Stream.of(
@@ -493,8 +612,10 @@ class UserControllerTest {
                 .build();
         ReflectionTestUtils.setField(requester, "id", ADMIN_ID);
 
-        given(jwtTokenProvider.parseAccessToken(TOKEN))
-                .willReturn(ADMIN_ID);
+        given(jwtTokenProvider.parseAccess(TOKEN))
+                .willReturn(new AccessTokenClaims(ADMIN_ID, SESSION_ID));
+        given(userSessionRepository.isCurrent(ADMIN_ID, SESSION_ID))
+                .willReturn(true);
         given(userService.getById(ADMIN_ID))
                 .willReturn(requester);
     }
@@ -510,4 +631,5 @@ class UserControllerTest {
                 {"locked": %s}
                 """.formatted(value);
     }
+
 }

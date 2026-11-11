@@ -1,8 +1,11 @@
 package com.codeit.sb13.playlist_for_everyone.domain.auth.security;
 
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.event.UserSessionRevokedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.SessionStartResult;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
@@ -14,6 +17,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -42,6 +46,9 @@ class JwtAuthenticationSuccessHandlerTest {
     private static final UUID USER_ID =
             UUID.fromString("11111111-1111-1111-1111-111111111111");
 
+    private static final UUID SESSION_ID =
+            UUID.fromString("22222222-2222-2222-2222-222222222222");
+
     // JWT의 실제 검증은 JwtTokenProviderTest에서 수행한다.
     // 여기서는 발급된 문자열 저장소와 쿠키에 전달되는지를 검증한다.
     private static final String REFRESH_TOKEN = "test-refresh-token";
@@ -62,6 +69,12 @@ class JwtAuthenticationSuccessHandlerTest {
 
     @Mock
     private RefreshTokenRepository refreshTokenRepository;
+
+    @Mock
+    private UserSessionRepository userSessionRepository;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     private JsonMapper objectMapper;
     private JwtAuthenticationSuccessHandler successHandler;
@@ -87,7 +100,7 @@ class JwtAuthenticationSuccessHandlerTest {
         Authentication authentication = prepareAuthentication();
 
         // 모든 로그인 성공 경로에서 Refresh Token도 발급한다.
-        given(jwtTokenProvider.createRefreshToken(USER_ID))
+        given(jwtTokenProvider.createRefreshToken(USER_ID, SESSION_ID))
                 .willReturn(REFRESH_TOKEN);
 
         successHandler.onAuthenticationSuccess(
@@ -138,7 +151,7 @@ class JwtAuthenticationSuccessHandlerTest {
 
         // 인증된 사용자의 ID로 조회하고 토큰을 발급해야 한다.
         verify(userService).getUserDtoById(USER_ID);
-        verify(jwtTokenProvider).createAccessToken(USER_ID);
+        verify(jwtTokenProvider).createAccessToken(USER_ID, SESSION_ID);
     }
 
     @Test
@@ -148,7 +161,7 @@ class JwtAuthenticationSuccessHandlerTest {
         Authentication authentication = prepareAuthentication();
 
         // 로그인 성공 시 발급되는 Refresh Token을 준비한다.
-        given(jwtTokenProvider.createRefreshToken(USER_ID))
+        given(jwtTokenProvider.createRefreshToken(USER_ID, SESSION_ID))
                 .willReturn(REFRESH_TOKEN);
 
         successHandler.onAuthenticationSuccess(
@@ -180,7 +193,7 @@ class JwtAuthenticationSuccessHandlerTest {
     void 리프레시_토큰을_발급하고_저장한다() throws Exception {
         Authentication authentication = prepareAuthentication();
 
-        given(jwtTokenProvider.createRefreshToken(USER_ID))
+        given(jwtTokenProvider.createRefreshToken(USER_ID, SESSION_ID))
                 .willReturn(REFRESH_TOKEN);
 
         JwtAuthenticationSuccessHandler handler = createRefreshSuccessHandler(true);
@@ -188,7 +201,7 @@ class JwtAuthenticationSuccessHandlerTest {
         handler.onAuthenticationSuccess(request, response, authentication);
 
         // 요청 파라미터가 아니라 인증된 사용자의 ID로 발급한다.
-        verify(jwtTokenProvider).createRefreshToken(USER_ID);
+        verify(jwtTokenProvider).createRefreshToken(USER_ID, SESSION_ID);
 
         // 저장소에는 원본 토큰을 전달한다.
         // SHA-256 변환은 Redis 저장소 구현체의 책임이다.
@@ -222,7 +235,7 @@ class JwtAuthenticationSuccessHandlerTest {
     void 리프레시_토큰_쿠키를_전달한다(boolean secure) throws Exception {
         Authentication authentication = prepareAuthentication();
 
-        given(jwtTokenProvider.createRefreshToken(USER_ID))
+        given(jwtTokenProvider.createRefreshToken(USER_ID, SESSION_ID))
                 .willReturn(REFRESH_TOKEN);
 
         JwtAuthenticationSuccessHandler handler = createRefreshSuccessHandler(secure);
@@ -265,7 +278,7 @@ class JwtAuthenticationSuccessHandlerTest {
     void 저장_실패시_토큰_응답을_전달하지_않는다() throws Exception {
         Authentication authentication = prepareAuthentication();
 
-        given(jwtTokenProvider.createRefreshToken(USER_ID))
+        given(jwtTokenProvider.createRefreshToken(USER_ID, SESSION_ID))
                 .willReturn(REFRESH_TOKEN);
 
         RedisConnectionFailureException failure =
@@ -298,7 +311,7 @@ class JwtAuthenticationSuccessHandlerTest {
         Authentication authentication =
                 prepareAuthentication(profileImageUrl);
 
-        given(jwtTokenProvider.createRefreshToken(USER_ID))
+        given(jwtTokenProvider.createRefreshToken(USER_ID, SESSION_ID))
                 .willReturn(REFRESH_TOKEN);
 
         successHandler.onAuthenticationSuccess(
@@ -336,12 +349,60 @@ class JwtAuthenticationSuccessHandlerTest {
                 ))
                 .isSameAs(failure);
 
-        // DTO를 완성하지 못했으면 새 토큰이나 Redis 등록 정보가 남으면 안 된다.
-        verifyNoInteractions(jwtTokenProvider, refreshTokenRepository);
+        // DTO를 완성하지 못했으면 세션을 교체하거나 토큰·Redis 등록 정보를 남기면 안 된다.
+        verifyNoInteractions(jwtTokenProvider, refreshTokenRepository, userSessionRepository, eventPublisher);
 
         assertThat(response.getHeaders(HttpHeaders.SET_COOKIE)).isEmpty();
         assertThat(response.getContentAsString()).isEmpty();
         assertThat(response.isCommitted()).isFalse();
+    }
+
+    @Test
+    @DisplayName("로그인하면 Refresh Token 유효기간으로 세션을 시작하고 두 토큰에 같은 세션 ID를 넣는다")
+    void 로그인하면_세션을_시작하고_토큰에_세션_ID를_넣는다() throws Exception {
+        Authentication authentication = prepareAuthentication();
+        given(jwtTokenProvider.createRefreshToken(USER_ID, SESSION_ID))
+                .willReturn(REFRESH_TOKEN);
+
+        successHandler.onAuthenticationSuccess(request, response, authentication);
+
+        // 세션 유지 기간은 Refresh Token과 같다.
+        verify(userSessionRepository).start(USER_ID, REFRESH_TOKEN_VALIDITY);
+        verify(jwtTokenProvider).createAccessToken(USER_ID, SESSION_ID);
+        verify(jwtTokenProvider).createRefreshToken(USER_ID, SESSION_ID);
+    }
+
+    @Test
+    @DisplayName("기존 로그인이 없으면 세션 무효화 이벤트를 발행하지 않는다")
+    void 첫_로그인이면_이벤트를_발행하지_않는다() throws Exception {
+        Authentication authentication = prepareAuthentication();
+        given(jwtTokenProvider.createRefreshToken(USER_ID, SESSION_ID))
+                .willReturn(REFRESH_TOKEN);
+
+        successHandler.onAuthenticationSuccess(request, response, authentication);
+
+        verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
+    @DisplayName("기존 로그인이 있으면 교체된 세션의 무효화 이벤트를 발행한다")
+    void 기존_로그인이_있으면_무효화_이벤트를_발행한다() throws Exception {
+        UUID replacedSessionId = UUID.fromString("33333333-3333-3333-3333-333333333333");
+        Authentication authentication = prepareAuthentication();
+
+        // prepareAuthentication의 기본 스텁을 "기존 세션 있음"으로 덮어쓴다.
+        given(userSessionRepository.start(USER_ID, REFRESH_TOKEN_VALIDITY))
+                .willReturn(new SessionStartResult(SESSION_ID, replacedSessionId));
+        given(jwtTokenProvider.createRefreshToken(USER_ID, SESSION_ID))
+                .willReturn(REFRESH_TOKEN);
+
+        successHandler.onAuthenticationSuccess(request, response, authentication);
+
+        verify(eventPublisher).publishEvent(new UserSessionRevokedEvent(
+                USER_ID,
+                replacedSessionId,
+                UserSessionRevokedEvent.RevokeReason.DUPLICATE_LOGIN
+        ));
     }
 
 
@@ -368,7 +429,11 @@ class JwtAuthenticationSuccessHandlerTest {
 
         given(userService.getUserDtoById(USER_ID))
                 .willReturn(userDto);
-        given(jwtTokenProvider.createAccessToken(USER_ID))
+        // 로그인 성공 시 새 세션을 시작한다.
+        given(userSessionRepository.start(USER_ID, REFRESH_TOKEN_VALIDITY))
+                .willReturn(new SessionStartResult(SESSION_ID, null));
+
+        given(jwtTokenProvider.createAccessToken(USER_ID, SESSION_ID))
                 .willReturn(ACCESS_TOKEN);
 
         return createAuthentication();
@@ -408,6 +473,8 @@ class JwtAuthenticationSuccessHandlerTest {
                 userService,
                 objectMapper,
                 refreshTokenRepository,
+                userSessionRepository,
+                eventPublisher,
                 REFRESH_TOKEN_VALIDITY,
                 secure
         );

@@ -140,7 +140,7 @@ public class WebSocketInterceptor implements ChannelInterceptor {
     private void authenticate(StompHeaderAccessor accessor) {
         String token = token(accessor);
 
-        UUID userId = jwtTokenProvider.parseAccessToken(token);
+        UUID userId = jwtTokenProvider.parseAccess(token).userId();
         User user = userService.getById(userId);
 
         if (user.isLocked()) throw new LockedException("잠긴 계정입니다.");

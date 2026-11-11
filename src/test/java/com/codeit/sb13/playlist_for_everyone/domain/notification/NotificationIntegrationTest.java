@@ -1,14 +1,25 @@
 package com.codeit.sb13.playlist_for_everyone.domain.notification;
 
+import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.command.FollowCommand;
+import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowResult;
+import com.codeit.sb13.playlist_for_everyone.domain.follow.event.UserFollowedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.follow.repository.FollowRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.follow.service.FollowService;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.command.NotificationCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationCreateRequestedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.response.NotificationDto;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.Notification;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.NotificationLevel;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.event.NotificationCreatedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener.NotificationEventListener;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.repository.NotificationRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationService;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationUserReader;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistSubscribedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.PlaylistService;
+import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
+import com.codeit.sb13.playlist_for_everyone.domain.user.event.UserRoleChangedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserAdministrationService;
 import com.codeit.sb13.playlist_for_everyone.global.exception.sse.SsePublishException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
@@ -20,10 +31,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.EnumSource;
-import org.junit.jupiter.params.provider.MethodSource;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.*;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -36,6 +44,7 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.context.event.ApplicationEvents;
 import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -54,14 +63,23 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 /**
- * 실제 PostgreSQL·Flyway와 Spring 트랜잭션으로 공통 생성 요청부터 커밋 후 SSE 발행 요청까지 검증한다.
+ * 실제 PostgreSQL·Flyway와 Spring 빈으로 알림 저장 및 커밋 후 SSE 발행 요청을 검증한다.
+ * 직접 발행한 이벤트의 처리 경계와 실제 팔로우·권한 변경·구독 서비스부터 알림 저장까지의 연동을 확인한다.
  *
- * <p>SseEventPublisher만 Mock으로 대체하므로 Redis·HTTP 수신은 이 클래스의 검증 범위가 아니다.
- * 테스트 전체를 @Transactional로 감싸지 않고 TransactionTemplate으로 커밋·롤백 시점을 제어한다.
- * 사용자 닉네임 변경은 알림 처리 실패에도 원래 업무의 커밋이 보존되는지 확인하기 위한 업무 대역이다.
+ * <p>SseEventPublisher는 Mock으로 대체하여 발행 요청을 확인한다. Redis·HTTP 수신은 범위 밖이다.
+ * 공통 요청 리스너의 Spy는 기본적으로 실제 메서드를 실행하며, 재발행 실패 사례에서만 예외를 유도한다.
+ * 업무 이벤트를 변환하는 NotificationDomainEventListener는 실제 빈을 사용한다.
  *
- * <p>NotificationUserReader와 UserService는 실제 빈을 사용한다. 입력 검증·사용자 조회·DB 저장의
- * 실패 지점이 서로 다르므로 각각 업무 커밋 유지, SSE 미발행, 후속 정상 알림 처리를 검증한다.
+ * <p>직접 이벤트를 발행하는 사례와 실제 권한 변경·구독 사례는 TransactionTemplate으로 커밋·롤백을 제어한다.
+ * UserAdministrationService.updateRole과 PlaylistService.subscribe는 이 트랜잭션에 참여한다.
+ * 실제 팔로우 등록은 FollowSaver의 독립적인 REQUIRES_NEW 커밋을 사용한다.
+ * 테스트 전체를 @Transactional로 감싸지 않으며, 직접 발행 사례의 닉네임 변경은 업무 대역이다.
+ *
+ * <p>ApplicationEvents에는 롤백된 업무의 발행 기록도 남는다. 이 기록만으로 커밋 후 소비를 판단하지 않고,
+ * 공통 알림 요청·저장 결과·SSE 발행 요청을 함께 확인한다.
+ *
+ * <p>입력 검증·사용자 조회·DB 저장의 실패 지점은 실제 저장 서비스를 통해 구분한다.
+ * 각 실패가 업무 커밋을 보존하고, 후속 정상 알림의 저장·SSE 발행을 막지 않는지 확인한다.
  */
 @RecordApplicationEvents
 @SpringBootTest(properties = {
@@ -75,6 +93,7 @@ import static org.mockito.Mockito.*;
 @DisplayName("알림 공통 생성 통합 테스트")
 class NotificationIntegrationTest {
 
+    // 알림 수신자를 권한 변경 대상과 플레이리스트 소유자로도 사용한다.
     private static final UUID RECEIVER_ID = UUID.randomUUID();
     private static final String TITLE = "새 알림";
     private static final String CONTENT = "알림 내용";
@@ -108,26 +127,55 @@ class NotificationIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    // DB와 리스너는 실제 빈을 사용하되, 외부 전송 경계의 호출 횟수·데이터·실패를 제어한다.
+    @Autowired
+    private FollowService followService;
+
+    @Autowired
+    private FollowRepository followRepository;
+
+    @Autowired
+    private UserAdministrationService userAdministrationService;
+
+    @Autowired
+    private PlaylistService playlistService;
+
+    // 외부 전송 경계의 호출 횟수·데이터·실패를 제어하며 Redis나 브라우저로는 전송하지 않는다.
     @MockitoBean
     private SseEventPublisher sseEventPublisher;
 
+    // 기본 동작은 유지하고, 공통 요청 수신 중 예외를 던져 재발행 실패를 재현할 때만 대체한다.
+    @MockitoSpyBean
+    private NotificationEventListener notificationEventListener;
+
     private TransactionTemplate transactionTemplate;
+    // 팔로워 사용자는 구독 사례에서 subscriberId로 재사용한다.
+    private static final UUID FOLLOWER_ID = UUID.randomUUID();
+    private static final UUID PLAYLIST_ID = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
         transactionTemplate = new TransactionTemplate(transactionManager);
-        // 새 트랜잭션에서 알림을 저장할 때 참조할 수 있도록 수신자를 먼저 커밋한다.
+        // 업무 이벤트 없이 사용자를 준비하고, 팔로우·알림의 독립 트랜잭션에서도 조회할 수 있도록 먼저 커밋한다.
         jdbcTemplate.update("""
                 INSERT INTO users (id, email, nickname, role, enabled, created_at)
                 VALUES (?, ?, ?, 'USER', true, CURRENT_TIMESTAMP)
                 """, RECEIVER_ID, RECEIVER_ID + "@test.example", "변경 전");
+        jdbcTemplate.update("""
+                INSERT INTO users (id, email, nickname, role, enabled, created_at)
+                VALUES (?, ?, ?, 'USER', true, CURRENT_TIMESTAMP)
+                """, FOLLOWER_ID, FOLLOWER_ID + "@test.example", "홍길동");
+
     }
 
     @AfterEach
     void cleanUp() {
+        // 사용자를 참조하는 알림·팔로우·구독·플레이리스트를 먼저 지운다.
+        // 구독은 플레이리스트도 참조하므로 플레이리스트보다 먼저 삭제한다.
         notificationRepository.deleteAllInBatch();
-        jdbcTemplate.update("DELETE FROM users WHERE id = ?", RECEIVER_ID);
+        followRepository.deleteAllInBatch();
+        jdbcTemplate.update("DELETE FROM subscriptions WHERE playlist_id =?", PLAYLIST_ID);
+        jdbcTemplate.update("DELETE FROM playlists WHERE id = ?", PLAYLIST_ID);
+        jdbcTemplate.update("DELETE FROM users WHERE id IN (?, ?)", RECEIVER_ID , FOLLOWER_ID);
     }
 
     @Test
@@ -181,11 +229,49 @@ class NotificationIntegrationTest {
     }
 
     @Test
-    @DisplayName("트랜잭션 없이 발행한 이벤트로는 알림을 저장하지 않는다")
-    void ignoresAnEventPublishedWithoutATransaction() {
+    @DisplayName("트랜잭션 없이 발행한 공통 생성 요청도 알림을 저장하고 SSE 발행을 한 번 요청한다.")
+    void savesNotificationAndRequestsSseWithoutBusinessTransaction() {
         eventPublisher.publishEvent(event(RECEIVER_ID, TITLE, NotificationLevel.INFO));
 
-        assertThat(notificationRepository.count()).isZero();
+        Notification saved = findOnlyNotification();
+        assertThat(saved.getReceiverId()).isEqualTo(RECEIVER_ID);
+        assertThat(saved.getTitle()).isEqualTo(TITLE);
+        assertThat(saved.getContent()).isEqualTo(CONTENT);
+        assertThat(saved.getLevel()).isEqualTo(NotificationLevel.INFO);
+
+        verify(sseEventPublisher).publish(any());
+    }
+
+    @Test
+    @DisplayName("팔로우 이벤트를 발행한 트랜잭션의 커밋 후 알림을 저장한다.")
+    void savesNotificationFromFollowEventAfterBusinessCommit(ApplicationEvents applicationEvents) {
+        // 이벤트를 직접 발행해 커밋 전후의 소비 시점을 관찰한다. 실제 팔로우 등록은 별도 사례로 검증한다.
+        UserFollowedEvent event = new UserFollowedEvent(UUID.randomUUID(), "홍길동", RECEIVER_ID);
+        NotificationCreateRequestedEvent expectedRequest = new NotificationCreateRequestedEvent(
+                RECEIVER_ID,
+                "새로운 팔로워",
+                "홍길동님이 회원님을 팔로우했습니다.",
+                NotificationLevel.INFO
+        );
+
+        transactionTemplate.executeWithoutResult(status -> {
+            eventPublisher.publishEvent(event);
+
+            assertThat(applicationEvents.stream(NotificationCreateRequestedEvent.class)).isEmpty();
+            assertThat(notificationRepository.count()).isZero();
+            verifyNoInteractions(sseEventPublisher);
+        });
+
+        assertThat(applicationEvents.stream(NotificationCreateRequestedEvent.class))
+                .containsExactly(expectedRequest);
+
+        Notification saved = findOnlyNotification();
+        assertThat(saved.getReceiverId()).isEqualTo(expectedRequest.receiverId());
+        assertThat(saved.getTitle()).isEqualTo(expectedRequest.title());
+        assertThat(saved.getContent()).isEqualTo(expectedRequest.content());
+        assertThat(saved.getLevel()).isEqualTo(expectedRequest.level());
+
+        verify(sseEventPublisher).publish(any());
     }
 
     @ParameterizedTest(name = "{0}")
@@ -433,11 +519,193 @@ class NotificationIntegrationTest {
 
     }
 
+    @Test
+    @DisplayName("팔로우 이벤트를 발행한 트랜잭션이 롤백되면 공통 알림 요청을 발행하지 않는다.")
+    void doesNotCreateNotificationWhenFollowEventTransactionRollsBack(ApplicationEvents applicationEvents){
+        // 닉네임 변경과 이벤트 발행을 같은 트랜잭션에 넣어 생산 업무의 롤백을 재현한다.
+        UserFollowedEvent event = new UserFollowedEvent(UUID.randomUUID(), "홍길동", RECEIVER_ID);
+        transactionTemplate.executeWithoutResult(status ->{
+            changeReceiverNickname();
+            eventPublisher.publishEvent(event);
+            status.setRollbackOnly();
+        });
+
+        assertThat(applicationEvents.stream(UserFollowedEvent.class))
+                .containsExactly(event);
+        assertThat(applicationEvents.stream(NotificationCreateRequestedEvent.class))
+                .isEmpty();
+        assertThat(receiverNickname()).isEqualTo("변경 전");
+        assertThat(notificationRepository.count()).isZero();
+        verifyNoInteractions(sseEventPublisher);
+
+    }
+
+    @Test
+    @DisplayName("트랜잭션 없이 발행한 팔로우 이벤트는 공통 알림 요청으로 변환하지 않는다.")
+    void ignoresFollowEventPublishedWithoutTransaction(ApplicationEvents applicationEvents){
+        UserFollowedEvent event = new UserFollowedEvent(UUID.randomUUID(), "홍길동", RECEIVER_ID);
+
+        eventPublisher.publishEvent(event);
+        assertThat(applicationEvents.stream(UserFollowedEvent.class))
+                .containsExactly(event);
+        assertThat(applicationEvents.stream(NotificationCreateRequestedEvent.class))
+                .isEmpty();
+        assertThat(notificationRepository.count()).isZero();
+        verifyNoInteractions(sseEventPublisher);
+    }
+
+    @Test
+    @DisplayName("실제 팔로우 등록이 커밋되면 대상 사용자에게 알림을 저장하고 SSE 발행을 한 번 요청한다.")
+    void savesNotificationAfterActualFollowRegistrationCommits(){
+        FollowCommand command = new FollowCommand(RECEIVER_ID, FOLLOWER_ID);
+
+        // FollowSaver의 독립 트랜잭션이 커밋된 뒤 반환되므로 별도 TransactionTemplate으로 감싸지 않는다.
+        FollowResult result = followService.follow(command);
+        assertThat(result.created()).isTrue();
+        assertThat(followRepository.existsById(result.followDto().id())).isTrue();
+        assertThat(followRepository.count()).isEqualTo(1L);
+
+        Notification saved = findOnlyNotification();
+        assertThat(saved.getReceiverId()).isEqualTo(RECEIVER_ID);
+        assertThat(saved.getTitle()).isEqualTo("새로운 팔로워");
+        assertThat(saved.getContent()).isEqualTo("홍길동님이 회원님을 팔로우했습니다.");
+        assertThat(saved.getLevel()).isEqualTo(NotificationLevel.INFO);
+        verify(sseEventPublisher).publish(any());
+    }
+
+    @Test
+    @DisplayName("알림 요청 재발행이 실패해도 커밋된 팔로우를 유지하고 실패를 기록한다.")
+    void keepsFollowWhenNotificationRequestPublishFails(CapturedOutput output){
+        // 공통 요청을 수신하는 쪽에서 예외를 던져 실제 업무 이벤트 리스너의 재발행 실패 처리를 확인한다.
+        doThrow(new IllegalStateException("테스트용 알림 요청 재발행 실패"))
+                .when(notificationEventListener)
+                .handleNotification(any(NotificationCreateRequestedEvent.class));
+
+        FollowResult result = followService.follow(new FollowCommand(RECEIVER_ID, FOLLOWER_ID));
+        assertThat(result.created()).isTrue();
+        assertThat(followRepository.existsById(result.followDto().id())).isTrue();
+        assertThat(followRepository.count()).isEqualTo(1L);
+
+        verify(notificationEventListener)
+                .handleNotification(any(NotificationCreateRequestedEvent.class));
+        assertThat(notificationRepository.count()).isZero();
+
+        verifyNoInteractions(sseEventPublisher);
+        // 팔로우 유지와 함께 도메인 리스너가 예외를 처리하고 기록한 사실까지 확인한다.
+        assertThat(output.getOut()).contains(
+                "팔로우 알림 변환·재발행 실패.",
+                "followerId=" + FOLLOWER_ID,
+                "followeeId=" + RECEIVER_ID,
+                "exceptionType=IllegalStateException"
+        );
+
+    }
+
+    @ParameterizedTest(name = "{0} → {1}")
+    @CsvSource({
+            "USER, ADMIN",
+            "ADMIN, USER"
+    })
+    @DisplayName("실제 권한 변경이 커밋되면 대상 사용자에게 알림을 저장하고 SSE 발행을 요청한다.")
+    void savesNotificationAfterActualRoleChangeCommits(Role previousRole, Role newRole){
+        // 초기 권한은 JDBC로 준비하여 검증 대상 변경 외에 권한 변경 이벤트가 발생하지 않게 한다.
+        jdbcTemplate.update("UPDATE users SET role = ? WHERE id = ?",previousRole.name(), RECEIVER_ID);
+
+        transactionTemplate.executeWithoutResult(status ->{
+            userAdministrationService.updateRole(RECEIVER_ID, newRole);
+            assertThat(notificationRepository.count()).isZero();
+            verifyNoInteractions(sseEventPublisher);
+        });
+
+        assertThat(jdbcTemplate.queryForObject("SELECT role FROM users WHERE id = ?", String.class, RECEIVER_ID))
+                .isEqualTo(newRole.name());
+
+        Notification saved = findOnlyNotification();
+        assertThat(saved.getReceiverId()).isEqualTo(RECEIVER_ID);
+        assertThat(saved.getTitle()).isEqualTo("권한 변경");
+        verify(sseEventPublisher).publish(any());
+    }
+
+    @Test
+    @DisplayName("실제 구독이 커밋되면 플레이리스트 소유자에게 알림을 저장하고 SSE 알림을 요청한다.")
+    void savesNotificationAfterActualPlaylistSubscriptionCommits(){
+        insertPlaylist();
+        UUID subscriberId = FOLLOWER_ID;
+
+        transactionTemplate.executeWithoutResult(status ->{
+            playlistService.subscribe(PLAYLIST_ID, subscriberId);
+            assertThat(notificationRepository.count()).isZero();
+            verifyNoInteractions(sseEventPublisher);
+        });
+
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM subscriptions
+                WHERE playlist_id = ? AND
+                subscriber_id = ?
+                """, Long.class, PLAYLIST_ID, subscriberId))
+                .isEqualTo(1L);
+
+        Notification saved = findOnlyNotification();
+        assertThat(saved.getReceiverId()).isEqualTo(RECEIVER_ID);
+        assertThat(saved.getTitle()).isEqualTo("새로운 구독자");
+        verify(sseEventPublisher).publish(any());
+    }
+
+    @Test
+    @DisplayName("실제 권한 변경이 롤백되면 기존 권한을 유지하고 알림을 생성하지 않는다.")
+    void doesNotSaveNotificationWhenActualRoleChangeRollsBack(ApplicationEvents applicationEvents){
+        transactionTemplate.executeWithoutResult(status -> {
+            userAdministrationService.updateRole(RECEIVER_ID, Role.ADMIN);
+            status.setRollbackOnly();
+        });
+
+        assertThat(jdbcTemplate.queryForObject("SELECT role FROM users WHERE id = ?",
+                String.class, RECEIVER_ID))
+                .isEqualTo(Role.USER.name());
+
+        assertThat(applicationEvents.stream(UserRoleChangedEvent.class))
+                .containsExactly(new UserRoleChangedEvent(RECEIVER_ID, Role.USER, Role.ADMIN));
+        assertThat(applicationEvents.stream(NotificationCreateRequestedEvent.class))
+                .isEmpty();
+        assertThat(notificationRepository.count()).isZero();
+        verifyNoInteractions(sseEventPublisher);
+    }
+
+    @Test
+    @DisplayName("실제 구독이 롤백되면 구독 정보와 구독자 수를 되돌리고 알림을 생성하지 않는다.")
+    void doesNotSaveNotificationWhenActualPlaylistSubscriptionRollsBack(ApplicationEvents applicationEvents){
+        insertPlaylist();
+        UUID subscriberId = FOLLOWER_ID;
+
+        transactionTemplate.executeWithoutResult(status ->{
+            playlistService.subscribe(PLAYLIST_ID, subscriberId);
+            status.setRollbackOnly();
+        });
+
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM subscriptions
+                WHERE playlist_id = ? AND
+                subscriber_id = ?
+                """, Long.class, PLAYLIST_ID, subscriberId))
+                .isZero();
+
+        assertThat(jdbcTemplate.queryForObject("SELECT subscriber_count FROM playlists WHERE id = ?",
+                Long.class, PLAYLIST_ID))
+                .isZero();
+
+        assertThat(applicationEvents.stream(PlaylistSubscribedEvent.class))
+                .containsExactly(new PlaylistSubscribedEvent(PLAYLIST_ID, "퇴근 후 영화", RECEIVER_ID, subscriberId, "홍길동"));
+        assertThat(applicationEvents.stream(NotificationCreateRequestedEvent.class))
+                .isEmpty();
+        assertThat(notificationRepository.count()).isZero();
+        verifyNoInteractions(sseEventPublisher);
+    }
+
     private NotificationCreateRequestedEvent event(UUID receiverId, String title, NotificationLevel level) {
         return new NotificationCreateRequestedEvent(receiverId, title, CONTENT, level);
     }
 
-    /** 업무 트랜잭션의 정상 종료를 재현하여 첫 번째 AFTER_COMMIT 리스너부터 실행한다. */
+    /** 공통 생성 요청을 트랜잭션 안에서 직접 발행하고 커밋해 NotificationEventListener부터 실행한다. */
     private void publishAndCommit(NotificationCreateRequestedEvent event) {
         transactionTemplate.executeWithoutResult(status -> eventPublisher.publishEvent(event));
     }
@@ -457,4 +725,16 @@ class NotificationIntegrationTest {
         return jdbcTemplate.queryForObject(
                 "SELECT nickname FROM users WHERE id = ?", String.class, RECEIVER_ID);
     }
+
+    /**
+     * 구독 사례의 사전 데이터를 JDBC로 준비해 플레이리스트 생성 이벤트가 발생하지 않게 한다.
+     * 구독 트랜잭션을 시작하기 전에 저장하므로 구독이 롤백되어도 플레이리스트는 유지된다.
+     */
+    private void insertPlaylist(){
+        jdbcTemplate.update("""
+            INSERT INTO playlists (id, owner_id, title, description, subscriber_count, created_at, updated_at)
+            VALUES (?, ?, '퇴근 후 영화', '알림 연동 테스트', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        """, PLAYLIST_ID, RECEIVER_ID);
+    }
+
 }

@@ -47,6 +47,7 @@ public enum ApiErrorCode {
 
     //SSE S
     SSE_PUBLISH_FAIL("S_001", HttpStatus.INTERNAL_SERVER_ERROR, "SSE 이벤트 발행에 실패했습니다."),
+    SSE_HISTORY_CONFLICT("S_002", HttpStatus.INTERNAL_SERVER_ERROR, "동일한 수신자와 이벤트 ID의 기존 이력과 내용이 다릅니다."),
 
     // WEBSOCKET W
     WEBSOCKET_DESTINATION_INVALID("W_001", HttpStatus.NOT_FOUND, "유효하지 않은 웹소켓 경로입니다."),
