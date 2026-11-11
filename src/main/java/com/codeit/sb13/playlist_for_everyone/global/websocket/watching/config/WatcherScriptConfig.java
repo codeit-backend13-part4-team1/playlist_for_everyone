@@ -6,6 +6,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.script.RedisScript;
 
+import java.util.List;
+
 @Configuration
 public class WatcherScriptConfig {
 
@@ -21,31 +23,39 @@ public class WatcherScriptConfig {
 
     @Bean("lua-script-register")
     public RedisScript<Long> watcherRegisterScript(){
-        return load("scripts/wch_reg.lua");
+        return load("scripts/watching/wch_reg.lua");
     }
 
     @Bean("lua-script-unregister")
     public RedisScript<Long> watcherUnregisterScript(){
-        return load("scripts/wch_urg.lua");
+        return load("scripts/watching/wch_urg.lua");
     }
 
     @Bean("lua-script-refresh")
     public RedisScript<Long> watcherRefreshScript(){
-        return load("scripts/wch_rfs.lua");
+        return load("scripts/watching/wch_rfs.lua");
     }
 
     @Bean("lua-script-delete")
     public RedisScript<Long> watcherDeleteScript(){
-        return load("scripts/wch_del.lua");
+        return load("scripts/watching/wch_del.lua");
     }
 
     @Bean("lua-script-count")
     public RedisScript<Long> watcherCountScript(){
-        return load("scripts/wch_cnt.lua");
+        return load("scripts/watching/wch_cnt.lua");
     }
 
     @Bean("lua-script-delete-with-contentId")
     public RedisScript<Long> watcherDeleteWithContentIdScript(){
-        return load("scripts/wch_del_cnt.lua");
+        return load("scripts/watching/wch_del_cnt.lua");
+    }
+
+    @Bean("lua-count-multiple-contents")
+    public RedisScript<List> watcherCountMultipleContentsScript(){
+        return RedisScript.of(
+                new ClassPathResource("scripts/watching/count_mlt_contents.lua"),
+                List.class
+        );
     }
 }
