@@ -3,6 +3,8 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.registry.connecti
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionRegisterException;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.InMemoryConnectionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionData;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketRegistryImpl;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -16,6 +18,8 @@ import static org.assertj.core.api.Assertions.*;
  */
 @DisplayName("세션-커넥션 키 쌍 테스트")
 public class InMemoryConnectionRegistryTest {
+
+    WebSocketRegistry socketRegistry = new WebSocketRegistryImpl();
 
     SessionData sessionData(String sessionId, String subscriptionId){
         return SessionData.builder()
@@ -35,7 +39,7 @@ public class InMemoryConnectionRegistryTest {
     @Test
     @DisplayName("세션 정보를 등록하고 조회하면, id 와 등록 시간이 포함된 SocketConnection 객체가 반환된다.")
     void saveSession(){
-        InMemoryConnectionRegistry registry = new InMemoryConnectionRegistry();
+        InMemoryConnectionRegistry registry = new InMemoryConnectionRegistry(socketRegistry);
 
         registry.register("test-session-id",null,null);
 
@@ -48,7 +52,7 @@ public class InMemoryConnectionRegistryTest {
     @Test
     @DisplayName("세션 정보 없이 세션-구독 쌍을 등록하면 에러를 반환한다.")
     void saveSessionWithoutSession(){
-        InMemoryConnectionRegistry registry = new InMemoryConnectionRegistry();
+        InMemoryConnectionRegistry registry = new InMemoryConnectionRegistry(socketRegistry);
 
         assertThatThrownBy(() -> registry.register("test-session","sub-1",null))
                 .isInstanceOf(WebSocketSessionRegisterException.class);
@@ -57,7 +61,7 @@ public class InMemoryConnectionRegistryTest {
     @Test
     @DisplayName("동일한 세션 - 구독 키를 복수회 등록하면 최초의 세션 정보만 등록된다.")
     void saveDurationSessionWithSameKey(){
-        InMemoryConnectionRegistry registry = new InMemoryConnectionRegistry();
+        InMemoryConnectionRegistry registry = new InMemoryConnectionRegistry(socketRegistry);
 
         registry.register("test-session-id",null,null);
 
@@ -79,7 +83,7 @@ public class InMemoryConnectionRegistryTest {
     @Test
     @DisplayName("세션 - 구독 쌍을 조회하면 해당 세션, 구독에 해당하는 SocketConnection 객체가 반환된다.")
     void getSession(){
-        InMemoryConnectionRegistry registry = new InMemoryConnectionRegistry();
+        InMemoryConnectionRegistry registry = new InMemoryConnectionRegistry(socketRegistry);
 
         registry.register("test-session-id",null,null);
         registry.register("test-session-id2",null,null);
@@ -95,7 +99,7 @@ public class InMemoryConnectionRegistryTest {
     @Test
     @DisplayName("세션 만 조회하면, 해당 세션과 세션에 연결된 구독 쌍을 모두 반환한다.")
     void getSessionList(){
-        InMemoryConnectionRegistry registry = new InMemoryConnectionRegistry();
+        InMemoryConnectionRegistry registry = new InMemoryConnectionRegistry(socketRegistry);
 
         registry.register("test-session-id",null,null);
         registry.register("test-session-id2",null,null);
@@ -114,7 +118,7 @@ public class InMemoryConnectionRegistryTest {
     @Test
     @DisplayName("세션 - null 을 조회하면, 해당 세션만 반환한다.")
     void getSession2(){
-        InMemoryConnectionRegistry registry = new InMemoryConnectionRegistry();
+        InMemoryConnectionRegistry registry = new InMemoryConnectionRegistry(socketRegistry);
 
         registry.register("test-session-id",null,null);
         registry.register("test-session-id2",null,null);
@@ -130,7 +134,7 @@ public class InMemoryConnectionRegistryTest {
     @Test
     @DisplayName("없는 세션 - 구독 쌍을 조회하면 null 이 반환된다")
     void getSession3() {
-        InMemoryConnectionRegistry registry = new InMemoryConnectionRegistry();
+        InMemoryConnectionRegistry registry = new InMemoryConnectionRegistry(socketRegistry);
 
         assertThat(registry.get("test-session-id",null))
                 .isNull();
@@ -141,7 +145,7 @@ public class InMemoryConnectionRegistryTest {
     @Test
     @DisplayName("세션 - 구독 키로 특정 세션을 삭제할 수 있다.")
     void removeSession(){
-        InMemoryConnectionRegistry registry = new InMemoryConnectionRegistry();
+        InMemoryConnectionRegistry registry = new InMemoryConnectionRegistry(socketRegistry);
 
         registry.register("test-session-id",null,null);
         registry.register("test-session-id","sub-1",null);
@@ -158,7 +162,7 @@ public class InMemoryConnectionRegistryTest {
     @Test
     @DisplayName("세션 - null 을 삭제하면 세션과 세션에 연관된 모든 구독들이 같이 삭제된다.")
     void removeSession2(){
-        InMemoryConnectionRegistry registry = new InMemoryConnectionRegistry();
+        InMemoryConnectionRegistry registry = new InMemoryConnectionRegistry(socketRegistry);
 
         registry.register("test-session-id",null,null);
         registry.register("test-session-id","sub-1",null);
@@ -173,7 +177,7 @@ public class InMemoryConnectionRegistryTest {
     @Test
     @DisplayName("세션 을 삭제하면 세션과 세션에 연관된 모든 구독들이 같이 삭제된다.")
     void removeSession3(){
-        InMemoryConnectionRegistry registry = new InMemoryConnectionRegistry();
+        InMemoryConnectionRegistry registry = new InMemoryConnectionRegistry(socketRegistry);
 
         registry.register("test-session-id",null,null);
         registry.register("test-session-id","sub-1",null);
@@ -190,7 +194,7 @@ public class InMemoryConnectionRegistryTest {
 //    @Test
 //    @DisplayName("없는 세션을 삭제하려 하면 예외가 발생한다")
 //    void removeSession4(){
-//        InMemoryConnectionRegistry registry = new InMemoryConnectionRegistry();
+//        InMemoryConnectionRegistry registry = new InMemoryConnectionRegistry(socketRegistry);
 //
 //        assertThatThrownBy(() -> registry.unregister("test-session-id"))
 //                .isInstanceOf(IllegalArgumentException.class);
