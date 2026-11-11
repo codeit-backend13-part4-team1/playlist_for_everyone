@@ -5,6 +5,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.collector.SportsDbCl
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.SportsDbContentMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.CollectedContentData;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.SportsDbEventResponse;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.exception.CollectedContentValidationException;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.core.job.Job;
 import org.springframework.batch.core.job.builder.JobBuilder;
@@ -75,6 +76,9 @@ public class SportsDbBatchConfig {
         return new StepBuilder("sportsDbCollectionStep", jobRepository)
                 .<SportsDbEventResponse, CollectedContentData>chunk(1)
                 .transactionManager(transactionManager)
+                .faultTolerant()
+                .skip(CollectedContentValidationException.class)
+                .skipLimit(10)
                 .reader(reader)
                 .processor(mapper::fromEvent)
                 .writer(chunk -> {
