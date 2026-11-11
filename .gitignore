@@ -46,6 +46,8 @@ out/
 .logs/
 
 # 부하테스트 결과물 (로컬 전용)
+report/
 report_*/
 *.jtl
 loadtest/users.csv
+loadtest/*_params.csv
