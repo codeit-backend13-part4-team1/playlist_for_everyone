@@ -11,6 +11,7 @@ import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
 import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
 import jakarta.persistence.EntityManager;
 import org.hibernate.SessionFactory;
+import org.hibernate.exception.ConstraintViolationException;
 import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -20,6 +21,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -27,11 +29,13 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DataJpaTest(
         showSql = false,
@@ -394,6 +398,82 @@ class ConversationRepositoryTest {
         assertThat(statistics.getPrepareStatementCount())
                 .isEqualTo(statementCountBefore);
 
+    }
+
+    @ParameterizedTest(name = "역방향 요청인가:{0}")
+    @ValueSource(booleans = {true, false})
+    @DisplayName("요청 방향에 관계없이 같은 사용자쌍을 중복 저장하면 UNIQUE 제약 조건 위반이 발생한다.")
+    void save_rejectsDuplicateUserPairRegardlessOfRequestDirection(boolean reverseDirection){
+        User firstUser = persistUser("first@example.com", "첫 번째 사용자");
+        User secondUser = persistUser("second@example.com", "두 번째 사용자");
+
+        Conversation firstConversation = new Conversation(new ConversationCommand(firstUser, secondUser));
+        conversationRepository.saveAndFlush(firstConversation);
+
+        ConversationCommand duplicatePair = reverseDirection ? new ConversationCommand(secondUser, firstUser)
+                : new ConversationCommand(firstUser, secondUser);
+
+        Conversation duplicateConversation = new Conversation(duplicatePair);
+
+        assertThatThrownBy(() -> conversationRepository.saveAndFlush(duplicateConversation))
+                .isInstanceOfSatisfying(DataIntegrityViolationException.class,
+                        e -> assertThat(e.getCause())
+                                .isInstanceOfSatisfying(ConstraintViolationException.class,
+                                        cause ->{
+                                    assertThat(cause.getConstraintName())
+                                            .isEqualTo("uq_conversations_user_pair");
+                                    assertThat(cause.getSQLState())
+                                            .isEqualTo("23505");
+                                }));
+    }
+
+    @ParameterizedTest(name = "존재하지 않는 사용자가 userA인가: {0}")
+    @ValueSource(booleans = {true, false})
+    @DisplayName("대화방 참여자가 존재하지 않으면 해당 사용자 FK 제약조건 위반이 발생한다.")
+    void save_rejectsNonexistentParticipant(boolean missingUserA){
+        User existingUser = persistUser("existing@example.com", "존재하는 사용자");
+        entityManager.flush();
+
+        UUID missingUserId = missingUserA ? UUID.fromString("00000000-0000-0000-0000-000000000000")
+                : UUID.fromString("ffffffff-ffff-ffff-ffff-ffffffffffff");
+
+        User missingUser = entityManager.getReference(User.class, missingUserId);
+        Conversation conversation = new Conversation(new ConversationCommand(missingUser, existingUser));
+
+        String expectedConstraint = missingUserA ? "FK_users_TO_conversations_1"
+                : "FK_users_TO_conversations_2";
+        assertThatThrownBy(() -> conversationRepository.saveAndFlush(conversation))
+                .isInstanceOfSatisfying(DataIntegrityViolationException.class,
+                        e -> assertThat(e.getCause())
+                                .isInstanceOfSatisfying(ConstraintViolationException.class,
+                                        cause -> {
+                                    assertThat(cause.getConstraintName())
+                                            .isEqualTo(expectedConstraint);
+                                    assertThat(cause.getSQLState())
+                                            .isEqualTo("23503");
+                                }));
+    }
+
+    @ParameterizedTest(name = "user_a_id가 null인가: {0}")
+    @ValueSource(booleans = {true, false})
+    @DisplayName("대화방 참여자 ID가 null이면 DB의 NOT NULL 제약 조건 위반이 발생한다.")
+    void insert_rejectsNullParticipantId(boolean nullUserA){
+        User existingUser = persistUser("existing@example.com", "존재하는 사용자");
+        entityManager.flush();
+
+        UUID userAId = nullUserA ? null : existingUser.getId();
+        UUID userBId = nullUserA ? existingUser.getId() : null;
+
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                """
+                    INSERT INTO conversations (id, user_a_id, user_b_id, created_at)
+                    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                    """,UUID.randomUUID(), userAId, userBId
+        )).isInstanceOfSatisfying(DataIntegrityViolationException.class,
+                e -> assertThat(e.getCause())
+                        .isInstanceOfSatisfying(SQLException.class,
+                                cause -> assertThat(cause.getSQLState())
+                                        .isEqualTo("23502")));
     }
 
     private User persistUser(String email, String name) {
