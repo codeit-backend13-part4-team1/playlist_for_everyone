@@ -36,11 +36,12 @@ public record UserSearchRequest(
 
     /**
      * cursor는 "마지막 항목의 정렬 기준 값"이므로 sortBy에 따라 형식이 다르다.
-     * name·email: 아무 문자열 / createdAt: LocalDateTime / isLocked: true·false / role: Role 이름
+     * 첫 페이지(idAfter 없음)는 검사하지 않는다.
+     * 이름이 없는 사용자의 cursor는 빈 문자열이므로 name·email은 빈 값도 허용한다.
      */
     @AssertTrue(message = "cursor 형식이 정렬 기준과 맞지 않습니다")
     public boolean isValidCursor() {
-        if (!StringUtils.hasText(cursor) || sortBy == null) {
+        if (idAfter == null || cursor == null || sortBy == null) {
             return true;
         }
 
@@ -53,11 +54,15 @@ public record UserSearchRequest(
     }
 
     /**
-     * cursor만 있고 idAfter가 없으면 같은 값이 여러 개일 때 다음 페이지 위치를 정할 수 없다.
+     * 다음 페이지인지는 idAfter로 판단한다.
+     * idAfter가 있으면 cursor가 있어야 하고(빈 문자열 포함), 없으면 cursor도 비어 있어야 한다.
      */
     @AssertTrue(message = "cursor와 idAfter는 함께 제공해야 합니다")
     public boolean isCursorPairValid() {
-        return StringUtils.hasText(cursor) == (idAfter != null);
+        if (idAfter != null) {
+            return cursor != null;
+        }
+        return !StringUtils.hasText(cursor);
     }
 
     private static boolean isDateTime(String value) {

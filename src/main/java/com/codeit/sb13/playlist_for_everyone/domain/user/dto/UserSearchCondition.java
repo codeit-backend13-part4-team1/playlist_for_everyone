@@ -3,7 +3,6 @@ package com.codeit.sb13.playlist_for_everyone.domain.user.dto;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.UserSortBy;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
-import org.springframework.util.StringUtils;
 
 import java.util.UUID;
 
@@ -22,7 +21,7 @@ public record UserSearchCondition(
         UserSortBy sortBy
 ) {
     public boolean hasCursor() {
-        return StringUtils.hasText(cursor) && idAfter != null;
+        return cursor != null && idAfter != null;
     }
 
     public boolean isDesc() {
