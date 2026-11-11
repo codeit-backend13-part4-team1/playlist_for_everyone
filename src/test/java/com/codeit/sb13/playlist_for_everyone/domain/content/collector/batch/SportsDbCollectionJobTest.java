@@ -31,6 +31,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.ResourceAccessException;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -41,8 +42,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @DataJpaTest(properties = {
         "spring.flyway.enabled=true",
@@ -290,5 +290,56 @@ class SportsDbCollectionJobTest {
         var stepExecution = execution.getStepExecutions().iterator().next();
 
         assertThat(stepExecution.getWriteSkipCount()).isEqualTo(10);
+    }
+
+    @Test
+    void API_조회_실패_후_재시작하면_경기가_저장된다() throws Exception {
+        var event = new SportsDbEventResponse(
+                "444001", "재시작 테스트 경기", "Soccer",
+                "English Premier League", "2014-2015",
+                "2014-08-16", null
+        );
+
+        when(sportsDbClient.getEventsBySeason("4328", "2014-2015"))
+                .thenThrow(new ResourceAccessException("테스트용 연결 실패"))
+                .thenReturn(new SportsDbEventsResponse(List.of(event)));
+
+        var parameters = new JobParametersBuilder()
+                .addString("leagueId", "4328")
+                .addString("season", "2014-2015")
+                .addString("run.id", UUID.randomUUID().toString())
+                .toJobParameters();
+
+        var failedExecution = jobOperator.start(job, parameters);
+
+        assertThat(failedExecution.getStatus())
+                .isEqualTo(BatchStatus.FAILED);
+
+        assertThat(contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.THE_SPORTS_DB,
+                ContentType.sport,
+                "444001"
+        )).isEmpty();
+
+        var restartedExecution = jobOperator.restart(failedExecution);
+
+        assertThat(restartedExecution.getStatus())
+                .isEqualTo(BatchStatus.COMPLETED);
+
+        assertThat(restartedExecution.getId())
+                .isNotEqualTo(failedExecution.getId());
+
+        var saved = contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.THE_SPORTS_DB,
+                ContentType.sport,
+                "444001"
+        );
+
+        assertThat(saved).isPresent();
+        assertThat(saved.orElseThrow().getTitle())
+                .isEqualTo("재시작 테스트 경기");
+
+        verify(sportsDbClient, times(2))
+                .getEventsBySeason("4328", "2014-2015");
     }
 }
