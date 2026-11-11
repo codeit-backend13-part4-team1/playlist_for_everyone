@@ -205,10 +205,13 @@ class SecurityConfigTest {
     void 관리자의_관리자_API_접근을_허용한다() throws Exception {
         prepareAuthenticatedUser(Role.ADMIN);
 
+        // 실제 사용자 목록 API로 URL 접근 권한만 검증한다. 응답 내용은 UserControllerTest가 검증한다.
         mockMvc.perform(get("/api/users")
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.allowed").value(true));
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN)
+                        .param("limit", "20")
+                        .param("sortBy", "name")
+                        .param("sortDirection", "ASCENDING"))
+                .andExpect(status().isOk());
     }
 
     @Test
@@ -316,12 +319,6 @@ class SecurityConfigTest {
                     "userId", principal.getUserId().toString(),
                     "role", principal.getRole().name()
             );
-        }
-
-        @GetMapping("/api/users")
-        public Map<String, Boolean> users() {
-            // 실제 관리자 목록 구현 대신 URL 접근 권한만 검증한다.
-            return Map.of("allowed", true);
         }
 
         // SockJS가 연결 전에 보내는 정보 요청. 토큰 없이 들어온다.
