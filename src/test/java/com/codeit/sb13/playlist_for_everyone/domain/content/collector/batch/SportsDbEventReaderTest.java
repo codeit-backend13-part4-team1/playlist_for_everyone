@@ -1,0 +1,202 @@
+package com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch;
+
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.SportsDbClient;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.SportsDbEventResponse;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.SportsDbEventsResponse;
+import org.junit.jupiter.api.Test;
+import org.springframework.batch.infrastructure.item.ExecutionContext;
+
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
+import static org.mockito.Mockito.*;
+
+class SportsDbEventReaderTest {
+
+    @Test
+    void 경기_목록을_한_건씩_읽고_끝나면_null을_반환한다() {
+        SportsDbClient client = mock(SportsDbClient.class);
+
+        var first = new SportsDbEventResponse(
+                "1001", "첫 번째 경기", "Soccer",
+                "English Premier League", "2025-2026",
+                "2025-08-16", null
+        );
+        var second = new SportsDbEventResponse(
+                "1002", "두 번째 경기", "Soccer",
+                "English Premier League", "2025-2026",
+                "2025-08-17", null
+        );
+
+        when(client.getEventsBySeason("4328", "2025-2026"))
+                .thenReturn(new SportsDbEventsResponse(List.of(first, second)));
+
+        var reader = new SportsDbEventReader(client, "4328", "2025-2026");
+
+        assertThat(reader.read()).isEqualTo(first);
+        assertThat(reader.read()).isEqualTo(second);
+        assertThat(reader.read()).isNull();
+        assertThat(reader.read()).isNull();
+
+        verify(client, times(1)).getEventsBySeason("4328", "2025-2026");
+        verifyNoMoreInteractions(client);
+    }
+
+    @Test
+    void 경기_목록이_비어_있으면_종료한다() {
+        SportsDbClient client = mock(SportsDbClient.class);
+
+        when(client.getEventsBySeason("4328", "2025-2026"))
+                .thenReturn(new SportsDbEventsResponse(List.of()));
+
+        var reader = new SportsDbEventReader(client, "4328", "2025-2026");
+
+        assertThat(reader.read()).isNull();
+        assertThat(reader.read()).isNull();
+
+        verify(client, times(1)).getEventsBySeason("4328", "2025-2026");
+        verifyNoMoreInteractions(client);
+    }
+
+    @Test
+    void 응답이_없으면_예외가_발생한다() {
+        SportsDbClient client = mock(SportsDbClient.class);
+
+        when(client.getEventsBySeason("4328", "2025-2026"))
+                .thenReturn(null);
+
+        var reader = new SportsDbEventReader(client, "4328", "2025-2026");
+
+        assertThatThrownBy(() -> reader.read())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("TheSportsDB 경기 목록 응답이 없습니다.");
+    }
+
+    @Test
+    void 재시작하면_저장된_위치부터_이어서_읽는다() {
+        SportsDbClient client = mock(SportsDbClient.class);
+
+        var first = new SportsDbEventResponse(
+                "1001", "첫 번째 경기", "Soccer",
+                "English Premier League", "2025-2026",
+                "2025-08-16", null
+        );
+        var second = new SportsDbEventResponse(
+                "1002", "두 번째 경기", "Soccer",
+                "English Premier League", "2025-2026",
+                "2025-08-17", null
+        );
+
+        when(client.getEventsBySeason("4328", "2025-2026"))
+                .thenReturn(new SportsDbEventsResponse(List.of(first, second)));
+
+        var context = new ExecutionContext();
+
+        var reader = new SportsDbEventReader(client, "4328", "2025-2026");
+        reader.open(context);
+
+        assertThat(reader.read()).isEqualTo(first);
+
+        // 첫 번째 경기까지 처리한 위치 기록
+        reader.update(context);
+
+        // 읽었지만 처리 완료 위치는 기록하지 않은 경기
+        assertThat(reader.read()).isEqualTo(second);
+        reader.close();
+
+        var restartedReader =
+                new SportsDbEventReader(client, "4328", "2025-2026");
+        restartedReader.open(context);
+
+        assertThat(restartedReader.read()).isEqualTo(second);
+        assertThat(restartedReader.read()).isNull();
+
+        verify(client, times(2)).getEventsBySeason("4328", "2025-2026");
+        verifyNoMoreInteractions(client);
+    }
+
+    @Test
+    void 끝까지_읽은_뒤_재시작하면_종료한다() {
+        SportsDbClient client = mock(SportsDbClient.class);
+
+        var event = new SportsDbEventResponse(
+                "1001", "첫 번째 경기", "Soccer",
+                "English Premier League", "2025-2026",
+                "2025-08-16", null
+        );
+
+        when(client.getEventsBySeason("4328", "2025-2026"))
+                .thenReturn(new SportsDbEventsResponse(List.of(event)));
+
+        var context = new ExecutionContext();
+        var reader = new SportsDbEventReader(client, "4328", "2025-2026");
+        reader.open(context);
+
+        assertThat(reader.read()).isEqualTo(event);
+        assertThat(reader.read()).isNull();
+
+        reader.update(context);
+        reader.close();
+
+        var restartedReader =
+                new SportsDbEventReader(client, "4328", "2025-2026");
+        restartedReader.open(context);
+
+        assertThat(restartedReader.read()).isNull();
+        assertThat(restartedReader.read()).isNull();
+
+        verify(client, times(2)).getEventsBySeason("4328", "2025-2026");
+        verifyNoMoreInteractions(client);
+    }
+
+    @Test
+    void 재조회한_목록이_저장된_위치보다_짧으면_예외가_발생한다() {
+        SportsDbClient client = mock(SportsDbClient.class);
+
+        var event = new SportsDbEventResponse(
+                "1001", "첫 번째 경기", "Soccer",
+                "English Premier League", "2025-2026",
+                "2025-08-16", null
+        );
+
+        when(client.getEventsBySeason("4328", "2025-2026"))
+                .thenReturn(new SportsDbEventsResponse(List.of(event)))
+                .thenReturn(new SportsDbEventsResponse(List.of()));
+
+        var context = new ExecutionContext();
+        var reader = new SportsDbEventReader(client, "4328", "2025-2026");
+        reader.open(context);
+
+        assertThat(reader.read()).isEqualTo(event);
+
+        reader.update(context);
+        reader.close();
+
+        var restartedReader =
+                new SportsDbEventReader(client, "4328", "2025-2026");
+        restartedReader.open(context);
+
+        assertThatThrownBy(() -> restartedReader.read())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage(
+                        "TheSportsDB 경기 목록이 변경되어 읽기 위치를 복원할 수 없습니다."
+                );
+    }
+
+    @Test
+    void 응답의_events가_null이면_빈_목록으로_처리하고_종료한다() {
+        SportsDbClient client = mock(SportsDbClient.class);
+
+        when(client.getEventsBySeason("4328", "2025-2026"))
+                .thenReturn(new SportsDbEventsResponse(null));
+
+        var reader = new SportsDbEventReader(client, "4328", "2025-2026");
+
+        assertThat(reader.read()).isNull();
+        assertThat(reader.read()).isNull();
+
+        verify(client, times(1)).getEventsBySeason("4328", "2025-2026");
+        verifyNoMoreInteractions(client);
+    }
+}
