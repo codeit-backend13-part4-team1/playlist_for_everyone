@@ -36,7 +36,7 @@ public abstract class RedisWebSocketEvent implements WebSocketEvent, MessageList
 
     /**
      * 이벤트에 사용항 데이터와 함께 redis 를 이용한 이벤트를 발행하는 매서드.
-     * @param data
+     * @param data 이벤트에 사용할 데이터.
      */
     @Override
     public void publish(Object data) {

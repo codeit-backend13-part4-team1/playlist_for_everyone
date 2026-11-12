@@ -4,18 +4,15 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.watch;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.SessionStartResult;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
-import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AdminInitializationService;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
-import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.event.WebSocketEventFactory;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatSendRequest;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionContentDeleteEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -23,7 +20,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.messaging.converter.JacksonJsonMessageConverter;
 import org.springframework.messaging.simp.stomp.StompFrameHandler;
 import org.springframework.messaging.simp.stomp.StompHeaders;
@@ -391,9 +387,6 @@ public class WatchingSessionServiceE2E {
     @DisplayName("유저 로그인에 따른 로그인 해제 기능 실행 시, 유저에 대한 모든 세션이 끊긴다.")
     void userLogoutTest() throws Exception {
         WebSocketStompClient client = new WebSocketStompClient(new StandardWebSocketClient());
-
-        UUID contentId = UUID.randomUUID();
-
 
         StompSession session = getSession(client).get(5, TimeUnit.SECONDS);
         StompSession session2 = getSession(client).get(5, TimeUnit.SECONDS);
