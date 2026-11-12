@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.controller.AuthControll
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.SessionStartResult;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.TemporaryPasswordRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AuthService;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.PasswordResetService;
@@ -127,6 +128,9 @@ class LoginSecurityTest {
 
     @MockitoBean
     private PasswordResetService passwordResetService;
+
+    @MockitoBean
+    private TemporaryPasswordRepository temporaryPasswordRepository;
 
     @Test
     @DisplayName("올바른 이메일과 비밀번호로 로그인하면 토큰과 사용자 정보를 반환한다")
