@@ -1,10 +1,12 @@
 package com.codeit.sb13.playlist_for_everyone.domain.auth.controller;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.dto.TokenReissueResult;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.dto.request.ResetPasswordRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.dto.response.JwtDto;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtProperties;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AuthService;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.PasswordResetService;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
@@ -79,9 +81,19 @@ public class AuthController {
     }
 
     /**
-     * 비밀번호 초기화 API
-     * 로그인 전에 호출하므로 인증 없이 접근 가능하다. CSRF는 다른 POST 요청과 같이 검사한다.
+     * 임시 비밀번호를 발급해 이메일로 보낸다.
+     *
+     * 기존 비밀번호는 바꾸지 않는다. 임시 비밀번호는 3분 동안 로그인에 사용할 수 있다.
+     * 가입하지 않은 이메일이면 404를 반환한다.
      */
+    @PostMapping("/reset-password")
+    public ResponseEntity<Void> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+
+        passwordResetService.resetPassword(request.email());
+
+        return ResponseEntity.noContent().build();
+    }
+
 
 
 }
