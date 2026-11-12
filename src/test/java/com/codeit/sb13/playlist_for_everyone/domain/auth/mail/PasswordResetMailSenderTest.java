@@ -41,7 +41,7 @@ class PasswordResetMailSenderTest {
     @Test
     @DisplayName("받는 사람에게 임시 비밀번호와 유효 시간을 담아 보낸다.")
     void 임시_비밀번호_유효_시간을_땀아_보낸다() {
-        mailSender.send(TO, TEMPORARY_PASSWORD, Duration.ofMillis(3));
+        mailSender.send(TO, TEMPORARY_PASSWORD, Duration.ofMinutes(3));
 
         ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(javamailSender).send(captor.capture());

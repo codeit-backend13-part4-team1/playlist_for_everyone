@@ -23,7 +23,7 @@ class TemporaryPasswordGeneratorTest {
         assertThat(password).hasSize(TemporaryPasswordGenerator.LENGTH);
         assertThat(password).containsAnyOf(chars(TemporaryPasswordGenerator.UPPER));
         assertThat(password).containsAnyOf(chars(TemporaryPasswordGenerator.LOWER));
-        assertThat(password).containsAnyOf(chars(TemporaryPasswordGenerator.NUMBERS));
+        assertThat(password).containsAnyOf(chars(TemporaryPasswordGenerator.DIGITS));
         assertThat(password).containsAnyOf(chars(TemporaryPasswordGenerator.SPECIALS));
     }
 

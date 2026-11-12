@@ -37,6 +37,19 @@ spring:
       # 3초는 운영 지연을 측정하기 전 정한 초기값이다.
       # 지연·타임아웃 발생 시 원인과 요청 응답 시간을 확인하고 환경별로 조정한다.
       timeout: ${EVERYONE_REDIS_TIMEOUT:3s}
+
+  mail:
+    host: ${EVERYONE_MAIL_HOST:smtp.gmail.com}
+    port: ${EVERYONE_MAIL_PORT:587}
+    username: ${EVERYONE_MAIL_USERNAME:}
+    password: ${EVERYONE_MAIL_PASSWORD:}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 5000
+      mail.smtp.writetimeout: 5000
+
 springdoc:
   api-docs:
     # OpenAPI 명세 제공 경로
