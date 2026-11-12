@@ -12,7 +12,6 @@ import java.util.UUID;
 
 public interface ConversationRepository extends JpaRepository<Conversation, UUID> {
 
-
     @EntityGraph(attributePaths = {
             "userA", "userA.profileImage",
             "userB", "userB.profileImage",

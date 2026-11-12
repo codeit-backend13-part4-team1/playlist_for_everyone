@@ -276,7 +276,7 @@ public class ConversationServiceIntegrationTest {
     }
 
     @Test
-    @DisplayName("프로필 이미지 URL 생성에 실패해도 커밋된 대화방은 유지된다.")
+    @DisplayName("프로필 이미지 URL 생성에 실패하면 예외를 전달하고 저장된 대화방은 유지된다.")
     void create_keepsConversationWhenProfileImageUrlGenerationFails(){
         insertWithUserProfileImage();
         IllegalStateException exception = new IllegalStateException("프로필 이미지 URL 생성 실패");
