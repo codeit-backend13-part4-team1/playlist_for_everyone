@@ -200,7 +200,7 @@ class LoginSecurityTest {
     void 잘못된_비밀번호로_로그인하면_실패한다() throws Exception {
         prepareSecurityUser(false);
 
-        expectLoginFailure("wrong-password");
+        expectLoginFailure("wrong-password", 2);
     }
 
     @Test
@@ -209,7 +209,7 @@ class LoginSecurityTest {
         given(userDetailsService.loadUserByUsername(EMAIL))
                 .willThrow(new UsernameNotFoundException("사용자 없음"));
 
-        expectLoginFailure(PASSWORD);
+        expectLoginFailure(PASSWORD, 2);
     }
 
     @Test
@@ -217,7 +217,7 @@ class LoginSecurityTest {
     void 잠긴_사용자는_로그인할_수_없다() throws Exception {
         prepareSecurityUser(true);
 
-        expectLoginFailure(PASSWORD);
+        expectLoginFailure(PASSWORD, 1);
     }
 
     @Test
@@ -350,7 +350,7 @@ class LoginSecurityTest {
                 .header(CSRF_HEADER_NAME, csrfCookie.getValue());
     }
 
-    private void expectLoginFailure(String password) throws Exception {
+    private void expectLoginFailure(String password, int expectedUserLookups) throws Exception {
         MvcResult result = mockMvc.perform(signIn(password))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.exceptionName")
@@ -361,7 +361,7 @@ class LoginSecurityTest {
 
         // 단순히 보호 경로라서 401이 나온 것을 성공으로 착각하지 않도록,
         // 로그인 과정에서 사용자 조회가 실행됐는지 함께 확인한다.
-        verify(userDetailsService).loadUserByUsername(EMAIL);
+        verify(userDetailsService, times(expectedUserLookups)).loadUserByUsername(EMAIL);
 
         // 인증 실패 후 성공 핸들러의 사용자 조회·토큰 발급은 실행되지 않는다.
         verifyNoInteractions(userService, jwtTokenProvider, refreshTokenRepository);
