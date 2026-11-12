@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 import java.net.ConnectException;
 import java.net.UnknownHostException;
@@ -45,9 +46,19 @@ public class SportsDbClient {
                             .build())
                     .retrieve()
                     .body(SportsDbEventsResponse.class);
+
         } catch (ResourceAccessException e) {
             String code = networkErrorCode(e);
             throw new ResourceAccessException("TheSportsDB 요청 실패: " + code);
+        } catch (RestClientException e) {
+            if (e.contains(SocketTimeoutException.class)
+                    || e.contains(HttpTimeoutException.class)) {
+                throw new ResourceAccessException(
+                        "TheSportsDB 요청 실패: TIMEOUT"
+                );
+            }
+
+            throw e;
         }
     }
 

@@ -3,6 +3,7 @@
 팔로우 등록이 커밋되면 팔로우받은 사용자에게 알림을 생성합니다.
 [#155](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/155)에서 연결한 흐름이며,
 권한 변경·플레이리스트 구독의 구현은 [#156 연동 가이드](08-role-subscription-integration.md)에서 설명합니다.
+팔로워·구독자 목록을 조회해 여러 수신자에게 전달하는 흐름은 [#157 플레이리스트 알림](09-playlist-event-integration.md)에서 설명합니다.
 전체 업무 이벤트의 계약과 후속 연동은 상위 [#45](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/45)에서 관리합니다.
 
 이 페이지 → [공통 저장·전송](01-creation-and-delivery.md) → [테스트 읽기](02-testing.md) 순서로 읽으면 됩니다.
@@ -115,4 +116,4 @@ Redis·HTTP 수신은 별도의 `NotificationSseIntegrationTest`에서 확인합
 
 ---
 
-[알림 목차](README.md) · [팔로우 이벤트](../follow/04-follow-event.md) · [권한 변경·구독 알림](08-role-subscription-integration.md) · [다음: 공통 저장·전송 →](01-creation-and-delivery.md)
+[알림 목차](README.md) · [팔로우 이벤트](../follow/04-follow-event.md) · [권한 변경·구독 알림](08-role-subscription-integration.md) · [플레이리스트 알림](09-playlist-event-integration.md) · [다음: 공통 저장·전송 →](01-creation-and-delivery.md)

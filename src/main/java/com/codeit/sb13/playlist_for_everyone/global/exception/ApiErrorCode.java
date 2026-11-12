@@ -15,6 +15,9 @@ public enum ApiErrorCode {
 
     //CONVERSATION CS
     CONVERSATION_NOT_FOUND("CS_001", HttpStatus.NOT_FOUND, "대화방을 찾을 수 없습니다."),
+    SELF_CONVERSATION_NOT_ALLOWED("CS_002", HttpStatus.BAD_REQUEST, "자기 자신과의 대화방은 생성할 수 없습니다."),
+    CONVERSATION_CREATION_FAILED("CS_003", HttpStatus.INTERNAL_SERVER_ERROR, "대화방 생성 처리에 실패했습니다."),
+    CONVERSATION_TARGET_NOT_FOUND("CS_004", HttpStatus.BAD_REQUEST, "대화 상대 사용자를 찾을 수 없습니다."),
 
     // FILE FL
     FILE_NOT_FOUND("FL_001", HttpStatus.NOT_FOUND, "파일을 찾을 수 없습니다."),
