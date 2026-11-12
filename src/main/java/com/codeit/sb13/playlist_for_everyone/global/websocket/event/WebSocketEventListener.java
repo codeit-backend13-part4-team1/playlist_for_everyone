@@ -1,24 +1,17 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.event;
 
 
-import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.DestinationMatcher;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.SessionMatcher;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.role.*;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
-import org.springframework.messaging.simp.user.SimpUser;
-import org.springframework.messaging.simp.user.SimpUserRegistry;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.messaging.*;
-
-import java.util.Objects;
 
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
 
@@ -27,18 +20,14 @@ import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.co
  * 리소스가 Spring에 정상적으로 반영되었는지는 알 수 없음.
  */
 
-@Slf4j
 @Component
 @RequiredArgsConstructor
 public class WebSocketEventListener {
 
     private final SubscriptionRegistry subscriptionRegistry;
-    private final SimpUserRegistry userRegistry;
-
     private final DestinationMatcher subscribe;
     private final DestinationMatcher unsubscribe;
     private final SessionMatcher disconnect;
-    private final WebSocketRegistry webSocketRegistry;
 
     @PostConstruct
     public void init(){
@@ -108,26 +97,4 @@ public class WebSocketEventListener {
         disconnect.run(info);
     }
 
-
-    /**
-     * 로그인 된 유저의 인증 정보가 취소되었을 때 발생하는 이벤트.
-     * 인증된 유저에 대한 모든 세션 연결을 종료한다.
-     * @param event 취소될 유저 인증정보가 담긴 매서드
-     */
-    @EventListener
-    public void onAuthRevoke(WebSocketAuthRevokeEvent event){
-        String authUserName = Objects.requireNonNull(event.user())
-                .getUsername();
-        SimpUser user = userRegistry.getUser(authUserName);
-
-        if (user != null)
-            user.getSessions().forEach(session -> {
-                String sessionId = session.getId();
-                try {
-                    webSocketRegistry.close(sessionId);
-                } catch (Exception e) {
-                    log.error("[WebSocketAuthRevokeEvent] 세션 종료에 실패 했습니다. 세션ID : {}", sessionId);
-                }
-            });
-    }
 }

@@ -7,7 +7,6 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocke
 import com.codeit.sb13.playlist_for_everyone.global.service.MatchRule;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.event.WebSocketAuthRevokeEvent;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSession;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatDto;

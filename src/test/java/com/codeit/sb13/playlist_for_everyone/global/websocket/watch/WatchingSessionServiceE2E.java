@@ -4,12 +4,15 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.watch;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.SessionStartResult;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AdminInitializationService;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
+import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.event.WebSocketEventFactory;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatSendRequest;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionContentDeleteEvent;
@@ -44,6 +47,7 @@ import java.lang.reflect.Type;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -53,6 +57,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.BDDMockito.*;
 
@@ -114,9 +119,8 @@ public class WatchingSessionServiceE2E {
     @MockitoBean
     ContentService contentService;
 
-    //
     @Autowired
-    ApplicationEventPublisher applicationEventPublisher;
+    WebSocketEventFactory webSocketEventFactory;
 
 
 
@@ -363,14 +367,59 @@ public class WatchingSessionServiceE2E {
             String message = received.get(5, TimeUnit.SECONDS);
             log.info("Received message: {}", message);
 
-            applicationEventPublisher.publishEvent(new WatchingSessionContentDeleteEvent(contentId));
+            // 명시적 이벤트 발행을 통한 컨텐츠 삭제 이벤트 시뮬레이션.
+            webSocketEventFactory.contentDeleteEvent(contentId);
 
 
-            assertThat(session.isConnected()).isFalse();
+            // 세션에 대한 끊김 정보 확인
+            await()
+                    .atMost(5, TimeUnit.SECONDS)
+                    .pollInterval(100, TimeUnit.MILLISECONDS)
+                    .untilAsserted(() ->
+                            assertThat(session.isConnected()).isFalse()
+                    );
+
 
         } finally {
             if (session.isConnected())
                 session.disconnect();
+            client.stop();
+        }
+    }
+
+    @Test
+    @DisplayName("유저 로그인에 따른 로그인 해제 기능 실행 시, 유저에 대한 모든 세션이 끊긴다.")
+    void userLogoutTest() throws Exception {
+        WebSocketStompClient client = new WebSocketStompClient(new StandardWebSocketClient());
+
+        UUID contentId = UUID.randomUUID();
+
+
+        StompSession session = getSession(client).get(5, TimeUnit.SECONDS);
+        StompSession session2 = getSession(client).get(5, TimeUnit.SECONDS);
+        StompSession session3 = getSession(client).get(5, TimeUnit.SECONDS);
+
+        List<StompSession> sessions = Arrays.asList(session, session2, session3);
+        try {
+            webSocketEventFactory.authRevokedEvent("admin@admin.com");
+            await()
+                    .atMost(5, TimeUnit.SECONDS)
+                    .pollInterval(100, TimeUnit.MILLISECONDS)
+                    .untilAsserted(() ->
+                            assertThat(sessions).allMatch(ses -> !ses.isConnected())
+                    );
+
+            for (StompSession s : sessions) {
+                String t = (s.isConnected() ? "연결됨" : "끊김");
+                log.info("session display : {}","세션 결과 - " + t );
+            }
+        } finally {
+            if (session.isConnected())
+                session.disconnect();
+            if (session2.isConnected())
+                session2.disconnect();
+            if (session3.isConnected())
+                session3.disconnect();
             client.stop();
         }
     }
