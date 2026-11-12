@@ -44,14 +44,17 @@ public class TemporaryPassword extends UpdatedAtEntity {
 
     /**
      * 파기되지 않았고 만료 시각 전이면 사용할 수 있다.
+     * 만료 시각과 같은 순간부터는 사용할 수 없다.
      */
     public boolean isUsableAt(LocalDateTime now) {
-        // RED: 다음 단계에서 구현
-        return false;
+        return status == TemporaryPasswordStatus.ACTIVE && now.isBefore(expiredAt);
     }
 
+    /**
+     * 재발급하거나 비밀번호를 변경하면 기존 임시 비밀번호를 파기한다.
+     */
     public void discard() {
-        // RED: 다음 단계에서 구현
+        this.status = TemporaryPasswordStatus.DISCARDED;
     }
 
 }
