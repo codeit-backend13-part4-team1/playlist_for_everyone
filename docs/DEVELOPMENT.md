@@ -20,10 +20,10 @@
 | 공통 보안 | JWT 필터와 경로별 인증·인가 적용. 팔로우·알림 API는 인증 필요, 쿠키 기반 CSRF 보호 활성화 |
 | SSE | 다중 연결·하트비트·종료 정리, 공유 이력 저장·재연결 복구, 연결별 후속 조회·제한된 재시도. [SSE 구현 가이드](sse/README.md) 참고 |
 | 알림 전송 | 공통 생성 요청 → 독립 저장·커밋 → 공유 이력 → Pub/Sub → 이력 조회·삭제 필터 → SSE 수신. [알림 전송 흐름](notification/01-creation-and-delivery.md) 참고 |
-| 업무 이벤트 알림 | [#155 팔로우](notification/07-domain-event-integration.md)·[#156 권한 변경·구독](notification/08-role-subscription-integration.md)의 업무 커밋 후 공통 요청 재발행·독립 저장 연결. 실제 서비스부터 SSE 발행 요청까지 검증 |
+| 업무 이벤트 알림 | [#155 팔로우](notification/07-domain-event-integration.md)·[#156 권한 변경·구독](notification/08-role-subscription-integration.md)·[#157 플레이리스트 생성·콘텐츠 추가](notification/09-playlist-event-integration.md)의 업무 커밋 후 공통 요청 재발행·독립 저장 연결. 실제 서비스부터 SSE 발행 요청까지 검증 |
 | 알림 수신자 | 사용자 조회 컴포넌트를 통해 User 연관관계로 저장. 요청·응답의 수신자 UUID 계약 유지. [연관관계와 검증](notification/06-receiver-association.md) 참고 |
 | 알림 조회·읽음 | JWT 사용자를 수신자 조건으로 사용하여 목록·전체 개수를 조회하고 알림 삭제로 읽음 처리. [조회·인증 흐름](notification/03-query-and-security.md) 참고 |
-| SSE·알림 후속 | 팔로우·권한 변경·구독 외 업무 이벤트의 알림 연동(#45)·DM 본문 연동·Kafka·연결 수 제한·보관 초기값의 운영 부하 검증 |
+| SSE·알림 후속 | 위 다섯 업무 이벤트 외의 알림 연동(#45)·DM 본문 연동·Kafka·연결 수 제한·보관 초기값의 운영 부하 검증 |
 | 후속 기능 | 팔로우 CSRF 연동·검증은 #114, 알림 CSRF 연동·검증은 #124. 다른 기능의 진행 상태는 개별 이슈 참고 |
 
 라이브러리 의존성과 로컬 인프라를 준비한 상태와 기능 구현 완료를 구분합니다. Redis 서비스는 Compose에 포함되어 있으며, 이를 사용하는 캐시·세션 기능은 구현 전입니다. Kafka와 Elasticsearch는 현재 Compose에 포함되어 있지 않습니다.
@@ -373,6 +373,8 @@ SSE Redis 통합 테스트는 별도의 Redis 7.4 컨테이너로 실제 Pub/Sub
 `NotificationSseIntegrationTest`는 PostgreSQL과 Redis를 함께 사용하여 알림 저장부터 실제 HTTP 수신까지 확인합니다. [검증 범위와 실행 명령](notification/02-testing.md)을 참고합니다.
 실제 팔로우·권한 변경·구독의 이벤트 변환과 알림 저장은 `NotificationIntegrationTest`가 검증하며, 이 클래스의 SSE 발행자는 Mock입니다.
 권한 변경·구독은 실제 업무 커밋·롤백을, 재발행 실패 격리는 실제 팔로우 사례를 확인합니다.
+플레이리스트 생성·콘텐츠 추가는 `NotificationPlaylistIntegrationTest`에서 실제 커밋·롤백과 수신자 조회·첫 저장 실패 후 처리를 확인합니다.
+이 클래스도 SSE 발행자를 Mock으로 대체합니다. [수신자 조회·저장소 Spy의 역할과 실행 방법](notification/10-playlist-event-testing.md)을 참고합니다.
 조회·삭제는 서비스 단위 테스트, PostgreSQL 저장소·서비스 통합 테스트와 실제 JWT 필터를 거치는 MockMvc 통합 테스트로 확인합니다.
 [조회·인증 테스트 가이드](notification/04-query-and-security-testing.md)에 역할별 실행 명령과 CSRF 임시 제외 범위를 정리했습니다.
 같은 알림을 동시에 읽음 처리할 때의 DB 잠금 대기와 커밋 순서는 [동시 삭제 검증](notification/05-concurrent-deletion-testing.md)을 참고합니다.
@@ -431,6 +433,7 @@ CI는 성공한 빌드의 JaCoCo XML에서 전체 LINE 수치로 SVG 배지를 �
 - 공통 예외 테스트에는 [TestEveryOneException](../src/test/java/com/codeit/sb13/testsupport/exception/TestEveryOneException.java)을 사용합니다. 도메인 예외 예시의 변경이 공통 동작 테스트에 영향을 주지 않도록 분리합니다.
 - 기존 테스트는 애플리케이션 컨텍스트, 예외 응답, 검증 오류, MDC, JPA Auditing, Querydsl 조회, 비밀번호 인코더, OpenAPI 설정을 확인합니다.
 - 알림 테스트는 제목 말줄임·입력 검증, 업무 커밋 후 저장, 알림 커밋 후 SSE 발행, 롤백·트랜잭션 외 발행 시 미처리를 확인합니다. `NotificationIntegrationTest`는 실제 PostgreSQL과 `TransactionTemplate`을 사용하고, SSE 발행자는 Mock으로 대체하여 저장·전송 실패 격리를 검증합니다.
+- 플레이리스트 알림은 수신자 중복·행위자 제외를 단위 테스트로, 처리 시점의 관계 조회와 업무 커밋 후 독립 저장을 통합 테스트로 확인합니다. 첫 저장 실패는 Spy로 유도하며, 검증 범위는 [플레이리스트 알림 테스트](notification/10-playlist-event-testing.md)에 정리했습니다.
 - 알림 조회·삭제는 MVC·서비스 단위·저장소·서비스 통합·JWT 통합 테스트로 나눕니다. 서비스 단위 테스트는 소유자별 삭제 여부, 저장소 테스트는 목록·개수·커서 조회, `NotificationServiceIntegrationTest`는 실제 잠금 대기와 삭제 커밋을 확인합니다. [검증 범위와 실행 명령](notification/04-query-and-security-testing.md)을 참고합니다.
 - `NotificationSecurityIntegrationTest`는 실제 JWT·사용자 조회·서비스·PostgreSQL을 사용하여 본인 데이터 제한과 인증 실패 시 데이터 보존을 확인합니다. 이 클래스의 MockMvc 요청에서만 CSRF 검사를 임시 제외하며, 실제 CSRF 검증은 #124에서 진행합니다.
 - 공통 예외 핸들러·인터셉터의 MVC 테스트는 Security 필터를 제외합니다. 이 테스트의 통과는 인증·인가 동작 검증을 의미하지 않습니다.
@@ -444,6 +447,7 @@ CI는 성공한 빌드의 JaCoCo XML에서 전체 LINE 수치로 SVG 배지를 �
 삭제된 알림 필터, 다른 서버 재연결, 중복·역순 신호, 연결별 복구와 이력 만료 후 신규 수신도 포함합니다.
 A·B는 동일 JVM의 독립 컨텍스트와 서로 다른 HTTP 포트이며, 이 검증에 로그인 API·업무 이벤트 변환·DM 연동은 포함하지 않습니다.
 팔로우(#155)·권한 변경·구독(#156)의 업무 이벤트 변환부터 SSE 발행 요청까지는 `NotificationIntegrationTest`에서 별도로 검증합니다.
+플레이리스트 생성·콘텐츠 추가(#157)는 `NotificationPlaylistIntegrationTest`에서 검증합니다. 두 클래스는 실제 HTTP 수신까지 검증하는 테스트와 구분합니다.
 공통 Redis 전송 테스트와 알림 연동 테스트의 차이는 [알림 테스트 가이드](notification/02-testing.md)에 정리합니다.
 최신 결과와 수치는 각자의 코드에서 명령을 실행해 보고서로 확인합니다.
 
@@ -575,6 +579,6 @@ RUN_SPORTSDB_LIVE_TEST=true ./gradlew test --tests '*SportsDbClientLiveTest' --r
 - 목록 API의 커서 규칙 확정과 직렬화·페이징 테스트
 - Redis 기반 캐시·세션 기능 구현과 데이터 보관 정책 결정
 - 배치, S3, WebSocket 등 기능별 구현과 필요한 인프라 추가
-- 팔로우(#155)·권한 변경·구독(#156) 외 업무 이벤트의 알림 연동(#45), DM 본문 전송 연동, SSE Kafka 구현체, 이력 보관 초기값의 운영 부하 검증, [동시 연결 수 제한·모니터링 #107](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/107)
+- 팔로우(#155)·권한 변경·구독(#156)·플레이리스트 생성·콘텐츠 추가(#157) 외 업무 이벤트의 알림 연동(#45), DM 본문 전송 연동, SSE Kafka 구현체, 이력 보관 초기값의 운영 부하 검증, [동시 연결 수 제한·모니터링 #107](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/107)
 - README 배지 자동 게시 방식 확정 및 연결
 - 배포 파이프라인 구성
