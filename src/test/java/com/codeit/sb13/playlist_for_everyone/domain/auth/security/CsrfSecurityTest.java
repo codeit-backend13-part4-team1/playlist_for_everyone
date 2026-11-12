@@ -7,6 +7,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AuthService;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.service.PasswordResetService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.controller.UserController;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
@@ -104,6 +105,9 @@ class CsrfSecurityTest {
     // SecurityConfig가 로그인 세션 저장소를 주입받는다.
     @MockitoBean
     private UserSessionRepository userSessionRepository;
+
+    @MockitoBean
+    private PasswordResetService passwordResetService;
 
     @Test
     @DisplayName("로그인하지 않아도 CSRF 토큰 발급 API를 호출할 수 있다.")

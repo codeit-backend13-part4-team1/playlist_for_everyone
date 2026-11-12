@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.dto.TokenReissueResult;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.dto.response.JwtDto;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtProperties;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AuthService;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.service.PasswordResetService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
@@ -18,16 +19,18 @@ public class AuthController {
 
 
     private final AuthService authService;
+    private final PasswordResetService passwordResetService;
     private final JwtProperties jwtProperties;
     private final boolean refreshCookieSecure;
 
-    public AuthController(AuthService authService, JwtProperties jwtProperties,
+    public AuthController(AuthService authService, PasswordResetService passwordResetService,
+                          JwtProperties jwtProperties,
                           @Value("${everyone.jwt.refresh-cookie-secure:true}") boolean refreshCookieSecure){
         this.authService = authService;
+        this.passwordResetService = passwordResetService;
         this.jwtProperties = jwtProperties;
         this.refreshCookieSecure = refreshCookieSecure;
     }
-
 
     /**
      * Refresh Token 쿠키로 새 Access Token과 Refresh Token을 발급한다.
@@ -62,7 +65,6 @@ public class AuthController {
 
     }
 
-
     /**
      *  로그인 전에 사용할 CSRF 토큰을 쿠키로 전달한다.
      *
@@ -75,5 +77,11 @@ public class AuthController {
 
         return ResponseEntity.noContent().build();
     }
+
+    /**
+     * 비밀번호 초기화 API
+     * 로그인 전에 호출하므로 인증 없이 접근 가능하다. CSRF는 다른 POST 요청과 같이 검사한다.
+     */
+
 
 }
