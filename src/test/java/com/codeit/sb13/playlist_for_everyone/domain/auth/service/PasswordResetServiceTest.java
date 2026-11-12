@@ -124,9 +124,6 @@ class PasswordResetServiceTest {
     @DisplayName("가입하지 않은 이메일이면 예외가 발생하고 아무것도 발급하지 않는다.")
     void 가입하지_않은_이메일이면_예외가_발생한다() {
         given(userRepository.findByEmail(EMAIL)).willReturn(Optional.empty());
-        given(passwordEncoder.encode(RAW_PASSWORD)).willReturn(ENCODED_PASSWORD);
-        willThrow(new MailSendException("SMTP 연결 실패"))
-                .given(passwordResetMailSender).send(anyString(), anyString(), any(Duration.class));
 
         assertThatThrownBy(() -> passwordResetService.resetPassword(EMAIL))
                 .isInstanceOf(UserNotFoundException.class);
