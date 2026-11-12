@@ -2,7 +2,6 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.watch;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
-import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
@@ -11,10 +10,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.mapper.UserSummaryMappe
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.exception.EveryOneException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketAuthInvalidException;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionData;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistry;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistryImpl;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketRegistryImpl;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSession;
@@ -399,14 +396,6 @@ public class WatchingSessionTest {
                         role,
                         isLocked
                 );
-
-                // 세션 레지스터에 등록 시뮬.
-                SessionData data = SessionData.builder()
-                        .session(info.session())
-                        .subscription(info.subscription())
-                        .destination(registeredDestination) // 구독 시 저장되었던 경로
-                        .principal(info.principal())
-                        .build();
                 given(subscriptionRegistry.get(eq(info)))
                         .willReturn(Optional.of(info));
 
@@ -429,14 +418,6 @@ public class WatchingSessionTest {
                         destination,
                         Role.USER
                 );
-
-                // 세션 레지스터에 등록 시뮬.
-                SessionData data = SessionData.builder()
-                        .session(info.session())
-                        .subscription(info.subscription())
-                        .destination(destination) // 구독 시 저장되었던 경로
-                        .principal(info.principal())
-                        .build();
                 given(subscriptionRegistry.get(eq(info)))
                         .willReturn(Optional.of(info));
 

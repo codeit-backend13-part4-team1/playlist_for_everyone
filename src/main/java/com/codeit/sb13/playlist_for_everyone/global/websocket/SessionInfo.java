@@ -79,29 +79,5 @@ public class SessionInfo {
         return this;
     }
 
-    // 편의 매서드
-    public SessionInfo wrap(SessionData data){
-        this.destination = data.destination();
-        this.principal = data.principal();
-        return this;
-    }
-
-    public SessionData toData(){
-        return SessionData.builder()
-                .session(session)
-                .subscription(subscription)
-                .destination(destination)
-                .principal(principal)
-                .build();
-    }
-
-    static public SessionInfo fromData(SessionData data){
-        return new SessionInfo(
-                data.session(),
-                data.subscription(),
-                data.destination(),
-                data.principal()
-        );
-    }
 
 }
