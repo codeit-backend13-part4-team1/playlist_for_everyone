@@ -10,6 +10,13 @@ import lombok.NoArgsConstructor;
 
 import java.util.UUID;
 
+/**
+ * 정렬된 두 사용자로 식별하는 1:1 대화방이다.
+ *
+ * <p>userA와 userB는 저장 순서를 나타내며 요청자와 상대방을 고정해서 의미하지 않는다.
+ * ConversationCommand의 정렬과 DB의 사용자 쌍 UNIQUE를 함께 적용해 역방향 요청도 같은 관계로 취급한다.
+ * UNIQUE만으로는 순서가 뒤집힌 중복을 막을 수 없으며, 자기 자신과의 대화는 서비스에서 거절한다.
+ */
 @Table(
         name = "conversations",
         uniqueConstraints = @UniqueConstraint(
