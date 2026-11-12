@@ -12,6 +12,7 @@ import org.springframework.batch.core.job.builder.JobBuilder;
 import org.springframework.batch.core.job.parameters.InvalidJobParametersException;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.Step;
+import org.springframework.batch.core.step.StepExecution;
 import org.springframework.batch.core.step.builder.StepBuilder;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -69,7 +70,8 @@ public class SportsDbBatchConfig {
             JobRepository jobRepository,
             PlatformTransactionManager transactionManager,
             @Qualifier("sportsDbEventReader") SportsDbEventReader reader,
-            ContentCollectionService collectionService
+            ContentCollectionService collectionService,
+            @Qualifier("sportsDbSkipPolicy") SportsDbSkipPolicy skipPolicy
     ) {
         var mapper = new SportsDbContentMapper();
 
@@ -77,8 +79,8 @@ public class SportsDbBatchConfig {
                 .<SportsDbEventResponse, CollectedContentData>chunk(1)
                 .transactionManager(transactionManager)
                 .faultTolerant()
-                .skip(CollectedContentValidationException.class)
-                .skipLimit(10)
+                .skipPolicy(skipPolicy)
+                .stream(skipPolicy)
                 .reader(reader)
                 .processor(mapper::fromEvent)
                 .writer(chunk -> {
@@ -87,5 +89,13 @@ public class SportsDbBatchConfig {
                     }
                 })
                 .build();
+    }
+
+    @Bean
+    @StepScope
+    public SportsDbSkipPolicy sportsDbSkipPolicy(
+            @Value("#{stepExecution}") StepExecution stepExecution
+    ) {
+        return new SportsDbSkipPolicy(stepExecution, 10);
     }
 }
