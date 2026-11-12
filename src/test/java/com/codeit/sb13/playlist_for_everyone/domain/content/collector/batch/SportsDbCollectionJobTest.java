@@ -319,6 +319,14 @@ class SportsDbCollectionJobTest {
                     "English Premier League", "2014-2015",
                     "2014-08-17", null
             ));
+
+            if (i == 9) {
+                events.add(new SportsDbEventResponse(
+                        "443050", "중간 정상 경기", "Soccer",
+                        "English Premier League", "2014-2015",
+                        "2014-08-17", null
+                ));
+            }
         }
 
         events.add(new SportsDbEventResponse(
@@ -356,6 +364,26 @@ class SportsDbCollectionJobTest {
         var stepExecution = execution.getStepExecutions().iterator().next();
 
         assertThat(stepExecution.getWriteSkipCount()).isEqualTo(10);
+
+        // 같은 목록으로 재시작해도 건너뛰기 한도 유지
+        var restartedExecution = jobOperator.restart(execution);
+
+        assertThat(restartedExecution.getStatus())
+                .isEqualTo(BatchStatus.FAILED);
+
+        // 먼저 저장한 경기는 유지
+        assertThat(contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.THE_SPORTS_DB,
+                ContentType.sport,
+                "443001"
+        )).isPresent();
+
+        // 한도를 넘긴 이후의 경기는 저장하지 않음
+        assertThat(contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.THE_SPORTS_DB,
+                ContentType.sport,
+                "443099"
+        )).isEmpty();
     }
 
     @Test
