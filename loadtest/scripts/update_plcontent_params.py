@@ -1,4 +1,4 @@
-"""loadtest/plcontent_params.csv 생성. (playlist-content-scenario.jmx 용)
+"""loadtest/data/plcontent_params.csv 생성. (playlist-content-scenario.jmx 용)
 
 각 행: 이메일, 본인 플레이리스트 ID, 추가할 콘텐츠 A, 추가할 콘텐츠 B  (loadtest1 ~ loadtest200)
   - 플레이리스트: 해당 사용자가 소유한 플레이리스트 중 ID가 가장 작은 것
@@ -6,13 +6,14 @@
   - 이전 실행이 중간에 끊겨 남은 연결이 있으면 먼저 지운다.
 
 전제: seed_content.sql 을 실행한 상태 (lt-c-* 콘텐츠 존재)
-실행: 프로젝트 루트에서 `python3 loadtest/update_plcontent_params.py` (실행할 때마다 사용)
+실행: 프로젝트 루트에서 `python3 loadtest/scripts/update_plcontent_params.py` (실행할 때마다 사용)
 """
+import os
 import subprocess
 import sys
 
 USER_COUNT = 200
-OUTPUT = "loadtest/plcontent_params.csv"
+OUTPUT = "loadtest/data/plcontent_params.csv"
 BASE = ["docker", "compose", "--env-file", ".env.dev", "exec", "-T", "postgres",
         "psql", "-U", "everyone", "-d", "loadtest", "-v", "ON_ERROR_STOP=1"]
 
@@ -53,6 +54,7 @@ def main() -> None:
     if len(rows) != USER_COUNT or any(len(r.split(",")) != 4 for r in rows):
         print(f"행 수가 {USER_COUNT}이 아니에요: {len(rows)}. seed_content.sql 을 먼저 실행했는지 확인하세요. plcontent_params.csv는 바꾸지 않았어요.", file=sys.stderr)
         sys.exit(1)
+    os.makedirs(os.path.dirname(OUTPUT), exist_ok=True)
     with open(OUTPUT, "w", newline="\n", encoding="utf-8") as f:
         f.write("\n".join(rows) + "\n")
     print(f"Done! {len(rows)} rows written to {OUTPUT}")

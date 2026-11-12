@@ -49,5 +49,4 @@ out/
 report/
 report_*/
 *.jtl
-loadtest/users.csv
-loadtest/*_params.csv
+loadtest/data/

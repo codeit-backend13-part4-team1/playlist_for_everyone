@@ -1,18 +1,19 @@
-"""loadtest/list_params.csv 를 현재 loadtest DB 기준으로 만든다. (playlist-list-variants.jmx 용)
+"""loadtest/data/list_params.csv 를 현재 loadtest DB 기준으로 만든다. (playlist-list-variants.jmx 용)
 
 각 행: 이메일, 사용자 ID, 흔한 키워드, 희귀 키워드
 - 이메일/사용자 ID: loadtest1 ~ loadtest200 (프로필의 소유자 필터·구독 필터에 쓴다)
 - 흔한 키워드: 제목의 첫 단어 중 가장 많이 나오는 것 (모든 행이 같은 값)
 - 희귀 키워드: 무작위로 고른 플레이리스트의 전체 제목 (사용자마다 다름)
 
-실행: 프로젝트 루트에서 `python3 loadtest/update_list_params.py`
+실행: 프로젝트 루트에서 `python3 loadtest/scripts/update_list_params.py`
 전제: postgres 컨테이너가 떠 있고 loadtest DB 가 시드된 상태 (시드를 다시 돌렸다면 다시 실행)
 """
+import os
 import subprocess
 import sys
 
 USER_COUNT = 200
-OUTPUT = "loadtest/list_params.csv"
+OUTPUT = "loadtest/data/list_params.csv"
 
 SQL = f"""
 WITH u AS (
@@ -81,6 +82,7 @@ def main() -> None:
         sys.exit(1)
 
     # 줄 끝은 LF 로 고정한다.
+    os.makedirs(os.path.dirname(OUTPUT), exist_ok=True)
     with open(OUTPUT, "w", newline="\n", encoding="utf-8") as f:
         f.write("\n".join(rows) + "\n")
 

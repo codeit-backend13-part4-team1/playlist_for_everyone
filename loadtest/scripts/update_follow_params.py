@@ -1,4 +1,4 @@
-"""loadtest/follow_params.csv 를 현재 loadtest DB 기준으로 만든다. (follow-scenario.jmx 용)
+"""loadtest/data/follow_params.csv 를 현재 loadtest DB 기준으로 만든다. (follow-scenario.jmx 용)
 
 각 행: 이메일, 이미 팔로우 중인 대상 ID, 새로 팔로우할 대상 ID, 인기 계정 ID, 보통 계정 ID
 - 사용자: loadtest1 ~ loadtest200
@@ -6,14 +6,15 @@
 - 새로 팔로우할 대상:    loadtest(9600+i)  (시드에 없는 관계)
 - 인기 계정: loadtest1 (팔로워 가장 많음), 보통 계정: loadtest5000
 
-실행: 프로젝트 루트에서 `python3 loadtest/update_follow_params.py`
+실행: 프로젝트 루트에서 `python3 loadtest/scripts/update_follow_params.py`
 전제: seed_follow.sql 을 실행한 상태 (시드를 다시 돌렸다면 다시 실행)
 """
+import os
 import subprocess
 import sys
 
 USER_COUNT = 200
-OUTPUT = "loadtest/follow_params.csv"
+OUTPUT = "loadtest/data/follow_params.csv"
 
 SQL = f"""
 WITH u AS (
@@ -65,6 +66,7 @@ def main() -> None:
         )
         sys.exit(1)
 
+    os.makedirs(os.path.dirname(OUTPUT), exist_ok=True)
     with open(OUTPUT, "w", newline="\n", encoding="utf-8") as f:
         f.write("\n".join(rows) + "\n")
 

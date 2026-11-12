@@ -1,4 +1,4 @@
-"""사용자 도메인 테스트 준비 + loadtest/user_params.csv 생성. (user-scenario.jmx 용)
+"""사용자 도메인 테스트 준비 + loadtest/data/user_params.csv 생성. (user-scenario.jmx 용)
 
 하는 일 (loadtest DB 전용)
   1) 이전 실행에서 가입된 테스트 계정(lt-new-*)과 그 알림을 삭제
@@ -6,13 +6,14 @@
   3) loadtest1001~1200 (변경 대상)을 USER · 잠금 해제 상태로 되돌림
   4) user_params.csv 작성: 이메일(loadtest n), 대상 사용자 ID(loadtest n+1000)
 
-실행: 프로젝트 루트에서 `python3 loadtest/update_user_params.py`  (실행할 때마다 사용)
+실행: 프로젝트 루트에서 `python3 loadtest/scripts/update_user_params.py`  (실행할 때마다 사용)
 """
+import os
 import subprocess
 import sys
 
 USER_COUNT = 200
-OUTPUT = "loadtest/user_params.csv"
+OUTPUT = "loadtest/data/user_params.csv"
 BASE = ["docker", "compose", "--env-file", ".env.dev", "exec", "-T", "postgres",
         "psql", "-U", "everyone", "-d", "loadtest", "-v", "ON_ERROR_STOP=1"]
 
@@ -54,6 +55,7 @@ def main() -> None:
     if len(rows) != USER_COUNT or any(len(r.split(",")) != 2 for r in rows):
         print(f"행 수가 {USER_COUNT}이 아니에요: {len(rows)}. user_params.csv는 바꾸지 않았어요.", file=sys.stderr)
         sys.exit(1)
+    os.makedirs(os.path.dirname(OUTPUT), exist_ok=True)
     with open(OUTPUT, "w", newline="\n", encoding="utf-8") as f:
         f.write("\n".join(rows) + "\n")
     print(f"Done! {len(rows)} rows written to {OUTPUT}")

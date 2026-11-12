@@ -4,7 +4,7 @@
 --
 -- 사용법 (프로젝트 루트에서):
 --   docker compose --env-file .env.dev exec -T postgres \
---     psql -U everyone -d loadtest -v ON_ERROR_STOP=1 < loadtest/seed_playlist.sql
+--     psql -U everyone -d loadtest -v ON_ERROR_STOP=1 < loadtest/sql/seed_playlist.sql
 --
 -- 테스트 계정: loadtest1@example.com ~ loadtest10000@example.com
 --             비밀번호(공통): Loadtest1234!   (부하테스트 전용 값)

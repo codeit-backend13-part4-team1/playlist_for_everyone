@@ -1,5 +1,5 @@
 -- 알림 목록 쿼리 실행 계획 확인 (읽기 전용, loadtest DB)
--- 실행: docker compose --env-file .env.dev exec -T postgres psql -U everyone -d loadtest < loadtest/explain_notification.sql > explain_notification_result.txt
+-- 실행: docker compose --env-file .env.dev exec -T postgres psql -U everyone -d loadtest < loadtest/sql/explain_notification.sql > explain_notification_result.txt
 -- 사용자: loadtest1 (알림 2,000건). 쿼리는 앱이 보내는 SQL과 같은 모양으로 맞춘 근사값이다.
 \pset pager off
 \echo ===== 인덱스 현황 =====

@@ -1,6 +1,6 @@
 -- 알림 도메인 부하테스트 시드 (loadtest DB 전용)
 -- 전제: seed_playlist.sql 로 loadtest1~10000 사용자가 이미 있어야 한다.
--- 실행: docker compose --env-file .env.dev exec -T postgres psql -U everyone -d loadtest -v ON_ERROR_STOP=1 < loadtest/seed_notification.sql
+-- 실행: docker compose --env-file .env.dev exec -T postgres psql -U everyone -d loadtest -v ON_ERROR_STOP=1 < loadtest/sql/seed_notification.sql
 -- 다시 실행하면 notifications 를 비우고 다시 만든다. (notifications 외 테이블은 건드리지 않는다)
 --
 -- 만들어지는 데이터 (총 약 138만 건)

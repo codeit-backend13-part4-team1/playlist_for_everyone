@@ -1,6 +1,6 @@
 -- 콘텐츠 도메인 부하테스트 시드 (loadtest DB 전용)
 -- 전제: seed_playlist.sql 로 loadtest1~10000 사용자와 플레이리스트가 이미 있어야 한다.
--- 실행: docker compose --env-file .env.dev exec -T postgres psql -U everyone -d loadtest -v ON_ERROR_STOP=1 < loadtest/seed_content.sql
+-- 실행: docker compose --env-file .env.dev exec -T postgres psql -U everyone -d loadtest -v ON_ERROR_STOP=1 < loadtest/sql/seed_content.sql
 -- 다시 실행하면 이 스크립트가 만든 콘텐츠(lt-c-*, LT-DEL-*)만 지우고 다시 만든다. 다른 데이터는 건드리지 않는다.
 -- (삭제 테스트는 대상 콘텐츠를 지우므로, 삭제 테스트 실행 전마다 이 스크립트를 다시 실행한다.)
 --

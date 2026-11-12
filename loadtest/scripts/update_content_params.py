@@ -1,15 +1,16 @@
-"""loadtest/content_params.csv 를 현재 loadtest DB 기준으로 만든다. (content-scenario.jmx 용)
+"""loadtest/data/content_params.csv 를 현재 loadtest DB 기준으로 만든다. (content-scenario.jmx 용)
 
 각 행: 이메일, 사용자 ID, 리뷰많은콘텐츠 ID, 일반콘텐츠 ID, 삭제대상 콘텐츠 ID  (loadtest1 ~ loadtest200)
 삭제 테스트는 대상 콘텐츠를 지우므로 실행 전마다 seed_content.sql -> 이 스크립트 순서로 실행한다.
 
-실행: 프로젝트 루트에서 `python3 loadtest/update_content_params.py`
+실행: 프로젝트 루트에서 `python3 loadtest/scripts/update_content_params.py`
 """
+import os
 import subprocess
 import sys
 
 USER_COUNT = 200
-OUTPUT = "loadtest/content_params.csv"
+OUTPUT = "loadtest/data/content_params.csv"
 
 SQL = f"""
 SELECT u.email, u.id,
@@ -50,6 +51,7 @@ def main() -> None:
         print(f"행 수가 {USER_COUNT}이 아니에요: {len(rows)}. seed_content.sql 을 먼저 실행했는지 확인하세요. content_params.csv는 바꾸지 않았어요.", file=sys.stderr)
         sys.exit(1)
 
+    os.makedirs(os.path.dirname(OUTPUT), exist_ok=True)
     with open(OUTPUT, "w", newline="\n", encoding="utf-8") as f:
         f.write("\n".join(rows) + "\n")
 

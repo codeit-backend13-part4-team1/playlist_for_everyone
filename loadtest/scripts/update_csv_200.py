@@ -1,4 +1,4 @@
-"""loadtest/users.csv 를 현재 loadtest DB 기준으로 새로 만든다.
+"""loadtest/data/users.csv 를 현재 loadtest DB 기준으로 새로 만든다.
 
 - 계정: loadtest1 ~ loadtest200
 - 구독 대상: 계정마다 서로 다른 플레이리스트 1개
@@ -6,14 +6,15 @@
   - loadtest1~200 중 누구도 이미 구독하지 않은 플레이리스트만 고른다
   - 소유자가 서로 다른 플레이리스트만 고른다 (같은 행에 동시 요청이 몰리지 않게)
 
-실행: 프로젝트 루트에서 `python3 update_csv_200.py`
+실행: 프로젝트 루트에서 `python3 loadtest/scripts/update_csv_200.py`
 전제: postgres 컨테이너가 떠 있고 loadtest DB 가 시드된 상태 (시드를 다시 돌렸다면 반드시 다시 실행)
 """
+import os
 import subprocess
 import sys
 
 USER_COUNT = 200
-OUTPUT = "loadtest/users.csv"
+OUTPUT = "loadtest/data/users.csv"
 
 SQL = f"""
 WITH u AS (
@@ -74,6 +75,7 @@ def main() -> None:
         sys.exit(1)
 
     # 줄 끝은 LF 로 고정한다.
+    os.makedirs(os.path.dirname(OUTPUT), exist_ok=True)
     with open(OUTPUT, "w", newline="\n") as f:
         f.write("\n".join(rows) + "\n")
 

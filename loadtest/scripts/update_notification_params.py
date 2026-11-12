@@ -1,17 +1,18 @@
-"""loadtest/notification_params.csv 를 현재 loadtest DB 기준으로 만든다. (notification-scenario.jmx 용)
+"""loadtest/data/notification_params.csv 를 현재 loadtest DB 기준으로 만든다. (notification-scenario.jmx 용)
 
 각 행: 이메일, 사용자 ID  (loadtest1 ~ loadtest200)
 알림이 1,000건 미만인 사용자가 있으면 시드가 안 된 것으로 보고 파일을 바꾸지 않고 종료한다.
 
-실행: 프로젝트 루트에서 `python3 loadtest/update_notification_params.py`
+실행: 프로젝트 루트에서 `python3 loadtest/scripts/update_notification_params.py`
 전제: seed_notification.sql 을 실행한 상태
 """
+import os
 import subprocess
 import sys
 
 USER_COUNT = 200
 MIN_NOTIFICATIONS = 1000
-OUTPUT = "loadtest/notification_params.csv"
+OUTPUT = "loadtest/data/notification_params.csv"
 
 SQL = f"""
 WITH u AS (
@@ -58,6 +59,7 @@ def main() -> None:
         )
         sys.exit(1)
 
+    os.makedirs(os.path.dirname(OUTPUT), exist_ok=True)
     with open(OUTPUT, "w", newline="\n", encoding="utf-8") as f:
         f.write("\n".join(rows) + "\n")
 
