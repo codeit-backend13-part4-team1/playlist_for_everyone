@@ -1,0 +1,277 @@
+BEGIN
+DROP INDEX
+Pager usage is off.
+===== 인덱스 현황 =====
+   tablename   |              indexname               |                                                          indexdef                                                           
+---------------+--------------------------------------+-----------------------------------------------------------------------------------------------------------------------------
+ file_infos    | file_infos_pkey                      | CREATE UNIQUE INDEX file_infos_pkey ON public.file_infos USING btree (id)
+ file_infos    | uk_file_infos_key                    | CREATE UNIQUE INDEX uk_file_infos_key ON public.file_infos USING btree (file_key)
+ playlists     | IDX_PLAYLISTS_UPDATED_AT_ID          | CREATE INDEX "IDX_PLAYLISTS_UPDATED_AT_ID" ON public.playlists USING btree (updated_at DESC, id DESC)
+ playlists     | PK_PLAYLISTS                         | CREATE UNIQUE INDEX "PK_PLAYLISTS" ON public.playlists USING btree (id)
+ subscriptions | PK_SUBSCRIPTIONS                     | CREATE UNIQUE INDEX "PK_SUBSCRIPTIONS" ON public.subscriptions USING btree (id)
+ subscriptions | UQ_SUBSCRIPTIONS_PLAYLIST_SUBSCRIBER | CREATE UNIQUE INDEX "UQ_SUBSCRIPTIONS_PLAYLIST_SUBSCRIBER" ON public.subscriptions USING btree (playlist_id, subscriber_id)
+ users         | PK_USERS                             | CREATE UNIQUE INDEX "PK_USERS" ON public.users USING btree (id)
+ users         | UQ_USERS_EMAIL                       | CREATE UNIQUE INDEX "UQ_USERS_EMAIL" ON public.users USING btree (email)
+ users         | uq_users_profile_image               | CREATE UNIQUE INDEX uq_users_profile_image ON public.users USING btree (profile_image_id)
+(9 rows)
+
+===== 테이블 크기(대략) =====
+    relname    | approx_rows 
+---------------+-------------
+ users         |       10001
+ subscriptions |      995613
+ playlists     |      200000
+ file_infos    |          -1
+(4 rows)
+
+
+===== 공통) 전체 건수 count (모든 목록 요청이 실행) =====
+                                                                                        QUERY PLAN                                                                                         
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Finalize Aggregate  (cost=7034.30..7034.31 rows=1 width=8) (actual time=19.634..21.425 rows=1 loops=1)
+   Buffers: shared hit=9530
+   ->  Gather  (cost=7034.09..7034.30 rows=2 width=8) (actual time=19.488..21.416 rows=3 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=9530
+         ->  Partial Aggregate  (cost=6034.09..6034.10 rows=1 width=8) (actual time=16.316..16.317 rows=1 loops=3)
+               Buffers: shared hit=9530
+               ->  Parallel Index Only Scan using "IDX_PLAYLISTS_UPDATED_AT_ID" on playlists p1_0  (cost=0.42..5825.75 rows=83333 width=16) (actual time=0.035..11.089 rows=66681 loops=3)
+                     Heap Fetches: 8676
+                     Buffers: shared hit=9530
+ Planning Time: 0.058 ms
+ Execution Time: 21.449 ms
+(13 rows)
+
+
+===== L2 subscribeCount 정렬 - 본 쿼리 =====
+                                                                         QUERY PLAN                                                                          
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=13258.27..13260.72 rows=21 width=1851) (actual time=92.358..94.807 rows=21 loops=1)
+   Buffers: shared hit=8782 read=318
+   ->  Gather Merge  (cost=13258.27..32703.99 rows=166666 width=1851) (actual time=92.357..94.803 rows=21 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=8782 read=318
+         ->  Sort  (cost=12258.25..12466.58 rows=83333 width=1851) (actual time=88.198..88.202 rows=15 loops=3)
+               Sort Key: p1_0.subscriber_count DESC, p1_0.id DESC
+               Sort Method: top-N heapsort  Memory: 42kB
+               Buffers: shared hit=8782 read=318
+               Worker 0:  Sort Method: top-N heapsort  Memory: 44kB
+               Worker 1:  Sort Method: top-N heapsort  Memory: 45kB
+               ->  Hash Left Join  (cost=449.54..10011.46 rows=83333 width=1851) (actual time=5.546..60.536 rows=66681 loops=3)
+                     Hash Cond: (o1_0.profile_image_id = pi1_0.id)
+                     Buffers: shared hit=8694 read=318
+                     ->  Hash Join  (cost=438.41..9781.58 rows=83333 width=287) (actual time=5.525..48.712 rows=66681 loops=3)
+                           Hash Cond: (p1_0.owner_id = o1_0.id)
+                           Buffers: shared hit=8694 read=318
+                           ->  Parallel Seq Scan on playlists p1_0  (cost=0.00..9124.33 rows=83333 width=140) (actual time=0.008..24.094 rows=66681 loops=3)
+                                 Buffers: shared hit=7973 read=318
+                           ->  Hash  (cost=310.96..310.96 rows=10196 width=147) (actual time=5.416..5.417 rows=10001 loops=3)
+                                 Buckets: 16384  Batches: 1  Memory Usage: 1738kB
+                                 Buffers: shared hit=627
+                                 ->  Seq Scan on users o1_0  (cost=0.00..310.96 rows=10196 width=147) (actual time=0.014..1.788 rows=10001 loops=3)
+                                       Buffers: shared hit=627
+                     ->  Hash  (cost=10.50..10.50 rows=50 width=1580) (actual time=0.007..0.008 rows=0 loops=3)
+                           Buckets: 1024  Batches: 1  Memory Usage: 8kB
+                           ->  Seq Scan on file_infos pi1_0  (cost=0.00..10.50 rows=50 width=1580) (actual time=0.007..0.007 rows=0 loops=3)
+ Planning:
+   Buffers: shared hit=8
+ Planning Time: 0.271 ms
+ Execution Time: 94.861 ms
+(32 rows)
+
+
+===== L3 키워드(흔한 단어) - count =====
+                                                                 QUERY PLAN                                                                 
+--------------------------------------------------------------------------------------------------------------------------------------------
+ Finalize Aggregate  (cost=10958.01..10958.02 rows=1 width=8) (actual time=103.738..105.809 rows=1 loops=1)
+   Buffers: shared hit=8161 read=130
+   ->  Gather  (cost=10957.80..10958.01 rows=2 width=8) (actual time=103.585..105.803 rows=3 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=8161 read=130
+         ->  Partial Aggregate  (cost=9957.80..9957.81 rows=1 width=8) (actual time=99.812..99.813 rows=1 loops=3)
+               Buffers: shared hit=8161 read=130
+               ->  Parallel Seq Scan on playlists p1_0  (cost=0.00..9957.67 rows=53 width=16) (actual time=0.094..99.455 rows=3333 loops=3)
+                     Filter: ((lower((title)::text) ~~ '%운동%'::text) OR (lower((description)::text) ~~ '%운동%'::text))
+                     Rows Removed by Filter: 63347
+                     Buffers: shared hit=8161 read=130
+ Planning Time: 0.123 ms
+ Execution Time: 105.866 ms
+(14 rows)
+
+
+===== L4 키워드(희귀) - 본 쿼리 =====
+                                                                                 QUERY PLAN                                                                                 
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=10958.46..11111.15 rows=21 width=1851) (actual time=111.026..114.262 rows=1 loops=1)
+   Buffers: shared hit=8382
+   ->  Nested Loop Left Join  (cost=10958.46..11249.29 rows=40 width=1851) (actual time=111.024..114.259 rows=1 loops=1)
+         Buffers: shared hit=8382
+         ->  Nested Loop  (cost=10958.32..11242.80 rows=40 width=287) (actual time=111.018..114.252 rows=1 loops=1)
+               Buffers: shared hit=8382
+               ->  Gather Merge  (cost=10958.04..10962.70 rows=40 width=140) (actual time=110.973..114.205 rows=1 loops=1)
+                     Workers Planned: 2
+                     Workers Launched: 2
+                     Buffers: shared hit=8379
+                     ->  Sort  (cost=9958.01..9958.06 rows=17 width=140) (actual time=106.469..106.469 rows=0 loops=3)
+                           Sort Key: p1_0.updated_at DESC, p1_0.id DESC
+                           Sort Method: quicksort  Memory: 25kB
+                           Buffers: shared hit=8379
+                           Worker 0:  Sort Method: quicksort  Memory: 25kB
+                           Worker 1:  Sort Method: quicksort  Memory: 25kB
+                           ->  Parallel Seq Scan on playlists p1_0  (cost=0.00..9957.67 rows=17 width=140) (actual time=92.532..106.370 rows=0 loops=3)
+                                 Filter: ((lower((title)::text) ~~ '%여행 플레이리스트 78369%'::text) OR (lower((description)::text) ~~ '%여행 플레이리스트 78369%'::text))
+                                 Rows Removed by Filter: 66680
+                                 Buffers: shared hit=8291
+               ->  Index Scan using "PK_USERS" on users o1_0  (cost=0.29..7.00 rows=1 width=147) (actual time=0.036..0.036 rows=1 loops=1)
+                     Index Cond: (id = p1_0.owner_id)
+                     Buffers: shared hit=3
+         ->  Index Scan using file_infos_pkey on file_infos pi1_0  (cost=0.14..0.16 rows=1 width=1580) (actual time=0.002..0.003 rows=0 loops=1)
+               Index Cond: (id = o1_0.profile_image_id)
+ Planning:
+   Buffers: shared hit=8
+ Planning Time: 0.735 ms
+ Execution Time: 114.335 ms
+(29 rows)
+
+
+===== L4 키워드(희귀) - count =====
+                                                                           QUERY PLAN                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Finalize Aggregate  (cost=10957.92..10957.93 rows=1 width=8) (actual time=154.050..157.140 rows=1 loops=1)
+   Buffers: shared hit=8291
+   ->  Gather  (cost=10957.71..10957.92 rows=2 width=8) (actual time=153.882..157.132 rows=3 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=8291
+         ->  Partial Aggregate  (cost=9957.71..9957.72 rows=1 width=8) (actual time=148.448..148.449 rows=1 loops=3)
+               Buffers: shared hit=8291
+               ->  Parallel Seq Scan on playlists p1_0  (cost=0.00..9957.67 rows=17 width=16) (actual time=132.190..148.441 rows=0 loops=3)
+                     Filter: ((lower((title)::text) ~~ '%여행 플레이리스트 78369%'::text) OR (lower((description)::text) ~~ '%여행 플레이리스트 78369%'::text))
+                     Rows Removed by Filter: 66680
+                     Buffers: shared hit=8291
+ Planning Time: 0.123 ms
+ Execution Time: 157.174 ms
+(14 rows)
+
+
+===== L5 소유자 필터 - 본 쿼리 =====
+                                                                       QUERY PLAN                                                                       
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=10410.46..10412.32 rows=16 width=1851) (actual time=15.617..18.622 rows=20 loops=1)
+   Buffers: shared hit=8477
+   ->  Gather Merge  (cost=10410.46..10412.32 rows=16 width=1851) (actual time=15.615..18.616 rows=20 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=8477
+         ->  Sort  (cost=9410.43..9410.45 rows=8 width=1851) (actual time=12.473..12.477 rows=7 loops=3)
+               Sort Key: p1_0.updated_at DESC, p1_0.id DESC
+               Sort Method: quicksort  Memory: 27kB
+               Buffers: shared hit=8477
+               Worker 0:  Sort Method: quicksort  Memory: 30kB
+               Worker 1:  Sort Method: quicksort  Memory: 28kB
+               ->  Hash Left Join  (cost=11.41..9410.31 rows=8 width=1851) (actual time=3.855..12.419 rows=7 loops=3)
+                     Hash Cond: (o1_0.profile_image_id = pi1_0.id)
+                     Buffers: shared hit=8447
+                     ->  Nested Loop  (cost=0.29..9399.17 rows=8 width=287) (actual time=3.695..12.254 rows=7 loops=3)
+                           Buffers: shared hit=8353
+                           ->  Parallel Seq Scan on playlists p1_0  (cost=0.00..9332.67 rows=8 width=140) (actual time=3.668..12.203 rows=7 loops=3)
+                                 Filter: (owner_id = 'b034b160-e9c0-44e4-bf88-0019d360412a'::uuid)
+                                 Rows Removed by Filter: 66674
+                                 Buffers: shared hit=8291
+                           ->  Index Scan using "PK_USERS" on users o1_0  (cost=0.29..8.30 rows=1 width=147) (actual time=0.005..0.006 rows=1 loops=20)
+                                 Index Cond: (id = 'b034b160-e9c0-44e4-bf88-0019d360412a'::uuid)
+                                 Buffers: shared hit=62
+                     ->  Hash  (cost=10.50..10.50 rows=50 width=1580) (actual time=0.014..0.015 rows=0 loops=3)
+                           Buckets: 1024  Batches: 1  Memory Usage: 8kB
+                           ->  Seq Scan on file_infos pi1_0  (cost=0.00..10.50 rows=50 width=1580) (actual time=0.014..0.014 rows=0 loops=3)
+ Planning:
+   Buffers: shared hit=2
+ Planning Time: 0.251 ms
+ Execution Time: 18.674 ms
+(31 rows)
+
+
+===== L5 소유자 필터 - count =====
+                                                               QUERY PLAN                                                               
+----------------------------------------------------------------------------------------------------------------------------------------
+ Finalize Aggregate  (cost=10332.90..10332.91 rows=1 width=8) (actual time=14.606..17.498 rows=1 loops=1)
+   Buffers: shared hit=8291
+   ->  Gather  (cost=10332.69..10332.90 rows=2 width=8) (actual time=14.489..17.492 rows=3 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=8291
+         ->  Partial Aggregate  (cost=9332.69..9332.70 rows=1 width=8) (actual time=11.996..11.996 rows=1 loops=3)
+               Buffers: shared hit=8291
+               ->  Parallel Seq Scan on playlists p1_0  (cost=0.00..9332.67 rows=8 width=16) (actual time=7.005..11.987 rows=7 loops=3)
+                     Filter: (owner_id = 'b034b160-e9c0-44e4-bf88-0019d360412a'::uuid)
+                     Rows Removed by Filter: 66674
+                     Buffers: shared hit=8291
+ Planning Time: 0.079 ms
+ Execution Time: 17.523 ms
+(14 rows)
+
+
+===== L6 구독 필터 - 본 쿼리 =====
+                                                                                             QUERY PLAN                                                                                              
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=1001.29..16842.56 rows=21 width=1851) (actual time=357.732..360.508 rows=21 loops=1)
+   Buffers: shared hit=798405 read=3048
+   ->  Nested Loop Left Join  (cost=1001.29..76435.88 rows=100 width=1851) (actual time=357.731..360.504 rows=21 loops=1)
+         Buffers: shared hit=798405 read=3048
+         ->  Gather Merge  (cost=1001.15..76419.67 rows=100 width=287) (actual time=357.722..360.484 rows=21 loops=1)
+               Workers Planned: 2
+               Workers Launched: 2
+               Buffers: shared hit=798405 read=3048
+               ->  Nested Loop  (cost=1.13..75408.11 rows=42 width=287) (actual time=4.666..235.401 rows=34 loops=3)
+                     Buffers: shared hit=798405 read=3048
+                     ->  Nested Loop  (cost=0.84..75395.18 rows=42 width=140) (actual time=4.628..233.754 rows=34 loops=3)
+                           Buffers: shared hit=798123 read=3022
+                           ->  Parallel Index Scan using "IDX_PLAYLISTS_UPDATED_AT_ID" on playlists p1_0  (cost=0.42..25000.38 rows=83333 width=140) (actual time=0.078..115.480 rows=66681 loops=3)
+                                 Buffers: shared hit=198216 read=2798
+                           ->  Index Only Scan using "UQ_SUBSCRIPTIONS_PLAYLIST_SUBSCRIBER" on subscriptions s1_0  (cost=0.42..0.60 rows=1 width=16) (actual time=0.002..0.002 rows=0 loops=200042)
+                                 Index Cond: ((playlist_id = p1_0.id) AND (subscriber_id = 'b034b160-e9c0-44e4-bf88-0019d360412a'::uuid))
+                                 Heap Fetches: 0
+                                 Buffers: shared hit=599907 read=224
+                     ->  Index Scan using "PK_USERS" on users o1_0  (cost=0.29..0.31 rows=1 width=147) (actual time=0.047..0.047 rows=1 loops=102)
+                           Index Cond: (id = p1_0.owner_id)
+                           Buffers: shared hit=282 read=26
+         ->  Index Scan using file_infos_pkey on file_infos pi1_0  (cost=0.14..0.16 rows=1 width=1580) (actual time=0.000..0.000 rows=0 loops=21)
+               Index Cond: (id = o1_0.profile_image_id)
+ Planning:
+   Buffers: shared hit=42
+ Planning Time: 0.937 ms
+ Execution Time: 360.552 ms
+(27 rows)
+
+
+===== L6 구독 필터 - count =====
+                                                                          QUERY PLAN                                                                           
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Finalize Aggregate  (cost=16644.18..16644.19 rows=1 width=8) (actual time=33.570..35.032 rows=1 loops=1)
+   Buffers: shared hit=412 read=10177
+   ->  Gather  (cost=16643.97..16644.18 rows=2 width=8) (actual time=33.239..35.026 rows=3 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=412 read=10177
+         ->  Partial Aggregate  (cost=15643.97..15643.98 rows=1 width=8) (actual time=30.358..30.359 rows=1 loops=3)
+               Buffers: shared hit=412 read=10177
+               ->  Nested Loop  (cost=0.42..15643.86 rows=42 width=16) (actual time=2.022..30.344 rows=34 loops=3)
+                     Buffers: shared hit=412 read=10177
+                     ->  Parallel Seq Scan on subscriptions s1_0  (cost=0.00..15462.53 rows=42 width=16) (actual time=1.983..29.723 rows=34 loops=3)
+                           Filter: (subscriber_id = 'b034b160-e9c0-44e4-bf88-0019d360412a'::uuid)
+                           Rows Removed by Filter: 331837
+                           Buffers: shared hit=96 read=10177
+                     ->  Index Only Scan using "PK_PLAYLISTS" on playlists p1_0  (cost=0.42..4.32 rows=1 width=16) (actual time=0.016..0.016 rows=1 loops=102)
+                           Index Cond: (id = s1_0.playlist_id)
+                           Heap Fetches: 5
+                           Buffers: shared hit=316
+ Planning:
+   Buffers: shared hit=17
+ Planning Time: 0.224 ms
+ Execution Time: 35.060 ms
+(22 rows)
+
+ROLLBACK
