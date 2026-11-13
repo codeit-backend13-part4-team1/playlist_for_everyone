@@ -15,4 +15,11 @@ public interface TemporaryPasswordRepository extends JpaRepository<TemporaryPass
      */
     List<TemporaryPassword> findAllByUserIdAndStatus(UUID userId, TemporaryPasswordStatus status);
 
+
+    /**
+     * 사용자 최근 발급 5개를 최신순으로 조회한다.
+     * 재요청 간격(가장 최근)과 시간당 횟수(5번째)를 한 번에 확인 하는데 사용
+     */
+    List<TemporaryPassword> findTop5ByUserIdOrderByCreatedAtDesc(UUID userId);
+
 }

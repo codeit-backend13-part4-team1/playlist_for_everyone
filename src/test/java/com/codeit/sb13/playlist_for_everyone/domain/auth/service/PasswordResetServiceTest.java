@@ -8,6 +8,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.TemporaryPas
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
+import com.codeit.sb13.playlist_for_everyone.global.exception.auth.PasswordResetTooManyRequestsException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -20,6 +21,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -145,6 +147,63 @@ class PasswordResetServiceTest {
                 .isInstanceOf(MailSendException.class);
     }
 
+    @Test
+    @DisplayName("1분 안에 다시 요청하면 거부하고 발급하지 않는다.")
+    void 일분_안에_다시_요청하면_거부한다() {
+        givenUserExists();
+        givenRecentIssues(LocalDateTime.now().minusSeconds(30));
+
+        assertThatThrownBy(()-> passwordResetService.resetPassword(EMAIL))
+                .isInstanceOf(PasswordResetTooManyRequestsException.class);
+
+        verify(temporaryPasswordRepository, never()).save(any(TemporaryPassword.class));
+        verifyNoInteractions(temporaryPasswordGenerator, passwordResetMailSender);
+    }
+
+    @Test
+    @DisplayName("1분이 지나면 다시 발급한다.")
+    void 일분이_지나면_다시_발급한다() {
+        givenUserExists();
+        givenRecentIssues(LocalDateTime.now().minusSeconds(61));
+        given(temporaryPasswordGenerator.generate()).willReturn(RAW_PASSWORD);
+        given(passwordEncoder.encode(RAW_PASSWORD)).willReturn(ENCODED_PASSWORD);
+
+        passwordResetService.resetPassword(EMAIL);
+
+        verify(passwordResetMailSender).send(EMAIL, RAW_PASSWORD, Duration.ofMinutes(3));
+    }
+
+    @Test
+    @DisplayName("최근 1시간 안에 5번 발급했으면 거부한다.")
+    void 최근_한_시간_안에_다섯_번이면_거부한다() {
+        givenUserExists();
+        LocalDateTime now = LocalDateTime.now();
+        givenRecentIssues(
+                now.minusMinutes(2), now.minusMinutes(10), now.minusMinutes(20),
+                now.minusMinutes(30), now.minusMinutes(50));
+
+        assertThatThrownBy(() -> passwordResetService.resetPassword(EMAIL))
+                .isInstanceOf(PasswordResetTooManyRequestsException.class);
+
+        verifyNoInteractions(temporaryPasswordGenerator, passwordResetMailSender);
+    }
+
+    @Test
+    @DisplayName("가장 오래된 발급이 1시간 밖으로 나가면 다시 발급한다.")
+    void 가장_오래된_발급이_한_시간_밖이면_다시_발급한다() {
+        givenUserExists();
+        LocalDateTime now = LocalDateTime.now();
+        givenRecentIssues(
+                now.minusMinutes(2), now.minusMinutes(10), now.minusMinutes(20),
+                now.minusMinutes(30), now.minusMinutes(61));
+        given(temporaryPasswordGenerator.generate()).willReturn(RAW_PASSWORD);
+        given(passwordEncoder.encode(RAW_PASSWORD)).willReturn(ENCODED_PASSWORD);
+
+        passwordResetService.resetPassword(EMAIL);
+
+        verify(passwordResetMailSender).send(EMAIL, RAW_PASSWORD, Duration.ofMinutes(3));
+    }
+
     private void givenUserExists() {
         User user = User.builder()
                 .email(EMAIL)
@@ -154,6 +213,18 @@ class PasswordResetServiceTest {
                 .build();
         ReflectionTestUtils.setField(user, "id", USER_ID);
         given(userRepository.findByEmail(EMAIL)).willReturn(Optional.of(user));
+    }
+
+    private void givenRecentIssues(LocalDateTime... createdAts) {
+        List<TemporaryPassword> issues = Arrays.stream(createdAts)
+                .map(createdAt -> {
+                    TemporaryPassword issued = TemporaryPassword.issue(USER_ID, "old", createdAt.plusMinutes(3));
+                    issued.discard();
+                    ReflectionTestUtils.setField(issued, "createdAt", createdAt);
+                    return issued;
+                })
+                .toList();
+        given(temporaryPasswordRepository.findTop5ByUserIdOrderByCreatedAtDesc(USER_ID)).willReturn(issues);
     }
 
 }

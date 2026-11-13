@@ -10,6 +10,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserReposito
 import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.PasswordEncoderConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
+import com.codeit.sb13.playlist_for_everyone.global.exception.auth.PasswordResetTooManyRequestsException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -17,6 +18,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mail.MailSendException;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
@@ -40,6 +42,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 /**
  * 실제 트랜잭션에서 발급·파기·롤백을 검증한다.
@@ -91,6 +95,9 @@ class PasswordResetServiceIntegrationTest {
     private TemporaryPasswordRepository temporaryPasswordRepository;
 
     @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @Autowired
     private PlatformTransactionManager transactionManager;
 
     @MockitoBean
@@ -112,6 +119,7 @@ class PasswordResetServiceIntegrationTest {
         UUID userId = saveUser();
 
         passwordResetService.resetPassword(EMAIL);
+        moveIssuedAtToPast();
         passwordResetService.resetPassword(EMAIL);
 
         List<TemporaryPassword> all = temporaryPasswordRepository.findAll();
@@ -127,6 +135,7 @@ class PasswordResetServiceIntegrationTest {
     void 메일_발송에_실패하면_모두_롤백된다() {
         UUID userId = saveUser();
         passwordResetService.resetPassword(EMAIL);   // 첫 발급은 성공
+        moveIssuedAtToPast();
         TemporaryPassword first = temporaryPasswordRepository.findAll().get(0);
 
         willThrow(new MailSendException("SMTP 연결 실패"))
@@ -142,6 +151,21 @@ class PasswordResetServiceIntegrationTest {
                 .containsExactly(first.getId());
     }
 
+    @Test
+    @DisplayName("1분 안에 다시 요청하면 거부하고 기존 임시 비밀번호는 그대로 둔다.")
+    void 일분_안에_다시_요청하면_거부한다() {
+        UUID userId = saveUser();
+        passwordResetService.resetPassword(EMAIL);
+
+        assertThatThrownBy(() -> passwordResetService.resetPassword(EMAIL))
+                .isInstanceOf(PasswordResetTooManyRequestsException.class);
+
+        // 거부된 요청은 이전 것을 파기하지도, 새로 발급하지도 않는다.
+        assertThat(temporaryPasswordRepository.findAllByUserIdAndStatus(userId, TemporaryPasswordStatus.ACTIVE))
+                .hasSize(1);
+        verify(passwordResetMailSender, times(1)).send(anyString(), anyString(), any(Duration.class));
+    }
+
     private UUID saveUser() {
         return new TransactionTemplate(transactionManager).execute(status ->
                 userRepository.saveAndFlush(User.builder()
@@ -150,6 +174,13 @@ class PasswordResetServiceIntegrationTest {
                         .password("encoded-original-password")
                         .role(Role.USER)
                         .build()).getId());
+    }
+
+    private void moveIssuedAtToPast() {
+        new TransactionTemplate(transactionManager).executeWithoutResult(status ->
+                jdbcTemplate.update(
+                        "UPDATE temporary_passwords set created_at = created_at - interval '2 minutes'"
+                ));
     }
 
 }

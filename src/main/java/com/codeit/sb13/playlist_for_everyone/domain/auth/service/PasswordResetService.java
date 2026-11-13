@@ -30,6 +30,13 @@ public class PasswordResetService {
 
     static final Duration TEMPORARY_PASSWORD_VALIDITY = Duration.ofMinutes(3);
 
+    // 같은 계정의 재요청 간격
+    static final Duration RESEND_INTERVAL = Duration.ofMinutes(1);
+
+    //  시간당 최대 발급 횟수
+    static final int MAX_ISSUES_PER_HOUR = 5;
+    static final Duration ISSUE_WINDOW = Duration.ofHours(1);
+
     private final UserRepository userRepository;
     private final TemporaryPasswordRepository  temporaryPasswordRepository;
     private final TemporaryPasswordGenerator temporaryPasswordGenerator;

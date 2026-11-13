@@ -10,6 +10,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.config.MDCLoggingInterceptor;
 import com.codeit.sb13.playlist_for_everyone.global.config.SecurityConfig;
 import com.codeit.sb13.playlist_for_everyone.global.controller.GlobalExceptionHandler;
+import com.codeit.sb13.playlist_for_everyone.global.exception.auth.PasswordResetTooManyRequestsException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -134,5 +135,22 @@ class PasswordResetSecurityTest {
                 .andExpect(status().isForbidden());
 
         verifyNoInteractions(passwordResetService);
+    }
+
+    @Test
+    @DisplayName("요청 제한을 넘으면 429와 재시도 시간을 반환한다.")
+    void 요청_제한을_넘으면_429를_반환한다() throws Exception {
+        willThrow(new PasswordResetTooManyRequestsException(45))
+                .given(passwordResetService).resetPassword(EMAIL);
+
+        mockMvc.perform(post(URL)
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {"email": "%s"}
+                            """.formatted(EMAIL)))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.exceptionName").value("PasswordResetTooManyRequestsException"))
+                .andExpect(jsonPath("$.details.retryAfterSeconds").value(45));
     }
 }
