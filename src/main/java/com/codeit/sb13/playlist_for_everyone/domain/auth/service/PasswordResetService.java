@@ -77,12 +77,12 @@ public class PasswordResetService {
 
     /**
      * 같은 계정의 발급 횟수를 제한한다.
-     * 최근 5개만 보면 재요청 간격(가장 최근 것)과 시간당 횟수(5번째 것)를 함께 판단할 수 있다.
-     * 두 제하에 모두 걸리면 더 늦게 플리는 시각으로 아내 한다.
+     * 최근 1시간 발급 기록을 최대 5개 가져온다. 5건이면 시간당 제한, 1건 이상이면 가장 최근 발급으로 재요청 간격을 판단한다.
+     * 두 제한에 모두 걸리면 더 늦게 풀리는 시각으로 안내한다.
      */
     private void checkIssueLimit(UUID userId, LocalDateTime now) {
         List<TemporaryPassword> recentIssues =
-                temporaryPasswordRepository.findTop5ByUserIdOrderByCreatedAtDesc(userId);
+                temporaryPasswordRepository.findTop5ByUserIdAndCreatedAtAfterOrderByCreatedAtDesc(userId, now.minus(ISSUE_WINDOW));
 
         LocalDateTime nextAllowedAt = now;
 

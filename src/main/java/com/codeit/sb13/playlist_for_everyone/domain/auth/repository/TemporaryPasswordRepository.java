@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.entity.TemporaryPasswor
 import com.codeit.sb13.playlist_for_everyone.domain.auth.entity.TemporaryPasswordStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -16,10 +17,7 @@ public interface TemporaryPasswordRepository extends JpaRepository<TemporaryPass
     List<TemporaryPassword> findAllByUserIdAndStatus(UUID userId, TemporaryPasswordStatus status);
 
 
-    /**
-     * 사용자 최근 발급 5개를 최신순으로 조회한다.
-     * 재요청 간격(가장 최근)과 시간당 횟수(5번째)를 한 번에 확인 하는데 사용
-     */
-    List<TemporaryPassword> findTop5ByUserIdOrderByCreatedAtDesc(UUID userId);
+    // 기준 시각 이후 발급 기록을 최신순으로 최대 5개. 파기·만료된 기록도 발급 횟수에 포함한다.
+    List<TemporaryPassword> findTop5ByUserIdAndCreatedAtAfterOrderByCreatedAtDesc(UUID userId, LocalDateTime after);
 
 }

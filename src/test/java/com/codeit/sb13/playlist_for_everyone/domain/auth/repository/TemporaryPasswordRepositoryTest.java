@@ -8,7 +8,6 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserReposito
 import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
 import jakarta.persistence.EntityManager;
-import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,7 +26,6 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.InstanceOfAssertFactories.LIST;
 
 /**
  * 엔티티가 Flyway로 만든 temporary_passwords 테이블과 맞는지, 상태별 조회가 되는지 검증한다.
@@ -120,17 +118,17 @@ class TemporaryPasswordRepositoryTest {
 
         // 1시간 밖 1건 + 1시간 안 6건. 10분 전 기록은 파기된 상태로 둔다.
         for (int minutesAgo : List.of(61, 50, 40, 30, 20, 10, 1)) {
-            TemporaryPassword issue = TemporaryPassword.issue(userId, "encoded", EXPIRED_AT);
+            TemporaryPassword issued = TemporaryPassword.issue(userId, "encoded", EXPIRED_AT);
             if (minutesAgo == 10) {
-                issue.discard();
+                issued.discard();
             }
-            temporaryPasswordRepository.saveAndFlush(issue);
-            setCreatedAt(issue.getId(), now.minusMinutes(minutesAgo));
+            temporaryPasswordRepository.saveAndFlush(issued);
+            setCreatedAt(issued.getId(), now.minusMinutes(minutesAgo));
         }
         em.clear();
 
         List<TemporaryPassword> result = temporaryPasswordRepository
-                .findTop5ByUserIdOrderByCreatedAtDesc(userId, now.minusHours(1));
+                .findTop5ByUserIdAndCreatedAtAfterOrderByCreatedAtDesc(userId, now.minusHours(1));
 
         assertThat(result).extracting(TemporaryPassword::getCreatedAt)
                 .containsExactly(
@@ -140,7 +138,7 @@ class TemporaryPasswordRepositoryTest {
     }
 
     private void setCreatedAt(UUID id, LocalDateTime createdAt) {
-        em.createNativeQuery("UPDATE temporary_password SET created_at = :createdAt WHERE id = :id")
+        em.createNativeQuery("UPDATE temporary_passwords SET created_at = :createdAt WHERE id = :id")
                 .setParameter("createdAt", createdAt)
                 .setParameter("id", id)
                 .executeUpdate();

@@ -243,7 +243,9 @@ class PasswordResetServiceTest {
                     return issued;
                 })
                 .toList();
-        given(temporaryPasswordRepository.findTop5ByUserIdOrderByCreatedAtDesc(USER_ID)).willReturn(issues);
+        given(temporaryPasswordRepository
+                .findTop5ByUserIdAndCreatedAtAfterOrderByCreatedAtDesc(eq(USER_ID), any(LocalDateTime.class)))
+                .willReturn(issues);
     }
 
 }
