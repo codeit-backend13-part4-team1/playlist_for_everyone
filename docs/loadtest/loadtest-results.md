@@ -96,12 +96,35 @@
 | 소유자 필터 | 25.4ms | 25.0ms | 약 50.4ms | Seq Scan, `owner_id` 인덱스 없음 |
 | 구독자 필터 | 248.0ms | 34.9ms | 약 282.9ms | 본 쿼리: 플레이리스트 20만 건을 하나씩 구독 여부 확인 (확인 20만 회). count: `subscriptions` 99만 건 Seq Scan |
 
-판단: 테스트 설정이 아니라 **플레이리스트 목록 쿼리·인덱스 문제**. 후보 (적용 후 재측정 안 함)
+판단: 테스트 설정이 아니라 **플레이리스트 목록 쿼리·인덱스 문제**. 이슈 #22에서 아래 후보를 적용하고 재측정함 (아래 "목록 조회 개선 후 측정" 참고)
 - 키워드: 앞쪽 와일드카드라 일반 인덱스를 쓸 수 없음 → `pg_trgm` 인덱스 등 검토
-- 소유자 필터: `playlists(owner_id, updated_at DESC, id DESC)`
+- 소유자 필터: `playlists(owner_id)`
 - 구독자 수 정렬: `playlists(subscriber_count DESC, id DESC)`
 - 구독자 필터: `subscriptions(subscriber_id, playlist_id)`
 - 모든 목록 요청: 건수 count 쿼리가 요청마다 추가로 실행됨
+
+### 목록 조회 개선 후 측정 (이슈 #22)
+
+적용: `playlists(owner_id)`, `playlists(subscriber_count DESC, id DESC)`, `subscriptions(subscriber_id, playlist_id)`, `pg_trgm` GIN 인덱스(`lower(title)`, `lower(description)`)
+
+개선 전후를 같은 조건(20명 · 접속 120초 · 워밍업 1회 후 기록 1회 · 같은 데이터와 파라미터)으로 다시 측정한 결과는 별도 문서에 정리했다. EXPLAIN (ANALYZE, BUFFERS) 원문, 인덱스별 적절성 판단, 쓰기 비용 확인 방법과 한계도 그 문서에 있다.
+
+[playlist-list-index-comparison.md](./playlist-list-index-comparison.md)
+
+요약 (평균 응답시간 ms, 개선 전 → 후)
+
+| 조건 | 개선 전 | 개선 후 |
+|---|---|---|
+| 구독자 필터 | 1,281 | 44 |
+| 키워드 (희귀) | 1,218 | 136 |
+| 구독자 수 정렬 | 357 | 57 |
+| 소유자 필터 | 274 | 38 |
+
+> 소유자 필터의 JMeter 후 값(38 ms)은 변경 전 복합 인덱스 `(owner_id, updated_at DESC, id DESC)` 상태에서 측정했다. <br>
+> 단일 `(owner_id)` 인덱스로 변경한 뒤에는 EXPLAIN으로 같은 실행 계획과 buffers(목록 12, count 9)를 확인했고, JMeter는 재측정하지 않았다.
+- 기본 정렬, 키워드(흔한 2글자 단어), 커서 2페이지는 이번 인덱스의 대상이 아니며 차이는 노이즈 범위로 본다.
+- 2글자 이하 키워드는 trigram 인덱스를 쓸 수 없어 전체 스캔이 그대로이며 이번 범위에서 개선하지 않았다.
+- 쓰기 비용: 앱 수준 측정은 최신 dev의 알림 연동에서 커넥션 풀 고갈이 발생해 사용할 수 없었고, DB 수준 벤치에서는 개선 전후 구분 가능한 차이가 없었다.
 
 ## 사용자 인증·보안
 
