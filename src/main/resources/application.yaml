@@ -50,6 +50,13 @@ spring:
       mail.smtp.timeout: 5000
       mail.smtp.writetimeout: 5000
 
+management:
+  health:
+    mail:
+      # 외부 메일 서버 상태 때문에 애플리케이션 헬스가 DOWN이 되지 않게 한다.
+      # 메일 발송 실패는 비밀번호 초기화 요청에서만 오류로 처리한다.
+      enabled: false
+
 springdoc:
   api-docs:
     # OpenAPI 명세 제공 경로
