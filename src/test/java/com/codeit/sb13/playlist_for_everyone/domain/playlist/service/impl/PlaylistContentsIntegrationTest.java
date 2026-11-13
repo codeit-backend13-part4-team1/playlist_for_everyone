@@ -210,6 +210,26 @@ class PlaylistContentsIntegrationTest {
     assertThat(large.statementCount()).isEqualTo(small.statementCount());
   }
 
+  @Test
+  @DisplayName("서로 다른 콘텐츠가 배치 크기(100)를 넘어도 목록 조회의 쿼리 수는 늘어나지 않는다")
+  void 콘텐츠가_배치_크기를_넘어도_쿼리_수가_일정하다() {
+    // given
+    UUID ownerId = insertUser();
+    createPlaylistWithContents(ownerId, 1);
+
+    // when: 콘텐츠 1개
+    StatementResult small = searchWithStatementCount(10);
+
+    createPlaylistWithContents(ownerId, 101);
+
+    // when: 서로 다른 콘텐츠 102개 (배치 크기 100 초과)
+    StatementResult large = searchWithStatementCount(10);
+
+    // then
+    assertThat(large.response().data()).hasSize(2);
+    assertThat(large.statementCount()).isEqualTo(small.statementCount());
+  }
+
   //-------[헬퍼 메서드]-----
   private record StatementResult(CursorResponse<PlaylistResponse> response, long statementCount) {
   }

@@ -17,7 +17,7 @@ import org.springframework.data.repository.query.Param;
  */
 public interface PlaylistContentQueryRepository extends Repository<Content, UUID> {
 
-  @EntityGraph(attributePaths = {"fileInfo"})
+  @EntityGraph(attributePaths = {"fileInfo", "tags"})
   @Query("select c from Content c where c.id in :contentIds")
   List<Content> findAllByIds(@Param("contentIds") Collection<UUID> contentIds);
 
