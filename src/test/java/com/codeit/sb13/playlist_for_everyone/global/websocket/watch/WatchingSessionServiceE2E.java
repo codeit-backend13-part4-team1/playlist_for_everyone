@@ -59,7 +59,10 @@ import static org.mockito.BDDMockito.*;
 
 @Testcontainers
 @SpringBootTest(
-    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = {
+            "everyone.websocket.event.multiple=true"
+        }
 )
 @ActiveProfiles("test")
 @DirtiesContext(

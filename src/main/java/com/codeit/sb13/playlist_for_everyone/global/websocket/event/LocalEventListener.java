@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
-@ConditionalOnProperty(name = "websocket.event.multiple", havingValue = "false", matchIfMissing = true)
+@ConditionalOnProperty(name = "everyone.websocket.event.multiple", havingValue = "false", matchIfMissing = true)
 @RequiredArgsConstructor
 public class LocalEventListener {
     private final WebSocketService webSocketService;

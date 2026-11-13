@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
-@ConditionalOnProperty(name = "websocket.event.multiple", havingValue = "true")
+@ConditionalOnProperty(name = "everyone.websocket.event.multiple", havingValue = "true")
 @RequiredArgsConstructor
 public class GlobalEventListener {
 

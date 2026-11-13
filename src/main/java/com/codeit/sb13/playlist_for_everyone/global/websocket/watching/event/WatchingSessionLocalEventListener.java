@@ -10,7 +10,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 @Component
-@ConditionalOnProperty(name = "websocket.event.multiple", havingValue = "false", matchIfMissing = true)
+@ConditionalOnProperty(name = "everyone.websocket.event.multiple", havingValue = "false", matchIfMissing = true)
 @RequiredArgsConstructor
 public class WatchingSessionLocalEventListener {
 
