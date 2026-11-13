@@ -10,7 +10,7 @@ import org.springframework.data.repository.query.Param;
 import java.util.Optional;
 import java.util.UUID;
 
-public interface ConversationRepository extends JpaRepository<Conversation, UUID> {
+public interface ConversationRepository extends JpaRepository<Conversation, UUID>, ConversationCustomRepository {
 
     /**
      * 정렬된 사용자 쌍의 대화방, 최신 메시지, 요청자 기준 미읽음 여부를 함께 조회한다.

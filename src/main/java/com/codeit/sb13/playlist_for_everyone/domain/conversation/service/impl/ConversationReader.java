@@ -2,11 +2,15 @@ package com.codeit.sb13.playlist_for_everyone.domain.conversation.service.impl;
 
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.command.ConversationCreateCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.ConversationDetailProjection;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.ConversationFindByIdCondition;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.ConversationFindCondition;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.ConversationSearchCondition;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.repository.ConversationRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -38,4 +42,39 @@ public class ConversationReader {
         }
         return conversationRepository.findDetailByUserPair(userAId, userBId, command.requesterId());
     }
+
+    @Transactional(readOnly = true)
+    public Optional<ConversationDetailProjection> findExistingConversation(ConversationFindCondition condition) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<ConversationDetailProjection> findById(ConversationFindByIdCondition condition) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ConversationDetailProjection> search(ConversationSearchCondition condition) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Transactional(readOnly = true)
+    public long searchCount(ConversationSearchCondition condition) {
+        throw new UnsupportedOperationException();
+    }
+
+    private record ConversationPair(UUID userAId, UUID userBId, UUID requesterId){
+        public ConversationPair {
+            if (userAId.toString().compareTo(userBId.toString()) > 0) {
+                UUID temp = userAId;
+                userAId = userBId;
+                userBId = temp;
+            }
+        }
+
+        public ConversationPair(ConversationCreateCommand command) {
+            this(command.requesterId(), command.withUserId(), command.requesterId());
+        }
+    }
+
 }

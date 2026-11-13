@@ -1,9 +1,13 @@
 package com.codeit.sb13.playlist_for_everyone.domain.conversation.service.impl;
 
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.command.ConversationCreateCommand;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.ConversationFindByIdCondition;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.ConversationFindCondition;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.ConversationSearchCondition;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.response.ConversationDto;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.mapper.ConversationMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.ConversationService;
+import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.exception.conversation.ConversationCreationFailedException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.conversation.SelfConversationNotAllowedException;
 import lombok.RequiredArgsConstructor;
@@ -43,6 +47,21 @@ public class ConversationServiceImpl implements ConversationService {
        return conversationReader.findExistingConversation(createCommand)
                .map(projection -> conversationMapper.toConversationDto(createCommand.requesterId(), projection))
                .orElseGet(() -> createOrGetConversation(createCommand));
+    }
+
+    @Override
+    public ConversationDto findWithUser(ConversationFindCondition condition) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public ConversationDto findById(ConversationFindByIdCondition condition) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public CursorResponse<ConversationDto> search(ConversationSearchCondition condition) {
+        throw new UnsupportedOperationException();
     }
 
     private ConversationDto createOrGetConversation(ConversationCreateCommand createCommand) {

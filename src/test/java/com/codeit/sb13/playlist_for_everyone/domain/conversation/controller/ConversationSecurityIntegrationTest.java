@@ -7,6 +7,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -21,6 +23,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -44,7 +47,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@DisplayName("대화방 생성 JWT 인증·CSRF 통합 테스트")
+@DisplayName("대화방 API JWT 인증·CSRF 통합 테스트")
 public class ConversationSecurityIntegrationTest {
 
     @Container
@@ -134,20 +137,35 @@ public class ConversationSecurityIntegrationTest {
         result.andExpect(jsonPath("$.id").value(savedIds.get(0).toString()));
     }
 
-    @Test
-    @DisplayName("정상 CSRF를 전달해도 JWT가 없으면 401을 반환하고 대화방을 저장하지 않는다.")
-    void create_returnsUnauthorizedWhenJwtMissing() throws Exception {
-        Cookie csrfCookie = issueCsrfCookie();
+    @ParameterizedTest(name = "요청 유형={0}")
+    @ValueSource(strings = {"CREATE", "LIST", "DETAIL", "WITH"})
+    @DisplayName("JWT가 없으면 대화방 생성·조회 요청에 401을 반환하고 저장하지 않는다.")
+    void requests_returnUnauthorizedWhenJwtMissing(String requestType) throws Exception {
+        MockHttpServletRequestBuilder request = switch (requestType) {
+            case "CREATE" -> {
+                Cookie csrfCookie = issueCsrfCookie();
 
-        mockMvc.perform(post("/api/conversations")
-                .cookie(csrfCookie)
-                .header(CSRF_TOKEN_HEADER, csrfCookie.getValue())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
+                yield post("/api/conversations")
+                        .cookie(csrfCookie)
+                        .header(CSRF_TOKEN_HEADER, csrfCookie.getValue())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
                                 {
                                     "withUserId": "%s"
                                 }
-                                """.formatted(withUserId)))
+                                """.formatted(withUserId));
+            }
+            case "LIST" -> get("/api/conversations")
+                    .param("limit", "10")
+                    .param("sortBy", "createdAt")
+                    .param("sortDirection", "DESCENDING");
+            case "DETAIL" -> get("/api/conversations/{conversationId}", UUID.randomUUID());
+            case "WITH" -> get("/api/conversations/with")
+                    .param("userId", withUserId.toString());
+            default -> throw new IllegalArgumentException("지원하지 않는 요청 유형입니다: " + requestType);
+        };
+
+        mockMvc.perform(request)
                 .andExpect(status().isUnauthorized())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.exceptionName").value(UNAUTHORIZED_EXCEPTION))
