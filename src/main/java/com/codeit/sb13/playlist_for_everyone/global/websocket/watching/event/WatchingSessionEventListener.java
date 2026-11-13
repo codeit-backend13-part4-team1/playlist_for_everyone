@@ -192,6 +192,7 @@ public class WatchingSessionEventListener {
     @EventListener
     public void DisconnectEvent(WatchingSessionDisconnectEvent event) {
         SessionInfo info = check(event.info());
+        subscriptionRegistry.disconnect(info);
         watchingSession.disconnectWithSessionIds(info.session());
     }
 
