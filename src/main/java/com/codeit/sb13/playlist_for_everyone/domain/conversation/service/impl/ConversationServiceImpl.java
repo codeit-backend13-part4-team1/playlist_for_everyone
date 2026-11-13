@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.conversation.service.impl;
 
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.command.ConversationCreateCommand;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.ConversationDetailProjection;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.ConversationFindByIdCondition;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.ConversationFindCondition;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.ConversationSearchCondition;
@@ -9,12 +10,15 @@ import com.codeit.sb13.playlist_for_everyone.domain.conversation.mapper.Conversa
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.ConversationService;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.exception.conversation.ConversationCreationFailedException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.conversation.ConversationNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.conversation.SelfConversationNotAllowedException;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -51,17 +55,55 @@ public class ConversationServiceImpl implements ConversationService {
 
     @Override
     public ConversationDto findWithUser(ConversationFindCondition condition) {
-        throw new UnsupportedOperationException();
+        UUID requesterId = condition.requesterId();
+        UUID withUserId = condition.withUserId();
+        if (requesterId.equals(withUserId)){
+            throw new SelfConversationNotAllowedException();
+        }
+
+        return conversationReader.findExistingConversation(condition)
+                .map(projection -> conversationMapper.toConversationDto(requesterId, projection))
+                .orElseThrow(() -> new ConversationNotFoundException(Map.of("withUserId", withUserId)));
     }
 
     @Override
     public ConversationDto findById(ConversationFindByIdCondition condition) {
-        throw new UnsupportedOperationException();
+        UUID requesterId = condition.requesterId();
+        return conversationReader.findById(condition)
+                .map(projection -> conversationMapper.toConversationDto(requesterId, projection))
+                .orElseThrow(() -> new ConversationNotFoundException(Map.of("conversationId", condition.conversationId())));
     }
 
     @Override
     public CursorResponse<ConversationDto> search(ConversationSearchCondition condition) {
-        throw new UnsupportedOperationException();
+
+        List<ConversationDetailProjection> result = conversationReader.search(condition);
+        long totalCount = conversationReader.searchCount(condition);
+
+        boolean hasNext = result.size() > condition.limit();
+        List<ConversationDetailProjection> page = hasNext ? result.subList(0, condition.limit()) : result;
+
+        String cursor = null;
+        UUID idAfter = null;
+        if (hasNext){
+            ConversationDetailProjection last = page.get(page.size() - 1);
+            cursor = last.getConversation().getCreatedAt().toString();
+            idAfter = last.getConversation().getId();
+        }
+
+        List<ConversationDto> dtos = page.stream()
+                .map(projection -> conversationMapper.toConversationDto(condition.requesterId(), projection))
+                .toList();
+
+        return new CursorResponse<>(
+                dtos,
+                cursor,
+                idAfter,
+                hasNext,
+                totalCount,
+                condition.sortBy().getSortKey(),
+                condition.sortDirection()
+        );
     }
 
     private ConversationDto createOrGetConversation(ConversationCreateCommand createCommand) {

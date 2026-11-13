@@ -1,10 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.conversation.service.impl;
 
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.command.ConversationCreateCommand;
-import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.ConversationDetailProjection;
-import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.ConversationFindByIdCondition;
-import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.ConversationFindCondition;
-import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.ConversationSearchCondition;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.*;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.repository.ConversationRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -31,50 +28,31 @@ public class ConversationReader {
      */
     @Transactional(readOnly = true)
     public Optional<ConversationDetailProjection> findExistingConversation(ConversationCreateCommand command){
-        UUID userAId = command.requesterId();
-        UUID userBId = command.withUserId();
-        // 저장용 ConversationCommand와 동일한 UUID 문자열 사전순으로 조회해야 한다.
-        // 정렬은 조회 키에만 적용하며, 미읽음 판단에 사용할 원래 요청자 ID는 유지한다.
-        if (userAId.toString().compareTo(userBId.toString()) > 0) {
-            UUID temp = userAId;
-            userAId = userBId;
-            userBId = temp;
-        }
-        return conversationRepository.findDetailByUserPair(userAId, userBId, command.requesterId());
+        return findConversationDetail(command.toConversationPair());
     }
 
     @Transactional(readOnly = true)
     public Optional<ConversationDetailProjection> findExistingConversation(ConversationFindCondition condition) {
-        throw new UnsupportedOperationException();
+       return findConversationDetail(condition.toConversationPair());
     }
 
     @Transactional(readOnly = true)
     public Optional<ConversationDetailProjection> findById(ConversationFindByIdCondition condition) {
-        throw new UnsupportedOperationException();
+        return conversationRepository.findDetailById(condition);
     }
 
     @Transactional(readOnly = true)
     public List<ConversationDetailProjection> search(ConversationSearchCondition condition) {
-        throw new UnsupportedOperationException();
+        return conversationRepository.search(condition);
     }
 
     @Transactional(readOnly = true)
     public long searchCount(ConversationSearchCondition condition) {
-        throw new UnsupportedOperationException();
+        return conversationRepository.searchCount(condition);
     }
 
-    private record ConversationPair(UUID userAId, UUID userBId, UUID requesterId){
-        public ConversationPair {
-            if (userAId.toString().compareTo(userBId.toString()) > 0) {
-                UUID temp = userAId;
-                userAId = userBId;
-                userBId = temp;
-            }
-        }
-
-        public ConversationPair(ConversationCreateCommand command) {
-            this(command.requesterId(), command.withUserId(), command.requesterId());
-        }
+    private Optional<ConversationDetailProjection> findConversationDetail(ConversationPair pair) {
+        return conversationRepository.findDetailByUserPair(pair);
     }
 
 }

@@ -1,5 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.command;
 
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.ConversationPair;
+
 import java.util.UUID;
 
 /**
@@ -9,4 +11,8 @@ import java.util.UUID;
  * 계산할 수 있도록 요청 방향을 유지하며, 저장·조회용 사용자 쌍 정렬은 각 처리 단계에서 수행한다.
  */
 public record ConversationCreateCommand(UUID requesterId, UUID withUserId) {
+
+    public ConversationPair toConversationPair() {
+        return new ConversationPair(requesterId, withUserId, requesterId);
+    }
 }

@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.conversation.repository;
 
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.command.ConversationCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.ConversationDetailProjection;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.ConversationPair;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.entity.Conversation;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.entity.DirectMessage;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
@@ -81,7 +82,7 @@ class ConversationRepositoryTest {
 
         entityManager.flush();
 
-        Optional<ConversationDetailProjection> result = conversationRepository.findDetailByUserPair(pair.userA().getId(), pair.userB().getId(), requester.getId());
+        Optional<ConversationDetailProjection> result = conversationRepository.findDetailByUserPair(new ConversationPair(pair.userA().getId(), pair.userB().getId(), requester.getId()));
         assertThat(result).isEmpty();
     }
 
@@ -101,7 +102,8 @@ class ConversationRepositoryTest {
 
         entityManager.clear();
 
-        Optional<ConversationDetailProjection> result = conversationRepository.findDetailByUserPair(userAId, userBId, requesterId);
+        Optional<ConversationDetailProjection> result = conversationRepository.findDetailByUserPair(
+                new ConversationPair(userAId, userBId, requesterId));
         assertThat(result).hasValueSatisfying(projection ->{
             Conversation found = projection.getConversation();
 
@@ -131,9 +133,7 @@ class ConversationRepositoryTest {
 
         entityManager.clear();
         ConversationDetailProjection result = conversationRepository.findDetailByUserPair(
-                pair.userA().getId(),
-                pair.userB().getId(),
-                requester.getId()
+                new ConversationPair(pair.userA().getId(), pair.userB().getId(), requester.getId())
         ).orElseThrow();
 
         DirectMessage latestMessage = result.getLastMessage();
@@ -166,9 +166,7 @@ class ConversationRepositoryTest {
         entityManager.clear();
 
         ConversationDetailProjection result = conversationRepository.findDetailByUserPair(
-                pair.userA().getId(),
-                pair.userB().getId(),
-                requester.getId()
+                new ConversationPair(pair.userA().getId(), pair.userB().getId(), requester.getId())
         ).orElseThrow();
 
         assertThat(result.getLastMessage()).isNotNull();
@@ -199,9 +197,7 @@ class ConversationRepositoryTest {
 
         entityManager.clear();
         ConversationDetailProjection result = conversationRepository.findDetailByUserPair(
-                pair.userA().getId(),
-                pair.userB().getId(),
-                requester.getId()
+                new ConversationPair(pair.userA().getId(), pair.userB().getId(), requester.getId())
         ).orElseThrow();
 
         assertThat(result.getHasUnread()).isTrue();
@@ -239,9 +235,7 @@ class ConversationRepositoryTest {
 
         entityManager.clear();
         ConversationDetailProjection result = conversationRepository.findDetailByUserPair(
-                pair.userA().getId(),
-                pair.userB().getId(),
-                requester.getId()
+                new ConversationPair(pair.userA().getId(), pair.userB().getId(), requester.getId())
         ).orElseThrow();
 
         assertThat(result.getHasUnread()).isFalse();
@@ -266,9 +260,7 @@ class ConversationRepositoryTest {
 
         entityManager.clear();
         ConversationDetailProjection result = conversationRepository.findDetailByUserPair(
-                pair.userA().getId(),
-                pair.userB().getId(),
-                requester.getId()
+                new ConversationPair(pair.userA().getId(), pair.userB().getId(), requester.getId())
         ).orElseThrow();
 
         assertThat(result.getHasUnread()).isFalse();
@@ -290,9 +282,7 @@ class ConversationRepositoryTest {
 
         entityManager.clear();
         ConversationDetailProjection result = conversationRepository.findDetailByUserPair(
-                pair.userA().getId(),
-                pair.userB().getId(),
-                requester.getId()
+                new ConversationPair(pair.userA().getId(), pair.userB().getId(), requester.getId())
         ).orElseThrow();
 
         assertThat(result.getHasUnread()).isTrue();
@@ -329,9 +319,7 @@ class ConversationRepositoryTest {
 
         entityManager.clear();
         ConversationDetailProjection result = conversationRepository.findDetailByUserPair(
-                targetPair.userA().getId(),
-                targetPair.userB().getId(),
-                requester.getId()
+                new ConversationPair(targetPair.userA().getId(), targetPair.userB().getId(), requester.getId())
         ).orElseThrow();
 
         assertThat(result.getConversation().getId())
@@ -383,9 +371,7 @@ class ConversationRepositoryTest {
         assertThat(statistics.isStatisticsEnabled())
                 .isTrue();
         ConversationDetailProjection result = conversationRepository.findDetailByUserPair(
-                pair.userA().getId(),
-                pair.userB().getId(),
-                requester.getId()
+                new ConversationPair(pair.userA().getId(), pair.userB().getId(), requester.getId())
         ).orElseThrow();
 
         long statementCountBefore = statistics.getPrepareStatementCount();

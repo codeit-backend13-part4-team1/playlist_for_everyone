@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.conversation.service.impl;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.command.ConversationCreateCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.ConversationDetailProjection;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.ConversationFindCondition;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.ConversationPair;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.repository.ConversationRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -59,8 +60,10 @@ class ConversationReaderTest {
         ConversationCreateCommand command = new ConversationCreateCommand(
                 UUID.fromString(requesterIdValue), UUID.fromString(otherUserIdValue));
         ConversationDetailProjection projection = mock(ConversationDetailProjection.class);
+        ConversationPair expectedPair = new ConversationPair(
+                expectedUserAId, expectedUserBId, command.requesterId());
 
-        given(conversationRepository.findDetailByUserPair(expectedUserAId, expectedUserBId, command.requesterId()))
+        given(conversationRepository.findDetailByUserPair(expectedPair))
                 .willReturn(Optional.of(projection));
 
         Optional<ConversationDetailProjection> result =
@@ -69,7 +72,7 @@ class ConversationReaderTest {
                                 new ConversationFindCondition(command.requesterId(), command.withUserId()));
 
         assertThat(result).hasValueSatisfying(actual -> assertThat(actual).isSameAs(projection));
-        verify(conversationRepository).findDetailByUserPair(expectedUserAId, expectedUserBId, command.requesterId());
+        verify(conversationRepository).findDetailByUserPair(expectedPair);
     }
 
     @ParameterizedTest(name = "생성용={0}")
@@ -77,7 +80,8 @@ class ConversationReaderTest {
     @DisplayName("생성·조회 입력 모두 대화방이 없으면 빈 Optional을 반환한다.")
     void findExistingConversation_returnsEmptyWhenConversationNotFound(boolean useCreateCommand) {
         ConversationCreateCommand command = new ConversationCreateCommand(requesterId, withUserId);
-        given(conversationRepository.findDetailByUserPair(requesterId, withUserId, requesterId))
+        ConversationPair expectedPair = new ConversationPair(requesterId, withUserId, requesterId);
+        given(conversationRepository.findDetailByUserPair(expectedPair))
                 .willReturn(Optional.empty());
 
         Optional<ConversationDetailProjection> result =
@@ -86,7 +90,7 @@ class ConversationReaderTest {
                                 new ConversationFindCondition(command.requesterId(), command.withUserId()));
 
         assertThat(result).isEmpty();
-        verify(conversationRepository).findDetailByUserPair(requesterId, withUserId, requesterId);
+        verify(conversationRepository).findDetailByUserPair(expectedPair);
     }
 
     @ParameterizedTest(name = "생성용={0}")
@@ -94,7 +98,8 @@ class ConversationReaderTest {
     @DisplayName("생성·조회 입력 모두 Repository 조회가 실패하면 원본 예외를 전달한다.")
     void findExistingConversation_propagatesRepositoryFailure(boolean useCreateCommand) {
         DataAccessResourceFailureException exception = new DataAccessResourceFailureException("대화방 조회 중 DB 연결 실패");
-        given(conversationRepository.findDetailByUserPair(requesterId, withUserId, requesterId))
+        ConversationPair expectedPair = new ConversationPair(requesterId, withUserId, requesterId);
+        given(conversationRepository.findDetailByUserPair(expectedPair))
                 .willThrow(exception);
 
         assertThatThrownBy(() ->{
@@ -105,6 +110,6 @@ class ConversationReaderTest {
             conversationReader.findExistingConversation(new ConversationFindCondition(requesterId, withUserId));
         }).isSameAs(exception);
 
-        verify(conversationRepository).findDetailByUserPair(requesterId, withUserId, requesterId);
+        verify(conversationRepository).findDetailByUserPair(expectedPair);
     }
 }
