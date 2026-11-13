@@ -6,6 +6,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.mail.PasswordResetMailS
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.TemporaryPasswordRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
+import com.codeit.sb13.playlist_for_everyone.global.exception.auth.PasswordResetTooManyRequestsException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -14,8 +15,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
-import java.util.Optional;
+import java.util.UUID;
 
 /**
  * 비밀번호 초기화: 임시 비밀번호를 발급하고 이메일로 보낸다.
@@ -48,6 +50,11 @@ public class PasswordResetService {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(()-> new UserNotFoundException(Map.of("email", email)));
 
+        LocalDateTime now = LocalDateTime.now();
+
+        // 제한을 넘으면 기존 임시 비밀번호를 건드리지 않고 거부한다.
+        checkIssueLimit(user.getId(), now);
+
         // 사용자당 사용 가능한 임시 비밀번호는 하나만 둔다.
         temporaryPasswordRepository
                 .findAllByUserIdAndStatus(user.getId(), TemporaryPasswordStatus.ACTIVE)
@@ -63,6 +70,39 @@ public class PasswordResetService {
 
         // 마지막에 보낸다. 실패하면 예외로 위의 파기·저장이 모두 롤백된다.
         passwordResetMailSender.send(user.getEmail(), rawPassword, TEMPORARY_PASSWORD_VALIDITY);
+    }
+
+    /**
+     * 같은 계정의 발급 횟수를 제한한다.
+     * 최근 5개만 보면 재요청 간격(가장 최근 것)과 시간당 횟(5번째 것)를 함께 판단할 수 있다.
+     */
+    private void checkIssueLimit(UUID userId, LocalDateTime now) {
+        List<TemporaryPassword> recentIssues =
+                temporaryPasswordRepository.findTop5ByUserIdOrderByCreatedAtDesc(userId);
+
+        if (recentIssues.isEmpty()) {
+            return;
+        }
+
+        LocalDateTime nextAllowedByInterval = recentIssues.get(0).getCreatedAt().plus(RESEND_INTERVAL);
+        if (now.isBefore(nextAllowedByInterval)) {
+            throw new PasswordResetTooManyRequestsException(secondsUntil(now, nextAllowedByInterval));
+        }
+
+        if (recentIssues.size() >= MAX_ISSUES_PER_HOUR) {
+            LocalDateTime nextAllowedByWindow =
+                    recentIssues.get(MAX_ISSUES_PER_HOUR - 1).getCreatedAt().plus(ISSUE_WINDOW);
+            if (now.isBefore(nextAllowedByWindow)) {
+                throw new PasswordResetTooManyRequestsException(secondsUntil(now, nextAllowedByWindow));
+            }
+        }
+
+    }
+
+    // 남은 시간을 초 단위로 올림한다.
+    private long secondsUntil(LocalDateTime now, LocalDateTime target) {
+        long millis = Duration.between(now, target).toMillis();
+        return (millis + 999) / 1000;
     }
 
 }
