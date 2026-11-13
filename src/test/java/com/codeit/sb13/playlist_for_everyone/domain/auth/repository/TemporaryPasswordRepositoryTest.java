@@ -112,6 +112,41 @@ class TemporaryPasswordRepositoryTest {
         assertThat(result).extracting(TemporaryPassword::getId).containsExactly(active.getId());
     }
 
+    @Test
+    @DisplayName("기준 시각 이후의 발급 기록만 최신순으로 최대 5개를 조회하고, 파기된 기록도 포함한다.")
+    void 기준_시각_이후의_발급_기록만_최신순으로_최대_5개_조회한다() {
+        UUID userId = saveUser("recent@test.com");
+        LocalDateTime now = LocalDateTime.of(2026, 11, 13, 12, 0);
+
+        // 1시간 밖 1건 + 1시간 안 6건. 10분 전 기록은 파기된 상태로 둔다.
+        for (int minutesAgo : List.of(61, 50, 40, 30, 20, 10, 1)) {
+            TemporaryPassword issue = TemporaryPassword.issue(userId, "encoded", EXPIRED_AT);
+            if (minutesAgo == 10) {
+                issue.discard();
+            }
+            temporaryPasswordRepository.saveAndFlush(issue);
+            setCreatedAt(issue.getId(), now.minusMinutes(minutesAgo));
+        }
+        em.clear();
+
+        List<TemporaryPassword> result = temporaryPasswordRepository
+                .findTop5ByUserIdOrderByCreatedAtDesc(userId, now.minusHours(1));
+
+        assertThat(result).extracting(TemporaryPassword::getCreatedAt)
+                .containsExactly(
+                        now.minusMinutes(1), now.minusMinutes(10), now.minusMinutes(20),
+                        now.minusMinutes(30), now.minusMinutes(40));
+
+    }
+
+    private void setCreatedAt(UUID id, LocalDateTime createdAt) {
+        em.createNativeQuery("UPDATE temporary_password SET created_at = :createdAt WHERE id = :id")
+                .setParameter("createdAt", createdAt)
+                .setParameter("id", id)
+                .executeUpdate();
+
+    }
+
     private UUID saveUser(String email) {
         return userRepository.saveAndFlush(User.builder()
                 .email(email)
