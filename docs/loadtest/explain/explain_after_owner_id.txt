@@ -1,0 +1,264 @@
+Pager usage is off.
+===== 인덱스 현황 =====
+   tablename   |               indexname               |                                                          indexdef                                                           
+---------------+---------------------------------------+-----------------------------------------------------------------------------------------------------------------------------
+ file_infos    | file_infos_pkey                       | CREATE UNIQUE INDEX file_infos_pkey ON public.file_infos USING btree (id)
+ file_infos    | uk_file_infos_key                     | CREATE UNIQUE INDEX uk_file_infos_key ON public.file_infos USING btree (file_key)
+ playlists     | IDX_PLAYLISTS_DESCRIPTION_TRGM        | CREATE INDEX "IDX_PLAYLISTS_DESCRIPTION_TRGM" ON public.playlists USING gin (lower((description)::text) gin_trgm_ops)
+ playlists     | IDX_PLAYLISTS_OWNER_ID                | CREATE INDEX "IDX_PLAYLISTS_OWNER_ID" ON public.playlists USING btree (owner_id)
+ playlists     | IDX_PLAYLISTS_SUBSCRIBER_COUNT_ID     | CREATE INDEX "IDX_PLAYLISTS_SUBSCRIBER_COUNT_ID" ON public.playlists USING btree (subscriber_count DESC, id DESC)
+ playlists     | IDX_PLAYLISTS_TITLE_TRGM              | CREATE INDEX "IDX_PLAYLISTS_TITLE_TRGM" ON public.playlists USING gin (lower((title)::text) gin_trgm_ops)
+ playlists     | IDX_PLAYLISTS_UPDATED_AT_ID           | CREATE INDEX "IDX_PLAYLISTS_UPDATED_AT_ID" ON public.playlists USING btree (updated_at DESC, id DESC)
+ playlists     | PK_PLAYLISTS                          | CREATE UNIQUE INDEX "PK_PLAYLISTS" ON public.playlists USING btree (id)
+ subscriptions | IDX_SUBSCRIPTIONS_SUBSCRIBER_PLAYLIST | CREATE INDEX "IDX_SUBSCRIPTIONS_SUBSCRIBER_PLAYLIST" ON public.subscriptions USING btree (subscriber_id, playlist_id)
+ subscriptions | PK_SUBSCRIPTIONS                      | CREATE UNIQUE INDEX "PK_SUBSCRIPTIONS" ON public.subscriptions USING btree (id)
+ subscriptions | UQ_SUBSCRIPTIONS_PLAYLIST_SUBSCRIBER  | CREATE UNIQUE INDEX "UQ_SUBSCRIPTIONS_PLAYLIST_SUBSCRIBER" ON public.subscriptions USING btree (playlist_id, subscriber_id)
+ users         | PK_USERS                              | CREATE UNIQUE INDEX "PK_USERS" ON public.users USING btree (id)
+ users         | UQ_USERS_EMAIL                        | CREATE UNIQUE INDEX "UQ_USERS_EMAIL" ON public.users USING btree (email)
+ users         | uq_users_profile_image                | CREATE UNIQUE INDEX uq_users_profile_image ON public.users USING btree (profile_image_id)
+(14 rows)
+
+===== 테이블 크기(대략) =====
+    relname    | approx_rows 
+---------------+-------------
+ users         |       10001
+ subscriptions |      995613
+ playlists     |      200062
+ file_infos    |          -1
+(4 rows)
+
+
+===== 공통) 전체 건수 count (모든 목록 요청이 실행) =====
+                                                                                           QUERY PLAN                                                                                           
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Finalize Aggregate  (cost=7022.93..7022.94 rows=1 width=8) (actual time=17.683..19.433 rows=1 loops=1)
+   Buffers: shared hit=991
+   ->  Gather  (cost=7022.72..7022.93 rows=2 width=8) (actual time=17.587..19.426 rows=3 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=991
+         ->  Partial Aggregate  (cost=6022.72..6022.73 rows=1 width=8) (actual time=14.466..14.467 rows=1 loops=3)
+               Buffers: shared hit=991
+               ->  Parallel Index Only Scan using "IDX_PLAYLISTS_SUBSCRIBER_COUNT_ID" on playlists p1_0  (cost=0.42..5814.32 rows=83359 width=16) (actual time=0.039..9.376 rows=66687 loops=3)
+                     Heap Fetches: 0
+                     Buffers: shared hit=991
+ Planning Time: 0.126 ms
+ Execution Time: 19.465 ms
+(13 rows)
+
+
+===== L2 subscribeCount 정렬 - 본 쿼리 =====
+                                                                                    QUERY PLAN                                                                                    
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.86..9.23 rows=21 width=1851) (actual time=0.021..0.091 rows=21 loops=1)
+   Buffers: shared hit=84
+   ->  Nested Loop Left Join  (cost=0.86..79743.00 rows=200062 width=1851) (actual time=0.020..0.088 rows=21 loops=1)
+         Buffers: shared hit=84
+         ->  Nested Loop  (cost=0.72..47369.86 rows=200062 width=287) (actual time=0.019..0.078 rows=21 loops=1)
+               Buffers: shared hit=84
+               ->  Index Scan using "IDX_PLAYLISTS_SUBSCRIBER_COUNT_ID" on playlists p1_0  (cost=0.42..39288.91 rows=200062 width=140) (actual time=0.011..0.021 rows=21 loops=1)
+                     Buffers: shared hit=21
+               ->  Memoize  (cost=0.30..0.32 rows=1 width=147) (actual time=0.002..0.002 rows=1 loops=21)
+                     Cache Key: p1_0.owner_id
+                     Cache Mode: logical
+                     Hits: 0  Misses: 21  Evictions: 0  Overflows: 0  Memory Usage: 5kB
+                     Buffers: shared hit=63
+                     ->  Index Scan using "PK_USERS" on users o1_0  (cost=0.29..0.31 rows=1 width=147) (actual time=0.001..0.001 rows=1 loops=21)
+                           Index Cond: (id = p1_0.owner_id)
+                           Buffers: shared hit=63
+         ->  Index Scan using file_infos_pkey on file_infos pi1_0  (cost=0.14..0.16 rows=1 width=1580) (actual time=0.000..0.000 rows=0 loops=21)
+               Index Cond: (id = o1_0.profile_image_id)
+ Planning:
+   Buffers: shared hit=14
+ Planning Time: 0.230 ms
+ Execution Time: 0.263 ms
+(22 rows)
+
+
+===== L3 키워드(흔한 단어) - count =====
+                                                                  QUERY PLAN                                                                  
+----------------------------------------------------------------------------------------------------------------------------------------------
+ Finalize Aggregate  (cost=10971.05..10971.06 rows=1 width=8) (actual time=96.051..98.274 rows=1 loops=1)
+   Buffers: shared hit=8135 read=156
+   ->  Gather  (cost=10970.83..10971.04 rows=2 width=8) (actual time=95.875..98.268 rows=3 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=8135 read=156
+         ->  Partial Aggregate  (cost=9970.83..9970.84 rows=1 width=8) (actual time=93.138..93.138 rows=1 loops=3)
+               Buffers: shared hit=8135 read=156
+               ->  Parallel Seq Scan on playlists p1_0  (cost=0.00..9958.18 rows=5059 width=16) (actual time=0.055..92.819 rows=3333 loops=3)
+                     Filter: ((lower((title)::text) ~~ '%운동%'::text) OR (lower((description)::text) ~~ '%운동%'::text))
+                     Rows Removed by Filter: 63354
+                     Buffers: shared hit=8135 read=156
+ Planning:
+   Buffers: shared hit=2
+ Planning Time: 0.206 ms
+ Execution Time: 98.299 ms
+(16 rows)
+
+
+===== L4 키워드(희귀) - 본 쿼리 =====
+                                                                                 QUERY PLAN                                                                                 
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=723.84..723.89 rows=21 width=1851) (actual time=6.622..6.625 rows=1 loops=1)
+   Buffers: shared hit=446
+   ->  Sort  (cost=723.84..723.94 rows=40 width=1851) (actual time=6.622..6.623 rows=1 loops=1)
+         Sort Key: p1_0.updated_at DESC, p1_0.id DESC
+         Sort Method: quicksort  Memory: 25kB
+         Buffers: shared hit=446
+         ->  Nested Loop Left Join  (cost=284.14..722.78 rows=40 width=1851) (actual time=6.613..6.615 rows=1 loops=1)
+               Buffers: shared hit=446
+               ->  Nested Loop  (cost=284.00..716.28 rows=40 width=287) (actual time=6.600..6.601 rows=1 loops=1)
+                     Buffers: shared hit=446
+                     ->  Bitmap Heap Scan on playlists p1_0  (cost=283.72..436.18 rows=40 width=140) (actual time=6.554..6.555 rows=1 loops=1)
+                           Recheck Cond: ((lower((title)::text) ~~ '%여행 플레이리스트 78369%'::text) OR (lower((description)::text) ~~ '%여행 플레이리스트 78369%'::text))
+                           Heap Blocks: exact=1
+                           Buffers: shared hit=443
+                           ->  BitmapOr  (cost=283.72..283.72 rows=40 width=0) (actual time=6.541..6.542 rows=0 loops=1)
+                                 Buffers: shared hit=442
+                                 ->  Bitmap Index Scan on "IDX_PLAYLISTS_TITLE_TRGM"  (cost=0.00..137.72 rows=20 width=0) (actual time=6.445..6.445 rows=1 loops=1)
+                                       Index Cond: (lower((title)::text) ~~ '%여행 플레이리스트 78369%'::text)
+                                       Buffers: shared hit=413
+                                 ->  Bitmap Index Scan on "IDX_PLAYLISTS_DESCRIPTION_TRGM"  (cost=0.00..145.97 rows=20 width=0) (actual time=0.095..0.095 rows=0 loops=1)
+                                       Index Cond: (lower((description)::text) ~~ '%여행 플레이리스트 78369%'::text)
+                                       Buffers: shared hit=29
+                     ->  Index Scan using "PK_USERS" on users o1_0  (cost=0.29..7.00 rows=1 width=147) (actual time=0.040..0.040 rows=1 loops=1)
+                           Index Cond: (id = p1_0.owner_id)
+                           Buffers: shared hit=3
+               ->  Index Scan using file_infos_pkey on file_infos pi1_0  (cost=0.14..0.16 rows=1 width=1580) (actual time=0.011..0.011 rows=0 loops=1)
+                     Index Cond: (id = o1_0.profile_image_id)
+ Planning:
+   Buffers: shared hit=16
+ Planning Time: 0.320 ms
+ Execution Time: 6.659 ms
+(31 rows)
+
+
+===== L4 키워드(희귀) - count =====
+                                                                        QUERY PLAN                                                                        
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=436.28..436.29 rows=1 width=8) (actual time=7.520..7.521 rows=1 loops=1)
+   Buffers: shared hit=443
+   ->  Bitmap Heap Scan on playlists p1_0  (cost=283.72..436.18 rows=40 width=16) (actual time=7.516..7.517 rows=1 loops=1)
+         Recheck Cond: ((lower((title)::text) ~~ '%여행 플레이리스트 78369%'::text) OR (lower((description)::text) ~~ '%여행 플레이리스트 78369%'::text))
+         Heap Blocks: exact=1
+         Buffers: shared hit=443
+         ->  BitmapOr  (cost=283.72..283.72 rows=40 width=0) (actual time=7.506..7.506 rows=0 loops=1)
+               Buffers: shared hit=442
+               ->  Bitmap Index Scan on "IDX_PLAYLISTS_TITLE_TRGM"  (cost=0.00..137.72 rows=20 width=0) (actual time=7.418..7.418 rows=1 loops=1)
+                     Index Cond: (lower((title)::text) ~~ '%여행 플레이리스트 78369%'::text)
+                     Buffers: shared hit=413
+               ->  Bitmap Index Scan on "IDX_PLAYLISTS_DESCRIPTION_TRGM"  (cost=0.00..145.97 rows=20 width=0) (actual time=0.082..0.082 rows=0 loops=1)
+                     Index Cond: (lower((description)::text) ~~ '%여행 플레이리스트 78369%'::text)
+                     Buffers: shared hit=29
+ Planning:
+   Buffers: shared hit=2
+ Planning Time: 0.133 ms
+ Execution Time: 7.549 ms
+(18 rows)
+
+
+===== L5 소유자 필터 - 본 쿼리 =====
+                                                                     QUERY PLAN                                                                      
+-----------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=101.81..101.86 rows=20 width=1851) (actual time=0.041..0.046 rows=21 loops=1)
+   Buffers: shared hit=12
+   ->  Sort  (cost=101.81..101.86 rows=20 width=1851) (actual time=0.041..0.043 rows=21 loops=1)
+         Sort Key: p1_0.updated_at DESC, p1_0.id DESC
+         Sort Method: quicksort  Memory: 35kB
+         Buffers: shared hit=12
+         ->  Nested Loop  (cost=4.74..101.38 rows=20 width=1851) (actual time=0.014..0.026 rows=22 loops=1)
+               Buffers: shared hit=12
+               ->  Nested Loop Left Join  (cost=0.29..19.43 rows=1 width=1711) (actual time=0.007..0.007 rows=1 loops=1)
+                     Join Filter: (pi1_0.id = o1_0.profile_image_id)
+                     Buffers: shared hit=3
+                     ->  Index Scan using "PK_USERS" on users o1_0  (cost=0.29..8.30 rows=1 width=147) (actual time=0.004..0.004 rows=1 loops=1)
+                           Index Cond: (id = 'b034b160-e9c0-44e4-bf88-0019d360412a'::uuid)
+                           Buffers: shared hit=3
+                     ->  Seq Scan on file_infos pi1_0  (cost=0.00..10.50 rows=50 width=1580) (actual time=0.001..0.001 rows=0 loops=1)
+               ->  Bitmap Heap Scan on playlists p1_0  (cost=4.45..81.75 rows=20 width=140) (actual time=0.006..0.013 rows=22 loops=1)
+                     Recheck Cond: (owner_id = 'b034b160-e9c0-44e4-bf88-0019d360412a'::uuid)
+                     Heap Blocks: exact=7
+                     Buffers: shared hit=9
+                     ->  Bitmap Index Scan on "IDX_PLAYLISTS_OWNER_ID"  (cost=0.00..4.45 rows=20 width=0) (actual time=0.003..0.003 rows=22 loops=1)
+                           Index Cond: (owner_id = 'b034b160-e9c0-44e4-bf88-0019d360412a'::uuid)
+                           Buffers: shared hit=2
+ Planning:
+   Buffers: shared hit=2
+ Planning Time: 0.131 ms
+ Execution Time: 0.067 ms
+(26 rows)
+
+
+===== L5 소유자 필터 - count =====
+                                                               QUERY PLAN                                                                
+-----------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=81.80..81.81 rows=1 width=8) (actual time=0.015..0.016 rows=1 loops=1)
+   Buffers: shared hit=9
+   ->  Bitmap Heap Scan on playlists p1_0  (cost=4.45..81.75 rows=20 width=16) (actual time=0.007..0.012 rows=22 loops=1)
+         Recheck Cond: (owner_id = 'b034b160-e9c0-44e4-bf88-0019d360412a'::uuid)
+         Heap Blocks: exact=7
+         Buffers: shared hit=9
+         ->  Bitmap Index Scan on "IDX_PLAYLISTS_OWNER_ID"  (cost=0.00..4.45 rows=20 width=0) (actual time=0.004..0.004 rows=22 loops=1)
+               Index Cond: (owner_id = 'b034b160-e9c0-44e4-bf88-0019d360412a'::uuid)
+               Buffers: shared hit=2
+ Planning Time: 0.034 ms
+ Execution Time: 0.025 ms
+(11 rows)
+
+
+===== L6 구독 필터 - 본 쿼리 =====
+                                                                                                  QUERY PLAN                                                                                                  
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=891.60..891.65 rows=21 width=1851) (actual time=1.112..1.117 rows=21 loops=1)
+   Buffers: shared hit=719
+   ->  Sort  (cost=891.60..891.85 rows=100 width=1851) (actual time=1.111..1.113 rows=21 loops=1)
+         Sort Key: p1_0.updated_at DESC, p1_0.id DESC
+         Sort Method: top-N heapsort  Memory: 35kB
+         Buffers: shared hit=719
+         ->  Nested Loop Left Join  (cost=1.27..888.90 rows=100 width=1851) (actual time=0.030..1.033 rows=102 loops=1)
+               Buffers: shared hit=719
+               ->  Nested Loop  (cost=1.13..872.70 rows=100 width=287) (actual time=0.028..0.986 rows=102 loops=1)
+                     Buffers: shared hit=719
+                     ->  Nested Loop  (cost=0.84..841.93 rows=100 width=140) (actual time=0.020..0.635 rows=102 loops=1)
+                           Buffers: shared hit=413
+                           ->  Index Only Scan Backward using "IDX_SUBSCRIPTIONS_SUBSCRIBER_PLAYLIST" on subscriptions s1_0  (cost=0.42..10.18 rows=100 width=16) (actual time=0.012..0.031 rows=102 loops=1)
+                                 Index Cond: (subscriber_id = 'b034b160-e9c0-44e4-bf88-0019d360412a'::uuid)
+                                 Heap Fetches: 0
+                                 Buffers: shared hit=5
+                           ->  Index Scan using "PK_PLAYLISTS" on playlists p1_0  (cost=0.42..8.32 rows=1 width=140) (actual time=0.005..0.005 rows=1 loops=102)
+                                 Index Cond: (id = s1_0.playlist_id)
+                                 Buffers: shared hit=408
+                     ->  Index Scan using "PK_USERS" on users o1_0  (cost=0.29..0.31 rows=1 width=147) (actual time=0.003..0.003 rows=1 loops=102)
+                           Index Cond: (id = p1_0.owner_id)
+                           Buffers: shared hit=306
+               ->  Index Scan using file_infos_pkey on file_infos pi1_0  (cost=0.14..0.16 rows=1 width=1580) (actual time=0.000..0.000 rows=0 loops=102)
+                     Index Cond: (id = o1_0.profile_image_id)
+ Planning:
+   Buffers: shared hit=46
+ Planning Time: 0.712 ms
+ Execution Time: 1.155 ms
+(28 rows)
+
+
+===== L6 구독 필터 - count =====
+                                                                                    QUERY PLAN                                                                                     
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=442.18..442.19 rows=1 width=8) (actual time=0.242..0.243 rows=1 loops=1)
+   Buffers: shared hit=312
+   ->  Nested Loop  (cost=0.84..441.93 rows=100 width=16) (actual time=0.006..0.215 rows=102 loops=1)
+         Buffers: shared hit=312
+         ->  Index Only Scan using "IDX_SUBSCRIPTIONS_SUBSCRIBER_PLAYLIST" on subscriptions s1_0  (cost=0.42..10.18 rows=100 width=16) (actual time=0.004..0.015 rows=102 loops=1)
+               Index Cond: (subscriber_id = 'b034b160-e9c0-44e4-bf88-0019d360412a'::uuid)
+               Heap Fetches: 0
+               Buffers: shared hit=5
+         ->  Index Only Scan using "PK_PLAYLISTS" on playlists p1_0  (cost=0.42..4.32 rows=1 width=16) (actual time=0.002..0.002 rows=1 loops=102)
+               Index Cond: (id = s1_0.playlist_id)
+               Heap Fetches: 0
+               Buffers: shared hit=307
+ Planning:
+   Buffers: shared hit=16
+ Planning Time: 0.107 ms
+ Execution Time: 0.251 ms
+(16 rows)
+

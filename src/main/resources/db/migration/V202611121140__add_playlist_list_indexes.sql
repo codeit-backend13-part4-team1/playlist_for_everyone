@@ -5,9 +5,9 @@
 CREATE INDEX "IDX_PLAYLISTS_UPDATED_AT_ID"
     ON "playlists" ("updated_at" DESC, "id" DESC);
 
--- 소유자 필터 + updatedAt 정렬
-CREATE INDEX "IDX_PLAYLISTS_OWNER_UPDATED_AT_ID"
-    ON "playlists" ("owner_id", "updated_at" DESC, "id" DESC);
+-- 소유자 필터(목록·count). 소유자당 플레이리스트 수가 적어 updated_at 정렬은 별도 정렬로 충분하다.
+CREATE INDEX "IDX_PLAYLISTS_OWNER_ID"
+    ON "playlists" ("owner_id");
 
 -- 구독자 수 정렬(subscribeCount)과 커서 조건
 CREATE INDEX "IDX_PLAYLISTS_SUBSCRIBER_COUNT_ID"
