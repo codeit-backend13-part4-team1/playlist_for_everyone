@@ -13,7 +13,7 @@ import org.springframework.data.repository.query.Param;
  * 플레이리스트 응답의 contents 조립용 조회 전용 repository.
  *
  * 임시 구현: 콘텐츠 도메인에 id 묶음 조회가 없어 플레이리스트 패키지에 둔다.
- * 콘텐츠 서비스에 묶음 요약 조회가 생기면 이관 후 삭제한다. (#NNN)
+ * 콘텐츠 서비스에 묶음 요약 조회가 생기면 이관 후 삭제한다. (#186)
  */
 public interface PlaylistContentQueryRepository extends Repository<Content, UUID> {
 
