@@ -375,6 +375,7 @@ public class DirectMessageQueryRepositoryTest {
                         assertThat(user.getProfileImage()).isNotNull();
                         assertThat(user.getProfileImage().getKey()).isNotBlank();
                     });
+            assertThat(message.getConversation().getId()).isEqualTo(conversationId);
         });
         assertThat(statistics.getPrepareStatementCount())
                 .as("발신자·수신자와 프로필 접근 후에도 추가 SQL이 발생하지 않아야 한다.")
