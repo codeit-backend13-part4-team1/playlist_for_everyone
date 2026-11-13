@@ -5,6 +5,7 @@ import static org.mockito.BDDMockito.given;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistSearchRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.PlaylistContentSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.PlaylistResponse;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistSortBy;
@@ -27,6 +28,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -84,6 +87,7 @@ class PlaylistContentsIntegrationTest {
 
   @AfterEach
   void cleanUp() {
+    SecurityContextHolder.clearContext();
     contentIds.forEach(id -> jdbcTemplate.update("DELETE FROM reviews WHERE content_id = ?", id));
     playlistIds.forEach(
         id -> jdbcTemplate.update("DELETE FROM playlist_contents WHERE playlist_id = ?", id));
@@ -149,6 +153,34 @@ class PlaylistContentsIntegrationTest {
 
     // then
     assertThat(response.contents()).isNotNull().isEmpty();
+  }
+
+  @Test
+  @DisplayName("수정 응답에도 콘텐츠 목록이 담기고 수정 내용이 DB에 반영된다")
+  void 수정_응답에도_콘텐츠_목록이_담긴다() {
+    // given
+    SecurityContextHolder.getContext().setAuthentication(
+        new UsernamePasswordAuthenticationToken("test-user", null, List.of()));
+    UUID ownerId = insertUser();
+    UUID playlistId = insertPlaylist(ownerId);
+    UUID contentId = insertContent("콘텐츠", "https://img.test/c.png", null);
+    insertTag(contentId, "태그");
+    linkContent(playlistId, contentId, 0);
+
+    // when
+    PlaylistResponse response = playlistService.updatePlaylist(
+        playlistId, new PlaylistUpdateRequest("새 제목", null), ownerId);
+
+    // then
+    assertThat(response.title()).isEqualTo("새 제목");
+    assertThat(response.description()).isEqualTo("설명");
+    assertThat(response.contents()).extracting(PlaylistContentSummary::id)
+        .containsExactly(contentId);
+    assertThat(response.contents().get(0).tags()).containsExactly("태그");
+
+    String savedTitle = jdbcTemplate.queryForObject(
+        "SELECT title FROM playlists WHERE id = ?", String.class, playlistId);
+    assertThat(savedTitle).isEqualTo("새 제목");
   }
 
   @Test

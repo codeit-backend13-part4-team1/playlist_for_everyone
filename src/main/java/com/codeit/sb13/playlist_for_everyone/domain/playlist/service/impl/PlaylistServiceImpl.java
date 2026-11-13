@@ -62,6 +62,7 @@ public class PlaylistServiceImpl implements PlaylistService {
   private final UserSummaryMapper  userSummaryMapper;
   private final PlaylistReader playlistReader;
   private final PlaylistContentSummaryMapper playlistContentSummaryMapper;
+  private final PlaylistWriter playlistWriter;
 
   private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
 
@@ -129,23 +130,14 @@ public class PlaylistServiceImpl implements PlaylistService {
 
   @Override
   @PreAuthorize("isAuthenticated() and @playlistGuard.canModify(#playlistId, #requesterId)")
-  @Transactional
+  @Transactional(propagation = Propagation.NOT_SUPPORTED)
   public PlaylistResponse updatePlaylist(
       UUID playlistId, PlaylistUpdateRequest request, UUID requesterId) {
 
-    Playlist playlist = playlistRepository.findWithOwnerById(playlistId)
-        .orElseThrow(() -> new PlayListNotFoundException(
-            Map.of("playlistId", playlistId)
-        ));
+    playlistWriter.update(playlistId, request);
 
-
-    playlist.update(request.title(), request.description());
-
-    boolean subscribedByMe = subscriptionRepository
-        .existsByPlaylistIdAndSubscriberId(playlistId, requesterId);
-
-    return toResponse(playlist, subscribedByMe);
-
+    PlaylistReader.PlaylistDetail detail = playlistReader.readOne(playlistId, requesterId);
+    return toResponse(detail.playlist(), detail.subscribedByMe(), detail.contents());
   }
 
   @Override
@@ -285,11 +277,6 @@ public class PlaylistServiceImpl implements PlaylistService {
       case UPDATED_AT -> playlist.getUpdatedAt().toString();
       case SUBSCRIBE_COUNT -> String.valueOf(playlist.getSubscriberCount());
     };
-  }
-
-  private PlaylistResponse toResponse(Playlist playlist, boolean subscribedByMe) {
-    // updatePlaylist 용. contents는 다음 커밋에서 채운다.
-    return toResponse(playlist, subscribedByMe, List.of());
   }
 
   private PlaylistResponse toResponse(

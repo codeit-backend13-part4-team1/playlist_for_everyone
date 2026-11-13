@@ -110,12 +110,14 @@ public class PlaylistServiceImplTest {
         playlistContentQueryRepository
     );
 
+    PlaylistWriter playlistWriter = new PlaylistWriter(playlistRepository);
+
     playlistService = new PlaylistServiceImpl(
         playlistRepository, userRepository,
         subscriptionRepository, playlistContentRepository,
         contentRepository, eventPublisher,
         userSummaryMapper, playlistReader,
-        playlistContentSummaryMapper
+        playlistContentSummaryMapper, playlistWriter
     );
   }
 
@@ -525,6 +527,8 @@ public class PlaylistServiceImplTest {
     PlaylistUpdateRequest request = new PlaylistUpdateRequest("새 제목", "새 설명");
     UserSummary summary = new UserSummary(ownerId, "tester", null);
 
+    given(playlistRepository.findById(playlistId))
+        .willReturn(Optional.of(playlist));
     given(playlistRepository.findWithOwnerById(playlistId))
         .willReturn(Optional.of(playlist));
     given(userSummaryMapper.toSummary(owner)).willReturn(summary);
@@ -550,6 +554,8 @@ public class PlaylistServiceImplTest {
     Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
     PlaylistUpdateRequest request = new PlaylistUpdateRequest("새 제목", null);
 
+    given(playlistRepository.findById(playlistId))
+        .willReturn(Optional.of(playlist));
     given(playlistRepository.findWithOwnerById(playlistId))
         .willReturn(Optional.of(playlist));
 
@@ -570,6 +576,8 @@ public class PlaylistServiceImplTest {
     Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
     PlaylistUpdateRequest request = new PlaylistUpdateRequest(null, "새 설명");
 
+    given(playlistRepository.findById(playlistId))
+        .willReturn(Optional.of(playlist));
     given(playlistRepository.findWithOwnerById(playlistId))
         .willReturn(Optional.of(playlist));
 
@@ -589,7 +597,7 @@ public class PlaylistServiceImplTest {
     UUID requesterId = UUID.randomUUID();
     PlaylistUpdateRequest request = new PlaylistUpdateRequest("새 제목", "새 설명");
 
-    given(playlistRepository.findWithOwnerById(playlistId))
+    given(playlistRepository.findById(playlistId))
         .willReturn(Optional.empty());
 
     // when & then
