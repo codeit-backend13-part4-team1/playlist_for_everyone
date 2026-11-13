@@ -188,7 +188,6 @@ public class WatchingSession {
         User user = userService.getById(auth.getUserId());
         ContentDto content = contentService.getById(contentId);
 
-        log.warn("destination, type : {},{}", info.destination(),type);
         // 최신 사용자로 조회
         if(type == ChangeType.JOIN && user.isLocked()) // 사용자가 잠겨있다면, 로직 방어.
             throw new UserNotFoundException(Map.of());

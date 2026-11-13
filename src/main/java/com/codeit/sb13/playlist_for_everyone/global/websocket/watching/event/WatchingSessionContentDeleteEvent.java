@@ -3,12 +3,10 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event;
 import java.util.UUID;
 
 /**
- * 세션 정보가 삭제되어야 할 때, 발행될 이벤트.
- * 컨텐츠 삭제 시 활성세션을 막기 위해 사용할 이벤트 이다.
- * todo - 활성 세션이 남아있어도 등록 세션과 브로커 구독을 꺼야하는지 추후 고려.
- * @param contentId
+ * 컨텐츠가 삭제 되었을 때, 컨텐츠 id 를 발신하는 이벤트.
+ * 해당 컨텐츠를 구독한 모든 세션에 대한 연결을 끊는다.
+ * contentId : 삭제된 컨텐츠의 id
  */
 public record WatchingSessionContentDeleteEvent(
         UUID contentId
-) {
-}
+){}

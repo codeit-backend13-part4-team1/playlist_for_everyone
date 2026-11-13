@@ -7,7 +7,6 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocke
 import com.codeit.sb13.playlist_for_everyone.global.service.MatchRule;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.event.WebSocketAuthRevokeEvent;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSession;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatDto;
@@ -177,21 +176,6 @@ public class WatchingSessionEventListener {
             throw new WebSocketSessionNotFoundException();
         }
 
-    }
-
-    /*
-     * 시스템이 호출하는 이벤트.
-     */
-
-    /**
-     * 컨텐츠가 삭제 되었을 때, 연괸된 세션 리소스를 전부 종료 및 제거 하는 매서드
-     * 단일 세션에는 단일 구독만이 존재한다 가정하고, 세션 - 구독 쌍의 연결을 끊는다.
-     * @param event contentID 를 담고있다.
-     */
-    @EventListener
-    public void contentDeleteEvent(WatchingSessionContentDeleteEvent event){
-        UUID content = event.contentId();
-        watchingSession.disconnectWithContentId(content);
     }
 
 }
