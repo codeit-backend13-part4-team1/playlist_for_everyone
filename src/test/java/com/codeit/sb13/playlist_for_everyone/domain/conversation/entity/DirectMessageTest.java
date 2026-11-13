@@ -54,15 +54,17 @@ class DirectMessageTest {
         User receiver = createUser(userBId, "수신자");
 
         Conversation conversation = new Conversation(new ConversationCommand(sender, receiver));
-        DirectMessageCommand command = "command".equals(missingField) ? null
-                : new DirectMessageCommand(
-                "conversation".equals(missingField) ? null : conversation,
-                "sender".equals(missingField) ? null : sender,
-                "receiver".equals(missingField) ? null : receiver,
-                content);
 
-        assertThatThrownBy(() -> new DirectMessage(command))
-                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> {
+            DirectMessageCommand command = "command".equals(missingField) ? null
+                    : new DirectMessageCommand(
+                    "conversation".equals(missingField) ? null : conversation,
+                    "sender".equals(missingField) ? null : sender,
+                    "receiver".equals(missingField) ? null : receiver,
+                    content);
+
+            new DirectMessage(command);
+        }).isInstanceOf(IllegalArgumentException.class);
     }
 
     @ParameterizedTest(name = "유효하지 않은 본문:[{0}]")
@@ -74,10 +76,11 @@ class DirectMessageTest {
         User receiver = createUser(userBId, "수신자");
 
         Conversation conversation = new Conversation(new ConversationCommand(sender, receiver));
-        DirectMessageCommand command = new DirectMessageCommand(conversation, sender, receiver, content);
 
-        assertThatThrownBy(() -> new DirectMessage(command))
-                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> {
+            DirectMessageCommand command = new DirectMessageCommand(conversation, sender, receiver, content);
+            new DirectMessage(command);
+        }).isInstanceOf(IllegalArgumentException.class);
     }
 
     @ParameterizedTest(name = "발신자와 수신자가 같은 객체인가: {0}")
@@ -91,10 +94,10 @@ class DirectMessageTest {
 
         User receiver = sameInstance ? userA : createUser(userAId, "동일 사용자의 다른 객체");
 
-        DirectMessageCommand command = new DirectMessageCommand(conversation, userA, receiver, content);
-
-        assertThatThrownBy(() -> new DirectMessage(command))
-                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> {
+            DirectMessageCommand command = new DirectMessageCommand(conversation, userA, receiver, content);
+            new DirectMessage(command);
+        }).isInstanceOf(IllegalArgumentException.class);
     }
 
     @ParameterizedTest(name = "발신자 비참여={0}, 수신자 비참여={1}")
@@ -119,9 +122,10 @@ class DirectMessageTest {
                         "비참여 수신자")
                 : userB;
 
-        DirectMessageCommand command = new DirectMessageCommand(conversation, sender, receiver, content);
-        assertThatThrownBy(() -> new DirectMessage(command))
-                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> {
+            DirectMessageCommand command = new DirectMessageCommand(conversation, sender, receiver, content);
+            new DirectMessage(command);
+        }).isInstanceOf(IllegalArgumentException.class);
     }
 
     @ParameterizedTest(name = "발신자 참여자 A인가:{0}")

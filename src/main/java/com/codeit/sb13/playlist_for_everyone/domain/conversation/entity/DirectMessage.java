@@ -39,6 +39,13 @@ public class DirectMessage extends UpdatedAtEntity {
     private boolean read;
 
     public DirectMessage(DirectMessageCommand command){
-        throw new UnsupportedOperationException();
+        if (command == null) {
+            throw new IllegalArgumentException("메시지 생성 입력은 필수입니다.");
+        }
+        this.conversation = command.conversation();
+        this.sender = command.sender();
+        this.receiver = command.receiver();
+        this.content = command.content();
+        this.read = false;
     }
 }
