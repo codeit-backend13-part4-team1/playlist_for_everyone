@@ -1,7 +1,8 @@
 package com.codeit.sb13.playlist_for_everyone.domain.conversation.entity;
 
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.command.DirectMessageCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
-import com.codeit.sb13.playlist_for_everyone.global.domain.CreatedAtEntity;
+import com.codeit.sb13.playlist_for_everyone.global.domain.UpdatedAtEntity;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -18,7 +19,7 @@ import lombok.NoArgsConstructor;
 @Entity
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Getter
-public class DirectMessage extends CreatedAtEntity {
+public class DirectMessage extends UpdatedAtEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "conversation_id", nullable = false)
     private Conversation conversation;
@@ -36,4 +37,8 @@ public class DirectMessage extends CreatedAtEntity {
 
     @Column(name = "is_read", nullable = false)
     private boolean read;
+
+    public DirectMessage(DirectMessageCommand command){
+        throw new UnsupportedOperationException();
+    }
 }
