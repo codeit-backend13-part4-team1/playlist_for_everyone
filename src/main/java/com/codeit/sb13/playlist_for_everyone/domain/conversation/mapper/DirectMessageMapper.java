@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 /**
  * 조회된 메시지의 발신자·수신자 요약 정보를 구성하여 응답으로 변환한다.
  * UserSummaryMapper를 통해 프로필 이미지 URL도 생성하므로 필요한 연관관계가 조회되어 있어야 한다.
+ * 메시지나 읽음 상태를 변경하지 않으며, URL 생성 중 발생한 예외는 호출자에게 전달한다.
  */
 @Component
 @RequiredArgsConstructor

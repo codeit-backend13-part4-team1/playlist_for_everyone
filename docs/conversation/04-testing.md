@@ -1,7 +1,8 @@
-# 4. 테스트 읽기와 실행
+# 테스트 읽기와 실행
 
 정책을 확인하는 단위 테스트, 실제 DB 제약·트랜잭션 테스트, HTTP 보안 테스트를 구분합니다.
 같은 정상 응답을 확인하더라도 실행하는 경계가 다릅니다.
+이 페이지는 공통 환경과 생성 테스트를, [조회 테스트와 Swagger 검증](06-query-testing.md)은 조회 전용 검증을 설명합니다.
 
 ## 테스트별 역할
 
@@ -15,7 +16,10 @@
 | [ConversationControllerTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/controller/ConversationControllerTest.java) | 요청 검증, 인증 객체의 ID 전달, 200·400·500 본문 계약 | Service는 Mock, 보안 필터 비활성화 |
 | [ConversationRepositoryTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/repository/ConversationRepositoryTest.java) | 실제 쿼리, 최신 메시지·미읽음, 연관관계 조회, UNIQUE·FK·NOT NULL | PostgreSQL 사용. 서비스 정책·HTTP 보안 제외 |
 | [ConversationServiceIntegrationTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/service/ConversationServiceIntegrationTest.java) | 실제 생성·중복·동시 호출, 커밋·외부 롤백, 충돌 복구·URL 실패 | PostgreSQL 사용. FileStorage는 Mock, Reader는 Spy. HTTP 제외 |
-| [ConversationSecurityIntegrationTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/controller/ConversationSecurityIntegrationTest.java) | 실제 JWT·CSRF·서비스·DB를 연결한 요청과 저장 여부 | UserSessionRepository는 Mock. 실제 Redis 세션·로그인 API 제외 |
+| [ConversationSecurityIntegrationTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/controller/ConversationSecurityIntegrationTest.java) | 생성 JWT·CSRF와 생성·조회 4종의 JWT 누락 거절 | UserSessionRepository는 Mock. 실제 Redis 세션·로그인 API 제외 |
+
+조회 전용 테스트는 QueryService·QueryController·QueryRepository·QuerySecurityIntegration의 4개 클래스입니다.
+전체 11개 클래스의 실행 결과를 함께 확인해야 생성 기능에 대한 회귀도 포함할 수 있습니다.
 
 ## 단위 테스트와 통합 테스트의 차이
 
@@ -37,19 +41,20 @@ HTTP 200 계약은 컨트롤러 테스트가 담당합니다.
 
 보안 통합 테스트는 `JwtTokenProvider`로 JWT를 발급하고 공통 필터를 통과시킵니다.
 CSRF는 실제 `GET /api/auth/csrf-token` 응답의 쿠키를 받아 요청 헤더와 함께 전달합니다.
-다음 **5가지 상황**에서 응답과 DB 저장 여부를 확인합니다.
+다음 상황을 검증합니다. JWT 누락은 생성·목록·단건·상대방 조회의 4가지 요청으로 실행하므로 총 **8건**입니다.
 
 | 조건 | 기대 결과 |
 | --- | --- |
 | 유효한 JWT와 정상 CSRF | 200, 인증 사용자와 상대방의 대화방 저장 |
-| 정상 CSRF, JWT 없음 | 401, 저장 없음 |
+| JWT 없음: 생성·조회 4종 | 401, 저장 없음. 생성 요청에는 정상 CSRF를 준비하여 인증 실패를 분리 |
 | 정상 CSRF, 잘못된 JWT 형식 | 401, 저장 없음 |
 | 유효한 JWT, CSRF 없음 | 403, 저장 없음 |
 | 유효한 JWT, CSRF 쿠키·헤더 불일치 | 403, 저장 없음 |
 
 `UserSessionRepository.isCurrent()`의 결과는 Mock으로 준비합니다.
 JWT 서명·요청 필터와 CSRF 처리는 실제 구성으로 실행하지만, Redis의 세션 보관·만료 동작까지 검증하지 않습니다.
-만료·변조 JWT, 계정 잠금 등 공통 인증의 모든 경우를 이 5개 테스트에서 검증하는 것도 아닙니다.
+만료·변조 JWT, 계정 잠금 등 공통 인증의 모든 경우를 이 테스트에서 검증하는 것도 아닙니다.
+조회의 유효 JWT·참여자 제한·GET의 CSRF 불필요 검증은 [조회 보안 통합 테스트](06-query-testing.md#실제-조회-요청의-검증-범위)를 참고합니다.
 
 ## 실행 환경
 
@@ -58,7 +63,8 @@ JWT 서명·요청 필터와 CSRF 처리는 실제 구성으로 실행하지만,
 Repository·ServiceIntegration·SecurityIntegration 테스트는 Testcontainers의 PostgreSQL 접속 정보로 덮어씁니다.
 
 - Docker 엔진이 실행되어 있어야 하며 `postgres:16` 컨테이너를 테스트가 생성합니다.
-- 세 PostgreSQL 테스트는 Flyway를 활성화하고 `ddl-auto=validate`로 실제 스키마와 매핑을 확인합니다.
+- 생성·조회 Repository, ServiceIntegration, 생성·조회 SecurityIntegration의 5개 클래스가 PostgreSQL을 사용합니다.
+- 이 클래스들은 Flyway를 활성화하고 `ddl-auto=validate`로 실제 스키마와 매핑을 확인합니다.
 - 개발용 Compose DB를 테스트 대상으로 지정하지 않습니다.
 - 기본 테스트 프로필은 SSE 자동 구독과 관리자 초기화를 비활성화합니다.
 
@@ -67,19 +73,19 @@ Repository·ServiceIntegration·SecurityIntegration 테스트는 Testcontainers�
 
 ## 실행 명령
 
-프로젝트 루트에서 실행합니다. 정책·조회·저장 단위 테스트:
+프로젝트 루트에서 실행합니다. 생성 정책·Reader·Saver 단위 테스트:
 
 ```bash
 ./gradlew test --tests '*ConversationServiceTest' --tests '*ConversationReaderTest' --tests '*ConversationSaverTest'
 ```
 
-컨트롤러 및 JWT·CSRF 통합 테스트:
+생성 컨트롤러 및 공통 JWT·CSRF 통합 테스트:
 
 ```bash
 ./gradlew test --tests '*ConversationControllerTest' --tests '*ConversationSecurityIntegrationTest'
 ```
 
-실제 PostgreSQL 조회·제약조건과 서비스 트랜잭션:
+기존 대화방 응답 조회·제약조건과 생성 서비스 트랜잭션:
 
 ```bash
 ./gradlew test --tests '*ConversationRepositoryTest' --tests '*ConversationServiceIntegrationTest'
@@ -92,25 +98,32 @@ Repository·ServiceIntegration·SecurityIntegration 테스트는 Testcontainers�
 ```
 
 결과는 `build/reports/tests/test/index.html`과 `build/test-results/test/`에서 확인합니다.
+조회 전용 실행 명령은 [조회 테스트 가이드](06-query-testing.md#실행-명령)에 있습니다.
 일부 테스트로 생성한 JaCoCo 보고서를 프로젝트 전체 커버리지로 해석하지 않습니다.
 
 ## 기존 검증 기록
 
-다음은 2026-11-12 기준으로 정리한 기존 실행·확인 결과입니다.
+다음은 2026-11-13에 실행·확인한 기록입니다. 테스트 수는 파라미터화 테스트의 각 실행을 포함합니다.
 이번 MD 문서 작성 중 테스트를 새로 실행한 결과는 아닙니다.
 
 | 검증 시점·대상 | 결과 |
 | --- | --- |
-| Swagger 문서 반영 전 대화방 관련 테스트 | 66건 통과 기록 |
-| Swagger 반영 후 컨트롤러·보안 통합 테스트 | 9건 + 5건, 총 14건 통과 |
-| 생성된 OpenAPI 및 실제 Swagger UI | 응답 코드·인증 객체 숨김·`lastestMessage` null 허용과 메시지 필드 확인 |
-| Java 주석 상세화 후 | 주석 외 코드 동일 확인, `compileJava`·`git diff --check` 통과 |
+| 대화방 전체 회귀 | 11개 클래스, 139건 통과. 실패·오류·건너뜀 0건 |
+| 조회 전용 클래스 | 위 전체 실행에 포함된 4개 클래스, 66건 통과 |
+| 생성·공통 클래스 | 나머지 7개 클래스, 73건 통과. JWT 누락 조회 요청도 포함 |
+| 조회 Swagger 반영 후 HTTP 검증 | 컨트롤러 21건 + 보안 통합 11건 통과 |
+| OpenAPI·Swagger UI | 조회 3종의 파라미터·인증 숨김·응답 코드·JSON 스키마·메시지 null 허용 확인 |
+| 최신 Swagger 설명 및 Java 주석 | 각각 후속 `compileJava` 통과. 주석 작업은 실행 코드 동일·`git diff --check` 통과 |
 | 프로젝트 전체 회귀 테스트 | 전체 회귀 검증 완료 기록 없음 |
 
-Swagger 확인은 별도 검증 서버에서 문서 GET과 화면 표시를 확인한 것입니다.
-개발 DB에 실제 생성 POST를 보내 확인한 기록과 구분합니다.
-이후 변경을 검증할 때는 위 명령과 해당 시점의 보고서를 기준으로 결과를 기록합니다.
+전체 회귀 실행 중 Swagger 설명의 줄바꿈 수정이 있었으며, 테스트 통과 뒤 최신 소스로 컴파일을 추가 확인했습니다.
+UI 확인은 별도 검증 서버의 문서 GET·화면 표시 검증이고, 실제 업무 API 요청은 테스트 환경의 MockMvc로 검증했습니다.
+개발 DB에서 실제 생성 POST까지 검증했다는 의미는 아닙니다.
+
+당시 로컬 기록은 `build/reports/conversation-regression/summary.json`,
+`build/reports/openapi/conversation-query/`, `build/reports/conversation-comments/verification.json`에 있습니다.
+이 파일들은 Git에 포함되지 않으며 `clean`으로 삭제될 수 있습니다. 재검증은 위 명령과 새 보고서를 기준으로 합니다.
 
 ---
 
-[← 조회와 응답 변환](03-query-mapping.md) · [목차](README.md) · [팀원 개발 가이드](../DEVELOPMENT.md)
+[← 검색과 커서 페이지 처리](05-search-pagination.md) · [목차](README.md) · [다음: 조회 테스트와 Swagger 검증 →](06-query-testing.md)

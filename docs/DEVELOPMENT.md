@@ -6,7 +6,7 @@
 > 도메인 구현 현황과 개발용 보안 전환 설명은 최신 코드와 다를 수 있습니다.
 > 현재 SSE 연결·공유 이력·Redis 분산 전송·복구·인증·테스트는 [SSE 구현 가이드](sse/README.md), 알림 생성·전송·조회·읽음 처리와 JWT 인증은 [알림 구현 가이드](notification/README.md)를 기준으로 확인합니다.
 > 팔로우 등록·취소·조회와 인증·이벤트의 구현 및 검증 범위는 [팔로우 구현 가이드](follow/README.md)를 참고합니다.
-> 대화방 생성·중복 처리·응답 조회와 JWT·CSRF 검증은 [대화방 생성 구현 가이드](conversation/README.md)를 참고합니다.
+> 대화방 생성·중복 처리·목록·단건·상대방 기준 조회와 JWT·CSRF 검증은 [대화방 생성·조회 구현 가이드](conversation/README.md)를 참고합니다.
 
 ## 현재 개발 상태
 
@@ -17,7 +17,7 @@
 | 공통 기반 | 예외 처리, 응답 DTO, 엔티티 기반 클래스, JPA Auditing, Querydsl 설정, MDC 로그, 비밀번호 인코더, OpenAPI 설정 구현 |
 | 도메인 예외 | 공통 예외 기반 위에 도메인 오류 정의. 팔로우는 자기 팔로우·대상 미존재·관계 미존재·생성 실패 예외 사용 |
 | 팔로우 | 등록·취소·조회, 중복 복구와 생성 이벤트 구현. #76의 실제 JWT HTTP 통합 검증 및 Swagger 정리 완료 |
-| 대화방 생성 | #58의 1:1 대화방 생성·기존 대화방 반환, 사용자 쌍 정렬·UNIQUE 충돌 복구, 최신 메시지·미읽음 응답 구현. [전체 흐름](conversation/README.md)과 [JWT·CSRF 및 DB 검증 범위](conversation/04-testing.md) 참고 |
+| 대화방 생성·조회 | #58 생성·중복 복구와 #59 본인 목록·단건·상대방 기준 조회 구현. 검색·커서 페이지 처리와 최신 메시지·미읽음 응답 제공. [전체 흐름](conversation/README.md), [공통·생성 테스트](conversation/04-testing.md), [조회·Swagger 검증](conversation/06-query-testing.md) 참고 |
 | 로컬 인프라 | Docker Compose에 PostgreSQL과 Redis 서비스 정의 |
 | 공통 보안 | JWT 필터와 경로별 인증·인가 적용. 팔로우·알림 API는 인증 필요, 쿠키 기반 CSRF 보호 활성화 |
 | SSE | 다중 연결·하트비트·종료 정리, 공유 이력 저장·재연결 복구, 연결별 후속 조회·제한된 재시도. [SSE 구현 가이드](sse/README.md) 참고 |

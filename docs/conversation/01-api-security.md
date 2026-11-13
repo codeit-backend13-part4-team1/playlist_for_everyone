@@ -1,13 +1,28 @@
-# 1. API와 보안
+# API와 보안
 
-`POST /api/conversations`는 로그인한 사용자와 지정한 상대방 사이의 대화방을 생성하거나 기존 대화방을 반환합니다.
+모든 API는 인증된 사용자를 요청자로 사용합니다. 성공 응답은 HTTP 200이며 JSON으로 반환합니다.
+
+## 제공하는 API
+
+| 메서드·경로 | 입력 | 성공 응답 |
+| --- | --- | --- |
+| `POST /api/conversations` | 본문의 `withUserId` | 신규 또는 기존 `ConversationDto` |
+| `GET /api/conversations` | 검색·정렬·커서 파라미터 | `CursorResponse<ConversationDto>` |
+| `GET /api/conversations/{conversationId}` | 경로의 대화방 UUID | 본인이 참여한 `ConversationDto` |
+| `GET /api/conversations/with` | 필수 쿼리 파라미터 `userId` | 상대방과의 기존 `ConversationDto` |
+
+조회는 대화방을 생성하거나 메시지를 읽음 처리하지 않습니다.
+목록의 필수 값과 페이지 이동 예시는 [검색과 커서 페이지 처리](05-search-pagination.md)를 참고합니다.
 
 ## 요청자와 상대방
 
 | 값 | 출처 | 사용처 |
 | --- | --- | --- |
 | `requesterId` | 인증된 `SecurityUser` | 상대방 선택과 요청자별 미읽음 판단 |
-| `withUserId` | 요청 본문 | 대화 상대 사용자 조회 |
+| `withUserId` | 생성 요청 본문 | 대화 상대 사용자 조회 |
+| `userId` | 상대방 기준 조회의 쿼리 파라미터 | 요청자와 상대방으로 기존 대화방 조회 |
+
+생성 요청 본문 예시:
 
 ```json
 {
@@ -15,13 +30,14 @@
 }
 ```
 
-컨트롤러는 `ConversationCreateRequest`를 검증한 뒤 인증된 사용자 ID를 넣어 `ConversationCreateCommand`로 변환합니다.
-요청 본문으로 요청자 ID를 지정하는 계약은 제공하지 않습니다.
-상대방 ID의 필수 값은 Bean Validation, UUID 형식은 요청 변환 단계, 자기 대화 여부는 서비스에서 검사합니다.
+컨트롤러는 요청을 검증한 뒤 인증된 사용자 ID를 넣어 생성 Command 또는 조회 조건을 만듭니다.
+요청자 ID를 본문이나 쿼리 파라미터로 받지 않습니다.
+필수 값은 Bean Validation, UUID 형식은 요청 변환 단계, 자기 대화 여부는 서비스에서 검사합니다.
+단건 조회는 대화방 ID와 참여자 조건을 함께 적용하고, 상대방 기준 조회는 요청자·상대방의 정렬된 쌍을 사용합니다.
 
 ## JWT와 CSRF
 
-실제 생성 요청에는 다음 값이 필요합니다.
+모든 요청에 Bearer JWT가 필요하며, 생성 POST에는 다음 CSRF 쿠키·헤더도 필요합니다.
 
 | 위치 | 값 |
 | --- | --- |
@@ -32,11 +48,11 @@
 CSRF 토큰은 `GET /api/auth/csrf-token`으로 받을 수 있으며, 응답은 204와 `XSRF-TOKEN` 쿠키입니다.
 쿠키에서 읽은 토큰 값을 헤더에 넣어 POST 요청을 보냅니다.
 JWT가 유효해도 CSRF 쿠키·헤더가 없거나 일치하지 않으면 요청이 거절됩니다.
-실제 로그인 세션 유효성 확인은 공통 JWT 필터가 담당합니다.
+조회 GET은 CSRF 토큰 없이 호출할 수 있습니다. 실제 로그인 세션 유효성 확인은 공통 JWT 필터가 담당합니다.
 
 ## 성공 응답
 
-신규 생성과 기존 대화방 반환 모두 **HTTP 200**입니다. 다음은 새 대화방의 응답 예시입니다.
+생성·단건·상대방 기준 조회는 같은 응답 구조를 사용합니다. 다음은 메시지가 없는 대화방의 예시입니다.
 
 ```json
 {
@@ -53,51 +69,56 @@ JWT가 유효해도 CSRF 쿠키·헤더가 없거나 일치하지 않으면 요�
 
 | 필드 | 의미 |
 | --- | --- |
-| `id` | 신규 또는 기존 대화방 ID |
+| `id` | 대화방 ID |
 | `with` | 요청자를 기준으로 한 상대방의 사용자 요약 |
 | `lastestMessage` | 최신 메시지. 메시지가 없으면 null |
 | `hasUnread` | 요청자가 받은 메시지 중 읽지 않은 것이 있는지 여부 |
 
 `lastestMessage` 철자는 공식 API와 프론트엔드의 필드 계약을 유지합니다.
 메시지가 있으면 `MessageDto`가 `id`, `conversationId`, `createdAt`, `sender`, `receiver`, `content`를 반환합니다.
-기존 대화방의 메시지와 미읽음 상태를 신규 초기값으로 덮어쓰지 않습니다.
+목록의 `data`에도 같은 구조를 사용합니다. 검색된 메시지와 관계없이 실제 최신 메시지를 담으며,
+`hasUnread`는 최신 메시지만이 아니라 요청자가 받은 전체 메시지에서 계산합니다.
 실제 정적 리소스는 null인 최신 메시지를 `메시지 없음`으로 표시하며, 해당 메시지에 대한 읽음 요청을 보내지 않습니다.
 
 ## 오류 응답
 
 오류 본문은 `exceptionName`, `message`, `details`의 공통 구조를 사용합니다.
 
-| HTTP 상태 | 주요 조건 |
+| API | 주요 오류 |
 | --- | --- |
-| 400 | 상대방 ID 누락·null·UUID 형식 오류, 자기 대화, 상대방 미존재 |
-| 401 | JWT 누락·유효하지 않은 인증, 무효한 세션 또는 인증 사용자 상태 |
-| 403 | CSRF 토큰 누락·불일치 |
-| 500 | 복구할 수 없는 생성 실패, 응답 변환 중 예상하지 못한 오류 |
+| 생성 | 400: 상대방 ID 누락·형식 오류, 자기 대화, 상대방 미존재 / 403: CSRF 누락·불일치 |
+| 목록 | 400: 필수 정렬값·limit 누락, 값·커서 형식 오류, 커서 두 값 중 하나만 전달 |
+| 단건 | 400: 대화방 UUID 형식 오류 / 404: 대화방 미존재 또는 비참여 |
+| 상대방 기준 | 400: userId 누락·형식 오류, 자기 자신 지정 / 404: 상대 사용자 또는 대화방 미존재 |
+| 공통 | 401: 인증·세션·사용자 상태 검증 실패 / 500: 조회·저장·응답 변환 중 서버 오류 |
+
+목록에 결과가 없으면 404가 아니라 빈 `data` 배열을 반환합니다.
+단건 조회는 미존재와 비참여를 같은 `ConversationNotFoundException`으로 처리합니다.
+상대방 기준 조회는 사용자 존재 여부를 별도로 확인하지 않고, 사용자 쌍 조회 결과가 없으면 같은 예외를 사용합니다.
 
 사용자 쌍 UNIQUE 충돌은 기존 대화방 재조회에 성공하면 200으로 처리합니다.
 저장 커밋 후 프로필 이미지 URL 생성에 실패하면 500을 반환하되, 이미 생성된 대화방은 유지합니다.
 저장과 응답 변환의 경계는 [트랜잭션 가이드](02-creation-transactions.md)를 참고합니다.
 
-## Swagger 확인 방법
+## Swagger 문서 구성
 
 로컬 기본 포트의 Swagger UI는 `/swagger-ui.html`, OpenAPI JSON은 `/v3/api-docs`에서 확인합니다.
 문서 GET 조회는 `dev`가 활성화되고 `prod`가 비활성화된 경우 인증 없이 허용됩니다.
 
-1. **대화방 → POST /api/conversations**에서 Bearer 인증 표시와 요청 본문을 확인합니다.
-2. 인증 객체가 일반 파라미터로 노출되지 않는지 확인합니다.
-3. 200/400/401/403/500 설명과 응답 Schema를 확인합니다.
-4. 200 응답의 `lastestMessage`가 `(object | null)`이고 객체 내부의 메시지 필드가 유지되는지 확인합니다.
+`ConversationApi`가 네 API의 계약과 인증 파라미터 숨김을 정의합니다.
+`ConversationOpenApiConfig`는 목록의 제네릭 스키마를 JSON 응답에 연결하고,
+`lastestMessage` 속성에 객체 또는 null을 허용하는 OpenAPI 3.1 `anyOf`를 적용합니다.
+공용 `CursorResponse`·`MessageDto` 정의나 실제 JSON 응답을 바꾸는 설정은 아닙니다.
 
-`ConversationApi`가 API 설명을 제공하고, `ConversationOpenApiConfig`가 해당 속성만 OpenAPI 3.1의 `anyOf`로 보완합니다.
-공용 `MessageDto` 전체를 null 허용으로 바꾸거나 실제 JSON 응답을 변경하는 설정은 아닙니다.
-Swagger의 Bearer 인증 입력과 CSRF 토큰 전달은 별개이므로, 실제 요청에는 위 쿠키·헤더도 필요합니다.
-기존 UI 확인은 문서 표시 검증이며, 실제 생성 요청의 보안 검증은 [JWT·CSRF 통합 테스트](04-testing.md)에서 수행합니다.
+Swagger의 Bearer 인증 입력과 CSRF 전달은 별개이므로 실제 POST에는 위 쿠키·헤더도 필요합니다.
+화면·스키마 확인 항목은 [Swagger 검증](06-query-testing.md#swagger-확인-항목),
+실제 요청 보안 검증은 [공통·생성 테스트](04-testing.md)와 [조회 테스트](06-query-testing.md)에서 설명합니다.
 
 ## 관련 코드
 
 [컨트롤러](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/controller/ConversationController.java) ·
 [Swagger 계약](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/controller/swagger/ConversationApi.java) ·
-[null 허용 스키마](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/config/ConversationOpenApiConfig.java) ·
+[OpenAPI 스키마 보정](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/config/ConversationOpenApiConfig.java) ·
 [공통 보안 설정](../../src/main/java/com/codeit/sb13/playlist_for_everyone/global/config/SecurityConfig.java)
 
 ---

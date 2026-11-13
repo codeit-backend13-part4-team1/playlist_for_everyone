@@ -2,6 +2,8 @@ package com.codeit.sb13.playlist_for_everyone.domain.conversation.service.impl;
 
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.command.ConversationCreateCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.ConversationDetailProjection;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.ConversationFindCondition;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.ConversationPair;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.repository.ConversationRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -9,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataAccessResourceFailureException;
@@ -39,55 +42,74 @@ class ConversationReaderTest {
         conversationReader = new ConversationReader(conversationRepository);
     }
 
-    @ParameterizedTest(name = "[{index}] 요청자={0}, 상대방={1}")
+    @ParameterizedTest(name = "[{index}] 요청자={0}, 상대방={1}, 생성용={2}")
     @CsvSource({
-            "7fffffff-ffff-ffff-ffff-ffffffffffff, 80000000-0000-0000-0000-000000000000",
-            "80000000-0000-0000-0000-000000000000, 7fffffff-ffff-ffff-ffff-ffffffffffff"
+            "7fffffff-ffff-ffff-ffff-ffffffffffff, 80000000-0000-0000-0000-000000000000, true",
+            "80000000-0000-0000-0000-000000000000, 7fffffff-ffff-ffff-ffff-ffffffffffff, true",
+            "7fffffff-ffff-ffff-ffff-ffffffffffff, 80000000-0000-0000-0000-000000000000, false",
+            "80000000-0000-0000-0000-000000000000, 7fffffff-ffff-ffff-ffff-ffffffffffff, false"
     })
-    @DisplayName("요청 방향과 관계없이 UUID 문자열순으로 조회하고 조회된 Projection을 그대로 반환한다.")
+    @DisplayName("생성·조회 입력 모두 요청 방향과 관계없이 사용자 쌍을 정렬하고 요청자 정보를 유지한다.")
     void findExistingConversation_returnsProjectionForSortedUserPair(
             String requesterIdValue,
-            String otherUserIdValue
-    ) {
+            String otherUserIdValue,
+            boolean userCreateCommand
+    ){
         UUID expectedUserAId = UUID.fromString("7fffffff-ffff-ffff-ffff-ffffffffffff");
         UUID expectedUserBId = UUID.fromString("80000000-0000-0000-0000-000000000000");
         ConversationCreateCommand command = new ConversationCreateCommand(
                 UUID.fromString(requesterIdValue), UUID.fromString(otherUserIdValue));
         ConversationDetailProjection projection = mock(ConversationDetailProjection.class);
+        ConversationPair expectedPair = new ConversationPair(
+                expectedUserAId, expectedUserBId, command.requesterId());
 
-        given(conversationRepository.findDetailByUserPair(expectedUserAId, expectedUserBId, command.requesterId()))
+        given(conversationRepository.findDetailByUserPair(expectedPair))
                 .willReturn(Optional.of(projection));
 
-        Optional<ConversationDetailProjection> result = conversationReader.findExistingConversation(command);
+        Optional<ConversationDetailProjection> result =
+                userCreateCommand ? conversationReader.findExistingConversation(command)
+                        : conversationReader.findExistingConversation(
+                                new ConversationFindCondition(command.requesterId(), command.withUserId()));
 
         assertThat(result).hasValueSatisfying(actual -> assertThat(actual).isSameAs(projection));
-        verify(conversationRepository).findDetailByUserPair(expectedUserAId, expectedUserBId, command.requesterId());
+        verify(conversationRepository).findDetailByUserPair(expectedPair);
     }
 
-    @Test
-    @DisplayName("대화방이 없으면 빈 Optional을 반환한다.")
-    void findExistingConversation_returnsEmptyWhenConversationNotFound() {
+    @ParameterizedTest(name = "생성용={0}")
+    @ValueSource(booleans = {true, false})
+    @DisplayName("생성·조회 입력 모두 대화방이 없으면 빈 Optional을 반환한다.")
+    void findExistingConversation_returnsEmptyWhenConversationNotFound(boolean useCreateCommand) {
         ConversationCreateCommand command = new ConversationCreateCommand(requesterId, withUserId);
-        given(conversationRepository.findDetailByUserPair(requesterId, withUserId, requesterId))
+        ConversationPair expectedPair = new ConversationPair(requesterId, withUserId, requesterId);
+        given(conversationRepository.findDetailByUserPair(expectedPair))
                 .willReturn(Optional.empty());
 
-        Optional<ConversationDetailProjection> result = conversationReader.findExistingConversation(command);
+        Optional<ConversationDetailProjection> result =
+                useCreateCommand ? conversationReader.findExistingConversation(command)
+                        : conversationReader.findExistingConversation(
+                                new ConversationFindCondition(command.requesterId(), command.withUserId()));
 
         assertThat(result).isEmpty();
-        verify(conversationRepository).findDetailByUserPair(requesterId, withUserId, requesterId);
+        verify(conversationRepository).findDetailByUserPair(expectedPair);
     }
 
-    @Test
-    @DisplayName("대화방 조회가 실패하면 원본 예외를 전달한다.")
-    void findExistingConversation_propagatesRepositoryFailure() {
-        ConversationCreateCommand command = new ConversationCreateCommand(requesterId, withUserId);
+    @ParameterizedTest(name = "생성용={0}")
+    @ValueSource(booleans = {true, false})
+    @DisplayName("생성·조회 입력 모두 Repository 조회가 실패하면 원본 예외를 전달한다.")
+    void findExistingConversation_propagatesRepositoryFailure(boolean useCreateCommand) {
         DataAccessResourceFailureException exception = new DataAccessResourceFailureException("대화방 조회 중 DB 연결 실패");
-        given(conversationRepository.findDetailByUserPair(requesterId, withUserId, requesterId))
+        ConversationPair expectedPair = new ConversationPair(requesterId, withUserId, requesterId);
+        given(conversationRepository.findDetailByUserPair(expectedPair))
                 .willThrow(exception);
 
-        assertThatThrownBy(() -> conversationReader.findExistingConversation(command))
-                .isSameAs(exception);
+        assertThatThrownBy(() ->{
+            if (useCreateCommand) {
+                conversationReader.findExistingConversation(new ConversationCreateCommand(requesterId, withUserId));
+                return;
+            }
+            conversationReader.findExistingConversation(new ConversationFindCondition(requesterId, withUserId));
+        }).isSameAs(exception);
 
-        verify(conversationRepository).findDetailByUserPair(requesterId, withUserId, requesterId);
+        verify(conversationRepository).findDetailByUserPair(expectedPair);
     }
 }

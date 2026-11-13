@@ -12,11 +12,14 @@ import org.springframework.stereotype.Component;
 import java.util.UUID;
 
 /**
- * 대화방 엔티티 또는 조회 결과를 요청자 기준의 응답으로 변환한다.
+ * 생성한 대화방 엔티티 또는 조회 결과를 생성·조회 API의 공통 응답으로 변환한다.
  *
  * <p>사용자 요약을 만들면서 프로필 이미지 URL을 생성하므로 관련 예외가 발생할 수 있다.
  * 호출자는 사용자·프로필 이미지 등 변환에 필요한 연관관계를 미리 조회해야 한다.
- * 대화방 생성 흐름에서는 Saver의 저장 커밋이 끝난 뒤 이 변환을 호출한다.
+ *
+ * <p>신규 생성은 Saver의 저장 커밋 후, 기존 대화방 반환과 조회 API는 Reader가 반환한 뒤 호출한다.
+ * 상위 트랜잭션이 없는 일반 컨트롤러 호출에서는 DB 트랜잭션 밖에서 프로필 이미지 URL을 생성한다.
+ * URL 생성 실패는 호출자에게 전달하며, 이미 커밋한 신규 대화방 저장을 되돌리지 않는다.
  */
 @Component
 @RequiredArgsConstructor
@@ -39,7 +42,8 @@ public class ConversationMapper {
     }
 
     /**
-     * 조회된 최신 메시지와 요청자별 미읽음 여부를 초기값으로 덮어쓰지 않고 응답에 반영한다.
+     * 기존 대화방 반환과 조회 API에서 사용하는 변환이다.
+     * 조회된 최신 메시지와 요청자별 미읽음 여부를 그대로 반영하며, 메시지가 없으면 null을 유지한다.
      */
     public ConversationDto toConversationDto(UUID requesterId, ConversationDetailProjection projection) {
         return toConversationDto(
