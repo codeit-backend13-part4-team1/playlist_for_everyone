@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.event;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.event.UserSessionRevokedEvent;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisBrokerRegister;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.event.auth.WebSocketAuthenticateMessageListener;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.event.auth.WebSocketAuthenticateRevokeEvent;
@@ -28,8 +29,8 @@ public class GlobalEventListener {
 
 
     @EventListener
-    public void onAuthRevoke(WebSocketAuthenticateRevokeEvent event){
-        redisTemplate.convertAndSend(authListener.topic(), event.username());
+    public void onAuthRevoke(UserSessionRevokedEvent event){
+        redisTemplate.convertAndSend(authListener.topic(), event.userId());
     }
 
 }

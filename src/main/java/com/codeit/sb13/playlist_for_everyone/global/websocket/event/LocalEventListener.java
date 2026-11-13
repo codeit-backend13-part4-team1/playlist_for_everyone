@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.event;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.event.UserSessionRevokedEvent;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.event.auth.WebSocketAuthenticateRevokeEvent;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.service.WebSocketService;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSession;
@@ -27,17 +28,7 @@ public class LocalEventListener {
      * @param event 인증이 만료된 유저의 username 을 담고있다.
      */
     @EventListener
-    public void onAuthRevoke(WebSocketAuthenticateRevokeEvent event){
-        webSocketService.revokeAuth(event.username());
+    public void onAuthRevoke(UserSessionRevokedEvent event){
+        webSocketService.revokeAuth(event.userId().toString());
     }
-
-    /**
-     * 컨텐츠가 삭제되었을 때 발생되는 이벤트.
-     * @param event 삭제된 컨텐츠 id 를 담고있다.
-     */
-    @EventListener
-    public void onContentDelete(WatchingSessionContentDeleteEvent event){
-        watchingSession.disconnectWithContentId(event.contentId());
-    }
-
 }
