@@ -11,7 +11,6 @@ import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.role.*;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.event.EventListener;
-import org.springframework.messaging.simp.user.SimpUser;
 import org.springframework.messaging.simp.user.SimpUserRegistry;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.messaging.*;
@@ -42,7 +41,7 @@ public class WebSocketEventListener {
         subscribe.add(new ChattingSessionJoinRule(watchingChatUrlPattern()));
         unsubscribe.add(new WatchingSessionLeaveRule(watchingSessionUrlPattern()));
         unsubscribe.add(new ChattingSessionLeaveRule(watchingChatUrlPattern()));
-        disconnect.add(new WatchingServiceDisconnectRule());
+        disconnect.add(new WatchingSessionDisconnectRule());
     }
 
     /**

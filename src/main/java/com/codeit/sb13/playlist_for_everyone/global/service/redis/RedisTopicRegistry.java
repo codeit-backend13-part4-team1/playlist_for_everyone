@@ -167,7 +167,9 @@ public class RedisTopicRegistry {
         List<String> topics = new ArrayList<>();
         if (registerMap.get(contentId) == null)
             return topics;
-        for (KeyPair topic : registerMap.get(contentId)){
+
+        Set<KeyPair> keyset = registerMap.get(contentId);
+        for (KeyPair topic : keyset){
             unregister(topic);
             topics.add(topic.session());
         }

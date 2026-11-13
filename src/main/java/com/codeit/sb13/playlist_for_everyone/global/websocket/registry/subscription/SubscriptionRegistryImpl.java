@@ -137,6 +137,11 @@ public class SubscriptionRegistryImpl implements SubscriptionRegistry {
         if (socketRegistry.query(info.session()).isEmpty())
             throw new RuntimeException("존재하지 않는 세션에 대한 구독은 조회할 수 없습니다.");
 
-        return Optional.ofNullable(container.get(sessionId).subscription(subscriptionId));
+        SessionState session = container.get(sessionId);
+
+        if (session == null)
+            return Optional.empty();
+
+        return Optional.ofNullable(session.subscription(subscriptionId));
     }
 }

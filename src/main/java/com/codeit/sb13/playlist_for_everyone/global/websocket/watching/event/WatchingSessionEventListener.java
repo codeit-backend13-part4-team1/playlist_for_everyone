@@ -24,7 +24,6 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.Objects;
-import java.util.UUID;
 
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WebSocketUtils.check;
@@ -123,7 +122,18 @@ public class WatchingSessionEventListener {
     public void chatJoinEvent(WatchingChatJoinEvent event){
         SessionInfo info = check(event.info());
         subscriptionRegistry.register(info);
-        watchingSession.joinChatSession(info);
+        try {
+            watchingSession.joinChatSession(info);
+        } catch (Exception e) {
+            subscriptionRegistry.unregister(info);
+            SecurityUser user = info.user();
+            log.error("[{}] sessionId : {}(user : {}) - 채팅 참여 로직 에러.",
+                    this.getClass().getSimpleName(),
+                    info.session(),
+                    user != null ? user.getUserId() : null,
+                    e);
+            throw new WebSocketSessionRegisterException();
+        }
     }
 
     /**
@@ -176,6 +186,13 @@ public class WatchingSessionEventListener {
             throw new WebSocketSessionNotFoundException();
         }
 
+    }
+
+
+    @EventListener
+    public void DisconnectEvent(WatchingSessionDisconnectEvent event) {
+        SessionInfo info = check(event.info());
+        watchingSession.disconnectWithSessionIds(info.session());
     }
 
 }

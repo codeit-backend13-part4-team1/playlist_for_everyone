@@ -26,7 +26,6 @@ public class WebSocketServiceImpl implements WebSocketService{
 
         user.getSessions().forEach(session -> {
             try {
-                webSocketRegistry.close(session.getId());
                 watchingSession.disconnectWithSessionIds(session.getId());
             } catch (Exception e) {
                 log.error("[{}] 세션 등록 해제중 오류가 발생했습니다. id: {}",

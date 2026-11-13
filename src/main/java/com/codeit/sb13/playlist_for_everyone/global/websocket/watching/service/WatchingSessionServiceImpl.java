@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WebSocketUtils.check;
@@ -153,7 +154,9 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
         // content 기반 메세지 구독 리스트
         String chatTopic = MESSAGE_CHAT_PREFIX + contentId;
         String viewTopic = MESSAGE_VIEW_PREFIX + contentId;
-        return topicRegistry.disconnectWithContentId(viewTopic);
+        Stream<String> chatTopicStream = topicRegistry.disconnectWithContentId(chatTopic).stream();
+        Stream<String> viewTopicStream = topicRegistry.disconnectWithContentId(viewTopic).stream();
+        return Stream.concat(chatTopicStream, viewTopicStream).collect(Collectors.toList());
     }
 
     @Override
