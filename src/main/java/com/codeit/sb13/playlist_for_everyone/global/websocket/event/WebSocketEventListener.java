@@ -1,40 +1,47 @@
-package com.codeit.sb13.playlist_for_everyone.global.websocket;
+package com.codeit.sb13.playlist_for_everyone.global.websocket.event;
 
 
+import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.DestinationMatcher;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.SessionMatcher;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.ConnectionRegistry;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.role.WatchingSessionJoinRule;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.role.WatchingSessionLeaveRule;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.role.*;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
+import org.springframework.messaging.simp.user.SimpUserRegistry;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.messaging.*;
 
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
+
 /**
  * 웹 소켓의 연결 및 구독상태의 전환을 알리는 이벤트.
  * 리소스가 Spring에 정상적으로 반영되었는지는 알 수 없음.
  */
 
-@Slf4j
 @Component
 @RequiredArgsConstructor
 public class WebSocketEventListener {
 
-    private final ConnectionRegistry connectionRegistry;
-
+    private final SubscriptionRegistry subscriptionRegistry;
     private final DestinationMatcher subscribe;
     private final DestinationMatcher unsubscribe;
     private final SessionMatcher disconnect;
+
+    private final SimpUserRegistry userRegistry;
+    private final WebSocketRegistry webSocketRegistry;
 
     @PostConstruct
     public void init(){
         // watchingSession 경로 이벤트 등록.
         subscribe.add(new WatchingSessionJoinRule(watchingSessionUrlPattern()));
+        subscribe.add(new ChattingSessionJoinRule(watchingChatUrlPattern()));
         unsubscribe.add(new WatchingSessionLeaveRule(watchingSessionUrlPattern()));
+        unsubscribe.add(new ChattingSessionLeaveRule(watchingChatUrlPattern()));
+        disconnect.add(new WatchingSessionDisconnectRule());
     }
 
     /**
@@ -62,7 +69,9 @@ public class WebSocketEventListener {
      */
     @EventListener
     public void onSubscribe(SessionSubscribeEvent event){
-        subscribe.run(new SessionInfo(event.getMessage(), event.getUser()));
+        SessionInfo info = new SessionInfo(event.getMessage(), event.getUser());
+        subscribe.run(info);
+//        subscriptionRegistry.register(info); // todo - 비즈니스 로직 마지막에 등록하는 식으로 변동
     }
 
     /**
@@ -73,8 +82,12 @@ public class WebSocketEventListener {
      */
     @EventListener
     public void onUnsubscribe(SessionUnsubscribeEvent event){
-        SessionInfo info = new SessionInfo(event.getMessage(), event.getUser());
+        // 미리 등록된 저장소에서 경로 정보 복원.
+        SessionInfo info = subscriptionRegistry.get(new SessionInfo(event.getMessage(), event.getUser()))
+                .orElseThrow(WebSocketSessionNotFoundException::new);
+
         unsubscribe.run(info);
+//        subscriptionRegistry.unregister(info); // todo - 비즈니스 로직 마지막에 해제하는 식으로 변동.
     }
 
     /**
@@ -88,6 +101,5 @@ public class WebSocketEventListener {
         SessionInfo info = new SessionInfo(event.getMessage(), event.getUser());
         disconnect.run(info);
     }
-
 
 }

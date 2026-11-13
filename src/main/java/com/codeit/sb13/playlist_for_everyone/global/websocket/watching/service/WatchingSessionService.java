@@ -2,6 +2,8 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service;
 
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
 
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public interface WatchingSessionService {
@@ -12,6 +14,21 @@ public interface WatchingSessionService {
      * @return 현재 시청중인 시청자 수
      */
     long getCurrentViewerCount(UUID contentId);
+
+    /**
+     * 현재 컨텐츠의 시청중인 동시 시청자 수를 컨텐츠 id 별로 매핑해서
+     * 반환하는 매서드.
+     * @param contentIds 조회할 content 들의 id 리스트
+     * @return contentId - counter 쌍.
+     */
+    Map<String, Long> getCurrentViewerCountWithContents(List<UUID> contentIds);
+
+    /**
+     * 현재 컨테츠를 삭제하면 연결이 끊길 세션 리스트.
+     * @param contentId 컨텐츠 id
+     * @return 연결을 끊을 세션 리스트.
+     */
+    List<String> disconnectWithContentId(UUID contentId);
 
     /**
      * 동시 시청 세션의 redis topic 이 될 문자열 키를 반환하는 매서드.
@@ -48,4 +65,14 @@ public interface WatchingSessionService {
      * @param info 세션 정보가 포함된 객체
      */
     void leaveChatSession(SessionInfo info);
+
+    /**
+     * 컨텐츠 ID 를 기반으로 채팅 세션 및 구독을 해지하고, 연결을 끊을 세션 Id 를 리스트로 반환하는 매서드
+     * @param contentId contentID
+     * @return 삭제 해야 할 세션 id 리스트
+     */
+    List<String> disconnectWithContentDeleted(UUID contentId);
+
+    void disconnectWithSessionIds(String sessionId);
+
 }
