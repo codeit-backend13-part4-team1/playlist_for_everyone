@@ -18,7 +18,7 @@ public record ConversationCommand(User userA, User userB) {
         if (userB == null) {
             throw new IllegalArgumentException("대화방 참여자 B는 필수입니다.");
         }
-        // 조회용 ConversationReader도 같은 문자열 정렬 규칙을 사용한다.
+        // 조회용 ConversationPair도 같은 문자열 정렬 규칙을 사용하여 저장·조회 시 A·B 순서를 맞춘다.
         String userAId = userA.getId().toString();
         String userBId = userB.getId().toString();
         if (userAId.compareTo(userBId) > 0) {

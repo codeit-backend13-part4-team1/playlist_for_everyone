@@ -49,6 +49,10 @@ public class ConversationOpenApiConfig {
         };
     }
 
+    /**
+     * 반환형으로 추론한 CursorResponse의 제네릭 스키마를 문서에 선언한 JSON 응답에 연결한다.
+     * 목록 GET의 200 응답만 보완하며, 실제 HTTP 응답이나 공용 DTO 스키마를 변경하지 않는다.
+     */
     private void configureSearchResponse(OpenAPI openApi) {
         if (openApi.getPaths() == null) {
             return;

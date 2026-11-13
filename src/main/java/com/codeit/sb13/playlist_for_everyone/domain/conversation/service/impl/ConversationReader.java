@@ -12,10 +12,13 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * 요청 방향과 무관하게 사용자 쌍으로 기존 대화방과 응답에 필요한 정보를 조회한다.
+ * 생성용 기존 대화방 확인과 목록·단건·상대방 기준 조회의 읽기 트랜잭션을 담당한다.
  *
  * <p>기본 전파 방식인 REQUIRED를 사용한다. 상위 트랜잭션이 없으면 읽기 전용 트랜잭션을
  * 시작하고, 있으면 참여한다. 매번 독립적인 새 트랜잭션을 만드는 Saver와 역할이 다르다.
+ *
+ * <p>HTTP 응답 변환이나 미존재 예외 결정은 서비스에 맡긴다. 단건 조회에서 결과가 없으면
+ * 빈 Optional을 반환하며, DB 조회 실패는 원래 예외를 그대로 전달한다.
  */
 @Component
 @RequiredArgsConstructor
@@ -24,28 +27,43 @@ public class ConversationReader {
     private final ConversationRepository conversationRepository;
 
     /**
-     * 대화방이 없으면 빈 Optional을 반환하며, 조회 실패는 호출자에게 그대로 전달한다.
+     * 생성 요청의 두 ID를 ConversationPair로 정렬하여 이미 존재하는 대화방을 확인한다.
+     * 빈 결과를 받았을 때 신규 저장을 시도할지는 호출한 서비스가 결정한다.
      */
     @Transactional(readOnly = true)
     public Optional<ConversationDetailProjection> findExistingConversation(ConversationCreateCommand command){
         return findConversationDetail(command.toConversationPair());
     }
 
+    /**
+     * 상대방 기준 조회도 생성 시 확인과 동일한 사용자 쌍 조회를 사용한다.
+     * 정렬 후에도 requesterId를 유지하여 응답용 미읽음 여부를 요청자 기준으로 계산한다.
+     */
     @Transactional(readOnly = true)
     public Optional<ConversationDetailProjection> findExistingConversation(ConversationFindCondition condition) {
        return findConversationDetail(condition.toConversationPair());
     }
 
+    /**
+     * 참여자 조건을 포함한 단건 조회를 위임한다. 미존재와 비참여 모두 빈 Optional로 반환된다.
+     */
     @Transactional(readOnly = true)
     public Optional<ConversationDetailProjection> findById(ConversationFindByIdCondition condition) {
         return conversationRepository.findDetailById(condition);
     }
 
+    /**
+     * 본인 참여·검색·커서 조건으로 최대 limit + 1건을 조회한다.
+     * 다음 페이지 판단과 초과 항목 제거는 서비스에서 수행한다.
+     */
     @Transactional(readOnly = true)
     public List<ConversationDetailProjection> search(ConversationSearchCondition condition) {
         return conversationRepository.search(condition);
     }
 
+    /**
+     * 본인 참여·검색 조건만 적용한 전체 개수를 조회한다. 페이지 커서와 limit은 개수에 반영하지 않는다.
+     */
     @Transactional(readOnly = true)
     public long searchCount(ConversationSearchCondition condition) {
         return conversationRepository.searchCount(condition);
