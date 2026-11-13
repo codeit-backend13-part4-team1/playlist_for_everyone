@@ -193,15 +193,32 @@ class PasswordResetServiceTest {
     void 가장_오래된_발급이_한_시간_밖이면_다시_발급한다() {
         givenUserExists();
         LocalDateTime now = LocalDateTime.now();
+        // 61분 전 발급은 1시간 밖이라 조회되지 않는다. 최근 1시간에는 4건만 남는다.
         givenRecentIssues(
-                now.minusMinutes(2), now.minusMinutes(10), now.minusMinutes(20),
-                now.minusMinutes(30), now.minusMinutes(61));
+                now.minusMinutes(2), now.minusMinutes(10),
+                now.minusMinutes(20), now.minusMinutes(30));
         given(temporaryPasswordGenerator.generate()).willReturn(RAW_PASSWORD);
         given(passwordEncoder.encode(RAW_PASSWORD)).willReturn(ENCODED_PASSWORD);
 
         passwordResetService.resetPassword(EMAIL);
 
         verify(passwordResetMailSender).send(EMAIL, RAW_PASSWORD, Duration.ofMinutes(3));
+    }
+
+    @Test
+    @DisplayName("5건 제한에 걸려도 1분 제한이 더 늦게 풀리면 그 시각으로 안내한다.")
+    void 다섯_건_제한에서도_일분_제한이_더_늦으면_그_시각으로_안내한다() {
+        givenUserExists();
+        LocalDateTime now = LocalDateTime.now();
+        // 가장 최근: 10초 전 → 1분 제한은 50초 뒤 / 5번째: 59분 50초 전 → 1시간 제한은 10초 뒤
+        givenRecentIssues(
+                now.minusSeconds(10), now.minusMinutes(20), now.minusMinutes(30),
+                now.minusMinutes(40), now.minusMinutes(59).minusSeconds(50));
+
+        assertThatThrownBy(() -> passwordResetService.resetPassword(EMAIL))
+                .isInstanceOfSatisfying(PasswordResetTooManyRequestsException.class, exception ->
+                        assertThat((Long) exception.getDetails().get("retryAfterSeconds"))
+                                .isBetween(45L, 50L));
     }
 
     @Test

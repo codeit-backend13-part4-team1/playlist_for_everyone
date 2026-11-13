@@ -84,23 +84,27 @@ public class PasswordResetService {
         List<TemporaryPassword> recentIssues =
                 temporaryPasswordRepository.findTop5ByUserIdAndCreatedAtAfterOrderByCreatedAtDesc(userId, now.minus(ISSUE_WINDOW));
 
-        LocalDateTime nextAllowedAt = now;
-
-        if (!recentIssues.isEmpty()) {
-            LocalDateTime byInterval = recentIssues.get(0).getCreatedAt().plus(RESEND_INTERVAL);
-            nextAllowedAt = later(nextAllowedAt, byInterval);
+        // 1. 최근 1시간 발급 이력이 없으면 바로 발급한다.
+        if (recentIssues.isEmpty()) {
+            return;
         }
 
+        LocalDateTime resendAllowedAt = recentIssues.get(0).getCreatedAt().plus(RESEND_INTERVAL);
+
+        // 2. 최근 1시간에 5건이면 시간당 한도에 도달했다.
+        //    재시도 시각은 1분 간격 제한과 비교해 더 늦게 풀리는 쪽으로 안내한다.
         if (recentIssues.size() >= MAX_ISSUES_PER_HOUR) {
-            LocalDateTime byWindow = recentIssues.get(MAX_ISSUES_PER_HOUR -1).getCreatedAt().plus(ISSUE_WINDOW);
-            nextAllowedAt = later(nextAllowedAt, byWindow);
+            LocalDateTime windowAllowedAt =
+                    recentIssues.get(MAX_ISSUES_PER_HOUR - 1).getCreatedAt().plus(ISSUE_WINDOW);
+            throw new PasswordResetTooManyRequestsException(
+                    secondsUntil(now, later(resendAllowedAt, windowAllowedAt))
+            );
         }
 
-        if (nextAllowedAt.isAfter(now)) {
-            throw new PasswordResetTooManyRequestsException(secondsUntil(now, nextAllowedAt));
+        //3. 5건 미만이면 가장 최근 발급에서 1분이 지났는지만 확인 한다.
+        if (now.isBefore(resendAllowedAt)) {
+            throw new PasswordResetTooManyRequestsException(secondsUntil(now, resendAllowedAt));
         }
-
-
     }
 
     // 남은 시간을 초 단위로 올림한다.
