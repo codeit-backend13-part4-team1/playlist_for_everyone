@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watch;
 
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.event.UserSessionRevokedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.SessionStartResult;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
@@ -20,6 +21,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.ApplicationEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.messaging.converter.JacksonJsonMessageConverter;
 import org.springframework.messaging.simp.stomp.StompFrameHandler;
 import org.springframework.messaging.simp.stomp.StompHeaders;
@@ -121,7 +124,11 @@ public class WatchingSessionServiceE2E {
     @Autowired
     WebSocketEventFactory webSocketEventFactory;
 
+    @Autowired
+    ApplicationEventPublisher applicationEventPublisher;
 
+
+    UUID userId;
 
     @BeforeEach
     void setup(){
@@ -131,6 +138,7 @@ public class WatchingSessionServiceE2E {
         Optional<User> admin = userRepository.findByEmail("admin@admin.com");
 
         admin.ifPresent(user -> {
+            userId = user.getId();
             SessionStartResult session = userSessionRepository.start(user.getId(), Duration.ofMinutes(1));
             accessToken = jwtTokenProvider.createAccessToken(user.getId(),session.sessionId());
         });
@@ -397,7 +405,10 @@ public class WatchingSessionServiceE2E {
 
         List<StompSession> sessions = Arrays.asList(session, session2, session3);
         try {
-            webSocketEventFactory.authRevokedEvent("admin@admin.com");
+            applicationEventPublisher.publishEvent(
+                    new UserSessionRevokedEvent(userId,UUID.randomUUID(), UserSessionRevokedEvent.RevokeReason.DUPLICATE_LOGIN)
+            );
+
             await()
                     .atMost(5, TimeUnit.SECONDS)
                     .pollInterval(100, TimeUnit.MILLISECONDS)
