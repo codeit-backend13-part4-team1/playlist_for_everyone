@@ -1,9 +1,12 @@
 package com.codeit.sb13.playlist_for_everyone.domain.auth.controller;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.dto.TokenReissueResult;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.dto.request.ResetPasswordRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.dto.response.JwtDto;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtProperties;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AuthService;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.service.PasswordResetService;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
@@ -18,16 +21,18 @@ public class AuthController {
 
 
     private final AuthService authService;
+    private final PasswordResetService passwordResetService;
     private final JwtProperties jwtProperties;
     private final boolean refreshCookieSecure;
 
-    public AuthController(AuthService authService, JwtProperties jwtProperties,
+    public AuthController(AuthService authService, PasswordResetService passwordResetService,
+                          JwtProperties jwtProperties,
                           @Value("${everyone.jwt.refresh-cookie-secure:true}") boolean refreshCookieSecure){
         this.authService = authService;
+        this.passwordResetService = passwordResetService;
         this.jwtProperties = jwtProperties;
         this.refreshCookieSecure = refreshCookieSecure;
     }
-
 
     /**
      * Refresh Token 쿠키로 새 Access Token과 Refresh Token을 발급한다.
@@ -62,7 +67,6 @@ public class AuthController {
 
     }
 
-
     /**
      *  로그인 전에 사용할 CSRF 토큰을 쿠키로 전달한다.
      *
@@ -75,5 +79,21 @@ public class AuthController {
 
         return ResponseEntity.noContent().build();
     }
+
+    /**
+     * 임시 비밀번호를 발급해 이메일로 보낸다.
+     *
+     * 기존 비밀번호는 바꾸지 않는다. 임시 비밀번호는 3분 동안 로그인에 사용할 수 있다.
+     * 가입하지 않은 이메일이면 404를 반환한다.
+     */
+    @PostMapping("/reset-password")
+    public ResponseEntity<Void> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+
+        passwordResetService.resetPassword(request.email());
+
+        return ResponseEntity.noContent().build();
+    }
+
+
 
 }

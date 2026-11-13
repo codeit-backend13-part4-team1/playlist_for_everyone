@@ -174,7 +174,8 @@ public class SecurityConfig {
                                     HttpMethod.POST,
                                     "/api/users",
                                     "/api/auth/sign-in",
-                                    "/api/auth/refresh"
+                                    "/api/auth/refresh",
+                                    "/api/auth/reset-password"
                             ).permitAll()
 
                             // 사용자 목록 조회는 관리자 권한이 필요하다.
