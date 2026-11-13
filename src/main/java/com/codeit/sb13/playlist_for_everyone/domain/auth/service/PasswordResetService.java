@@ -50,6 +50,9 @@ public class PasswordResetService {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(()-> new UserNotFoundException(Map.of("email", email)));
 
+        // 같은 계정의 요처을 한 줄로 세운다. 뒤 요청은 앞 요청이 커밋한 발급 기록을 보고 제한을 판단한다.
+        userRepository.findByIdForUpdate(user.getId());
+
         LocalDateTime now = LocalDateTime.now();
 
         // 제한을 넘으면 기존 임시 비밀번호를 건드리지 않고 거부한다.
@@ -74,28 +77,29 @@ public class PasswordResetService {
 
     /**
      * 같은 계정의 발급 횟수를 제한한다.
-     * 최근 5개만 보면 재요청 간격(가장 최근 것)과 시간당 횟(5번째 것)를 함께 판단할 수 있다.
+     * 최근 5개만 보면 재요청 간격(가장 최근 것)과 시간당 횟수(5번째 것)를 함께 판단할 수 있다.
+     * 두 제하에 모두 걸리면 더 늦게 플리는 시각으로 아내 한다.
      */
     private void checkIssueLimit(UUID userId, LocalDateTime now) {
         List<TemporaryPassword> recentIssues =
                 temporaryPasswordRepository.findTop5ByUserIdOrderByCreatedAtDesc(userId);
 
-        if (recentIssues.isEmpty()) {
-            return;
-        }
+        LocalDateTime nextAllowedAt = now;
 
-        LocalDateTime nextAllowedByInterval = recentIssues.get(0).getCreatedAt().plus(RESEND_INTERVAL);
-        if (now.isBefore(nextAllowedByInterval)) {
-            throw new PasswordResetTooManyRequestsException(secondsUntil(now, nextAllowedByInterval));
+        if (!recentIssues.isEmpty()) {
+            LocalDateTime byInterval = recentIssues.get(0).getCreatedAt().plus(RESEND_INTERVAL);
+            nextAllowedAt = later(nextAllowedAt, byInterval);
         }
 
         if (recentIssues.size() >= MAX_ISSUES_PER_HOUR) {
-            LocalDateTime nextAllowedByWindow =
-                    recentIssues.get(MAX_ISSUES_PER_HOUR - 1).getCreatedAt().plus(ISSUE_WINDOW);
-            if (now.isBefore(nextAllowedByWindow)) {
-                throw new PasswordResetTooManyRequestsException(secondsUntil(now, nextAllowedByWindow));
-            }
+            LocalDateTime byWindow = recentIssues.get(MAX_ISSUES_PER_HOUR -1).getCreatedAt().plus(ISSUE_WINDOW);
+            nextAllowedAt = later(nextAllowedAt, byWindow);
         }
+
+        if (nextAllowedAt.isAfter(now)) {
+            throw new PasswordResetTooManyRequestsException(secondsUntil(now, nextAllowedAt));
+        }
+
 
     }
 
@@ -103,6 +107,10 @@ public class PasswordResetService {
     private long secondsUntil(LocalDateTime now, LocalDateTime target) {
         long millis = Duration.between(now, target).toMillis();
         return (millis + 999) / 1000;
+    }
+
+    private LocalDateTime later(LocalDateTime a, LocalDateTime b) {
+        return a.isAfter(b) ? a : b;
     }
 
 }
