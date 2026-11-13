@@ -91,7 +91,7 @@ class PlaylistControllerTest {
     PlaylistResponse response = new PlaylistResponse(
         playlistId, summary, "title", "description",
         LocalDateTime.of(2026, 10, 26,
-            12, 0), 0L, false);
+            12, 0), 0L, false, List.of());
 
     given(playlistService.create(eq(ownerId), any(PlaylistCreateRequest.class)))
         .willReturn(response);
@@ -262,7 +262,9 @@ class PlaylistControllerTest {
     PlaylistResponse item = new PlaylistResponse(
         playlistId, new UserSummary(ownerId, "tester", null),
         "title", "description",
-        LocalDateTime.of(2026, 10, 26, 12, 0), 3L, true);
+        LocalDateTime.of(2026, 10, 26, 12, 0),
+        3L, true, List.of());
+
     CursorResponse<PlaylistResponse> response = new CursorResponse<>(
         List.of(item), "2026-10-26T12:00:00", playlistId, true, 25L,
         "updatedAt", SortDirection.DESCENDING);
@@ -301,7 +303,8 @@ class PlaylistControllerTest {
         "5", idAfter,
         5, PlaylistSortBy.SUBSCRIBE_COUNT, SortDirection.DESCENDING);
     CursorResponse<PlaylistResponse> empty = new CursorResponse<>(
-        List.of(), null, null, false, 0L, "subscribeCount", SortDirection.DESCENDING);
+        List.of(), null, null,
+        false, 0L, "subscribeCount", SortDirection.DESCENDING);
 
     given(playlistService.getPlaylists(eq(expected), eq(requesterId))).willReturn(empty);
 
@@ -371,7 +374,8 @@ class PlaylistControllerTest {
     UserSummary summary = new UserSummary(requesterId, "tester", null);
     PlaylistResponse response = new PlaylistResponse(
         playlistId, summary, "새 제목", "새 설명",
-        LocalDateTime.of(2026, 10, 28, 12, 0), 3L, false);
+        LocalDateTime.of(2026, 10, 28, 12, 0),
+        3L, false, List.of());
 
     // when
     Map<String, String> body = Map.of("title", "새 제목", "description", "새 설명");
@@ -908,7 +912,7 @@ class PlaylistControllerTest {
     return new PlaylistResponse(
         playlistId, summary, "title", "description",
         LocalDateTime.of(2026, 10, 26,
-            12, 0), 3L, subscribedByMe);
+            12, 0), 3L, subscribedByMe, List.of());
   }
 
   private Map<String, String> validParams() {

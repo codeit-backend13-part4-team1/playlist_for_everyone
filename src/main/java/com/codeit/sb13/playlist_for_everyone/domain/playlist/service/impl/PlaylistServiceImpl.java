@@ -5,6 +5,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRe
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistSearchRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistUpdateRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.PlaylistContentSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.PlaylistResponse;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Playlist;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistContent;
@@ -60,6 +61,7 @@ public class PlaylistServiceImpl implements PlaylistService {
   private final ApplicationEventPublisher eventPublisher;
   private final UserSummaryMapper  userSummaryMapper;
   private final PlaylistReader playlistReader;
+  private final PlaylistContentSummaryMapper playlistContentSummaryMapper;
 
   private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
 
@@ -82,7 +84,7 @@ public class PlaylistServiceImpl implements PlaylistService {
 
     UserSummary userSummary = userSummaryMapper.toSummary(user);
 
-    return PlaylistResponse.from(saved, userSummary, false);
+    return PlaylistResponse.from(saved, userSummary, false, List.of());
     // 방금 생성된 플레이리스트라 구독 정보가 없으므로 항상 false이다.
 
   }
@@ -92,7 +94,7 @@ public class PlaylistServiceImpl implements PlaylistService {
   public PlaylistResponse getPlaylist(UUID playlistId, UUID requesterId) {
     // 조회 트랜잭션은 Reader에서 끝나고, 프로필 이미지 URL 생성은 트랜잭션 밖에서 한다.
     PlaylistReader.PlaylistDetail detail = playlistReader.readOne(playlistId, requesterId);
-    return toResponse(detail.playlist(), detail.subscribedByMe());
+    return toResponse(detail.playlist(), detail.subscribedByMe(), detail.contents());
   }
 
   @Override
@@ -106,7 +108,10 @@ public class PlaylistServiceImpl implements PlaylistService {
     List<Playlist> page = result.playlists();
 
     List<PlaylistResponse> data = page.stream()
-        .map(playlist -> toResponse(playlist, result.subscribedIds().contains(playlist.getId())))
+        .map(playlist -> toResponse(
+            playlist,
+            result.subscribedIds().contains(playlist.getId()),
+            result.contents().getOrDefault(playlist.getId(), List.of())))
         .toList();
 
     String nextCursor = null;
@@ -283,9 +288,17 @@ public class PlaylistServiceImpl implements PlaylistService {
   }
 
   private PlaylistResponse toResponse(Playlist playlist, boolean subscribedByMe) {
-    User owner = playlist.getOwner();
-    UserSummary userSummary = userSummaryMapper.toSummary(owner);
-    return PlaylistResponse.from(playlist, userSummary, subscribedByMe);
+    // updatePlaylist 용. contents는 다음 커밋에서 채운다.
+    return toResponse(playlist, subscribedByMe, List.of());
+  }
+
+  private PlaylistResponse toResponse(
+      Playlist playlist, boolean subscribedByMe, List<PlaylistContentData> contents) {
+    UserSummary userSummary = userSummaryMapper.toSummary(playlist.getOwner());
+    List<PlaylistContentSummary> summaries = contents.stream()
+        .map(playlistContentSummaryMapper::toSummary)
+        .toList();
+    return PlaylistResponse.from(playlist, userSummary, subscribedByMe, summaries);
   }
 
   private boolean isUniqueViolation(Throwable throwable) {

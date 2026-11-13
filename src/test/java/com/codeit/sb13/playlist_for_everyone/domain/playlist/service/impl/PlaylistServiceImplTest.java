@@ -27,6 +27,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Subscription
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistContentAddedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistCreatedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistSubscribedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentQueryRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistSearchCondition;
@@ -92,21 +93,30 @@ public class PlaylistServiceImplTest {
   @Mock
   private UserSummaryMapper userSummaryMapper;
 
+  @Mock
+  private PlaylistContentQueryRepository playlistContentQueryRepository;
+
+  @Mock
+  private PlaylistContentSummaryMapper playlistContentSummaryMapper;
+
   @BeforeEach
   void setUpService() {
     // Reader는 Mock이 아니라 실제 객체를 쓴다. 기존 테스트가 playlistRepository와
     // subscriptionRepository를 모킹해서 조회 결과를 정하고 있기 때문이다.
-    PlaylistReader playlistReader =
-        new PlaylistReader(playlistRepository, subscriptionRepository);
-    playlistService = new PlaylistServiceImpl(
+    PlaylistReader playlistReader = new PlaylistReader(
         playlistRepository,
-        userRepository,
         subscriptionRepository,
         playlistContentRepository,
-        contentRepository,
-        eventPublisher,
-        userSummaryMapper,
-        playlistReader);
+        playlistContentQueryRepository
+    );
+
+    playlistService = new PlaylistServiceImpl(
+        playlistRepository, userRepository,
+        subscriptionRepository, playlistContentRepository,
+        contentRepository, eventPublisher,
+        userSummaryMapper, playlistReader,
+        playlistContentSummaryMapper
+    );
   }
 
   @Test
