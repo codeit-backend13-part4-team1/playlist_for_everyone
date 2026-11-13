@@ -34,13 +34,16 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.BDDMockito.willAnswer;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -165,6 +168,53 @@ class PasswordResetServiceIntegrationTest {
                 .hasSize(1);
         verify(passwordResetMailSender, times(1)).send(anyString(), anyString(), any(Duration.class));
     }
+
+    @Test
+    @DisplayName("같은 계정의 동시 요청은 하나만 발급하고 나머지는 거부한다.")
+    void 같은_계정의_동시_요청은_하나만_발급한다() throws ExecutionException, InterruptedException {
+        UUID userId = saveUser();
+
+        // 먼저 들어간 요청이 커밋하기 전에 다른 요청이 제한을 확인하도록 발송을 늦춘다.
+        willAnswer(invocation -> {
+            Thread.sleep(500);
+            return null;
+        }).given(passwordResetMailSender).send(anyString(), anyString(), any(Duration.class));
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch ready = new CountDownLatch(2); // 두 스레드가 모두 준비될 때까지
+        CountDownLatch start = new CountDownLatch(1); // 동시에 출발시키는 신호
+        List<Future<Throwable>> futures = new ArrayList<>();
+
+        for (int i =0; i < 2; i++) {
+            futures.add(executor.submit(() -> {
+                ready.countDown();
+                start.await();
+                try {
+                    passwordResetService.resetPassword(EMAIL);
+                    return null;
+                } catch (Throwable throwable) {
+                    return throwable; //예외를 결과로 돌려받아 메인 스레드에서 검증한다.
+                }
+            }));
+        }
+        ready.await();
+        start.countDown();
+
+        List<Throwable> errors = new ArrayList<>();
+        for (Future<Throwable> future : futures) {
+            Throwable error = future.get();
+            if (error != null) {
+                errors.add(error);
+            }
+        }
+        executor.shutdown();
+
+        assertThat(errors).singleElement().isInstanceOf(PasswordResetTooManyRequestsException.class);
+        assertThat(temporaryPasswordRepository.findAllByUserIdAndStatus(userId, TemporaryPasswordStatus.ACTIVE))
+                .hasSize(1);
+        verify(passwordResetMailSender, times(1)).send(anyString(), anyString(), any(Duration.class));
+    }
+
 
     private UUID saveUser() {
         return new TransactionTemplate(transactionManager).execute(status ->

@@ -26,7 +26,6 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.net.URL;
 import java.util.Map;
 
 import static org.mockito.BDDMockito.willThrow;
@@ -147,8 +146,8 @@ class PasswordResetSecurityTest {
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                            {"email": "%s"}
-                            """.formatted(EMAIL)))
+                                {"email": "%s"}
+                                """.formatted(EMAIL)))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(jsonPath("$.exceptionName").value("PasswordResetTooManyRequestsException"))
                 .andExpect(jsonPath("$.details.retryAfterSeconds").value(45));

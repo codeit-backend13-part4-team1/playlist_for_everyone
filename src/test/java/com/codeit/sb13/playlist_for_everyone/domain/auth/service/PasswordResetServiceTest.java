@@ -204,6 +204,25 @@ class PasswordResetServiceTest {
         verify(passwordResetMailSender).send(EMAIL, RAW_PASSWORD, Duration.ofMinutes(3));
     }
 
+    @Test
+    @DisplayName("두 제한에 모두 걸리면 더 늦게 풀리는 시각으로 재시도 시간을 안내한다.")
+    void 두_제한에_모두_걸리면_더_늦은_시각으로_안내한다(){
+        givenUserExists();
+        LocalDateTime now = LocalDateTime.now();
+        // 가장 최근: 30초 전 -> 1분 제한은 30초 뒤 해제
+        // 5번째: 10분 전 -> 1시간 제한은 50분 뒤 해제(이쪽이 더 늦다)
+        givenRecentIssues(
+                now.minusSeconds(30), now.minusMinutes(2), now.minusMinutes(3),
+                now.minusMinutes(4), now.minusMinutes(10)
+        );
+
+        assertThatThrownBy(() -> passwordResetService.resetPassword(EMAIL))
+                .isInstanceOfSatisfying(PasswordResetTooManyRequestsException.class, exception ->
+                        assertThat((Long) exception.getDetails().get("retryAfterSeconds"))
+                                .isBetween(2990L, 3000L));
+    }
+
+
     private void givenUserExists() {
         User user = User.builder()
                 .email(EMAIL)
