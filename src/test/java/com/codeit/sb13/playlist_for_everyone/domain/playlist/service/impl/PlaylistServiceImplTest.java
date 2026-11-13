@@ -53,6 +53,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -90,6 +91,23 @@ public class PlaylistServiceImplTest {
 
   @Mock
   private UserSummaryMapper userSummaryMapper;
+
+  @BeforeEach
+  void setUpService() {
+    // Reader는 Mock이 아니라 실제 객체를 쓴다. 기존 테스트가 playlistRepository와
+    // subscriptionRepository를 모킹해서 조회 결과를 정하고 있기 때문이다.
+    PlaylistReader playlistReader =
+        new PlaylistReader(playlistRepository, subscriptionRepository);
+    playlistService = new PlaylistServiceImpl(
+        playlistRepository,
+        userRepository,
+        subscriptionRepository,
+        playlistContentRepository,
+        contentRepository,
+        eventPublisher,
+        userSummaryMapper,
+        playlistReader);
+  }
 
   @Test
   @DisplayName("요청한 값과 소유자 ID로 플레이리스트를 저장한다.")
