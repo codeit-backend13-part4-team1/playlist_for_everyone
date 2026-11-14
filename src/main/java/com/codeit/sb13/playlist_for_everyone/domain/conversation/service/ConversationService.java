@@ -10,7 +10,7 @@ import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import java.util.UUID;
 
 /**
- * 인증된 요청자를 기준으로 1:1 대화방 생성과 목록·단건·상대방 기준 조회를 제공한다.
+ * 인증된 요청자를 기준으로 1:1 대화방 생성·조회와 대화방 참여 검증을 제공한다.
  *
  * <p>호출자는 인증된 요청자 ID와 입력 검증을 마친 조건을 전달한다.
  * 응답의 상대방·미읽음 정보는 요청자 기준이며, 조회 메서드는 대화방 생성이나 읽음 변경을 수행하지 않는다.
@@ -57,5 +57,10 @@ public interface ConversationService {
      */
     CursorResponse<ConversationDto> search(ConversationSearchCondition condition);
 
+    /**
+     * 후속 DM 작업 전에 요청자가 대화방의 참여자인지 확인한다.
+     * 대화방 미존재와 비참여 모두 ConversationNotFoundException으로 처리하며 대화방·메시지 상태를 바꾸지 않는다.
+     * 로그인 자체를 검증하는 메서드는 아니므로 호출자는 인증된 요청자 ID를 전달해야 한다.
+     */
     void validateParticipant(UUID conversationId, UUID requesterId);
 }

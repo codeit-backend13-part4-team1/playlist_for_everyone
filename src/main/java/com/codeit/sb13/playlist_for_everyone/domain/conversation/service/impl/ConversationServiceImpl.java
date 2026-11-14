@@ -22,7 +22,7 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 대화방 생성·조회 흐름에서 자기 대화 검증, 조회·저장 호출, 예외 결정과 응답 변환을 조정한다.
+ * 대화방 생성·조회 흐름과 참여 검증을 조정하고, 자기 대화 검증·예외 결정·응답 변환을 담당한다.
  *
  * <p>이 서비스는 직접 트랜잭션을 시작하지 않는다. 조회는 Reader에, 독립적인 저장 트랜잭션은
  * Saver에 맡겨 저장 실패가 조회·응답 변환 단계까지 같은 트랜잭션으로 묶이지 않도록 한다.
@@ -125,6 +125,7 @@ public class ConversationServiceImpl implements ConversationService {
         );
     }
 
+    /** DM 서비스가 대화방 Repository에 직접 의존하지 않도록 참여 검증을 Reader에 연결한다. */
     @Override
     public void validateParticipant(UUID conversationId, UUID requesterId) {
         conversationReader.validateParticipant(conversationId, requesterId);

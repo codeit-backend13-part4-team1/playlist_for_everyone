@@ -16,13 +16,14 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * 생성용 기존 대화방 확인과 목록·단건·상대방 기준 조회의 읽기 트랜잭션을 담당한다.
+ * 생성용 기존 대화방 확인, 대화방 조회와 참여 검증의 읽기 트랜잭션을 담당한다.
  *
  * <p>기본 전파 방식인 REQUIRED를 사용한다. 상위 트랜잭션이 없으면 읽기 전용 트랜잭션을
  * 시작하고, 있으면 참여한다. 매번 독립적인 새 트랜잭션을 만드는 Saver와 역할이 다르다.
  *
- * <p>HTTP 응답 변환이나 미존재 예외 결정은 서비스에 맡긴다. 단건 조회에서 결과가 없으면
- * 빈 Optional을 반환하며, DB 조회 실패는 원래 예외를 그대로 전달한다.
+ * <p>일반 단건 조회는 빈 Optional을 반환하고 서비스가 미존재 예외와 HTTP 응답 변환을 결정한다.
+ * validateParticipant는 검증 자체가 역할이므로 미존재·비참여 예외를 이곳에서 직접 결정한다.
+ * DB 조회 실패는 원래 예외를 그대로 전달한다.
  */
 @Component
 @RequiredArgsConstructor
@@ -73,6 +74,10 @@ public class ConversationReader {
         return conversationRepository.searchCount(condition);
     }
 
+    /**
+     * 대화방을 조회하여 사용자 ID가 두 참여자 중 하나인지 확인한다.
+     * 미존재와 비참여 모두 같은 대화방 미존재 예외를 던지고, 비참여 원인은 내부 예외로 남긴다.
+     */
     @Transactional(readOnly = true)
     public void validateParticipant(UUID conversationId, UUID requesterId) {
         Conversation conversation = conversationRepository.findById(conversationId)

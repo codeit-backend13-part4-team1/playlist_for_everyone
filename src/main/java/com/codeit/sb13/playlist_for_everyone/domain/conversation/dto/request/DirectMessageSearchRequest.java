@@ -11,6 +11,13 @@ import java.time.DateTimeException;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
+/**
+ * DM 목록 GET의 쿼리 파라미터와 Bean Validation 규칙을 정의한다.
+ *
+ * <p>limit은 양수이며 limit·sortDirection·sortBy는 필수다. 기본값이나 최대 페이지 크기를 지정하지 않는다.
+ * 정렬값은 바인딩 과정에서 변환하고, 커서의 ISO LocalDateTime 형식과 cursor·idAfter 조합은 별도로 검증한다.
+ * 대화방 ID와 요청자 ID는 쿼리 파라미터가 아니라 컨트롤러가 경로와 인증 정보에서 가져온다.
+ */
 public record DirectMessageSearchRequest(
         String cursor,
         UUID idAfter,
@@ -49,6 +56,7 @@ public record DirectMessageSearchRequest(
                 return cursorPresent == idAfterPresent;
         }
 
+        /** 요청 검증을 마친 값에 경로의 대화방 ID와 인증된 요청자 ID를 합친다. 양수·커서 검증을 반복하지 않는다. */
         public DirectMessageSearchCondition toCondition(UUID conversationId,UUID requesterId){
                 return new DirectMessageSearchCondition(
                         conversationId,
