@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.conversation.controller;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.command.DirectMessageReadCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.request.DirectMessageSearchRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.response.MessageDto;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.DirectMessageService;
@@ -24,7 +25,7 @@ public class DirectMessageController {
             @PathVariable UUID conversationId,
             @Valid @ModelAttribute DirectMessageSearchRequest request,
             @AuthenticationPrincipal SecurityUser user){
-        throw new UnsupportedOperationException();
+        return ResponseEntity.ok(directMessageService.search(request.toCondition(conversationId, user.getUserId())));
     }
 
     @PostMapping("/{directMessageId}/read")
@@ -32,6 +33,8 @@ public class DirectMessageController {
             @PathVariable UUID conversationId,
             @PathVariable UUID directMessageId,
             @AuthenticationPrincipal SecurityUser user){
-        throw new UnsupportedOperationException();
+       directMessageService.read(new DirectMessageReadCommand(conversationId, directMessageId, user.getUserId()));
+
+        return ResponseEntity.ok().build();
     }
 }
