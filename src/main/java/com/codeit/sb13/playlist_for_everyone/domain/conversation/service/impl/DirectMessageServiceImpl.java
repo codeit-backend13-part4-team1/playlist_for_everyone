@@ -19,6 +19,7 @@ public class DirectMessageServiceImpl implements DirectMessageService {
 
     private final DirectMessageReader directMessageReader;
     private final DirectMessageMapper directMessageMapper;
+    private final DirectMessageUpdater directMessageUpdater;
 
     @Override
     public void read(DirectMessageReadCommand command) {

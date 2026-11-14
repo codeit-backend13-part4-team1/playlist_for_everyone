@@ -7,6 +7,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.conversation.entity.DirectMe
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.mapper.DirectMessageMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.impl.DirectMessageReader;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.impl.DirectMessageServiceImpl;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.impl.DirectMessageUpdater;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
@@ -39,6 +40,9 @@ public class DirectMessageQueryServiceTest {
     @Mock
     private DirectMessageMapper directMessageMapper;
 
+    @Mock
+    private DirectMessageUpdater directMessageUpdater;
+
     private DirectMessageService directMessageService;
 
     private final UUID requesterId = UUID.fromString("00000000-0000-0000-0000-000000000001");
@@ -47,7 +51,10 @@ public class DirectMessageQueryServiceTest {
 
     @BeforeEach
     void setUp(){
-        directMessageService = new DirectMessageServiceImpl(directMessageReader, directMessageMapper);
+        directMessageService = new DirectMessageServiceImpl(
+                directMessageReader,
+                directMessageMapper,
+                directMessageUpdater);
     }
 
     @Test
