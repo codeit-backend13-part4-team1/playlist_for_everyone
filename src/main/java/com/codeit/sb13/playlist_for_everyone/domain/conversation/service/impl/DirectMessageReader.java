@@ -17,11 +17,11 @@ public class DirectMessageReader {
 
     @Transactional(readOnly = true)
     public List<DirectMessage> search(DirectMessageSearchCondition condition){
-        throw new UnsupportedOperationException();
+        return directMessageRepository.search(condition);
     }
 
     @Transactional(readOnly = true)
     public long searchCount(DirectMessageSearchCondition condition){
-        throw new UnsupportedOperationException();
+       return directMessageRepository.searchCount(condition);
     }
 }

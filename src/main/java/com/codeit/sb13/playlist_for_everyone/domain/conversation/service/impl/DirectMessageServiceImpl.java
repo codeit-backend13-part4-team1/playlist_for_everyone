@@ -3,11 +3,15 @@ package com.codeit.sb13.playlist_for_everyone.domain.conversation.service.impl;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.command.DirectMessageReadCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.DirectMessageSearchCondition;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.response.MessageDto;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.entity.DirectMessage;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.mapper.DirectMessageMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.DirectMessageService;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -23,6 +27,31 @@ public class DirectMessageServiceImpl implements DirectMessageService {
 
     @Override
     public CursorResponse<MessageDto> search(DirectMessageSearchCondition condition) {
-        throw new UnsupportedOperationException();
+        List<DirectMessage> result = directMessageReader.search(condition);
+        long totalCount = directMessageReader.searchCount(condition);
+
+        boolean hasNext = result.size() > condition.limit();
+        List<DirectMessage> page = hasNext ? result.subList(0, condition.limit()) : result;
+
+        String cursor = null;
+        UUID idAfter = null;
+        if (hasNext){
+            DirectMessage last = page.get(page.size() - 1);
+            cursor = last.getCreatedAt().toString();
+            idAfter = last.getId();
+        }
+        List<MessageDto> dtos = page.stream()
+                .map(directMessageMapper::toMessageDto)
+                .toList();
+
+        return new CursorResponse<>(
+                dtos,
+                cursor,
+                idAfter,
+                hasNext,
+                totalCount,
+                condition.sortBy().getSortKey(),
+                condition.sortDirection()
+        );
     }
 }
