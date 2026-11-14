@@ -10,9 +10,12 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.Playlist
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.SubscriptionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.PlaylistService;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.impl.PlaylistContentSummaryMapper;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.impl.PlaylistReader;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.impl.PlaylistServiceImpl;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.impl.PlaylistWriter;
 import com.codeit.sb13.playlist_for_everyone.domain.user.mapper.UserSummaryMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.file.storage.FileStorage;
@@ -56,6 +59,15 @@ class PlaylistMethodSecurityTest {
 
   @MockitoBean
   private UserSummaryMapper summaryMapper;
+
+  @MockitoBean
+  private PlaylistReader playlistReader;
+
+  @MockitoBean
+  private PlaylistContentSummaryMapper playlistContentSummaryMapper;
+
+  @MockitoBean
+  private PlaylistWriter playlistWriter;
 
   @Test
   @WithMockUser

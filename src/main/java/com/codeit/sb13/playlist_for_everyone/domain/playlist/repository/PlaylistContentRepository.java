@@ -1,6 +1,8 @@
 package com.codeit.sb13.playlist_for_everyone.domain.playlist.repository;
 
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistContent;
+import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -22,5 +24,12 @@ public interface PlaylistContentRepository extends JpaRepository<PlaylistContent
   @Modifying(flushAutomatically = true)
   @Query("delete from PlaylistContent pc where pc.contentId = :contentId")
   int deleteAllByContentId(@Param("contentId") UUID contentId);
+
+  @Query("""
+      select pc from PlaylistContent pc
+      where pc.playlistId in :playlistIds
+      order by pc.createdAt asc, pc.id asc
+      """)
+  List<PlaylistContent> findAllByPlaylistIds(@Param("playlistIds") Collection<UUID> playlistIds);
 
 }

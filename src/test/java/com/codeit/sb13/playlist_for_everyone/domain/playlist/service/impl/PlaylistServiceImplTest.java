@@ -27,6 +27,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Subscription
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistContentAddedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistCreatedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistSubscribedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentQueryRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistSearchCondition;
@@ -53,6 +54,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -90,6 +92,34 @@ public class PlaylistServiceImplTest {
 
   @Mock
   private UserSummaryMapper userSummaryMapper;
+
+  @Mock
+  private PlaylistContentQueryRepository playlistContentQueryRepository;
+
+  @Mock
+  private PlaylistContentSummaryMapper playlistContentSummaryMapper;
+
+  @BeforeEach
+  void setUpService() {
+    // Reader는 Mock이 아니라 실제 객체를 쓴다. 기존 테스트가 playlistRepository와
+    // subscriptionRepository를 모킹해서 조회 결과를 정하고 있기 때문이다.
+    PlaylistReader playlistReader = new PlaylistReader(
+        playlistRepository,
+        subscriptionRepository,
+        playlistContentRepository,
+        playlistContentQueryRepository
+    );
+
+    PlaylistWriter playlistWriter = new PlaylistWriter(playlistRepository);
+
+    playlistService = new PlaylistServiceImpl(
+        playlistRepository, userRepository,
+        subscriptionRepository, playlistContentRepository,
+        contentRepository, eventPublisher,
+        userSummaryMapper, playlistReader,
+        playlistContentSummaryMapper, playlistWriter
+    );
+  }
 
   @Test
   @DisplayName("요청한 값과 소유자 ID로 플레이리스트를 저장한다.")
@@ -497,6 +527,8 @@ public class PlaylistServiceImplTest {
     PlaylistUpdateRequest request = new PlaylistUpdateRequest("새 제목", "새 설명");
     UserSummary summary = new UserSummary(ownerId, "tester", null);
 
+    given(playlistRepository.findById(playlistId))
+        .willReturn(Optional.of(playlist));
     given(playlistRepository.findWithOwnerById(playlistId))
         .willReturn(Optional.of(playlist));
     given(userSummaryMapper.toSummary(owner)).willReturn(summary);
@@ -522,6 +554,8 @@ public class PlaylistServiceImplTest {
     Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
     PlaylistUpdateRequest request = new PlaylistUpdateRequest("새 제목", null);
 
+    given(playlistRepository.findById(playlistId))
+        .willReturn(Optional.of(playlist));
     given(playlistRepository.findWithOwnerById(playlistId))
         .willReturn(Optional.of(playlist));
 
@@ -542,6 +576,8 @@ public class PlaylistServiceImplTest {
     Playlist playlist = createPlaylist(createUser(ownerId), playlistId);
     PlaylistUpdateRequest request = new PlaylistUpdateRequest(null, "새 설명");
 
+    given(playlistRepository.findById(playlistId))
+        .willReturn(Optional.of(playlist));
     given(playlistRepository.findWithOwnerById(playlistId))
         .willReturn(Optional.of(playlist));
 
@@ -561,7 +597,7 @@ public class PlaylistServiceImplTest {
     UUID requesterId = UUID.randomUUID();
     PlaylistUpdateRequest request = new PlaylistUpdateRequest("새 제목", "새 설명");
 
-    given(playlistRepository.findWithOwnerById(playlistId))
+    given(playlistRepository.findById(playlistId))
         .willReturn(Optional.empty());
 
     // when & then
