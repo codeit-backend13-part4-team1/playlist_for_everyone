@@ -23,7 +23,7 @@ public class DirectMessageServiceImpl implements DirectMessageService {
 
     @Override
     public void read(DirectMessageReadCommand command) {
-        throw new UnsupportedOperationException();
+        directMessageUpdater.read(command);
     }
 
     @Override

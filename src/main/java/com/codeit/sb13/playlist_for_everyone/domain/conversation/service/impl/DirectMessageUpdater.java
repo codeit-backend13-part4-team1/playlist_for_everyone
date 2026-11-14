@@ -6,6 +6,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+
 @Component
 @RequiredArgsConstructor
 public class DirectMessageUpdater {
@@ -14,6 +16,10 @@ public class DirectMessageUpdater {
 
     @Transactional
     public void read(DirectMessageReadCommand command){
-        throw new UnsupportedOperationException();
+        directMessageRepository.updateReadStatusUpToMessage(
+                command.conversationId(),
+                command.requesterId(),
+                command.directMessageId(),
+                LocalDateTime.now());
     }
 }
