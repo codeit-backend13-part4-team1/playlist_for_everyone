@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.conversation.controller;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.controller.swagger.DirectMessageApi;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.command.DirectMessageReadCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.request.DirectMessageSearchRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.response.MessageDto;
@@ -17,9 +18,10 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/conversations/{conversationId}/direct-messages")
 @RequiredArgsConstructor
-public class DirectMessageController {
+public class DirectMessageController implements DirectMessageApi {
     private final DirectMessageService directMessageService;
 
+    @Override
     @GetMapping
     public ResponseEntity<CursorResponse<MessageDto>> list(
             @PathVariable UUID conversationId,
@@ -28,6 +30,7 @@ public class DirectMessageController {
         return ResponseEntity.ok(directMessageService.search(request.toCondition(conversationId, user.getUserId())));
     }
 
+    @Override
     @PostMapping("/{directMessageId}/read")
     public ResponseEntity<Void> read(
             @PathVariable UUID conversationId,

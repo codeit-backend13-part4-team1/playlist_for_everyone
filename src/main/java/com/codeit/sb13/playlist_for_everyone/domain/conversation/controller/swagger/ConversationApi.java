@@ -30,7 +30,7 @@ import java.util.UUID;
  * 대화방 생성·조회 API의 Swagger 요청·응답 계약을 컨트롤러 구현과 분리해 정의한다.
  * 인증 파라미터 숨김과 보안 요구사항 표시는 문서 설정이며, 실제 인증·인가 검증은 보안 설정이 담당한다.
  */
-@Tag(name = "대화방",description = "사용자 간 1:1 대화방 API")
+@Tag(name = "대화방", description = "사용자 간 1:1 대화방 및 DM API")
 @SecurityRequirement(name = "bearerAuth")
 public interface ConversationApi {
 
