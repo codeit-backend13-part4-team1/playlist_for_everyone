@@ -2,7 +2,8 @@
 
 정책을 확인하는 단위 테스트, 실제 DB 제약·트랜잭션 테스트, HTTP 보안 테스트를 구분합니다.
 같은 정상 응답을 확인하더라도 실행하는 경계가 다릅니다.
-이 페이지는 공통 환경과 생성 테스트를, [조회 테스트와 Swagger 검증](06-query-testing.md)은 조회 전용 검증을 설명합니다.
+이 페이지는 공통 환경과 생성 테스트를 설명합니다.
+대화방 조회는 [조회 테스트와 Swagger 검증](06-query-testing.md), 메시지 조회·읽음은 [DM 테스트와 Swagger 검증](09-direct-message-testing.md)에서 다룹니다.
 
 ## 테스트별 역할
 
@@ -18,8 +19,9 @@
 | [ConversationServiceIntegrationTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/service/ConversationServiceIntegrationTest.java) | 실제 생성·중복·동시 호출, 커밋·외부 롤백, 충돌 복구·URL 실패 | PostgreSQL 사용. FileStorage는 Mock, Reader는 Spy. HTTP 제외 |
 | [ConversationSecurityIntegrationTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/controller/ConversationSecurityIntegrationTest.java) | 생성 JWT·CSRF와 생성·조회 4종의 JWT 누락 거절 | UserSessionRepository는 Mock. 실제 Redis 세션·로그인 API 제외 |
 
-조회 전용 테스트는 QueryService·QueryController·QueryRepository·QuerySecurityIntegration의 4개 클래스입니다.
-전체 11개 클래스의 실행 결과를 함께 확인해야 생성 기능에 대한 회귀도 포함할 수 있습니다.
+대화방 조회 전용 테스트는 QueryService·QueryController·QueryRepository·QuerySecurityIntegration의 4개 클래스입니다.
+현재 구성은 **대화방 11개 + DM 7개 = 18개 클래스**입니다. 클래스 수와 특정 날짜의 테스트 실행 건수는 구분합니다.
+전체 실행 명령은 생성·대화방 조회·DM 조회·읽음 처리를 함께 대상으로 합니다.
 
 ## 단위 테스트와 통합 테스트의 차이
 
@@ -41,7 +43,7 @@ HTTP 200 계약은 컨트롤러 테스트가 담당합니다.
 
 보안 통합 테스트는 `JwtTokenProvider`로 JWT를 발급하고 공통 필터를 통과시킵니다.
 CSRF는 실제 `GET /api/auth/csrf-token` 응답의 쿠키를 받아 요청 헤더와 함께 전달합니다.
-다음 상황을 검증합니다. JWT 누락은 생성·목록·단건·상대방 조회의 4가지 요청으로 실행하므로 총 **8건**입니다.
+`ConversationSecurityIntegrationTest`는 아래 상황을 검증합니다. JWT 누락은 생성·목록·단건·상대방 조회의 4가지 요청으로 실행하므로 총 **8건**입니다.
 
 | 조건 | 기대 결과 |
 | --- | --- |
@@ -54,7 +56,8 @@ CSRF는 실제 `GET /api/auth/csrf-token` 응답의 쿠키를 받아 요청 헤�
 `UserSessionRepository.isCurrent()`의 결과는 Mock으로 준비합니다.
 JWT 서명·요청 필터와 CSRF 처리는 실제 구성으로 실행하지만, Redis의 세션 보관·만료 동작까지 검증하지 않습니다.
 만료·변조 JWT, 계정 잠금 등 공통 인증의 모든 경우를 이 테스트에서 검증하는 것도 아닙니다.
-조회의 유효 JWT·참여자 제한·GET의 CSRF 불필요 검증은 [조회 보안 통합 테스트](06-query-testing.md#실제-조회-요청의-검증-범위)를 참고합니다.
+대화방 조회의 JWT·참여자 제한은 [조회 보안 통합 테스트](06-query-testing.md#실제-조회-요청의-검증-범위),
+메시지 조회와 읽음 POST의 JWT·CSRF는 [DM 보안 통합 테스트](09-direct-message-testing.md#실제-보안-요청의-검증-범위)를 참고합니다.
 
 ## 실행 환경
 
@@ -63,7 +66,7 @@ JWT 서명·요청 필터와 CSRF 처리는 실제 구성으로 실행하지만,
 Repository·ServiceIntegration·SecurityIntegration 테스트는 Testcontainers의 PostgreSQL 접속 정보로 덮어씁니다.
 
 - Docker 엔진이 실행되어 있어야 하며 `postgres:16` 컨테이너를 테스트가 생성합니다.
-- 생성·조회 Repository, ServiceIntegration, 생성·조회 SecurityIntegration의 5개 클래스가 PostgreSQL을 사용합니다.
+- 대화방의 Repository 2개·생성 ServiceIntegration·SecurityIntegration 2개와 DM의 Repository 2개·읽음 ServiceIntegration·SecurityIntegration, 총 **9개 클래스**가 PostgreSQL을 사용합니다.
 - 이 클래스들은 Flyway를 활성화하고 `ddl-auto=validate`로 실제 스키마와 매핑을 확인합니다.
 - 개발용 Compose DB를 테스트 대상으로 지정하지 않습니다.
 - 기본 테스트 프로필은 SSE 자동 구독과 관리자 초기화를 비활성화합니다.
@@ -91,20 +94,20 @@ Repository·ServiceIntegration·SecurityIntegration 테스트는 Testcontainers�
 ./gradlew test --tests '*ConversationRepositoryTest' --tests '*ConversationServiceIntegrationTest'
 ```
 
-대화방 테스트 전체:
+대화방·DM 테스트 전체(현재 18개 클래스):
 
 ```bash
 ./gradlew test --tests 'com.codeit.sb13.playlist_for_everyone.domain.conversation.*'
 ```
 
 결과는 `build/reports/tests/test/index.html`과 `build/test-results/test/`에서 확인합니다.
-조회 전용 실행 명령은 [조회 테스트 가이드](06-query-testing.md#실행-명령)에 있습니다.
+기능별 실행 명령은 [대화방 조회](06-query-testing.md#실행-명령)와 [DM 조회·읽음](09-direct-message-testing.md#실행-명령)에 있습니다.
 일부 테스트로 생성한 JaCoCo 보고서를 프로젝트 전체 커버리지로 해석하지 않습니다.
 
 ## 기존 검증 기록
 
-다음은 2026-11-13에 실행·확인한 기록입니다. 테스트 수는 파라미터화 테스트의 각 실행을 포함합니다.
-이번 MD 문서 작성 중 테스트를 새로 실행한 결과는 아닙니다.
+다음은 **2026-11-13, #58·#59 대화방 11개 클래스**를 실행·확인한 기록입니다. 테스트 수는 파라미터화 테스트의 각 실행을 포함합니다.
+현재 DM까지 포함한 18개 클래스의 실행 결과나 이번 MD 갱신 중 새로 실행한 결과가 아닙니다.
 
 | 검증 시점·대상 | 결과 |
 | --- | --- |
@@ -123,6 +126,7 @@ UI 확인은 별도 검증 서버의 문서 GET·화면 표시 검증이고, 실
 당시 로컬 기록은 `build/reports/conversation-regression/summary.json`,
 `build/reports/openapi/conversation-query/`, `build/reports/conversation-comments/verification.json`에 있습니다.
 이 파일들은 Git에 포함되지 않으며 `clean`으로 삭제될 수 있습니다. 재검증은 위 명령과 새 보고서를 기준으로 합니다.
+후속 #60의 HTTP 테스트 34건과 Swagger 통합 표시 확인은 [DM 검증 기록](09-direct-message-testing.md#확인된-검증-기록)에 별도로 남깁니다.
 
 ---
 

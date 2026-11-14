@@ -6,7 +6,7 @@
 > 도메인 구현 현황과 개발용 보안 전환 설명은 최신 코드와 다를 수 있습니다.
 > 현재 SSE 연결·공유 이력·Redis 분산 전송·복구·인증·테스트는 [SSE 구현 가이드](sse/README.md), 알림 생성·전송·조회·읽음 처리와 JWT 인증은 [알림 구현 가이드](notification/README.md)를 기준으로 확인합니다.
 > 팔로우 등록·취소·조회와 인증·이벤트의 구현 및 검증 범위는 [팔로우 구현 가이드](follow/README.md)를 참고합니다.
-> 대화방 생성·중복 처리·목록·단건·상대방 기준 조회와 JWT·CSRF 검증은 [대화방 생성·조회 구현 가이드](conversation/README.md)를 참고합니다.
+> 대화방 생성·조회와 DM 메시지 조회·누적 읽음 처리, JWT·CSRF 검증은 [대화방·DM 구현 가이드](conversation/README.md)를 참고합니다.
 
 ## 현재 개발 상태
 
@@ -17,7 +17,7 @@
 | 공통 기반 | 예외 처리, 응답 DTO, 엔티티 기반 클래스, JPA Auditing, Querydsl 설정, MDC 로그, 비밀번호 인코더, OpenAPI 설정 구현 |
 | 도메인 예외 | 공통 예외 기반 위에 도메인 오류 정의. 팔로우는 자기 팔로우·대상 미존재·관계 미존재·생성 실패 예외 사용 |
 | 팔로우 | 등록·취소·조회, 중복 복구와 생성 이벤트 구현. #76의 실제 JWT HTTP 통합 검증 및 Swagger 정리 완료 |
-| 대화방 생성·조회 | #58 생성·중복 복구와 #59 본인 목록·단건·상대방 기준 조회 구현. 검색·커서 페이지 처리와 최신 메시지·미읽음 응답 제공. [전체 흐름](conversation/README.md), [공통·생성 테스트](conversation/04-testing.md), [조회·Swagger 검증](conversation/06-query-testing.md) 참고 |
+| 대화방·DM | #58 대화방 생성·중복 복구, #59 대화방 검색·커서 조회, #60 DM 도메인·메시지 조회·누적 읽음 처리 구현. [전체 흐름](conversation/README.md), [DM 조회](conversation/07-direct-message-query.md), [DM 읽음](conversation/08-direct-message-read.md) 참고 |
 | 로컬 인프라 | Docker Compose에 PostgreSQL과 Redis 서비스 정의 |
 | 공통 보안 | JWT 필터와 경로별 인증·인가 적용. 팔로우·알림 API는 인증 필요, 쿠키 기반 CSRF 보호 활성화 |
 | SSE | 다중 연결·하트비트·종료 정리, 공유 이력 저장·재연결 복구, 연결별 후속 조회·제한된 재시도. [SSE 구현 가이드](sse/README.md) 참고 |
@@ -382,6 +382,9 @@ SSE Redis 통합 테스트는 별도의 Redis 7.4 컨테이너로 실제 Pub/Sub
 같은 알림을 동시에 읽음 처리할 때의 DB 잠금 대기와 커밋 순서는 [동시 삭제 검증](notification/05-concurrent-deletion-testing.md)을 참고합니다.
 수신자 미존재 처리·삭제 후 사용자 보존·DTO 변환 중 추가 SQL 검증은 [수신자 연관관계 가이드](notification/06-receiver-association.md)를 참고합니다.
 최초 실행 시 테스트용 컨테이너 이미지 다운로드가 필요할 수 있습니다. 테스트 프로필은 SSE 자동 구독을 끄고, Redis SSE 통합 테스트에서만 명시적으로 활성화합니다.
+
+대화방·DM 테스트는 현재 18개 클래스이며, 이 중 9개 클래스가 PostgreSQL·Flyway를 사용합니다. [전체 실행과 기존 검증 기록](conversation/04-testing.md)을 참고합니다.
+메시지 조회·누적 읽음의 테스트 역할, 실제 JWT·CSRF 요청과 Swagger 통합 표시 범위는 [DM 테스트 가이드](conversation/09-direct-message-testing.md)에 정리했습니다.
 
 제목 말줄임 단위 테스트만 확인하려면 Docker 없이 다음 명령을 사용할 수 있습니다.
 

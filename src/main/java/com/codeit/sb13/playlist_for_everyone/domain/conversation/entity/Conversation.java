@@ -58,4 +58,13 @@ public class Conversation extends CreatedAtEntity {
         }
         return userB.getId();
     }
+
+    /** 저장 위치 A·B와 관계없이 사용자 ID가 두 참여자 중 하나와 일치하는지 판단한다. */
+    public boolean isParticipant(UUID userId){
+        if (userA == null || userB == null) {
+            return false;
+        }
+
+        return userA.getId().equals(userId) || userB.getId().equals(userId);
+    }
 }
