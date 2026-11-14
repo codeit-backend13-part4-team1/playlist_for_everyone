@@ -18,7 +18,10 @@ import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.AfterEach;
@@ -230,6 +233,42 @@ class PlaylistContentsIntegrationTest {
     assertThat(large.statementCount()).isEqualTo(small.statementCount());
   }
 
+  @Test
+  @DisplayName("목록에서 콘텐츠가 없는 플레이리스트는 빈 배열이고 다른 플레이리스트의 콘텐츠와 섞이지 않는다")
+  void 목록에서_콘텐츠가_없는_플레이리스트는_빈_배열이다() {
+    // given
+    UUID ownerId = insertUser();
+    UUID withContents = createPlaylistWithContents(ownerId, 2);
+    UUID withoutContents = insertPlaylist(ownerId);
+
+    // when
+    StatementResult result = searchWithStatementCount(10);
+
+    // then
+    Map<UUID, PlaylistResponse> byId = result.response().data().stream()
+        .collect(Collectors.toMap(PlaylistResponse::id, Function.identity()));
+    assertThat(byId.get(withContents).contents()).hasSize(2);
+    assertThat(byId.get(withoutContents).contents()).isNotNull().isEmpty();
+  }
+
+  @Test
+  @DisplayName("모든 플레이리스트에 콘텐츠가 없으면 콘텐츠·평점 조회를 하지 않는다")
+  void 모든_플레이리스트에_콘텐츠가_없으면_콘텐츠_조회를_하지_않는다() {
+    // given
+    UUID ownerId = insertUser();
+    insertPlaylist(ownerId);
+    insertPlaylist(ownerId);
+
+    // when
+    StatementResult result = searchWithStatementCount(10);
+
+    // then: 목록 1 + 전체 개수 1 + 구독 여부 1 + 연결 1
+    assertThat(result.response().data()).hasSize(2);
+    assertThat(result.response().data()).allSatisfy(playlist ->
+        assertThat(playlist.contents()).isNotNull().isEmpty());
+    assertThat(result.statementCount()).isEqualTo(4L);
+  }
+
   //-------[헬퍼 메서드]-----
   private record StatementResult(CursorResponse<PlaylistResponse> response, long statementCount) {
   }
@@ -249,7 +288,7 @@ class PlaylistContentsIntegrationTest {
     return new StatementResult(response, statistics.getPrepareStatementCount() - before);
   }
 
-  private void createPlaylistWithContents(UUID ownerId, int contentCount) {
+  private UUID createPlaylistWithContents(UUID ownerId, int contentCount) {
     UUID playlistId = insertPlaylist(ownerId);
     for (int i = 0; i < contentCount; i++) {
       UUID contentId = insertContent("콘텐츠-" + UUID.randomUUID(), "https://img.test/x.png", null);
@@ -257,6 +296,7 @@ class PlaylistContentsIntegrationTest {
       insertReview(contentId, 3.0);
       linkContent(playlistId, contentId, i);
     }
+    return playlistId;
   }
 
   private UUID insertFile(String fileKey) {
