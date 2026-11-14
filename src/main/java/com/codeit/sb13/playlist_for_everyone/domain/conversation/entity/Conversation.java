@@ -58,4 +58,12 @@ public class Conversation extends CreatedAtEntity {
         }
         return userB.getId();
     }
+
+    public boolean isParticipant(UUID userId){
+        if (userA == null || userB == null) {
+            return false;
+        }
+
+        return userA.getId().equals(userId) || userB.getId().equals(userId);
+    }
 }

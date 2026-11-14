@@ -125,6 +125,11 @@ public class ConversationServiceImpl implements ConversationService {
         );
     }
 
+    @Override
+    public void existsByIdAndParticipant(UUID id, UUID participant) {
+        conversationReader.existsByIdAndParticipant(id, participant);
+    }
+
     private ConversationDto createOrGetConversation(ConversationCreateCommand createCommand) {
         UUID requesterId = createCommand.requesterId();
         try {

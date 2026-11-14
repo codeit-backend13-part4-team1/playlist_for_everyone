@@ -56,4 +56,6 @@ public interface ConversationService {
      * @return 대화방 목록, 다음 페이지 정보, 전체 검색 개수와 적용한 정렬 조건
      */
     CursorResponse<ConversationDto> search(ConversationSearchCondition condition);
+
+    void existsByIdAndParticipant(UUID id, UUID participant);
 }

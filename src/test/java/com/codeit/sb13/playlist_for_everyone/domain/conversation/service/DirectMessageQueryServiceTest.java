@@ -43,6 +43,9 @@ public class DirectMessageQueryServiceTest {
     @Mock
     private DirectMessageUpdater directMessageUpdater;
 
+    @Mock
+    private ConversationService conversationService;
+
     private DirectMessageService directMessageService;
 
     private final UUID requesterId = UUID.fromString("00000000-0000-0000-0000-000000000001");
@@ -54,7 +57,8 @@ public class DirectMessageQueryServiceTest {
         directMessageService = new DirectMessageServiceImpl(
                 directMessageReader,
                 directMessageMapper,
-                directMessageUpdater);
+                directMessageUpdater,
+                conversationService);
     }
 
     @Test

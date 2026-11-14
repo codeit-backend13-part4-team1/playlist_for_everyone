@@ -2,12 +2,16 @@ package com.codeit.sb13.playlist_for_everyone.domain.conversation.service.impl;
 
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.command.ConversationCreateCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.*;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.entity.Conversation;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.repository.ConversationRepository;
+import com.codeit.sb13.playlist_for_everyone.global.exception.conversation.ConversationNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.conversation.ConversationTargetNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -67,6 +71,17 @@ public class ConversationReader {
     @Transactional(readOnly = true)
     public long searchCount(ConversationSearchCondition condition) {
         return conversationRepository.searchCount(condition);
+    }
+
+    @Transactional(readOnly = true)
+    public void existsByIdAndParticipant(UUID id, UUID participant) {
+        Conversation conversation = conversationRepository.findById(id)
+                .orElseThrow(() -> new ConversationNotFoundException(Map.of("conversationId", id)));
+
+        if (!conversation.isParticipant(participant)) {
+           throw new ConversationNotFoundException(Map.of("conversationId", id),
+                   new ConversationTargetNotFoundException(Map.of("userId", participant)));
+        }
     }
 
     private Optional<ConversationDetailProjection> findConversationDetail(ConversationPair pair) {

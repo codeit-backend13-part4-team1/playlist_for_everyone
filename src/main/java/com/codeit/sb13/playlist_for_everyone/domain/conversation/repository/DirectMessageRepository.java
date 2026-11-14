@@ -40,4 +40,15 @@ public interface DirectMessageRepository extends JpaRepository<DirectMessage, UU
             @Param("directMessageId") UUID directMessageId,
             @Param("updatedAt") LocalDateTime updatedAt
     );
+
+    @Query("""
+        SELECT COUNT(*) > 0
+        FROM DirectMessage dm
+        WHERE dm.id = :directMessageId
+            AND dm.conversation.id = :conversationId
+    """)
+    boolean existsByIdAndConversationId(
+            @Param("directMessageId") UUID directMessageId,
+            @Param("conversationId") UUID conversationId
+    );
 }

@@ -8,6 +8,8 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.util.UUID;
+
 /**
  * 대화방의 최신 메시지·미읽음 여부 조회와 전체 메시지 본문 검색에 사용하는 메시지 매핑이다.
  *
@@ -47,5 +49,12 @@ public class DirectMessage extends UpdatedAtEntity {
         this.receiver = command.receiver();
         this.content = command.content();
         this.read = false;
+    }
+
+    public boolean isAccess(UUID userId){
+        if (sender == null || receiver == null) {
+            return false;
+        }
+        return sender.getId().equals(userId) || receiver.getId().equals(userId);
     }
 }

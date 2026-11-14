@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.ApiErrorCode;
 import com.codeit.sb13.playlist_for_everyone.global.exception.conversation.ConversationNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.conversation.DirectMessageNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.file.storage.FileStorage;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.AfterEach;
@@ -355,12 +356,17 @@ public class DirectMessageSecurityIntegrationTest {
                 .isEqualTo(before);
     }
 
-    @ParameterizedTest(name = "기준 메시지 오류 유형={0}")
-    @ValueSource(strings = {"MISSING", "OTHER_CONVERSATION"})
+    @ParameterizedTest(name = "기준 메시지 오류 유형={0}, 요청자 계정으로 인증={1}")
+    @CsvSource({
+            "MISSING, true",
+            "OTHER_CONVERSATION, true",
+            "OTHER_CONVERSATION, false"
+    })
     @DisplayName("기준 메시지가 없거나 다른 대화방에 속하면 404를 반환하고 DB 상태를 유지한다.")
-    void read_returnsNotFoundWhenReferenceMessageUnavailable(String scenario) throws Exception {
+    void read_returnsNotFoundWhenReferenceMessageUnavailable(String scenario, boolean asRequester) throws Exception {
         UUID referenceMessageId = "MISSING".equals(scenario) ? UUID.randomUUID() : otherConversationMessageId;
-        String accessToken = issueAccessToken(requesterId);
+        UUID authenticatedUserId = asRequester ? requesterId : withUserId;
+        String accessToken = issueAccessToken(authenticatedUserId);
         Cookie csrfCookie = issueCsrfCookie();
         List<Map<String, Object>> before = findMessages();
 
@@ -372,9 +378,10 @@ public class DirectMessageSecurityIntegrationTest {
                 .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.exceptionName").isString())
-                .andExpect(jsonPath("$.message").isString())
-                .andExpect(jsonPath("$.details").isMap());
+                .andExpect(jsonPath("$.exceptionName").value(DirectMessageNotFoundException.class.getSimpleName()))
+                .andExpect(jsonPath("$.message").value(ApiErrorCode.DIRECT_MESSAGE_NOT_FOUND.getMessage()))
+                .andExpect(jsonPath("$.details.conversationId").value(conversationId.toString()))
+                .andExpect(jsonPath("$.details.directMessageId").value(referenceMessageId.toString()));
 
         assertThat(findMessages())
                 .as("유효하지 않은 기준 메시지로 읽음 상태가 변경되면 안 된다.")

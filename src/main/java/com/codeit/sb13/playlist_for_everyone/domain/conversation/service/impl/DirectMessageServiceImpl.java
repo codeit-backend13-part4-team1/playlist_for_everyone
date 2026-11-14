@@ -5,12 +5,15 @@ import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.response.MessageDto;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.entity.DirectMessage;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.mapper.DirectMessageMapper;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.ConversationService;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.DirectMessageService;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
+import com.codeit.sb13.playlist_for_everyone.global.exception.conversation.ConversationNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -20,14 +23,19 @@ public class DirectMessageServiceImpl implements DirectMessageService {
     private final DirectMessageReader directMessageReader;
     private final DirectMessageMapper directMessageMapper;
     private final DirectMessageUpdater directMessageUpdater;
+    private final ConversationService conversationService;
 
     @Override
     public void read(DirectMessageReadCommand command) {
+        conversationService.existsByIdAndParticipant(command.conversationId(), command.requesterId());
+
         directMessageUpdater.read(command);
     }
 
     @Override
     public CursorResponse<MessageDto> search(DirectMessageSearchCondition condition) {
+        conversationService.existsByIdAndParticipant(condition.conversationId(), condition.requesterId());
+
         List<DirectMessage> result = directMessageReader.search(condition);
         long totalCount = directMessageReader.searchCount(condition);
 
