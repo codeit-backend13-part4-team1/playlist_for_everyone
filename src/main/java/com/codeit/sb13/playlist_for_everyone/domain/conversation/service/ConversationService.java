@@ -57,5 +57,5 @@ public interface ConversationService {
      */
     CursorResponse<ConversationDto> search(ConversationSearchCondition condition);
 
-    void existsByIdAndParticipant(UUID id, UUID participant);
+    void validateParticipant(UUID conversationId, UUID requesterId);
 }

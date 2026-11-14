@@ -74,13 +74,13 @@ public class ConversationReader {
     }
 
     @Transactional(readOnly = true)
-    public void existsByIdAndParticipant(UUID id, UUID participant) {
-        Conversation conversation = conversationRepository.findById(id)
-                .orElseThrow(() -> new ConversationNotFoundException(Map.of("conversationId", id)));
+    public void validateParticipant(UUID conversationId, UUID requesterId) {
+        Conversation conversation = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new ConversationNotFoundException(Map.of("conversationId", conversationId)));
 
-        if (!conversation.isParticipant(participant)) {
-           throw new ConversationNotFoundException(Map.of("conversationId", id),
-                   new ConversationTargetNotFoundException(Map.of("userId", participant)));
+        if (!conversation.isParticipant(requesterId)) {
+           throw new ConversationNotFoundException(Map.of("conversationId", conversationId),
+                   new ConversationTargetNotFoundException(Map.of("userId", requesterId)));
         }
     }
 

@@ -27,14 +27,14 @@ public class DirectMessageServiceImpl implements DirectMessageService {
 
     @Override
     public void read(DirectMessageReadCommand command) {
-        conversationService.existsByIdAndParticipant(command.conversationId(), command.requesterId());
+        conversationService.validateParticipant(command.conversationId(), command.requesterId());
 
         directMessageUpdater.read(command);
     }
 
     @Override
     public CursorResponse<MessageDto> search(DirectMessageSearchCondition condition) {
-        conversationService.existsByIdAndParticipant(condition.conversationId(), condition.requesterId());
+        conversationService.validateParticipant(condition.conversationId(), condition.requesterId());
 
         List<DirectMessage> result = directMessageReader.search(condition);
         long totalCount = directMessageReader.searchCount(condition);
