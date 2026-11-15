@@ -5,11 +5,13 @@ import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.command.Dir
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.DirectMessageSearchCondition;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.response.MessageDto;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.entity.DirectMessage;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.event.DirectMessagePublisher;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.mapper.DirectMessageMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.ConversationService;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.DirectMessageService;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.exception.conversation.ConversationNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.conversation.DirectMessagePublishException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -36,6 +38,8 @@ public class DirectMessageServiceImpl implements DirectMessageService {
     private final DirectMessageMapper directMessageMapper;
     private final DirectMessageUpdater directMessageUpdater;
     private final ConversationService conversationService;
+    private final DirectMessageSaver directMessageSaver;
+    private final DirectMessagePublisher directMessagePublisher;
 
     /** 대화방 미존재·비참여를 먼저 거절한 뒤 Updater의 보안 검사와 기준 메시지 검증·갱신으로 진행한다. */
     @Override
@@ -83,6 +87,16 @@ public class DirectMessageServiceImpl implements DirectMessageService {
 
     @Override
     public MessageDto send(DirectMessageSendCommand command) {
-        throw new UnsupportedOperationException();
+        DirectMessage savedMessage = directMessageSaver.save(command);
+
+        MessageDto messageDto;
+        try {
+            messageDto = directMessageMapper.toMessageDto(savedMessage);
+        } catch (RuntimeException e){
+            throw new DirectMessagePublishException(savedMessage.getId(), command.conversationId(), e);
+        }
+
+        directMessagePublisher.publish(messageDto);
+        return messageDto;
     }
 }
