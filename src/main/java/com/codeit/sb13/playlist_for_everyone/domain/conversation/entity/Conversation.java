@@ -67,4 +67,18 @@ public class Conversation extends CreatedAtEntity {
 
         return userA.getId().equals(userId) || userB.getId().equals(userId);
     }
+
+    public User getReceiver(UUID userId){
+        if (userA.getId().equals(userId)) {
+            return userB;
+        }
+        return userA;
+    }
+
+    public User getSender(UUID userId){
+        if (userA.getId().equals(userId)) {
+            return userA;
+        }
+        return userB;
+    }
 }

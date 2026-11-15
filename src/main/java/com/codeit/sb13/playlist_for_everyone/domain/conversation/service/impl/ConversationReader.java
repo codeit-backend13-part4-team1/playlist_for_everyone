@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
 
 /**
  * 생성용 기존 대화방 확인, 대화방 조회와 참여 검증의 읽기 트랜잭션을 담당한다.
@@ -80,17 +81,38 @@ public class ConversationReader {
      */
     @Transactional(readOnly = true)
     public void validateParticipant(UUID conversationId, UUID requesterId) {
-        Conversation conversation = conversationRepository.findById(conversationId)
-                .orElseThrow(() -> new ConversationNotFoundException(Map.of("conversationId", conversationId)));
+        findAndValidateParticipant(
+                conversationId,
+                requesterId,
+                conversationRepository::findById
+        );
+    }
 
-        if (!conversation.isParticipant(requesterId)) {
-           throw new ConversationNotFoundException(Map.of("conversationId", conversationId),
-                   new ConversationTargetNotFoundException(Map.of("userId", requesterId)));
-        }
+    @Transactional(readOnly = true)
+    public Conversation getForParticipant(UUID conversationId, UUID requesterId) {
+        return findAndValidateParticipant(
+                conversationId,
+                requesterId,
+                conversationRepository::findDetailedById
+        );
     }
 
     private Optional<ConversationDetailProjection> findConversationDetail(ConversationPair pair) {
         return conversationRepository.findDetailByUserPair(pair);
+    }
+
+    private Conversation findAndValidateParticipant(
+            UUID conversationId,
+            UUID requesterId,
+            Function<UUID, Optional<Conversation>> finder) {
+        Conversation conversation = finder.apply(conversationId)
+                .orElseThrow(() -> new ConversationNotFoundException(Map.of("conversationId", conversationId)));
+
+        if (!conversation.isParticipant(requesterId)) {
+            throw new ConversationNotFoundException(Map.of("conversationId", conversationId),
+                    new ConversationTargetNotFoundException(Map.of("userId", requesterId)));
+        }
+        return conversation;
     }
 
 }
