@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.conversation.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.command.DirectMessageReadCommand;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.command.DirectMessageSendCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.DirectMessageSearchCondition;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.response.MessageDto;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
@@ -32,4 +33,6 @@ public interface DirectMessageService {
      * @return 메시지 목록, 다음 페이지 정보, 전체 메시지 개수와 적용한 정렬 조건
      */
     CursorResponse<MessageDto> search(DirectMessageSearchCondition condition);
+
+    MessageDto send(DirectMessageSendCommand command);
 }

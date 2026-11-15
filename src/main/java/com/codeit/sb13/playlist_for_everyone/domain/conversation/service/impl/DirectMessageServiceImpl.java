@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.conversation.service.impl;
 
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.command.DirectMessageReadCommand;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.command.DirectMessageSendCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.DirectMessageSearchCondition;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.response.MessageDto;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.entity.DirectMessage;
@@ -78,5 +79,10 @@ public class DirectMessageServiceImpl implements DirectMessageService {
                 condition.sortBy().getSortKey(),
                 condition.sortDirection()
         );
+    }
+
+    @Override
+    public MessageDto send(DirectMessageSendCommand command) {
+        throw new UnsupportedOperationException();
     }
 }
