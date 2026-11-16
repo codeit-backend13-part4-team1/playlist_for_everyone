@@ -157,5 +157,6 @@ everyone:
   dm:
     websocket:
       transport: ${EVERYONE_DM_WEBSOCKET_TRANSPORT:redis}
+      subscription-enabled: ${EVERYONE_DM_WEBSOCKET_SUBSCRIPTION_ENABLED:true}
       redis:
         channel: ${EVERYONE_DM_WEBSOCKET_REDIS_CHANNEL:everyone:dm:events}

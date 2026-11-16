@@ -4,15 +4,23 @@ import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.response.Me
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.connection.Message;
 import org.springframework.data.redis.connection.MessageListener;
 import org.springframework.messaging.MessagingException;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.Optional;
 
+@Component
+@ConditionalOnProperty(
+        prefix = "everyone.dm.websocket",
+        name = "transport",
+        havingValue = "redis"
+)
 @RequiredArgsConstructor
 @Slf4j
 public class RedisDirectMessageSubscriber implements MessageListener {
