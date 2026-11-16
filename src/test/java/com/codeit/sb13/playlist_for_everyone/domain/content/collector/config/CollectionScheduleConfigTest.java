@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.batch.core.repository.JobRepository;
+import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.ScheduledAnnotationBeanPostProcessor;
@@ -112,5 +113,50 @@ class CollectionScheduleConfigTest {
 
                     assertThat(processor.getScheduledTasks()).isEmpty();
                 });
-    }
+        }
+
+        @Test
+        void YAML의_환경변수_설정으로_두_수집_작업을_예약한다() {
+            contextRunner
+                    .withInitializer(new ConfigDataApplicationContextInitializer())
+                    .withPropertyValues(
+                            "spring.config.location=classpath:/application.yaml",
+                            "spring.profiles.active=test",
+                            "EVERYONE_COLLECTION_SCHEDULE_ENABLED=true",
+                            "EVERYONE_COLLECTION_SCHEDULE_ZONE=UTC",
+                            "EVERYONE_COLLECTION_SCHEDULE_TMDB_CRON=0 0 3 * * *",
+                            "EVERYONE_COLLECTION_SCHEDULE_TMDB_MAX_PAGES=7",
+                            "EVERYONE_COLLECTION_SCHEDULE_SPORTSDB_CRON=0 0 4 * * *",
+                            "EVERYONE_COLLECTION_SCHEDULE_SPORTSDB_LEAGUE_ID=4328",
+                            "EVERYONE_COLLECTION_SCHEDULE_SPORTSDB_SEASON=2014-2015"
+                    )
+                    .run(context -> {
+                        assertThat(context).hasNotFailed();
+
+                        var properties =
+                                context.getBean(CollectionScheduleProperties.class);
+
+                        assertThat(properties.isEnabled()).isTrue();
+                        assertThat(properties.getZone()).isEqualTo("UTC");
+                        assertThat(properties.getTmdb().getMaxPages()).isEqualTo(7L);
+                        assertThat(properties.getSportsdb().getLeagueId())
+                                .isEqualTo("4328");
+                        assertThat(properties.getSportsdb().getSeason())
+                                .isEqualTo("2014-2015");
+
+                        var processor = context.getBean(
+                                ScheduledAnnotationBeanPostProcessor.class
+                        );
+
+                        assertThat(processor.getScheduledTasks())
+                                .extracting(task ->
+                                        ((CronTask) task.getTask()).getExpression()
+                                )
+                                .containsExactlyInAnyOrder(
+                                        "0 0 3 * * *",
+                                        "0 0 4 * * *"
+                                );
+                    });
+        }
+
 }

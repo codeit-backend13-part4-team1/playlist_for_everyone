@@ -114,3 +114,15 @@ everyone:
       max-delay: ${EVERYONE_SSE_RETRY_MAX_DELAY:30s}
       # 최초 시도 제외. 성공하면 횟수·간격을 초기화하고, 소진하면 해당 연결을 종료한다.
       max-retries: ${EVERYONE_SSE_RETRY_MAX_RETRIES:3}
+
+  collection:
+    schedule:
+      enabled: ${EVERYONE_COLLECTION_SCHEDULE_ENABLED:false}
+      zone: ${EVERYONE_COLLECTION_SCHEDULE_ZONE:Asia/Seoul}
+      tmdb:
+        cron: "${EVERYONE_COLLECTION_SCHEDULE_TMDB_CRON:-}"
+        max-pages: ${EVERYONE_COLLECTION_SCHEDULE_TMDB_MAX_PAGES:5}
+      sportsdb:
+        cron: "${EVERYONE_COLLECTION_SCHEDULE_SPORTSDB_CRON:-}"
+        league-id: "${EVERYONE_COLLECTION_SCHEDULE_SPORTSDB_LEAGUE_ID:}"
+        season: "${EVERYONE_COLLECTION_SCHEDULE_SPORTSDB_SEASON:}"
