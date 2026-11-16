@@ -491,7 +491,7 @@ IntelliJ에서 `TmdbClientLiveTest`의 실행 설정에
 - 기존에 저장된 콘텐츠의 정보는 덮어쓰지 않습니다.
 
 앱 시작 시 배치는 자동 실행하지 않습니다.
-정기 실행은 후속 작업에서 연결합니다.
+정기 실행 설정은 아래 콘텐츠 정기 수집 항목을 참고합니다.
 
 ##### 실패 처리와 재시작
 
@@ -579,7 +579,7 @@ RUN_SPORTSDB_LIVE_TEST=true ./gradlew test --tests '*SportsDbClientLiveTest' --r
 - 재수집 시 기존 콘텐츠와 태그는 덮어쓰지 않습니다.
 
 앱 시작 시 배치는 자동 실행하지 않습니다.
-정기 실행과 실패 시 자동 재시도는 후속 작업입니다.
+정기 실행 설정은 아래 콘텐츠 정기 수집 항목을 참고합니다. 실패 시 자동 재시도는 후속 작업입니다.
 
 ##### 실패 처리와 재시작
 
@@ -625,6 +625,71 @@ TMDB·스포츠 Job의 공존 및 클라이언트 호출 분리를 검증합니�
 2026-11-11에 실제 API로 리그 4328, 시즌 2014-2015 수집 배치를 실행해
 COMPLETED를 확인했습니다.
 로컬 PostgreSQL에서 경기 ID·제목·종목 및 리그 태그가 저장된 것을 확인했습니다.
+
+### 콘텐츠 정기 수집
+
+설정한 시간에 TMDB와 TheSportsDB 수집 배치를 실행합니다.
+기본값은 비활성화이며, 로컬 서버를 실행하는 것만으로 수집이 시작되지는 않습니다.
+
+#### 설정 방법
+
+로컬에서는 `.env.dev`, 운영에서는 배포 환경변수로 설정합니다.
+
+```dotenv
+EVERYONE_COLLECTION_SCHEDULE_ENABLED=false
+EVERYONE_COLLECTION_SCHEDULE_ZONE=Asia/Seoul
+
+EVERYONE_COLLECTION_SCHEDULE_TMDB_CRON=-
+EVERYONE_COLLECTION_SCHEDULE_TMDB_MAX_PAGES=5
+
+EVERYONE_COLLECTION_SCHEDULE_SPORTSDB_CRON=-
+EVERYONE_COLLECTION_SCHEDULE_SPORTSDB_LEAGUE_ID=
+EVERYONE_COLLECTION_SCHEDULE_SPORTSDB_SEASON=
+```
+
+- `ENABLED`: 전체 정기 수집 활성화 여부
+- `ZONE`: cron 실행 시간의 기준 시간대
+- `TMDB_CRON`, `SPORTSDB_CRON`: 각 수집 작업의 실행 시간. `-`이면 해당 작업은 예약하지 않습니다.
+- `TMDB_MAX_PAGES`: 영화·TV 각각 수집할 최대 페이지 수. 1~500을 허용합니다.
+- `SPORTSDB_LEAGUE_ID`, `SPORTSDB_SEASON`: 스포츠 수집 대상. 스포츠 예약을 사용할 때 필수입니다.
+
+예를 들어 TMDB를 매일 한국 시간 오전 3시에 수집하려면,
+`ENABLED=true`, `ZONE=Asia/Seoul`, `TMDB_CRON=0 0 3 * * *`로 설정합니다.
+이는 설정 예시이며, 운영 수집 주기는 별도로 정합니다.
+
+cron은 `초 분 시 일 월 요일` 순서입니다.
+설정을 변경한 뒤에는 애플리케이션을 재시작합니다.
+
+실제 TMDB 수집에는 유효한 API Read Access Token이 필요합니다.
+스포츠 수집에는 지정한 API 키의 조회 범위와 요청 제한이 적용됩니다.
+
+`spring.batch.job.enabled=false`는 그대로 유지합니다.
+이 값은 앱 시작 시 배치 실행을 제어하며, 정기 수집 활성화 설정과는 별개입니다.
+
+#### 실행 방식과 제한사항
+
+- 콘텐츠 수집 전용 스케줄러를 사용하며, 스레드는 1개입니다.
+- 실행 직전에 같은 Job의 실행 중인 이력이 있으면 이번 요청을 건너뜁니다. 기존 실행은 중단하지 않습니다.
+- 스포츠 실행 여부는 리그·시즌별이 아니라 스포츠 Job 전체를 기준으로 확인합니다.
+- 새 실행마다 새로운 `run.id`를 부여합니다. 실패한 실행을 이어서 재시작하는 방식은 아닙니다.
+- 실패한 작업의 자동 재시도·재시작은 이번 작업에 포함하지 않습니다.
+- 재수집하더라도 기존 콘텐츠와 태그는 중복 저장하거나 덮어쓰지 않습니다.
+
+현재는 단일 서버에서 사용하는 것을 기준으로 구현했습니다.
+실행 상태 조회와 새 실행 시작은 하나의 원자적 작업이 아니므로,
+여러 서버에서 동시에 예약 실행을 켜는 경우에는 별도의 중복 실행 방지가 필요합니다.
+
+#### 테스트
+
+아래 테스트는 실제 API와 DB 대신 Mock을 사용하므로 Docker 없이 실행할 수 있습니다.
+
+```bash
+./gradlew test --tests '*CollectionSchedulePropertiesTest' --tests '*CollectionScheduleConfigTest' --tests '*CollectionSchedulerTest' --tests '*CollectionJobLauncherTest'
+```
+
+설정값 검증, 활성화 여부에 따른 등록, cron 예약,
+배치 실행 파라미터 전달, 이미 실행 중인 Job의 추가 실행 방지를 확인합니다.
+실제 YAML에 정의한 환경변수 연결도 검사합니다.
 
 ## 협업과 후속 작업
 
