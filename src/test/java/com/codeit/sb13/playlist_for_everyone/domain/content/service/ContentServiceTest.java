@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentC
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentResult;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
@@ -72,7 +73,7 @@ public class ContentServiceTest {
         );
 
         given(writer.create(request, file))
-                .willReturn(new ContentResult(dto, key));
+                .willReturn(new ContentResult<>(dto, key));
 
         given(fileService.getFileUrlByKey(key))
                 .willReturn(presignedUrl);
@@ -89,7 +90,7 @@ public class ContentServiceTest {
                 dto.watcherCount()
         );
 
-        given(contentMapper.toContentDto(dto, presignedUrl, null))
+        given(contentMapper.toContentDto(dto, presignedUrl, 0L))
                 .willReturn(expected);
 
         // when
@@ -102,7 +103,7 @@ public class ContentServiceTest {
 
         verify(writer).create(request, file);
         verify(fileService).getFileUrlByKey(key);
-        verify(contentMapper).toContentDto(dto, presignedUrl, null);
+        verify(contentMapper).toContentDto(dto, presignedUrl, 0L);
         verifyNoInteractions(watchingSessionService);
     }
 
@@ -168,6 +169,97 @@ public class ContentServiceTest {
         verify(watchingSessionService).getCurrentViewerCount(contentId);
         verify(fileService).getFileUrlByKey(fileKey);
         verify(contentMapper).toContentDto(dto, presignedUrl, watcherCount);
+    }
+
+    @Test
+    @DisplayName("콘텐츠 일괄 조회 시 S3 썸네일을 Presigned URL로 변환한다.")
+    void getSummariesByIds_s3Thumbnail() {
+        // given
+        UUID contentId = UUID.randomUUID();
+        List<UUID> contentIds = List.of(contentId);
+
+        String fileKey = "contents/test.jpg";
+        String presignedUrl = "https://example.com/presigned.jpg";
+
+        ContentSummary summary = new ContentSummary(
+                contentId,
+                ContentType.movie,
+                "테스트 영화",
+                "테스트 설명",
+                null,
+                List.of("액션"),
+                4.5,
+                2
+        );
+
+        ContentSummary expected = new ContentSummary(
+                contentId,
+                ContentType.movie,
+                "테스트 영화",
+                "테스트 설명",
+                presignedUrl,
+                List.of("액션"),
+                4.5,
+                2
+        );
+
+        given(reader.getSummariesByIds(contentIds))
+                .willReturn(List.of(new ContentResult<>(summary, fileKey)));
+
+        given(fileService.getFileUrlByKey(fileKey))
+                .willReturn(presignedUrl);
+
+        given(contentMapper.toSummary(summary, presignedUrl))
+                .willReturn(expected);
+
+        // when
+        List<ContentSummary> results =
+                contentService.getSummariesByIds(contentIds);
+
+        // then
+        assertThat(results).containsExactly(expected);
+
+        verify(reader).getSummariesByIds(contentIds);
+        verify(fileService).getFileUrlByKey(fileKey);
+        verify(contentMapper).toSummary(summary, presignedUrl);
+    }
+
+    @Test
+    @DisplayName("콘텐츠 일괄 조회 시 외부 썸네일 URL은 그대로 유지한다.")
+    void getSummariesByIds_externalThumbnail() {
+        // given
+        UUID contentId = UUID.randomUUID();
+        List<UUID> contentIds = List.of(contentId);
+
+        String externalUrl = "https://example.com/external.jpg";
+
+        ContentSummary summary = new ContentSummary(
+                contentId,
+                ContentType.movie,
+                "테스트 영화",
+                "테스트 설명",
+                externalUrl,
+                List.of("액션"),
+                4.5,
+                2
+        );
+
+        given(reader.getSummariesByIds(contentIds))
+                .willReturn(List.of(new ContentResult<>(summary, null)));
+
+        given(contentMapper.toSummary(summary, externalUrl))
+                .willReturn(summary);
+
+        // when
+        List<ContentSummary> results =
+                contentService.getSummariesByIds(contentIds);
+
+        // then
+        assertThat(results).containsExactly(summary);
+
+        verify(reader).getSummariesByIds(contentIds);
+        verify(contentMapper).toSummary(summary, externalUrl);
+        verifyNoInteractions(fileService);
     }
 
     @Test

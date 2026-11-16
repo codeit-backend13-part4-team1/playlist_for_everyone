@@ -37,6 +37,23 @@ public class ContentService {
         return toContentDto(result, watcherCount);
     }
 
+    /** 플레이리스트 일괄 조회 */
+    public List<ContentSummary> getSummariesByIds(List<UUID> contentIds) {
+        List<ContentResult<ContentSummary>> results = contentReader.getSummariesByIds(contentIds);
+
+        return results.stream()
+                .map(result -> {
+                    ContentSummary summary = result.dto();
+
+                    String thumbnailUrl = result.fileKey() != null
+                            ? fileService.getFileUrlByKey(result.fileKey())
+                            : summary.thumbnailUrl();
+
+                    return contentMapper.toSummary(summary, thumbnailUrl);
+                })
+                .toList();
+    }
+
     public ContentDto update(
             UUID contentId,
             ContentUpdateRequest request,

@@ -62,7 +62,56 @@ public class ContentReader {
             return List.of();
         }
 
-        return null;
+        Map<UUID, Content> contentById = contentRepository.findAllByIds(contentIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        Content::getId,
+                        Function.identity()
+                ));
+
+        Map<UUID, ContentRatingProjection> ratingById =
+                reviewRepository.findRatingsByContentIds(contentIds)
+                        .stream()
+                        .collect(Collectors.toMap(
+                                ContentRatingProjection::getContentId,
+                                Function.identity()
+                        ));
+
+        return contentIds.stream()
+                .map(contentById::get)
+                .filter(Objects::nonNull)
+                .map(content -> {
+                    ContentRatingProjection rating = ratingById.get(content.getId());
+
+                    double averageRating = rating == null || rating.getAverageRating() == null
+                            ? 0.0
+                            : rating.getAverageRating();
+
+                    int reviewCount = rating == null || rating.getReviewCount() == null
+                            ? 0
+                            : Math.toIntExact(rating.getReviewCount());
+
+                    ContentSummary summary = new ContentSummary(
+                            content.getId(),
+                            content.getType(),
+                            content.getTitle(),
+                            content.getDescription(),
+                            content.getThumbnailUrl(),
+                            content.getTags().stream()
+                                    .map(ContentTag::getTag)
+                                    .toList(),
+                            averageRating,
+                            reviewCount
+                    );
+
+                    FileInfo fileInfo = content.getFileInfo();
+
+                    return new ContentResult<>(
+                            summary,
+                            fileInfo != null ? fileInfo.getKey() : null
+                    );
+                })
+                .toList();
     }
 
 }
