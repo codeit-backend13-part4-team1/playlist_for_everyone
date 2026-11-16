@@ -1,7 +1,8 @@
 package com.codeit.sb13.playlist_for_everyone.global.config;
 
 import com.codeit.sb13.playlist_for_everyone.global.websocket.WebSocketInterceptor;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSession;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistry;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
@@ -30,7 +31,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private TaskScheduler taskScheduler;
     private final WebSocketInterceptor webSocketInterceptor;
-    private final WebSocketRegistry socketRegistry;
+    private final WebSocketSessionRegistry socketRegistry;
 
     @Autowired void setTaskScheduler(@Lazy TaskScheduler taskScheduler) {
         this.taskScheduler = taskScheduler;
@@ -59,11 +60,12 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
             handler -> new WebSocketHandlerDecorator(handler){
                 @Override
                 public void afterConnectionEstablished(WebSocketSession session) throws Exception {
-                    socketRegistry.register(session);
+                    WSSession ws = new WSSession(session.getId(), session);
+                    socketRegistry.register(ws);
                     try {
                         super.afterConnectionEstablished(session);
                     } catch (Exception e) {
-                        socketRegistry.unregister(session);
+                        socketRegistry.unregister(session.getId());
                         throw e;
                     }
                 }
@@ -73,7 +75,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                     try {
                         super.afterConnectionClosed(session, closeStatus);
                     } finally {
-                        socketRegistry.unregister(session);
+                        socketRegistry.unregister(session.getId());
                     }
                 }
             }

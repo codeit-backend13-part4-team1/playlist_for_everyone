@@ -12,8 +12,8 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.EveryOneException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketAuthInvalidException;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistry;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketRegistry;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketRegistryImpl;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistryImpl;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSession;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSessionMapper;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatDto;
@@ -64,11 +64,11 @@ public class WatchingSessionTest {
     @Mock
     UserSummaryMapper userSummaryMapper;
     @Mock
-    WebSocketRegistry socketRegistry;
+    WebSocketSessionRegistry socketRegistry;
     @Mock
     SubscriptionRegistry subscriptionRegistry;
     @Mock
-    WebSocketRegistry webSocketRegistry;
+    WebSocketSessionRegistry webSocketSessionRegistry;
     // interface 단은 setup 에서 설정.
     WatchingSessionService watchingSessionService;
     WatchingSessionMapper mapper;
@@ -202,10 +202,10 @@ public class WatchingSessionTest {
 
     @BeforeEach
     void setUp(){
-        socketRegistry = new WebSocketRegistryImpl();
+        socketRegistry = new WebSocketSessionRegistryImpl();
         // 별도 모듈 테스트가 있으므로, mock 으로 주입.
         watchingSessionService = mock(WatchingSessionService.class);
-        webSocketRegistry = mock(WebSocketRegistryImpl.class);
+        webSocketSessionRegistry = mock(WebSocketSessionRegistryImpl.class);
         mapper = new WatchingSessionMapper();
         watchingSession = new WatchingSession(
                 mapper,
@@ -214,7 +214,7 @@ public class WatchingSessionTest {
                 watchingSessionService,
                 subscriptionRegistry,
                 userSummaryMapper,
-                webSocketRegistry
+                webSocketSessionRegistry
         );
     }
 

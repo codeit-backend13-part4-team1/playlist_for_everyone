@@ -2,8 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.event;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.event.UserSessionRevokedEvent;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisBrokerRegister;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.event.auth.WebSocketAuthenticateMessageListener;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.event.auth.WebSocketAuthenticateRevokeEvent;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.event.messagelistener.WebSocketAuthenticateMessageListener;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,7 +29,7 @@ public class GlobalEventListener {
 
     @EventListener
     public void onAuthRevoke(UserSessionRevokedEvent event){
-        redisTemplate.convertAndSend(authListener.topic(), event.userId());
+        redisTemplate.convertAndSend(authListener.topic(), event);
     }
 
 }

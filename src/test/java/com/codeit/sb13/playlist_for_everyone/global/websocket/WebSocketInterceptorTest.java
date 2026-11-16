@@ -3,12 +3,15 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.AccessTokenClaims;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.service.lock.SpreadLock;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSession;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.DestinationMatcher;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.SessionMatcher;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistry;
 import io.jsonwebtoken.JwtException;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +30,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
@@ -53,11 +57,11 @@ public class WebSocketInterceptorTest {
     @Mock
     HeartBeatDelay delay;
     @Mock
-    SubscriptionRegistry subscriptionRegistry;
-    @Mock
     SessionMatcher sessionMatcher;
     @Mock
-    DestinationMatcher destinationMatcher;
+    WebSocketSessionRegistry sessionRegistry;
+    @Mock
+    UserSessionRepository userSessionRepository;
 
     @InjectMocks
     private WebSocketInterceptor interceptor;
@@ -133,6 +137,13 @@ public class WebSocketInterceptorTest {
         );
     }
 
+    void sessionRegistryTestSet(){
+        // 세션 등록 시뮬레이션
+        WSSession mockSession = mock(WSSession.class);
+        given(sessionRegistry.query(any())).willReturn(Optional.of(mockSession));
+        given(userSessionRepository.isCurrent(any(UUID.class),any(UUID.class))).willReturn(true);
+    }
+
     @BeforeEach
     public void setup() {
         // 테스트를 위한 딜레이 객체 교체
@@ -151,6 +162,7 @@ public class WebSocketInterceptorTest {
         public void wrightTokenConnectionTest() throws Exception {
             Message<?> message = getMessage(StompCommand.CONNECT, "testSession", "Bearer " + "testToken");
 
+            sessionRegistryTestSet();
             tokenSimulateSetup("testToken");
 
             Message<?> result = interceptor.preSend(message,messageChannel);
