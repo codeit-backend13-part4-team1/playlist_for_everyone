@@ -44,6 +44,17 @@ public class UserController {
         return ResponseEntity.ok(response);
     }
 
+    /**
+     * 사용자 상세 조회
+     */
+    @GetMapping("/{userId}")
+    public ResponseEntity<UserDto> getUser(@PathVariable("userId") UUID userId) {
+
+        UserDto response = userService.getUserDtoById(userId);
+
+        return ResponseEntity.ok(response);
+    }
+
     @PatchMapping("/{userId}/role")
     public ResponseEntity<Void> updateRole(@PathVariable("userId") UUID userId,
                                             @Valid @RequestBody UserRoleUpdateRequest request) {
