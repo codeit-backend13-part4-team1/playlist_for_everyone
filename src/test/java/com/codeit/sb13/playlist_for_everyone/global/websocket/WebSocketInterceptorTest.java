@@ -56,11 +56,7 @@ public class WebSocketInterceptorTest {
     @Mock
     HeartBeatDelay delay;
     @Mock
-    SubscriptionRegistry subscriptionRegistry;
-    @Mock
     SessionMatcher sessionMatcher;
-    @Mock
-    DestinationMatcher destinationMatcher;
     @Mock
     WebSocketSessionRegistry sessionRegistry;
 
@@ -138,6 +134,12 @@ public class WebSocketInterceptorTest {
         );
     }
 
+    void sessionRegistryTestSet(){
+        // 세션 등록 시뮬레이션
+        WSSession mockSession = mock(WSSession.class);
+        given(sessionRegistry.query(any())).willReturn(Optional.of(mockSession));
+    }
+
     @BeforeEach
     public void setup() {
         // 테스트를 위한 딜레이 객체 교체
@@ -145,10 +147,6 @@ public class WebSocketInterceptorTest {
                 interceptor,
                 "delay",
                 new HeartBeatDelay(2000L,new SpreadLock())); // 딜레이 텀
-
-        // 세션 등록 시뮬레이션
-        WSSession mockSession = mock(WSSession.class);
-        given(sessionRegistry.query(any())).willReturn(Optional.of(mockSession));
     }
 
 
@@ -160,6 +158,7 @@ public class WebSocketInterceptorTest {
         public void wrightTokenConnectionTest() throws Exception {
             Message<?> message = getMessage(StompCommand.CONNECT, "testSession", "Bearer " + "testToken");
 
+            sessionRegistryTestSet();
             tokenSimulateSetup("testToken");
 
             Message<?> result = interceptor.preSend(message,messageChannel);

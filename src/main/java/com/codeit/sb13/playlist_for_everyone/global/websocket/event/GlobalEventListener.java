@@ -29,7 +29,7 @@ public class GlobalEventListener {
 
     @EventListener
     public void onAuthRevoke(UserSessionRevokedEvent event){
-        redisTemplate.convertAndSend(authListener.topic(), event.userId());
+        redisTemplate.convertAndSend(authListener.topic(), event);
     }
 
 }
