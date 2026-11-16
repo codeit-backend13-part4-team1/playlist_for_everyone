@@ -6,6 +6,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionR
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
+import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketAuthInvalidException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSession;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.SessionMatcher;
@@ -19,11 +20,13 @@ import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.ChannelInterceptor;
+import org.springframework.security.authentication.AuthenticationServiceException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.LockedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.stereotype.Component;
 
+import java.nio.file.attribute.UserPrincipalNotFoundException;
 import java.util.UUID;
 
 /**
@@ -143,7 +146,9 @@ public class WebSocketInterceptor implements ChannelInterceptor {
         AccessTokenClaims accessClaim = jwtTokenProvider.parseAccess(token);
         UUID userId = accessClaim.userId();
         UUID loginSessionId = accessClaim.sessionId();
-        userSessionRepository.isCurrent(userId, loginSessionId);
+        if(!userSessionRepository.isCurrent(userId, loginSessionId))
+            throw new WebSocketAuthInvalidException();
+
 
         User user = userService.getById(userId);
 

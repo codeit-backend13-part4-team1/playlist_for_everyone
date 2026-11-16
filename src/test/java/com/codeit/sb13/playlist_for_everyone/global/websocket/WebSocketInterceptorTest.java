@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.AccessTokenClaims;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
@@ -59,6 +60,8 @@ public class WebSocketInterceptorTest {
     SessionMatcher sessionMatcher;
     @Mock
     WebSocketSessionRegistry sessionRegistry;
+    @Mock
+    UserSessionRepository userSessionRepository;
 
     @InjectMocks
     private WebSocketInterceptor interceptor;
