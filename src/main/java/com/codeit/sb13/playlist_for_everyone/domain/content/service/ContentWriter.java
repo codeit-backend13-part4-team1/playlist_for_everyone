@@ -6,6 +6,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.Content
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentResult;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentThumbnailData;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
+import com.codeit.sb13.playlist_for_everyone.domain.content.event.ContentSearchCacheEvictEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentDetailProjection;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
@@ -17,6 +18,7 @@ import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
 import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -31,6 +33,7 @@ public class ContentWriter {
     private final ContentRepository contentRepository;
     private final ReviewRepository reviewRepository;
     private final PlaylistContentRepository playlistContentRepository;
+    private final ApplicationEventPublisher eventPublisher;
     private final ContentMapper contentMapper;
     private final FileService fileService;
 
@@ -55,9 +58,7 @@ public class ContentWriter {
         );
 
         normalizeTags(request.tags()).forEach(content::addTag);
-
         Content savedContent = contentRepository.save(content);
-
         ContentThumbnailData thumbnailData = getThumbnailData(savedContent);
 
         ContentDto dto = contentMapper.toDto(
@@ -65,6 +66,9 @@ public class ContentWriter {
                 thumbnailData.thumbnailUrl(),
                 0.0, 0, 0L
         );
+
+        // DB 커밋 이후 검색 캐시를 무효화하도록 이벤트 발행
+        eventPublisher.publishEvent(new ContentSearchCacheEvictEvent());
 
         return new ContentResult(dto, thumbnailData.fileKey());
     }
@@ -119,6 +123,9 @@ public class ContentWriter {
                 0L
         );
 
+        // DB 커밋 이후 검색 캐시를 무효화하도록 이벤트 발행
+        eventPublisher.publishEvent(new ContentSearchCacheEvictEvent());
+
         return new ContentResult(
                 contentDto,
                 thumbnailData.fileKey()
@@ -145,6 +152,9 @@ public class ContentWriter {
         if (fileInfo != null) {
             fileService.delete(fileInfo.getId());
         }
+
+        // DB 커밋 이후 검색 캐시를 무효화하도록 이벤트 발행
+        eventPublisher.publishEvent(new ContentSearchCacheEvictEvent());
 
         log.debug(
                 "콘텐츠 삭제: contentId={}, 삭제된 리뷰={}, 삭제된 플레이리스트 연결={}",
