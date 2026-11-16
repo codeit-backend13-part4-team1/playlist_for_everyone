@@ -9,6 +9,7 @@ import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.scheduling.support.CronExpression;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.util.StringUtils;
 
 import java.time.DateTimeException;
 import java.time.ZoneId;
@@ -68,5 +69,15 @@ public class CollectionScheduleProperties {
         } catch (DateTimeException e) {
             return false;
         }
+    }
+
+    @AssertTrue(message = "스포츠 자동 수집에는 리그 ID와 시즌이 필요합니다.")
+    public boolean isSportsDbCollectionValid() {
+        if (!enabled || "-".equals(sportsdb.getCron())) {
+            return true;
+        }
+
+        return StringUtils.hasText(sportsdb.getLeagueId())
+                && StringUtils.hasText(sportsdb.getSeason());
     }
 }
