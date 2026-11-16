@@ -1,8 +1,8 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.controller;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.controller.swagger.ContentApi;
-import com.codeit.sb13.playlist_for_everyone.domain.content.dto.condition.ContentSearchCondition;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentCreateRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentSearchRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentSearchService;
@@ -38,9 +38,9 @@ public class ContentController implements ContentApi {
 
     @GetMapping
     public ResponseEntity<CursorResponse<ContentDto>> search(
-            ContentSearchCondition condition
+            @Valid @ModelAttribute ContentSearchRequest request
     ) {
-        return ResponseEntity.ok(contentSearchService.search(condition));
+        return ResponseEntity.ok(contentSearchService.search(request.toCondition()));
     }
 
     @Override

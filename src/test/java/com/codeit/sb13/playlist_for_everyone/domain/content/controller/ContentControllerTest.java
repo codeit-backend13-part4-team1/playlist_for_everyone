@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.content.controller;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.condition.ContentSearchCondition;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentCreateRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentSearchRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
@@ -224,7 +225,7 @@ public class ContentControllerTest {
         UUID contentId = UUID.randomUUID();
         UUID contentId2 = UUID.randomUUID();
 
-        ContentSearchCondition condition = new ContentSearchCondition(
+        ContentSearchRequest request = new ContentSearchRequest(
                 null,
                 null,
                 null,
@@ -253,15 +254,15 @@ public class ContentControllerTest {
                 List.of("드라마"), 4.5, 3, 5L
         );
 
-        given(contentSearchService.search(condition))
+        given(contentSearchService.search(request.toCondition()))
                 .willReturn(new CursorResponse<>(
                         List.of(dto1, dto2),
                         "2026-11-10T09:00:00",
                         contentId2,
                         true,
                         3L,
-                        condition.sortBy(),
-                        condition.sortDirection()
+                        request.toCondition().sortBy(),
+                        request.toCondition().sortDirection()
                 ));
 
         // when & then
@@ -279,7 +280,7 @@ public class ContentControllerTest {
                         .value(contentId2.toString()))
                 .andExpect(jsonPath("$.totalCount").value(3));
 
-        verify(contentSearchService).search(condition);
+        verify(contentSearchService).search(request.toCondition());
     }
 
     @Test
