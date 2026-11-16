@@ -13,7 +13,12 @@ import org.springframework.scheduling.config.CronTask;
 import org.springframework.batch.core.launch.JobOperator;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.batch.core.job.Job;
+import org.springframework.batch.core.job.JobExecution;
 
+import java.util.Set;
+
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -159,4 +164,37 @@ class CollectionScheduleConfigTest {
                     });
         }
 
+    @Test
+    void 정기_수집을_활성화하면_시작할_때_남은_실행을_복구한다() {
+        var jobOperator = mock(JobOperator.class);
+        var jobRepository = mock(JobRepository.class);
+        var tmdbJob = mock(Job.class);
+        var sportsDbJob = mock(Job.class);
+        var execution = mock(JobExecution.class);
+
+        when(tmdbJob.getName()).thenReturn("tmdbCollectionJob");
+        when(sportsDbJob.getName()).thenReturn("sportsDbCollectionJob");
+
+        when(jobRepository.findRunningJobExecutions("tmdbCollectionJob"))
+                .thenReturn(Set.of(execution));
+        when(jobRepository.findRunningJobExecutions("sportsDbCollectionJob"))
+                .thenReturn(Set.of());
+
+        new ApplicationContextRunner()
+                .withBean(JobOperator.class, () -> jobOperator)
+                .withBean(JobRepository.class, () -> jobRepository)
+                .withBean("tmdbCollectionJob", Job.class, () -> tmdbJob)
+                .withBean("sportsDbCollectionJob", Job.class, () -> sportsDbJob)
+                .withUserConfiguration(
+                        CollectionScheduleConfig.class,
+                        SchedulingTestConfig.class
+                )
+                .withPropertyValues(
+                        "everyone.collection.schedule.enabled=true"
+                )
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    verify(jobOperator).recover(execution);
+                });
+    }
 }
