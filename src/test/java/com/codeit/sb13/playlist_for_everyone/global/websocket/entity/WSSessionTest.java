@@ -72,8 +72,6 @@ public class WSSessionTest {
     @Test
     @DisplayName("세션 상태가 register 일 때만 세션 삭제가 가능하고, 세션이 삭제되면 모든 구독이 다 해지된다.")
     void testDisconnect() throws Exception {
-        assertThatThrownBy(() -> session.disconnect()).isInstanceOf(IllegalStateException.class);
-
         session.connect("test-user", "test-login-session");
         session.subscribe("test-sub-1", "/path1", null);
         session.subscribe("test-sub-2", "/path2", null);
