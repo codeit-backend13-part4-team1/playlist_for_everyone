@@ -16,8 +16,13 @@ public class CollectionScheduler {
     }
 
     public void collectTmdb() throws Exception {
+        launcher.startTmdb(properties.getTmdb().getMaxPages());
     }
 
     public void collectSportsDb() throws Exception {
+        launcher.startSportsDb(
+                properties.getSportsdb().getLeagueId(),
+                properties.getSportsdb().getSeason()
+        );
     }
 }
