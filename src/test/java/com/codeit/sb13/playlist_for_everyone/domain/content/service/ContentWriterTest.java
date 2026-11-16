@@ -7,6 +7,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentSource;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentTag;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
+import com.codeit.sb13.playlist_for_everyone.domain.content.event.ContentSearchCacheEvictEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentDetailProjection;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
@@ -23,6 +24,7 @@ import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
@@ -53,6 +55,9 @@ public class ContentWriterTest {
     private FileService fileService;
 
     @Mock
+    private ApplicationEventPublisher eventPublisher;
+
+    @Mock
     private ContentMapper contentMapper;
 
     @InjectMocks
@@ -65,7 +70,7 @@ public class ContentWriterTest {
     }
 
     @Test
-    @DisplayName("관리자 콘텐츠를 정상적으로 생성한다.")
+    @DisplayName("관리자 콘텐츠를 정상적으로 생성하고 캐시 무효화 이벤트를 발행한다.")
     void create_success() {
         // given
         ContentCreateRequest request = new ContentCreateRequest(
@@ -122,6 +127,7 @@ public class ContentWriterTest {
         );
 
         assertThat(result.fileKey()).isEqualTo(fileInfo.getKey());
+        verify(eventPublisher).publishEvent(any(ContentSearchCacheEvictEvent.class));
     }
 
     @Test
@@ -184,7 +190,7 @@ public class ContentWriterTest {
     }
 
     @Test
-    @DisplayName("콘텐츠 수정 시 변경 사항과 집계 정보가 반영된다.")
+    @DisplayName("콘텐츠 수정 시 변경 사항과 집계 정보를 반영하고 캐시 무효화 이벤트를 발행한다.")
     void update_success() {
         // given
         UUID contentId = UUID.randomUUID();
@@ -227,6 +233,8 @@ public class ContentWriterTest {
                 content,
                 "thumbnail-url",
                 4.5, 3, 0L);
+
+        verify(eventPublisher).publishEvent(any(ContentSearchCacheEvictEvent.class));
     }
 
     @Test
@@ -452,7 +460,7 @@ public class ContentWriterTest {
     }
 
     @Test
-    @DisplayName("콘텐츠 삭제 시 연결된 리뷰, 파일, 플레이리스트콘텐츠도 삭제한다.")
+    @DisplayName("콘텐츠 삭제 시 연결된 리뷰, 파일, 플레이리스트 콘텐츠를 삭제하고 캐시 무효화 이벤트를 발행한다.")
     void deleteById_success() {
         // given
         UUID contentId = UUID.randomUUID();
@@ -488,6 +496,8 @@ public class ContentWriterTest {
         inOrder.verify(contentRepository).delete(content);
         inOrder.verify(contentRepository).flush();
         inOrder.verify(fileService).delete(fileId);
+
+        verify(eventPublisher).publishEvent(any(ContentSearchCacheEvictEvent.class));
     }
 
     @Test
