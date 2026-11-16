@@ -141,6 +141,7 @@ public class WebSocketInterceptorTest {
         // 세션 등록 시뮬레이션
         WSSession mockSession = mock(WSSession.class);
         given(sessionRegistry.query(any())).willReturn(Optional.of(mockSession));
+        given(userSessionRepository.isCurrent(any(UUID.class),any(UUID.class))).willReturn(true);
     }
 
     @BeforeEach

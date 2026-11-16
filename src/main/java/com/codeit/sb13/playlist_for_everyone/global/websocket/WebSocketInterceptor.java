@@ -149,6 +149,11 @@ public class WebSocketInterceptor implements ChannelInterceptor {
         if(!userSessionRepository.isCurrent(userId, loginSessionId))
             throw new WebSocketAuthInvalidException();
 
+        // 세션 해제를 위한 세션 등록 로직
+        WSSession session =  sessionRegistry.query(accessor.getSessionId())
+                .orElseThrow(WebSocketSessionNotFoundException::new);
+
+        session.connect(userId.toString(), accessClaim.sessionId().toString());
 
         User user = userService.getById(userId);
 
@@ -170,11 +175,7 @@ public class WebSocketInterceptor implements ChannelInterceptor {
 
         accessor.setUser(authentication);
 
-        // 세션 해제를 위한 세션 등록 로직
-        WSSession session =  sessionRegistry.query(accessor.getSessionId())
-                .orElseThrow(WebSocketSessionNotFoundException::new);
 
-        session.connect(userId.toString(), accessClaim.sessionId().toString());
     }
 
     private String token(StompHeaderAccessor accessor) {
