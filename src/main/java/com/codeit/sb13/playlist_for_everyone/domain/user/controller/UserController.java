@@ -1,9 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.user.controller;
 
-import com.codeit.sb13.playlist_for_everyone.domain.user.dto.request.UserCreateRequest;
-import com.codeit.sb13.playlist_for_everyone.domain.user.dto.request.UserLockUpdateRequest;
-import com.codeit.sb13.playlist_for_everyone.domain.user.dto.request.UserRoleUpdateRequest;
-import com.codeit.sb13.playlist_for_everyone.domain.user.dto.request.UserSearchRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.service.PasswordChangeService;
+import com.codeit.sb13.playlist_for_everyone.domain.user.dto.request.*;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserAdministrationService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
@@ -24,6 +22,7 @@ public class UserController {
 
     private final UserService userService;
     private final UserAdministrationService userAdministrationService;
+    private final PasswordChangeService passwordChangeService;
 
     @PostMapping
     public ResponseEntity<UserDto> create(@Valid @RequestBody UserCreateRequest request) {
@@ -59,6 +58,13 @@ public class UserController {
                                              @Valid @RequestBody UserLockUpdateRequest request) {
 
         userAdministrationService.updateLocked(userId, request.locked());
+
+        return ResponseEntity.noContent().build();
+    }
+    @PatchMapping("/{userId}/password")
+    public ResponseEntity<Void> changePassword(@PathVariable("userId") UUID userId,
+                                               @Valid @RequestBody ChangePasswordRequest request) {
+        passwordChangeService.changePassword(userId, request.password());
 
         return ResponseEntity.noContent().build();
     }

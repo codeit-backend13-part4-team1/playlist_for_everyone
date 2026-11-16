@@ -11,6 +11,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -30,6 +31,7 @@ import java.util.UUID;
  *
  * 비밀번호 검증은 AuthenticationManager가 수행한다.
  */
+@Slf4j
 public class JwtAuthenticationSuccessHandler implements AuthenticationSuccessHandler {
 
     private static final String REFRESH_COOKIE_NAME = "REFRESH_TOKEN";
@@ -99,13 +101,7 @@ public class JwtAuthenticationSuccessHandler implements AuthenticationSuccessHan
 
         // 교체된 이전 로그인이 있으면 알린다.
         // 로그인 성공 처리는 트랜잭션 밖이므로 바로 발행한다.
-        session.replaced().ifPresent(replacedSessionId -> eventPublisher.publishEvent(
-                new UserSessionRevokedEvent(
-                        userId,
-                        replacedSessionId,
-                        UserSessionRevokedEvent.RevokeReason.DUPLICATE_LOGIN
-                )
-        ));
+        session.replaced().ifPresent(replacedSessionId -> publishSessionReplaced(userId, replacedSessionId));
 
         // Access Token은 JSON으로, Refresh Token은 HttpOnly 쿠키로 전달한다.
         JwtDto jwtDto = new JwtDto(userDto, accessToken);
@@ -118,6 +114,19 @@ public class JwtAuthenticationSuccessHandler implements AuthenticationSuccessHan
 
         // 로그인 성공 응답은 세션이나 리다이렉트 없이 JSON으로 반환한다.
         objectMapper.writeValue(response.getWriter(), jwtDto);
+    }
+
+    private void publishSessionReplaced(UUID userId, UUID replacedSessionId) {
+        try {
+            eventPublisher.publishEvent(new UserSessionRevokedEvent(
+                    userId,
+                    replacedSessionId,
+                    UserSessionRevokedEvent.RevokeReason.DUPLICATE_LOGIN
+            ));
+        } catch (RuntimeException exception) {
+            log.error("이전 로그인 세션 종료 후속 처리에 실패했습니다. userId={}, sessionId={}",
+                    userId, replacedSessionId, exception);
+        }
     }
 
     /**
