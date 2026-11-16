@@ -4,17 +4,16 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.dto.condition.Conten
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
-import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentResult;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
+import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentSearchCacheService;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentSearchService;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
-import org.mockito.ArgumentCaptor;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.test.context.support.WithMockUser;
@@ -238,7 +237,7 @@ public class ContentControllerTest {
                 "createdAt"
         );
 
-        ContentSummary summary1 = new ContentSummary(
+        ContentDto dto1 = new ContentDto(
                 contentId,
                 ContentType.movie,
                 "테스트 영화",
@@ -246,18 +245,19 @@ public class ContentControllerTest {
                 "https://example.com/thumbnail.jpg",
                 List.of("액션"),
                 4.5,
-                2
+                2,
+                10L
         );
 
-        ContentSummary summary2 = new ContentSummary(
+        ContentDto dto2 = new ContentDto(
                 contentId2, ContentType.movie,
                 "영화2", "설명2", "thumbnail2",
-                List.of("드라마"), 4.5, 3
+                List.of("드라마"), 4.5, 3, 5L
         );
 
         given(contentSearchService.search(condition))
                 .willReturn(new CursorResponse<>(
-                        List.of(summary1, summary2),
+                        List.of(dto1, dto2),
                         "2026-11-10T09:00:00",
                         contentId2,
                         true,

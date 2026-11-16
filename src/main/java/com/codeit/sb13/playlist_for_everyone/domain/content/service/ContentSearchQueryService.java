@@ -1,8 +1,11 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.condition.ContentSearchCondition;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentResult;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSearchResult;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSummary;
+import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
@@ -21,7 +24,7 @@ public class ContentSearchQueryService {
     private final ContentMapper contentMapper;
 
     @Transactional(readOnly = true)
-    public CursorResponse<ContentSummary> search(ContentSearchCondition condition) {
+    public CursorResponse<ContentResult> search(ContentSearchCondition condition) {
         List<ContentSearchResult> results = contentRepository.search(condition);
 
         // 다음 페이지 존재 여부 확인
@@ -52,14 +55,25 @@ public class ContentSearchQueryService {
             nextIdAfter = lastResult.content().getId();
         }
 
-        // ContentSearchResult -> ContentSummary 변환
-        List<ContentSummary> contents = page.stream()
-                .map(result -> contentMapper.toSummary(
-                        result.content(),
-                        result.content().getThumbnailUrl(),
-                        result.averageRating(),
-                        result.reviewCount()
-                ))
+        // ContentSearchResult -> ContentResult 변환
+        List<ContentResult> contents = page.stream()
+                .map(result -> {
+                    Content content = result.content();
+
+                    ContentDto dto = contentMapper.toDto(
+                            content,
+                            content.getThumbnailUrl(),
+                            result.averageRating(),
+                            result.reviewCount(),
+                            0L
+                    );
+
+                    String fileKey = content.getFileInfo() != null
+                            ? content.getFileInfo().getKey()
+                            : null;
+
+                    return new ContentResult(dto, fileKey);
+                })
                 .toList();
 
         // 전체 검색 결과 개수 조회

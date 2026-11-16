@@ -5,13 +5,9 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.dto.condition.Conten
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
-import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentResult;
-import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSummary;
-import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentSearchService;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
-import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -29,8 +25,6 @@ public class ContentController implements ContentApi {
 
     private final ContentService contentService;
     private final ContentSearchService contentSearchService;
-    private final FileService fileService;
-    private final ContentMapper contentMapper;
 
     @Override
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -43,7 +37,7 @@ public class ContentController implements ContentApi {
     }
 
     @GetMapping
-    public ResponseEntity<CursorResponse<ContentSummary>> search(
+    public ResponseEntity<CursorResponse<ContentDto>> search(
             ContentSearchCondition condition
     ) {
         return ResponseEntity.ok(contentSearchService.search(condition));

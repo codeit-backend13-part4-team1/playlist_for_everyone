@@ -2,16 +2,11 @@ package com.codeit.sb13.playlist_for_everyone.domain.content.repository;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.condition.ContentSearchCondition;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSearchResult;
-import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSummary;
-import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
-import com.codeit.sb13.playlist_for_everyone.domain.content.entity.QContent;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.QContentTag;
-import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.review.entity.QReview;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
 import com.querydsl.core.Tuple;
-import com.querydsl.core.types.Expression;
 import com.querydsl.core.types.Order;
 import com.querydsl.core.types.OrderSpecifier;
 import com.querydsl.core.types.dsl.BooleanExpression;
@@ -32,7 +27,6 @@ import static com.codeit.sb13.playlist_for_everyone.domain.content.entity.QConte
 public class ContentSearchRepositoryImpl implements ContentSearchRepository {
 
     private final JPAQueryFactory queryFactory;
-    private final ContentMapper mapper;
 
     @Override
     public long countBySearchCondition(ContentSearchCondition condition) {

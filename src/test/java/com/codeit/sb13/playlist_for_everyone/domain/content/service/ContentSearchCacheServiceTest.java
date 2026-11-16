@@ -1,6 +1,8 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.condition.ContentSearchCondition;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentResult;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.global.config.CacheConfig;
@@ -26,11 +28,11 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
 
 @SpringBootTest(classes = {
-        ContentSearchService.class,
-        ContentSearchServiceTest.TestCacheConfig.class
+        ContentSearchCacheService.class,
+        ContentSearchCacheServiceTest.TestCacheConfig.class
 })
 @DisplayName("콘텐츠 검색 서비스 테스트")
-public class ContentSearchServiceTest {
+public class ContentSearchCacheServiceTest {
 
     @TestConfiguration
     @EnableCaching
@@ -45,7 +47,7 @@ public class ContentSearchServiceTest {
     }
 
     @Autowired
-    private ContentSearchService contentSearchService;
+    private ContentSearchCacheService contentSearchService;
 
     @Autowired
     private CacheManager cacheManager;
@@ -67,22 +69,28 @@ public class ContentSearchServiceTest {
 
     }
 
-    private ContentSummary createSummary() {
-        return new ContentSummary(
+    private ContentResult createResult() {
+        ContentDto dto = new ContentDto(
                 UUID.randomUUID(),
                 ContentType.movie,
-                "영화1",
-                "영화설명1",
+                "테스트 영화",
+                "테스트 설명",
                 null,
-                List.of("액션", "드라마"),
+                List.of("액션"),
                 4.5,
-                3
+                2,
+                0L
+        );
+
+        return new ContentResult(
+                dto,
+                "contents/test-thumbnail.jpg"
         );
     }
 
-    private CursorResponse<ContentSummary> createResponse() {
+    private CursorResponse<ContentResult> createResponse() {
         return new CursorResponse<>(
-                List.of(createSummary()),
+                List.of(createResult()),
                 null,
                 null,
                 false,
@@ -96,12 +104,12 @@ public class ContentSearchServiceTest {
     @DisplayName("최초 검색 시 QueryService를 호출한다")
     void search_cacheMiss() {
         // given
-        CursorResponse<ContentSummary> response = createResponse();
+        CursorResponse<ContentResult> response = createResponse();
 
         given(queryService.search(condition)).willReturn(response);
 
         // when
-        CursorResponse<ContentSummary> result =
+        CursorResponse<ContentResult> result =
                 contentSearchService.search(condition);
 
         // then
@@ -113,15 +121,15 @@ public class ContentSearchServiceTest {
     @DisplayName("동일한 검색 조건은 캐시된 결과를 반환한다")
     void search_cacheHit() {
         // given
-        CursorResponse<ContentSummary> response = createResponse();
+        CursorResponse<ContentResult> response = createResponse();
 
         given(queryService.search(condition)).willReturn(response);
 
         // when
-        CursorResponse<ContentSummary> first =
+        CursorResponse<ContentResult> first =
                 contentSearchService.search(condition);
 
-        CursorResponse<ContentSummary> second =
+        CursorResponse<ContentResult> second =
                 contentSearchService.search(condition);
 
         // then
