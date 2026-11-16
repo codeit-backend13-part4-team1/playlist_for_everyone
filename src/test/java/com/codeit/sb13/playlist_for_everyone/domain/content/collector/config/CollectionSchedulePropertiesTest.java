@@ -164,4 +164,20 @@ class CollectionSchedulePropertiesTest {
                                 .map(cron -> Arguments.of(provider, cron))
                 );
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "   ", "Asia/Seoull"})
+    void 시간대가_잘못되면_설정_로딩에_실패한다(String zone) {
+        contextRunner
+                .withPropertyValues(
+                        "everyone.collection.schedule.enabled=true",
+                        "everyone.collection.schedule.zone=" + zone
+                )
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .hasRootCauseInstanceOf(BindValidationException.class)
+                            .hasStackTraceContaining("zone");
+                });
+    }
 }
