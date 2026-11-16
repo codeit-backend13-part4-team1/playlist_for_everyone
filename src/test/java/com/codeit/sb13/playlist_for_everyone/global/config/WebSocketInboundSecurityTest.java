@@ -6,7 +6,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.Convers
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.global.exception.conversation.ConversationNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.WebSocketInterceptor;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -68,7 +68,7 @@ public class WebSocketInboundSecurityTest {
     private WebSocketInterceptor webSocketInterceptor;
 
     @MockitoBean
-    private WebSocketRegistry webSocketRegistry;
+    private WebSocketSessionRegistry webSocketSessionRegistry;
     private final UUID conversationId = UUID.randomUUID();
     private final UUID requesterId = UUID.randomUUID();
 
