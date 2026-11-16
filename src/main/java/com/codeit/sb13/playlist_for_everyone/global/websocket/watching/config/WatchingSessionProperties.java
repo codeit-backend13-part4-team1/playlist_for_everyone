@@ -31,4 +31,8 @@ public class WatchingSessionProperties {
         return Pattern.compile("^" + PATH_PREFIX + UUID_REGEX + CHAT_POSTFIX + "$");
     }
 
+    static public Pattern watchingChatSendUrlPattern(){
+        return Pattern.compile("^" + "/pub/contents/" + UUID_REGEX + CHAT_POSTFIX + "$");
+    }
+
 }

@@ -18,7 +18,6 @@ import java.util.UUID;
 @Slf4j
 public abstract class RedisMessageListener implements MessageListener {
 
-    private final UUID id;
     private final RedisTemplate<String, Object> redis;
     private final RedisSerializer<Object> serializer;
 
@@ -27,7 +26,6 @@ public abstract class RedisMessageListener implements MessageListener {
             RedisSerializer<Object> serializer
     ) {
         super();
-        this.id = UUID.randomUUID();
         this.redis = redis;
         this.serializer = serializer;
     }
@@ -55,22 +53,5 @@ public abstract class RedisMessageListener implements MessageListener {
      * @param data 역직렬화 된 데이터
      */
     protected abstract void run(Object data);
-
-    /**
-     * @return 각 리스너의 고유 id
-     */
-    public UUID id(){ return id; }
-
-    @Override
-    public int hashCode(){
-        return id.hashCode();
-    }
-
-    @Override
-    public boolean equals(Object o){
-        if (this == o) return true;
-        if (!(o instanceof RedisMessageListener listener)) return false;
-        return Objects.equals(id, listener.id);
-    }
 
 }

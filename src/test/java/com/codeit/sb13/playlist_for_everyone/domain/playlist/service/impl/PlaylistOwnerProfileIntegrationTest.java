@@ -113,7 +113,8 @@ class PlaylistOwnerProfileIntegrationTest {
     assertThat(response.data()).allSatisfy(playlist ->
         assertThat(playlist.owner().profileImageUrl()).startsWith("https://cdn.test/profile/"));
     // 목록 조회 1회 + 전체 개수 1회 + 구독 여부 1회. 소유자 프로필 이미지는 추가 쿼리가 없어야 한다.
-    assertThat(statementCount).isLessThanOrEqualTo(3L);
+    // + 플레이리스트 콘텐츠 연결 1회”를 추가.
+    assertThat(statementCount).isLessThanOrEqualTo(4L);
   }
 
   @Test

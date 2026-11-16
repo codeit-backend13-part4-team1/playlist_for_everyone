@@ -1,20 +1,21 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
-import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.mapper.UserSummaryMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
+import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketAuthInvalidException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketDestinationInvalidException;
 import com.codeit.sb13.playlist_for_everyone.global.service.MatchRule;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionData;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.ConnectionRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.*;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
@@ -22,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -51,8 +53,9 @@ public class WatchingSession {
     private final UserService userService;
     private final ContentService contentService;
     private final WatchingSessionService watchingSessionService;
-    private final ConnectionRegistry connectionRegistry;
+    private final SubscriptionRegistry subscriptionRegistry;
     private final UserSummaryMapper userSummaryMapper;
+    private final WebSocketRegistry webSocketRegistry;
 
     public String topic(SessionInfo info){
         return watchingSessionService.topic(info);
@@ -74,18 +77,14 @@ public class WatchingSession {
      * @return WatchingSessionChange 세션에 일어난 변화 정보와, 세션 내부 정보를 담고있는 객체.
      */
     public WatchingSessionChange joinViewerSession(SessionInfo info){
-        SessionData session = connectionRegistry.get(
-                check(info.session()),
-                check(info.subscription())
-        );
-        if(session == null) throw new WebSocketSessionNotFoundException();
+        SessionInfo session = subscriptionRegistry.get(info)
+                .orElseThrow(WebSocketSessionNotFoundException::new);
         SecurityUser auth = check(session.user());
         String contentId = getContentIdFromDestination(info);
 
         return getWatchingSessionChange(
                 ChangeType.JOIN,
                 auth,
-                session,
                 info,
                 UUID.fromString(contentId)
         );
@@ -99,21 +98,15 @@ public class WatchingSession {
      * @return WatchingSessionChange 세션에 일어난 변화 정보와, 세션 내부 정보를 담고있는 객체.
      */
     public WatchingSessionChange leaveViewerSession(SessionInfo info){
-        SessionData session = connectionRegistry.get(
-                check(info.session()),
-                check(info.subscription())
-        );
-        if(session == null) throw new WebSocketSessionNotFoundException();
+        SessionInfo session = subscriptionRegistry.get(info)
+                .orElseThrow(WebSocketSessionNotFoundException::new);
         SecurityUser auth = check(session.user());
 
-        // unsubscribe 혹은 disconnect 프레임에서 인증, 경로정보 복원.
-        info.wrap(session);
         String contentId = getContentIdFromDestination(info);
 
         return getWatchingSessionChange(
                 ChangeType.LEAVE,
                 auth,
-                session,
                 info,
                 UUID.fromString(contentId)
         );
@@ -163,30 +156,49 @@ public class WatchingSession {
         return new ContentChatDto(userSummary,content);
     }
 
+    public void disconnectWithContentId(UUID contentId){
+        List<String> sessionIds = watchingSessionService.disconnectWithContentDeleted(contentId);
+        for (String sessionId : sessionIds)
+            try {
+                webSocketRegistry.close(sessionId);
+            } catch (Exception e) {
+                log.error("Failed to close websocket session: {}", sessionId, e);
+            }
+    }
+
+    public void disconnectWithSessionIds(String sessionId){
+        watchingSessionService.disconnectWithSessionIds(sessionId);
+        try {
+            webSocketRegistry.close(sessionId);
+        } catch (Exception e) {
+            log.error("Failed to close websocket session: {}", sessionId, e);
+        }
+    }
+
 
 
 
     private WatchingSessionChange getWatchingSessionChange(
             ChangeType type,
             SecurityUser auth,
-            SessionData session,
             SessionInfo info,
             UUID contentId
     ){
         // 리소스 생성을 위한 조회
         User user = userService.getById(auth.getUserId());
+        ContentDto content = contentService.getById(contentId);
 
         // 최신 사용자로 조회
         if(type == ChangeType.JOIN && user.isLocked()) // 사용자가 잠겨있다면, 로직 방어.
             throw new UserNotFoundException(Map.of());
-
-        Content content = null; // todo - contentService 에서 컨텐츠 조회 매서드 작성.
+        if(content == null)
+            throw new ContentNotFoundException(Map.of());
 
         Watcher watcher = mapper.toWatcher(user);
         WatchContent watchContent = mapper.toWatchContent(content);
         WatchingSessionDto dto = new WatchingSessionDto(
-                session.id(),
-                session.createdAt(),
+                UUID.randomUUID(),  // todo - 전용 레포지토리 생성 후, 객체를 조립 할 때 id 와 함께 작성
+                Instant.now(),  // todo - 전용 레포지토리 생성 후, 객체를 조립할 때 id 와 함께 작성
                 watcher,
                 watchContent
         );

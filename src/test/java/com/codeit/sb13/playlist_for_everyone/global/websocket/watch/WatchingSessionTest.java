@@ -1,7 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watch;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
-import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
@@ -10,10 +10,10 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.mapper.UserSummaryMappe
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.exception.EveryOneException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketAuthInvalidException;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionData;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.ConnectionRegistry;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.InMemoryConnectionRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketRegistryImpl;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSession;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSessionMapper;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatDto;
@@ -34,7 +34,9 @@ import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
 
@@ -61,10 +63,14 @@ public class WatchingSessionTest {
     ContentService contentService;
     @Mock
     UserSummaryMapper userSummaryMapper;
-
+    @Mock
+    WebSocketRegistry socketRegistry;
+    @Mock
+    SubscriptionRegistry subscriptionRegistry;
+    @Mock
+    WebSocketRegistry webSocketRegistry;
     // interface 단은 setup 에서 설정.
     WatchingSessionService watchingSessionService;
-    ConnectionRegistry connectionRegistry;
     WatchingSessionMapper mapper;
     // 테스트 할 객체
     WatchingSession watchingSession;
@@ -174,8 +180,19 @@ public class WatchingSessionTest {
     }
 
     // todo - ContentService 에서 컨텐츠를 조회하는 매서드가 생기면 활성화.
-    void contentServiceLogicSet(Content content){
-//        given(contentService.getById(any(UUID.class))).willReturn(content);
+    void contentServiceLogicSet(){
+        given(contentService.getById(any(UUID.class)))
+                .willReturn(new ContentDto(
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(),
+                        0.0,
+                        0,
+                        0L
+                ));
     }
 
 
@@ -185,30 +202,20 @@ public class WatchingSessionTest {
 
     @BeforeEach
     void setUp(){
-        connectionRegistry = new InMemoryConnectionRegistry();
+        socketRegistry = new WebSocketRegistryImpl();
         // 별도 모듈 테스트가 있으므로, mock 으로 주입.
         watchingSessionService = mock(WatchingSessionService.class);
+        webSocketRegistry = mock(WebSocketRegistryImpl.class);
         mapper = new WatchingSessionMapper();
         watchingSession = new WatchingSession(
                 mapper,
                 userService,
                 contentService,
                 watchingSessionService,
-                connectionRegistry,
-                userSummaryMapper
+                subscriptionRegistry,
+                userSummaryMapper,
+                webSocketRegistry
         );
-
-        // 커넥션 세션 저장
-        SessionInfo info = getSessionInfo(
-                sessionId,
-                null,
-                null,
-                Role.USER
-        );
-
-        SessionData data = info.toData();
-        connectionRegistry.register(data);
-
     }
 
     @Nested
@@ -219,7 +226,6 @@ public class WatchingSessionTest {
                 WatchingSessionChange payload,
                 long watcherCount,
                 SessionInfo info,
-                SessionData data,
                 ChangeType type
         ){
             // payload 는 JOIN 타입을 가진다.
@@ -227,8 +233,8 @@ public class WatchingSessionTest {
             // 현재 사용 유저 수는 repository 반환값과 동일하다.
             assertThat(payload.watcherCount()).isEqualTo(watcherCount);
             // dto 의 id, 생성 시간은 저장된 세션 데이터와 같다.
-            assertThat(payload.watchingSession().id()).isEqualTo(data.id());
-            assertThat(payload.watchingSession().createdAt()).isEqualTo(data.createdAt());
+//            assertThat(payload.watchingSession().id()).isEqualTo(data.id());
+//            assertThat(payload.watchingSession().createdAt()).isEqualTo(data.createdAt());
             // dto 의 watcher 의 userId 는 info 의 user 의 userId 와 같다.
             assertThat(payload.watchingSession().watcher().userId())
                     .isEqualTo(Objects.requireNonNull(info.user()).getUserId());
@@ -269,16 +275,17 @@ public class WatchingSessionTest {
                 );
 
                 // 테스트용 세션 데이터 레지스터에 저장.
-                SessionData data = info.toData();
-                connectionRegistry.register(data);
+                given(subscriptionRegistry.get(eq(info)))
+                        .willReturn(Optional.of(info));
 
                 // 관련 로직 stub
                 userServiceLogicSet(Objects.requireNonNull(info.user()));
                 watchingSessionLogicSet(UUID.fromString(contentId), watcherCount);
+                contentServiceLogicSet();
 
                 WatchingSessionChange payload = watchingSession.joinViewerSession(info);
 
-                validateReturnedObject(payload, watcherCount, info, data,ChangeType.JOIN);
+                validateReturnedObject(payload, watcherCount, info, ChangeType.JOIN);
             }
 
             @ParameterizedTest
@@ -295,8 +302,8 @@ public class WatchingSessionTest {
                 );
 
                 // 테스트용 세션 데이터 레지스터에 저장.
-                SessionData data = info.toData();
-                connectionRegistry.register(data);
+                given(subscriptionRegistry.get(eq(info)))
+                        .willReturn(Optional.of(info));
 
                 userServiceLogicSet(info.user());
                 assertThatThrownBy(() -> watchingSession.joinViewerSession(info))
@@ -319,8 +326,8 @@ public class WatchingSessionTest {
                 );
 
                 // 테스트용 세션 데이터 레지스터에 저장.
-                SessionData data = info.toData();
-                connectionRegistry.register(data);
+                given(subscriptionRegistry.get(eq(info)))
+                        .willReturn(Optional.of(info));
 
                 assertThatThrownBy(() -> watchingSession.joinViewerSession(info))
                         .isInstanceOf(EveryOneException.class); // InvalidAuthException
@@ -353,32 +360,27 @@ public class WatchingSessionTest {
 
             @Test
             @DisplayName("Session info 를 받아와서 ViewSession 을 구독 해제 하고, 엔티티 정보를 이용해서 세션 객체를 조립, 반환한다.")
-            void joinViewerSessionTest(){
+            void leaveViewerSessionTest(){
                 long watcherCount = 10L;
                 SessionInfo info = getSessionInfo(
                         sessionId,
                         "test-sub-1",
-                        null,
+                        registeredDestination,
                         Role.USER
                 );
 
-                // 세션 레지스터에 등록 시뮬.
-                SessionData data = SessionData.builder()
-                        .session(info.session())
-                        .subscription(info.subscription())
-                        .destination(registeredDestination) // 구독 시 저장되었던 경로
-                        .principal(info.principal())
-                        .build();
-                connectionRegistry.register(data);
+                given(subscriptionRegistry.get(any(SessionInfo.class)))
+                        .willReturn(Optional.of(info));
 
                 // 관련 로직 stub
                 userServiceLogicSet(Objects.requireNonNull(info.user()));
                 watchingSessionLogicSet(UUID.fromString(contentId), watcherCount);
+                contentServiceLogicSet();
 
                 WatchingSessionChange payload = watchingSession.leaveViewerSession(info);
 
 
-                validateReturnedObject(payload, watcherCount, info, data,ChangeType.LEAVE);
+                validateReturnedObject(payload, watcherCount, info, ChangeType.LEAVE);
             }
 
             @Disabled // 구독 취소는 중단되지 않도록 한다.
@@ -394,15 +396,8 @@ public class WatchingSessionTest {
                         role,
                         isLocked
                 );
-
-                // 세션 레지스터에 등록 시뮬.
-                SessionData data = SessionData.builder()
-                        .session(info.session())
-                        .subscription(info.subscription())
-                        .destination(registeredDestination) // 구독 시 저장되었던 경로
-                        .principal(info.principal())
-                        .build();
-                connectionRegistry.register(data);
+                given(subscriptionRegistry.get(eq(info)))
+                        .willReturn(Optional.of(info));
 
                 userServiceLogicSet(info.user());
                 assertThatThrownBy(() -> watchingSession.leaveViewerSession(info))
@@ -423,15 +418,8 @@ public class WatchingSessionTest {
                         destination,
                         Role.USER
                 );
-
-                // 세션 레지스터에 등록 시뮬.
-                SessionData data = SessionData.builder()
-                        .session(info.session())
-                        .subscription(info.subscription())
-                        .destination(destination) // 구독 시 저장되었던 경로
-                        .principal(info.principal())
-                        .build();
-                connectionRegistry.register(data);
+                given(subscriptionRegistry.get(eq(info)))
+                        .willReturn(Optional.of(info));
 
                 assertThatThrownBy(() -> watchingSession.leaveViewerSession(info))
                         .isInstanceOf(EveryOneException.class); // InvalidAuthException

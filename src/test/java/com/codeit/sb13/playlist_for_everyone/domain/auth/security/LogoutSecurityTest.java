@@ -5,6 +5,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AuthService;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.service.PasswordResetService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.config.MDCLoggingInterceptor;
 import com.codeit.sb13.playlist_for_everyone.global.config.SecurityConfig;
@@ -79,6 +80,9 @@ class LogoutSecurityTest {
     // SecurityConfig가 로그인 세션 저장소를 주입받는다.
     @MockitoBean
     private UserSessionRepository userSessionRepository;
+
+    @MockitoBean
+    private PasswordResetService passwordResetService;
 
     @Test
     @DisplayName("Access Token 없이 Refresh Token 쿠키로 로그아웃한다")

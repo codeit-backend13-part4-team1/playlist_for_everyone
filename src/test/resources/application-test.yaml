@@ -56,3 +56,7 @@ everyone:
     history:
       key-prefix: everyone:test:sse:history
 
+  websocket:
+    event:
+      # 이벤트 리스너의 구현체를 선택. 테스트에서만 명시적으로 true 를 덮어쓴다.
+      multiple: false

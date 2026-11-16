@@ -55,7 +55,7 @@ HTTP 요청 → 공통 JWT 인증 → FollowController → FollowService
 | Swagger | Principal 숨김, Bearer 인증 연결, 응답 설명 및 생성된 OpenAPI·실제 UI 화면 확인 완료 |
 | CSRF | 현재 공통 설정에서 비활성화. 공통 기반은 [#35](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/35), 팔로우 연동·검증은 [#114](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/114) |
 | 생성 이벤트 | JWT 테스트에서 발행 값을, 서비스 통합 테스트의 전용 리스너에서 커밋 후 수신을 확인 |
-| 알림 연동 | [#155](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/155)의 실제 팔로우 등록 → 알림 저장·SSE 발행 요청 검증. [권한 변경·구독은 #156](../notification/08-role-subscription-integration.md)에 구현되어 있으며, 그 외 업무 이벤트는 상위 #45의 후속 연동 |
+| 알림 연동 | [#155](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/155)의 실제 팔로우 등록 → 알림 저장·SSE 발행 요청 검증. [권한 변경·구독은 #156](../notification/08-role-subscription-integration.md), [팔로워 대상 플레이리스트 생성·구독자 대상 콘텐츠 추가는 #157](../notification/09-playlist-event-integration.md)에 연결되어 있으며, 나머지 업무 이벤트는 상위 #45의 후속 연동 |
 
 검증 범위와 완료·후속 상태, 실행 방법은 [테스트 읽기와 실행](05-testing.md)에서 확인합니다.
 변경을 시작할 때는 [FollowService 계약](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/follow/service/FollowService.java)과 해당 주제의 테스트를 함께 확인합니다.

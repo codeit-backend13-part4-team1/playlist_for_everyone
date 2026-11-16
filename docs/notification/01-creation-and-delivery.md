@@ -2,7 +2,8 @@
 
 [#51](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/51)은 **저장이 커밋된 알림을 수신자에게 실시간으로 전달**하는 연결 작업입니다.
 알림 생성 요청부터 읽고, 트랜잭션 경계와 실패 처리를 확인하면 코드를 따라가기 쉽습니다.
-업무 이벤트부터 확인하려면 [팔로우 연동](07-domain-event-integration.md) 또는 [권한 변경·구독 연동](08-role-subscription-integration.md)을 먼저 읽습니다.
+업무 이벤트부터 확인하려면 [팔로우 연동](07-domain-event-integration.md), [권한 변경·구독 연동](08-role-subscription-integration.md),
+[플레이리스트 생성·콘텐츠 추가 연동](09-playlist-event-integration.md) 중 해당 가이드를 먼저 읽습니다.
 연결부터 전달까지는 [SSE 전체 흐름](../sse/00-overall-flow.md), 이력과 복구 정책은 [공유 이력 계약](../sse/09-shared-history.md)을 참고합니다.
 
 ## 역할부터 구분하기
@@ -72,11 +73,14 @@ sequenceDiagram
 | `UserFollowedEvent` | `NotificationDomainEventListener` | `false` | 무시 |
 | `UserRoleChangedEvent` | `NotificationDomainEventListener` | `false` | 무시 |
 | `PlaylistSubscribedEvent` | `NotificationDomainEventListener` | `false` | 무시 |
+| `PlaylistCreatedEvent` | `NotificationDomainEventListener` | `false` | 무시 |
+| `PlaylistContentAddedEvent` | `NotificationDomainEventListener` | `false` | 무시 |
 | `NotificationCreateRequestedEvent` | `NotificationEventListener` | `true` | 즉시 처리 |
 | `NotificationCreatedEvent` | `NotificationSseEventListener` | `false` | 무시 |
 
 트랜잭션에 등록된 이벤트는 커밋 후 처리하고, 롤백되면 처리하지 않습니다.
-팔로우·권한 변경·구독 경로는 업무 커밋 후 공통 요청을 재발행하므로 별도 변환 트랜잭션 없이 위 즉시 처리 경로로 연결됩니다.
+위 다섯 업무 이벤트는 업무 커밋 후 공통 요청을 재발행하므로 별도 변환 트랜잭션 없이 위 즉시 처리 경로로 연결됩니다.
+플레이리스트 생성·콘텐츠 추가에서는 처리 시점에 수신자를 조회하고 각 수신자에게 공통 요청을 발행합니다.
 
 `NotificationCreatedEvent`는 **저장 트랜잭션 안에서** 발행됩니다. 이름만 보고 커밋까지 완료된 것으로 해석하지 않습니다.
 현재 UUID 생성 전략과 JPA Auditing은 신규 엔티티를 저장할 때 ID·생성시각을 채워 주므로 DTO를 즉시 구성합니다.
@@ -137,8 +141,9 @@ DB 알림은 조회할 수 있습니다. 공유 이력 저장에 성공한 항�
 연결 이후의 일시적 조회 실패는 제한된 재시도를 수행합니다. 이것은 브로커 자동 재발행이나 Outbox가 아닙니다.
 발행 실패 후 보관된 이력이 즉시 전송된다고 보장하지 않으며, 이후 조회 신호나 유효한 커서를 가진 재연결이 필요합니다.
 
-공통 생성 요청으로 변환하는 구현과 검증 범위는 [#155 팔로우](07-domain-event-integration.md)와 [#156 권한 변경·구독](08-role-subscription-integration.md)에 정리했습니다.
-이 세 종류 외의 업무 이벤트는 [#45](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/45)의 후속 연동이며, DM 본문의 `direct-messages` 연동과 Kafka 구현체도 별도 범위입니다.
+공통 생성 요청으로 변환하는 구현과 검증 범위는 [#155 팔로우](07-domain-event-integration.md), [#156 권한 변경·구독](08-role-subscription-integration.md),
+[#157 플레이리스트 생성·콘텐츠 추가](09-playlist-event-integration.md)에 정리했습니다.
+이 다섯 종류 외의 업무 이벤트는 [#45](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/45)의 후속 연동이며, DM 본문의 `direct-messages` 연동과 Kafka 구현체도 별도 범위입니다.
 공유 이력과 재연결 복구의 현재 동작은 [SSE 복구 문서](../sse/10-recovery-and-retry.md)에 정리했습니다.
 이번 기능을 위한 외부 알림 생성 API는 추가하지 않았으며, 실제 저장부터 수신까지의 확인 방법은 다음 문서에 정리합니다.
 

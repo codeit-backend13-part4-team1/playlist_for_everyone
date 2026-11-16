@@ -10,11 +10,18 @@ public enum ApiErrorCode {
     USER_NOT_FOUND("U_001", HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."),
     USER_EMAIL_DUPLICATED("U_002", HttpStatus.BAD_REQUEST, "이미 사용중인 이메일입니다."),
 
+    //AUTH A
+    PASSWORD_RESET_TOO_MANY_REQUESTS("A_001", HttpStatus.TOO_MANY_REQUESTS, "비밀번호 초기화 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."),
+
     //CONTENT C
     CONTENT_NOT_FOUND("C_001", HttpStatus.NOT_FOUND, "콘텐츠를 찾을 수 없습니다."),
 
     //CONVERSATION CS
     CONVERSATION_NOT_FOUND("CS_001", HttpStatus.NOT_FOUND, "대화방을 찾을 수 없습니다."),
+    SELF_CONVERSATION_NOT_ALLOWED("CS_002", HttpStatus.BAD_REQUEST, "자기 자신과의 대화방은 생성할 수 없습니다."),
+    CONVERSATION_CREATION_FAILED("CS_003", HttpStatus.INTERNAL_SERVER_ERROR, "대화방 생성 처리에 실패했습니다."),
+    CONVERSATION_TARGET_NOT_FOUND("CS_004", HttpStatus.BAD_REQUEST, "대화 상대 사용자를 찾을 수 없습니다."),
+    DIRECT_MESSAGE_NOT_FOUND("CS_005", HttpStatus.NOT_FOUND, "메시지를 찾을 수 없습니다."),
 
     // FILE FL
     FILE_NOT_FOUND("FL_001", HttpStatus.NOT_FOUND, "파일을 찾을 수 없습니다."),
