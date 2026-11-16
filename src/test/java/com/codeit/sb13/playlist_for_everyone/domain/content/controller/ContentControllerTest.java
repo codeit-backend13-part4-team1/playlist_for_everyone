@@ -4,10 +4,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.dto.condition.Conten
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
-import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
-import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentSearchCacheService;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentSearchService;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;

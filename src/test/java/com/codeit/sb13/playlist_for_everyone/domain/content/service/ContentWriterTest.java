@@ -15,7 +15,6 @@ import com.codeit.sb13.playlist_for_everyone.domain.review.repository.ReviewRepo
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
 import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

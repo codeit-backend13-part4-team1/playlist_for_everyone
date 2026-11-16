@@ -4,7 +4,6 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.dto.condition.Conten
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentResult;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSearchResult;
-import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
