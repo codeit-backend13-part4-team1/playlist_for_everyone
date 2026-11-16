@@ -21,7 +21,7 @@ public class ContentSearchService {
     public CursorResponse<ContentSummary> search(
             ContentSearchCondition condition
     ) {
-        return null;
+        return queryService.search(condition);
     }
 
 }
