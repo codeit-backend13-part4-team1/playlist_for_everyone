@@ -36,6 +36,7 @@ public class ContentController implements ContentApi {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
+    @Override
     @GetMapping
     public ResponseEntity<CursorResponse<ContentDto>> search(
             @Valid @ModelAttribute ContentSearchRequest request
