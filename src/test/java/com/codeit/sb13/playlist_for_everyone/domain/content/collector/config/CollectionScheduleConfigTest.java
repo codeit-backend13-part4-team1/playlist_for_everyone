@@ -15,8 +15,8 @@ class CollectionScheduleConfigTest {
     void 설정이_없으면_정기_수집_설정을_등록하지_않는다() {
         contextRunner.run(context -> {
             assertThat(context).hasNotFailed();
-            assertThat(context)
-                    .doesNotHaveBean(CollectionScheduleConfig.class);
+            assertThat(context).doesNotHaveBean(CollectionScheduleConfig.class);
+            assertThat(context).doesNotHaveBean("contentCollectionTaskScheduler");
         });
     }
 
@@ -26,8 +26,8 @@ class CollectionScheduleConfigTest {
                 .withPropertyValues("everyone.collection.schedule.enabled=false")
                 .run(context -> {
                     assertThat(context).hasNotFailed();
-                    assertThat(context)
-                            .doesNotHaveBean(CollectionScheduleConfig.class);
+                    assertThat(context).doesNotHaveBean(CollectionScheduleConfig.class);
+                    assertThat(context).doesNotHaveBean("contentCollectionTaskScheduler");
                 });
     }
 
@@ -37,8 +37,8 @@ class CollectionScheduleConfigTest {
                 .withPropertyValues("everyone.collection.schedule.enabled=true")
                 .run(context -> {
                     assertThat(context).hasNotFailed();
-                    assertThat(context)
-                            .hasSingleBean(CollectionScheduleConfig.class);
+                    assertThat(context).hasSingleBean(CollectionScheduleConfig.class);
+                    assertThat(context).hasBean("contentCollectionTaskScheduler");
                 });
     }
 }
