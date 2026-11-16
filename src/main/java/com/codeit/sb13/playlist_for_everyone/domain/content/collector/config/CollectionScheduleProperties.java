@@ -10,6 +10,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.scheduling.support.CronExpression;
 import org.springframework.validation.annotation.Validated;
 
+import java.time.DateTimeException;
+import java.time.ZoneId;
+
 @Getter
 @Setter
 @Validated
@@ -50,6 +53,20 @@ public class CollectionScheduleProperties {
         @AssertTrue(message = "cron은 올바른 실행 시간 형식이어야 합니다.")
         public boolean isCronValid() {
             return "-".equals(cron) || CronExpression.isValidExpression(cron);
+        }
+    }
+
+    @AssertTrue(message = "zone은 올바른 시간대여야 합니다.")
+    public boolean isZoneValid() {
+        if (zone == null || zone.isBlank()) {
+            return false;
+        }
+
+        try {
+            ZoneId.of(zone);
+            return true;
+        } catch (DateTimeException e) {
+            return false;
         }
     }
 }
