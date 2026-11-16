@@ -27,6 +27,12 @@ public class CollectionJobLauncher {
     }
 
     public void startTmdb(long maxPages) throws Exception {
+        if (!jobRepository.findRunningJobExecutions(
+                tmdbCollectionJob.getName()
+        ).isEmpty()) {
+            return;
+        }
+
         var parameters = new JobParametersBuilder()
                 .addLong("maxPages", maxPages)
                 .addString("run.id", UUID.randomUUID().toString())
@@ -36,6 +42,12 @@ public class CollectionJobLauncher {
     }
 
     public void startSportsDb(String leagueId, String season) throws Exception {
+        if (!jobRepository.findRunningJobExecutions(
+                sportsDbCollectionJob.getName()
+        ).isEmpty()) {
+            return;
+        }
+
         var parameters = new JobParametersBuilder()
                 .addString("leagueId", leagueId)
                 .addString("season", season)
