@@ -180,4 +180,49 @@ class CollectionSchedulePropertiesTest {
                             .hasStackTraceContaining("zone");
                 });
     }
+
+    @ParameterizedTest
+    @MethodSource("누락된_스포츠_수집_조건")
+    void 스포츠_예약을_사용할_때_리그와_시즌은_필수다(
+            String leagueId,
+            String season
+    ) {
+        contextRunner
+                .withPropertyValues(
+                        "everyone.collection.schedule.enabled=true",
+                        "everyone.collection.schedule.sportsdb.cron=0 0 4 * * *",
+                        "everyone.collection.schedule.sportsdb.league-id=" + leagueId,
+                        "everyone.collection.schedule.sportsdb.season=" + season
+                )
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .hasRootCauseInstanceOf(BindValidationException.class)
+                            .hasStackTraceContaining("스포츠 자동 수집");
+                });
+    }
+
+    static Stream<Arguments> 누락된_스포츠_수집_조건() {
+        return Stream.of(
+                Arguments.of("", "2014-2015"),
+                Arguments.of("   ", "2014-2015"),
+                Arguments.of("4328", ""),
+                Arguments.of("4328", "   ")
+        );
+    }
+
+    @Test
+    void 스포츠_예약을_사용할_때_리그와_시즌_설정을_생략할_수_없다() {
+        contextRunner
+                .withPropertyValues(
+                        "everyone.collection.schedule.enabled=true",
+                        "everyone.collection.schedule.sportsdb.cron=0 0 4 * * *"
+                )
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .hasRootCauseInstanceOf(BindValidationException.class)
+                            .hasStackTraceContaining("스포츠 자동 수집");
+                });
+    }
 }
