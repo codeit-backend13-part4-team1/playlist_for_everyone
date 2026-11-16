@@ -34,6 +34,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -44,7 +45,10 @@ public class ContentWriterTest {
     private ContentRepository contentRepository;
 
     @Mock
-    private WatchingSessionService watchingSessionService;
+    private ReviewRepository reviewRepository;
+
+    @Mock
+    private PlaylistContentRepository playlistContentRepository;
 
     @Mock
     private FileService fileService;
@@ -445,6 +449,95 @@ public class ContentWriterTest {
         assertThat(content.getFileInfo()).isSameAs(oldFileInfo);
 
         verify(fileService, never()).upload(any());
+        verify(fileService, never()).delete(any());
+    }
+
+    @Test
+    @DisplayName("콘텐츠 삭제 시 연결된 리뷰, 파일, 플레이리스트콘텐츠도 삭제한다.")
+    void deleteById_success() {
+        // given
+        UUID contentId = UUID.randomUUID();
+        UUID fileId = UUID.randomUUID();
+
+        FileInfo fileInfo = mock(FileInfo.class);
+        given(fileInfo.getId()).willReturn(fileId);
+
+        Content content = Content.createAdminContent(
+                ContentType.tvSeries,
+                "너말고다른연애",
+                "KBS 드라마 입니다.",
+                "thumbnail-url",
+                fileInfo
+        );
+
+        given(contentRepository.findById(contentId))
+                .willReturn(Optional.of(content));
+
+        // when
+        writer.deleteById(contentId);
+
+        // then
+        InOrder inOrder = inOrder(
+                reviewRepository,
+                playlistContentRepository,
+                contentRepository,
+                fileService
+        );
+
+        inOrder.verify(reviewRepository).deleteAllByContentId(contentId);
+        inOrder.verify(playlistContentRepository).deleteAllByContentId(contentId);
+        inOrder.verify(contentRepository).delete(content);
+        inOrder.verify(contentRepository).flush();
+        inOrder.verify(fileService).delete(fileId);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 콘텐츠를 삭제하면 예외가 발생한다.")
+    void deleteById_notFound() {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        given(contentRepository.findById(contentId))
+                .willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> writer.deleteById(contentId))
+                .isInstanceOf(ContentNotFoundException.class)
+                .satisfies(exception -> {
+                    ContentNotFoundException e =
+                            (ContentNotFoundException) exception;
+
+                    assertThat(e.getDetails())
+                            .containsEntry("contentId", contentId);
+                });
+
+        then(contentRepository).should().findById(contentId);
+        then(reviewRepository).shouldHaveNoInteractions();
+        then(playlistContentRepository).shouldHaveNoInteractions();
+        then(contentRepository).should(never()).delete(any(Content.class));
+    }
+
+    @Test
+    @DisplayName("파일 정보가 없는 콘텐츠도 정상적으로 삭제한다.")
+    void deleteById_withoutFile() {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        Content content = Content.createAdminContent(
+                ContentType.tvSeries,
+                "너말고다른연애",
+                "KBS 드라마 입니다.",
+                "thumbnail-url"
+        );
+
+        given(contentRepository.findById(contentId))
+                .willReturn(Optional.of(content));
+
+        // when
+        writer.deleteById(contentId);
+
+        // then
+        verify(contentRepository).delete(content);
         verify(fileService, never()).delete(any());
     }
 

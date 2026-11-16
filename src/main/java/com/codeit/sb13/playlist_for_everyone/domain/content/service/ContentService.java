@@ -13,6 +13,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.Playlist
 import com.codeit.sb13.playlist_for_everyone.domain.review.repository.ReviewRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.file.FileEmptyException;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionDisconnectEvent;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
 import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
 import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
@@ -29,13 +30,9 @@ import java.util.*;
 @Slf4j
 public class ContentService {
 
-    private final ContentRepository contentRepository;
-    private final ReviewRepository reviewRepository;
-    private final WatchingSessionService watchingSessionService;
-    private final PlaylistContentRepository playlistContentRepository;
-    private final ContentMapper contentMapper;
     private final ContentReader contentReader;
     private final ContentWriter contentWriter;
+    private final ContentMapper contentMapper;
     private final FileService fileService;
 
     public ContentDto create(ContentCreateRequest request, MultipartFile file) {
@@ -56,32 +53,10 @@ public class ContentService {
         );
     }
 
-    @Transactional
     public void deleteById(UUID contentId) {
-        Content content = contentRepository.findById(contentId)
-                .orElseThrow(() -> new ContentNotFoundException(
-                        Map.of("contentId", contentId)
-                ));
+        contentWriter.deleteById(contentId);
 
-        // TODO: 콘텐츠 삭제 시 WatchingSessionDisconnectEvent 발행 연동
-        int deletedReviews = reviewRepository.deleteAllByContentId(contentId);
-        int deletedPlaylistContents = playlistContentRepository.deleteAllByContentId(contentId);
-
-        contentRepository.delete(content);
-
-        // 콘텐츠 삭제를 DB에 반영한 후 파일 정보 삭제
-        contentRepository.flush();
-
-        // S3 파일 정보가 있는 경우에만 삭제
-        FileInfo fileInfo = content.getFileInfo();
-        if (fileInfo != null) {
-            fileService.delete(fileInfo.getId());
-        }
-
-        log.debug(
-                "콘텐츠 삭제: contentId={}, 삭제된 리뷰={}, 삭제된 플레이리스트 연결={}",
-                contentId, deletedReviews, deletedPlaylistContents
-        );
+        // TODO: 콘텐츠 삭제 성공 후 WatchingSessionDisconnectEvent 발행 연동
     }
 
     private ContentDto resolveThumbnailUrl(ContentResult result) {
