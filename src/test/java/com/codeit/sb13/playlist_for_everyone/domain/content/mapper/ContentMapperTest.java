@@ -94,6 +94,7 @@ public class ContentMapperTest {
         // when
         ContentSummary summary = contentMapper.toSummary(
                 content,
+                "thumbnail-url",
                 4.5,
                 10
         );

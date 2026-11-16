@@ -33,6 +33,7 @@ public class ContentMapper {
 
     public ContentSummary toSummary(
             Content content,
+            String thumbnailUrl,
             double averageRating,
             int reviewCount
     ) {
@@ -41,7 +42,7 @@ public class ContentMapper {
                 content.getType(),
                 content.getTitle(),
                 content.getDescription(),
-                content.getThumbnailUrl(),
+                thumbnailUrl,
                 content.getTags().stream()
                         .map(ContentTag::getTag)
                         .toList(),
@@ -51,7 +52,17 @@ public class ContentMapper {
     }
 
     public ContentDto withThumbnailUrl(ContentDto dto, String thumbnailUrl) {
-        return null;
+        return new ContentDto(
+                dto.id(),
+                dto.type(),
+                dto.title(),
+                dto.description(),
+                thumbnailUrl,
+                dto.tags(),
+                dto.averageRating(),
+                dto.reviewCount(),
+                dto.watcherCount()
+        );
     }
 
 }
