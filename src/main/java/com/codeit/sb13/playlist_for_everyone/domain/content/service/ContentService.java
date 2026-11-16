@@ -34,6 +34,7 @@ public class ContentService {
     private final WatchingSessionService watchingSessionService;
     private final PlaylistContentRepository playlistContentRepository;
     private final ContentMapper contentMapper;
+    private final ContentReader contentReader;
     private final FileService fileService;
 
     @Transactional
@@ -72,30 +73,16 @@ public class ContentService {
         );
     }
 
-    @Transactional(readOnly = true)
-    public ContentResult getById(UUID contentId) {
-        ContentDetailProjection detail = contentRepository.findDetailById(contentId)
-                .orElseThrow(() -> new ContentNotFoundException(
-                        Map.of("contentId", contentId)
-                ));
-        Content content = detail.getContent();
+    public ContentDto getById(UUID contentId) {
+        ContentResult result = contentReader.getById(contentId);
 
-        ContentThumbnailData thumbnailData = getThumbnailData(content);
+        String thumbnailUrl = result.fileKey() != null
+                // 관리자 생성 콘텐츠
+                ? fileService.getFileUrlByKey(result.fileKey())
+                // 외부 API 콘텐츠
+                : result.dto().thumbnailUrl();
 
-        long watcherCount = watchingSessionService.getCurrentViewerCount(contentId);
-
-        ContentDto contentDto = contentMapper.toDto(
-                content,
-                thumbnailData.thumbnailUrl(),
-                detail.getAverageRating(),
-                Math.toIntExact(detail.getReviewCount()),
-                watcherCount
-        );
-
-        return new ContentResult(
-                contentDto,
-                thumbnailData.fileKey()
-        );
+        return contentMapper.withThumbnailUrl(result.dto(), thumbnailUrl);
     }
 
     @Transactional

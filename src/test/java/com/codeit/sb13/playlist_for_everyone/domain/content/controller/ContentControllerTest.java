@@ -300,24 +300,22 @@ public class ContentControllerTest {
                 ContentType.tvSeries,
                 "너 말고 다른 연애",
                 "서강준, 안은진 주연",
-                "https://example.com/thumbnail.jpg",
+                thumbnailUrl,
                 List.of("드라마", "로맨스"),
                 4.5,
                 10,
                 0L
         );
 
-        when(contentService.getById(contentId))
-                .thenReturn(new ContentResult(contentDto, null));
-
-        when(contentMapper.withThumbnailUrl(contentDto, thumbnailUrl))
-                .thenReturn(contentDto);
+        given(contentService.getById(contentId))
+                .willReturn(contentDto);
 
         // when & then
         mockMvc.perform(get("/api/contents/{contentId}", contentId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(contentId.toString()))
                 .andExpect(jsonPath("$.title").value("너 말고 다른 연애"))
+                .andExpect(jsonPath("$.thumbnailUrl").value(thumbnailUrl))
                 .andExpect(jsonPath("$.tags[0]").value("드라마"))
                 .andExpect(jsonPath("$.averageRating").value(4.5))
                 .andExpect(jsonPath("$.reviewCount").value(10))

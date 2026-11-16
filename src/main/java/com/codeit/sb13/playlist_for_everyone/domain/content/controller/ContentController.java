@@ -60,16 +60,7 @@ public class ContentController implements ContentApi {
     @Override
     @GetMapping("/{contentId}")
     public ResponseEntity<ContentDto> get(@PathVariable UUID contentId) {
-        ContentResult result = contentService.getById(contentId);
-
-        ContentDto dto = result.dto();
-
-        String thumbnailUrl = result.fileKey() != null
-                ? fileService.getFileUrlByKey(result.fileKey())
-                : dto.thumbnailUrl();
-
-        ContentDto response = contentMapper.withThumbnailUrl(dto, thumbnailUrl);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(contentService.getById(contentId));
     }
 
     @Override

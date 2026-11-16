@@ -48,7 +48,7 @@ public class ContentServiceTest {
     private ReviewRepository reviewRepository;
 
     @Mock
-    private WatchingSessionService watchingSessionService;
+    private ContentReader contentReader;
 
     @Mock
     private PlaylistContentRepository playlistContentRepository;
@@ -189,107 +189,61 @@ public class ContentServiceTest {
     }
 
     @Test
-    @DisplayName("존재하는 콘텐츠를 단건 조회한다.")
-    void getContent_success() {
+    @DisplayName("외부 썸네일 URL이 있는 콘텐츠는 기존 URL을 반환한다.")
+    void getContent_externalThumbnail() {
         // given
         UUID contentId = UUID.randomUUID();
+        String thumbnailUrl = "https://example.com/thumbnail.jpg";
 
-        Content content = Content.createAdminContent(
-                ContentType.tvSeries,
-                "너말고다른연애",
-                "KBS 드라마 입니다.",
-                "thumbnail-url"
-        );
-
-        ContentDetailProjection detail = mock(ContentDetailProjection.class);
+        ContentDto dto = mock(ContentDto.class);
         ContentDto expected = mock(ContentDto.class);
 
-        given(contentRepository.findDetailById(contentId))
-                .willReturn(Optional.of(detail));
-
-        given(detail.getContent()).willReturn(content);
-        given(detail.getAverageRating()).willReturn(4.5);
-        given(detail.getReviewCount()).willReturn(3L);
-        given(watchingSessionService.getCurrentViewerCount(contentId)).willReturn(3L);
-
-        given(contentMapper.toDto(
-                content, "thumbnail-url", 4.5, 3, 3L
-        )).willReturn(expected);
+        given(dto.thumbnailUrl()).willReturn(thumbnailUrl);
+        given(contentReader.getById(contentId))
+                .willReturn(new ContentResult(dto, null));
+        given(contentMapper.withThumbnailUrl(dto, thumbnailUrl))
+                .willReturn(expected);
 
         // when
-        ContentResult result = contentService.getById(contentId);
+        ContentDto result = contentService.getById(contentId);
 
         // then
-        assertThat(result.dto()).isSameAs(expected);
-        assertThat(result.fileKey()).isNull();
+        assertThat(result).isSameAs(expected);
 
-        verify(contentRepository).findDetailById(contentId);
-        verify(contentMapper).toDto(
-                content, "thumbnail-url", 4.5, 3, 3L
-        );
-    }
-
-    @Test
-    @DisplayName("존재하지 않는 콘텐츠를 조회하면 예외가 발생한다.")
-    void getContent_unexists() {
-        // given
-        UUID contentId = UUID.randomUUID();
-
-        given(contentRepository.findDetailById(contentId))
-                .willReturn(Optional.empty());
-
-        // when & then
-        assertThatThrownBy(() -> contentService.getById(contentId))
-                .isInstanceOf(ContentNotFoundException.class)
-                .satisfies(exception -> {
-                    ContentNotFoundException e =
-                            (ContentNotFoundException) exception;
-
-                    assertThat(e.getDetails())
-                            .containsEntry("contentId", contentId);
-                });
-    }
-
-    @Test
-    @DisplayName("S3 썸네일이 있는 콘텐츠는 조회 시 파일 Key를 반환한다.")
-    void getContent_returnFileKey() {
-        // given
-        UUID contentId = UUID.randomUUID();
-        String key = "contents/test-thumbnail.jpg";
-
-        FileInfo fileInfo = mock(FileInfo.class);
-        given(fileInfo.getKey()).willReturn(key);
-
-        Content content = Content.createAdminContent(
-                ContentType.tvSeries,
-                "너말고다른연애",
-                "KBS 드라마 입니다.",
-                null,
-                fileInfo
-        );
-
-        ContentDetailProjection detail = mock(ContentDetailProjection.class);
-
-        given(contentRepository.findDetailById(contentId))
-                .willReturn(Optional.of(detail));
-        given(detail.getContent()).willReturn(content);
-
-        // when
-        ContentResult result = contentService.getById(contentId);
-
-        // then
-        assertThat(content.getThumbnailUrl()).isNull();
-        assertThat(result.fileKey()).isEqualTo(key);
-
-        verify(contentMapper).toDto(
-                eq(content),
-                isNull(),
-                anyDouble(),
-                anyInt(),
-                anyLong()
-        );
-
+        verify(contentReader).getById(contentId);
+        verify(contentMapper).withThumbnailUrl(dto, thumbnailUrl);
         verifyNoInteractions(fileService);
+    }
+
+    @Test
+    @DisplayName("S3 썸네일이 있는 콘텐츠는 Presigned URL을 반환한다.")
+    void getContent_s3Thumbnail() {
+        // given
+        UUID contentId = UUID.randomUUID();
+        String fileKey = "contents/test-thumbnail.jpg";
+        String presignedUrl = "https://s3.example.com/test-thumbnail.jpg";
+
+        ContentDto dto = mock(ContentDto.class);
+        ContentDto expected = mock(ContentDto.class);
+
+        given(contentReader.getById(contentId))
+                .willReturn(new ContentResult(dto, fileKey));
+
+        given(fileService.getFileUrlByKey(fileKey))
+                .willReturn(presignedUrl);
+
+        given(contentMapper.withThumbnailUrl(dto, presignedUrl))
+                .willReturn(expected);
+
+        // when
+        ContentDto result = contentService.getById(contentId);
+
+        // then
+        assertThat(result).isSameAs(expected);
+
+        verify(contentReader).getById(contentId);
+        verify(fileService).getFileUrlByKey(fileKey);
+        verify(contentMapper).withThumbnailUrl(dto, presignedUrl);
     }
 
     @Test
