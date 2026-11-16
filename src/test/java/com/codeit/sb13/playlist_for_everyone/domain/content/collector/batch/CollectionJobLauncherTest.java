@@ -5,11 +5,17 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.batch.core.job.Job;
 import org.springframework.batch.core.job.parameters.JobParameters;
 import org.springframework.batch.core.launch.JobOperator;
+import org.springframework.batch.core.repository.JobRepository;
+import org.springframework.batch.core.job.JobExecution;
+
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 class CollectionJobLauncherTest {
 
@@ -18,7 +24,8 @@ class CollectionJobLauncherTest {
         var jobOperator = mock(JobOperator.class);
         var tmdbJob = mock(Job.class);
         var sportsDbJob = mock(Job.class);
-        var launcher = new CollectionJobLauncher(jobOperator, tmdbJob, sportsDbJob);
+        var jobRepository = mock(JobRepository.class);
+        var launcher = new CollectionJobLauncher(jobOperator, tmdbJob, sportsDbJob, jobRepository);
 
         launcher.startTmdb(5L);
 
@@ -35,9 +42,8 @@ class CollectionJobLauncherTest {
         var jobOperator = mock(JobOperator.class);
         var tmdbJob = mock(Job.class);
         var sportsDbJob = mock(Job.class);
-        var launcher = new CollectionJobLauncher(
-                jobOperator, tmdbJob, sportsDbJob
-        );
+        var jobRepository = mock(JobRepository.class);
+        var launcher = new CollectionJobLauncher(jobOperator, tmdbJob, sportsDbJob, jobRepository);
 
         launcher.startSportsDb("4328", "2014-2015");
 
@@ -48,5 +54,47 @@ class CollectionJobLauncherTest {
         assertThat(parameters.getString("leagueId")).isEqualTo("4328");
         assertThat(parameters.getString("season")).isEqualTo("2014-2015");
         assertThat(parameters.getString("run.id")).isNotBlank();
+    }
+
+    @Test
+    void TMDB_배치가_실행_중이면_새로_실행하지_않는다() throws Exception {
+        var jobOperator = mock(JobOperator.class);
+        var jobRepository = mock(JobRepository.class);
+        var tmdbJob = mock(Job.class);
+        var sportsDbJob = mock(Job.class);
+
+        when(tmdbJob.getName()).thenReturn("tmdbCollectionJob");
+        when(jobRepository.findRunningJobExecutions("tmdbCollectionJob"))
+                .thenReturn(Set.of(mock(JobExecution.class)));
+
+        var launcher = new CollectionJobLauncher(
+                jobOperator, tmdbJob, sportsDbJob, jobRepository
+        );
+
+        launcher.startTmdb(5L);
+
+        verify(jobRepository).findRunningJobExecutions("tmdbCollectionJob");
+        verifyNoInteractions(jobOperator);
+    }
+
+    @Test
+    void 스포츠_배치가_실행_중이면_새로_실행하지_않는다() throws Exception {
+        var jobOperator = mock(JobOperator.class);
+        var jobRepository = mock(JobRepository.class);
+        var tmdbJob = mock(Job.class);
+        var sportsDbJob = mock(Job.class);
+
+        when(sportsDbJob.getName()).thenReturn("sportsDbCollectionJob");
+        when(jobRepository.findRunningJobExecutions("sportsDbCollectionJob"))
+                .thenReturn(Set.of(mock(JobExecution.class)));
+
+        var launcher = new CollectionJobLauncher(
+                jobOperator, tmdbJob, sportsDbJob, jobRepository
+        );
+
+        launcher.startSportsDb("4328", "2014-2015");
+
+        verify(jobRepository).findRunningJobExecutions("sportsDbCollectionJob");
+        verifyNoInteractions(jobOperator);
     }
 }

@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.Coll
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.ScheduledAnnotationBeanPostProcessor;
@@ -22,6 +23,7 @@ class CollectionScheduleConfigTest {
                     .withBean(JobOperator.class, () -> mock(JobOperator.class))
                     .withBean("tmdbCollectionJob", Job.class, () -> mock(Job.class))
                     .withBean("sportsDbCollectionJob", Job.class, () -> mock(Job.class))
+                    .withBean(JobRepository.class, () -> mock(JobRepository.class))
                     .withUserConfiguration(CollectionScheduleConfig.class,
                             SchedulingTestConfig.class);
 

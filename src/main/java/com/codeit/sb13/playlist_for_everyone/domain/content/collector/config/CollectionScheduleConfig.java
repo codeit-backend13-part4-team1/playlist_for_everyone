@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.Coll
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.CollectionScheduler;
 import org.springframework.batch.core.launch.JobOperator;
 import org.springframework.batch.core.job.Job;
+import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -33,12 +34,14 @@ public class CollectionScheduleConfig {
     public CollectionJobLauncher collectionJobLauncher(
             JobOperator jobOperator,
             @Qualifier("tmdbCollectionJob") Job tmdbCollectionJob,
-            @Qualifier("sportsDbCollectionJob") Job sportsDbCollectionJob
+            @Qualifier("sportsDbCollectionJob") Job sportsDbCollectionJob,
+            JobRepository jobRepository
     ) {
         return new CollectionJobLauncher(
                 jobOperator,
                 tmdbCollectionJob,
-                sportsDbCollectionJob
+                sportsDbCollectionJob,
+                jobRepository
         );
     }
 
