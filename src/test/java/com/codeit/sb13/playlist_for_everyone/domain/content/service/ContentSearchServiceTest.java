@@ -62,7 +62,7 @@ public class ContentSearchServiceTest {
 
         given(cacheService.search(condition))
                 .willReturn(createResponse(
-                        List.of(new ContentResult(dto, fileKey))
+                        List.of(new ContentResult<>(dto, fileKey))
                 ));
         given(fileService.getFileUrlByKey(fileKey))
                 .willReturn(presignedUrl);
@@ -90,7 +90,7 @@ public class ContentSearchServiceTest {
 
         given(cacheService.search(condition))
                 .willReturn(createResponse(
-                        List.of(new ContentResult(dto, null))
+                        List.of(new ContentResult<>(dto, null))
                 ));
         given(contentMapper.toContentDto(dto, externalUrl, null))
                 .willReturn(dto);
@@ -114,8 +114,8 @@ public class ContentSearchServiceTest {
         UUID nextIdAfter = UUID.randomUUID();
         ContentDto dto = createDto(null);
 
-        CursorResponse<ContentResult> cachedResponse = new CursorResponse<>(
-                List.of(new ContentResult(dto, null)),
+        CursorResponse<ContentResult<ContentDto>> cachedResponse = new CursorResponse<>(
+                List.of(new ContentResult<>(dto, null)),
                 "2026-11-16T10:00:00",
                 nextIdAfter,
                 true,
@@ -154,8 +154,8 @@ public class ContentSearchServiceTest {
         );
     }
 
-    private CursorResponse<ContentResult> createResponse(
-            List<ContentResult> contents
+    private CursorResponse<ContentResult<ContentDto>> createResponse(
+            List<ContentResult<ContentDto>> contents
     ) {
         return new CursorResponse<>(
                 contents,

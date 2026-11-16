@@ -20,7 +20,7 @@ public class ContentSearchService {
     private final ContentMapper contentMapper;
 
     public CursorResponse<ContentDto> search(ContentSearchCondition condition) {
-        CursorResponse<ContentResult> response = cacheService.search(condition);
+        CursorResponse<ContentResult<ContentDto>> response = cacheService.search(condition);
 
         List<ContentDto> contents = response.data().stream()
                 .map(result -> {

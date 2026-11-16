@@ -2,11 +2,14 @@ package com.codeit.sb13.playlist_for_everyone.domain.content.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentResult;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentDetailProjection;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.ContentRatingProjection;
+import com.codeit.sb13.playlist_for_everyone.domain.review.repository.ReviewRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
 import org.junit.jupiter.api.DisplayName;
@@ -16,14 +19,14 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("콘텐츠 조회 서비스 테스트")
@@ -31,6 +34,9 @@ public class ContentReaderTest {
 
     @Mock
     private ContentRepository contentRepository;
+
+    @Mock
+    private ReviewRepository reviewRepository;
 
     @Mock
     private WatchingSessionService watchingSessionService;
@@ -51,7 +57,8 @@ public class ContentReaderTest {
                 ContentType.tvSeries,
                 "너말고다른연애",
                 "KBS 드라마 입니다.",
-                "thumbnail-url"
+                "thumbnail-url",
+                null
         );
 
         ContentDetailProjection detail = mock(ContentDetailProjection.class);
@@ -63,15 +70,13 @@ public class ContentReaderTest {
         given(detail.getContent()).willReturn(content);
         given(detail.getAverageRating()).willReturn(4.5);
         given(detail.getReviewCount()).willReturn(3L);
-        given(watchingSessionService.getCurrentViewerCount(contentId))
-                .willReturn(3L);
 
         given(contentMapper.toDto(
-                content, "thumbnail-url", 4.5, 3, 3L
+                content, "thumbnail-url", 4.5, 3, 0L
         )).willReturn(expected);
 
         // when
-        ContentResult result = reader.getById(contentId);
+        ContentResult<ContentDto> result = reader.getById(contentId);
 
         // then
         assertThat(result.dto()).isSameAs(expected);
@@ -79,7 +84,7 @@ public class ContentReaderTest {
 
         verify(contentRepository).findDetailById(contentId);
         verify(contentMapper).toDto(
-                content, "thumbnail-url", 4.5, 3, 3L
+                content, "thumbnail-url", 4.5, 3, 0L
         );
     }
 

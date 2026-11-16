@@ -23,7 +23,7 @@ public class ContentSearchQueryService {
     private final ContentMapper contentMapper;
 
     @Transactional(readOnly = true)
-    public CursorResponse<ContentResult> search(ContentSearchCondition condition) {
+    public CursorResponse<ContentResult<ContentDto>> search(ContentSearchCondition condition) {
         List<ContentSearchResult> results = contentRepository.search(condition);
 
         // 다음 페이지 존재 여부 확인
@@ -55,7 +55,7 @@ public class ContentSearchQueryService {
         }
 
         // ContentSearchResult -> ContentResult 변환
-        List<ContentResult> contents = page.stream()
+        List<ContentResult<ContentDto>> contents = page.stream()
                 .map(result -> {
                     Content content = result.content();
 
@@ -71,7 +71,7 @@ public class ContentSearchQueryService {
                             ? content.getFileInfo().getKey()
                             : null;
 
-                    return new ContentResult(dto, fileKey);
+                    return new ContentResult<>(dto, fileKey);
                 })
                 .toList();
 

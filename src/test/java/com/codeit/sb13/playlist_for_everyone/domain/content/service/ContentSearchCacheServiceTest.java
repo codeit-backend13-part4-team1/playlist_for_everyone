@@ -73,12 +73,12 @@ public class ContentSearchCacheServiceTest {
     @DisplayName("최초 검색 시 QueryService를 호출한다")
     void search_cacheMiss() {
         // given
-        CursorResponse<ContentResult> response = createResponse();
+        CursorResponse<ContentResult<ContentDto>> response = createResponse();
 
         given(queryService.search(condition)).willReturn(response);
 
         // when
-        CursorResponse<ContentResult> result =
+        CursorResponse<ContentResult<ContentDto>> result =
                 cacheService.search(condition);
 
         // then
@@ -90,15 +90,15 @@ public class ContentSearchCacheServiceTest {
     @DisplayName("동일한 검색 조건은 캐시된 결과를 반환한다")
     void search_cacheHit() {
         // given
-        CursorResponse<ContentResult> response = createResponse();
+        CursorResponse<ContentResult<ContentDto>> response = createResponse();
 
         given(queryService.search(condition)).willReturn(response);
 
         // when
-        CursorResponse<ContentResult> first =
+        CursorResponse<ContentResult<ContentDto>> first =
                 cacheService.search(condition);
 
-        CursorResponse<ContentResult> second =
+        CursorResponse<ContentResult<ContentDto>> second =
                 cacheService.search(condition);
 
         // then
@@ -107,7 +107,7 @@ public class ContentSearchCacheServiceTest {
         verify(queryService, times(1)).search(condition);
     }
 
-    private ContentResult createResult() {
+    private ContentResult<ContentDto> createResult() {
         ContentDto dto = new ContentDto(
                 UUID.randomUUID(),
                 ContentType.movie,
@@ -120,13 +120,13 @@ public class ContentSearchCacheServiceTest {
                 0L
         );
 
-        return new ContentResult(
+        return new ContentResult<>(
                 dto,
                 "contents/test-thumbnail.jpg"
         );
     }
 
-    private CursorResponse<ContentResult> createResponse() {
+    private CursorResponse<ContentResult<ContentDto>> createResponse() {
         return new CursorResponse<>(
                 List.of(createResult()),
                 null,

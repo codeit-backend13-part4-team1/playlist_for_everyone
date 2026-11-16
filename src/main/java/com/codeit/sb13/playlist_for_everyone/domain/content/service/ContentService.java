@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentC
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentResult;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
 import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
@@ -26,11 +27,11 @@ public class ContentService {
     private final FileService fileService;
 
     public ContentDto create(ContentCreateRequest request, MultipartFile file) {
-        return toContentDto(contentWriter.create(request, file), null);
+        return toContentDto(contentWriter.create(request, file), 0L);
     }
 
     public ContentDto getById(UUID contentId) {
-        ContentResult result = contentReader.getById(contentId);
+        ContentResult<ContentDto> result = contentReader.getById(contentId);
         long watcherCount = watchingSessionService.getCurrentViewerCount(contentId);
 
         return toContentDto(result, watcherCount);
@@ -41,7 +42,7 @@ public class ContentService {
             ContentUpdateRequest request,
             MultipartFile file
     ) {
-        ContentResult result = contentWriter.update(contentId, request, file);
+        ContentResult<ContentDto> result = contentWriter.update(contentId, request, file);
         long watcherCount = watchingSessionService.getCurrentViewerCount(contentId);
 
         return toContentDto(result, watcherCount);
@@ -53,7 +54,7 @@ public class ContentService {
         // TODO: 콘텐츠 삭제 성공 후 WatchingSessionDisconnectEvent 발행 연동
     }
 
-    private ContentDto toContentDto(ContentResult result, Long watcherCount) {
+    private ContentDto toContentDto(ContentResult<ContentDto> result, Long watcherCount) {
         String thumbnailUrl = result.fileKey() != null
                 ? fileService.getFileUrlByKey(result.fileKey())
                 : result.dto().thumbnailUrl();

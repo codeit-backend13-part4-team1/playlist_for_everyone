@@ -38,7 +38,7 @@ public class ContentWriter {
     private final FileService fileService;
 
     @Transactional
-    public ContentResult create(
+    public ContentResult<ContentDto> create(
             ContentCreateRequest request,
             MultipartFile file
     ) {
@@ -70,11 +70,11 @@ public class ContentWriter {
         // DB 커밋 이후 검색 캐시를 무효화하도록 이벤트 발행
         eventPublisher.publishEvent(new ContentSearchCacheEvictEvent());
 
-        return new ContentResult(dto, thumbnailData.fileKey());
+        return new ContentResult<>(dto, thumbnailData.fileKey());
     }
 
     @Transactional
-    public ContentResult update(
+    public ContentResult<ContentDto> update(
             UUID contentId,
             ContentUpdateRequest request,
             MultipartFile file
@@ -126,7 +126,7 @@ public class ContentWriter {
         // DB 커밋 이후 검색 캐시를 무효화하도록 이벤트 발행
         eventPublisher.publishEvent(new ContentSearchCacheEvictEvent());
 
-        return new ContentResult(
+        return new ContentResult<>(
                 contentDto,
                 thumbnailData.fileKey()
         );

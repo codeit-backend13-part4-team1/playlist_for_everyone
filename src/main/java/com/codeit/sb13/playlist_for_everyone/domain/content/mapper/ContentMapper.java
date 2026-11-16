@@ -33,22 +33,18 @@ public class ContentMapper {
     }
 
     public ContentSummary toSummary(
-            Content content,
-            String thumbnailUrl,
-            double averageRating,
-            int reviewCount
+            ContentSummary summary,
+            String thumbnailUrl
     ) {
         return new ContentSummary(
-                content.getId(),
-                content.getType(),
-                content.getTitle(),
-                content.getDescription(),
+                summary.contentId(),
+                summary.type(),
+                summary.title(),
+                summary.description(),
                 thumbnailUrl,
-                content.getTags().stream()
-                        .map(ContentTag::getTag)
-                        .toList(),
-                averageRating,
-                reviewCount
+                summary.tags(),
+                summary.averageRating(),
+                summary.reviewCount()
         );
     }
 

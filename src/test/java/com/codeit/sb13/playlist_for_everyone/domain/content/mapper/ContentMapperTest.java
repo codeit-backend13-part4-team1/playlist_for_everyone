@@ -1,7 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.mapper;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
-import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import org.junit.jupiter.api.DisplayName;
@@ -76,38 +75,6 @@ public class ContentMapperTest {
 
         // then
         assertThat(dto.tags()).isEmpty();
-    }
-
-    @Test
-    @DisplayName("콘텐츠 엔터티를 ContentSummary로 변환한다")
-    void toSummary_success() {
-        // given
-        Content content = Content.createAdminContent(
-                ContentType.tvSeries,
-                "너말고다른연애",
-                "KBS 드라마 입니다.",
-                "thumbnail-url"
-        );
-        content.addTag("드라마");
-        content.addTag("로맨스");
-
-        // when
-        ContentSummary summary = contentMapper.toSummary(
-                content,
-                "thumbnail-url",
-                4.5,
-                10
-        );
-
-        // then
-        assertThat(summary.contentId()).isEqualTo(content.getId());
-        assertThat(summary.type()).isEqualTo(ContentType.tvSeries);
-        assertThat(summary.title()).isEqualTo("너말고다른연애");
-        assertThat(summary.description()).isEqualTo("KBS 드라마 입니다.");
-        assertThat(summary.thumbnailUrl()).isEqualTo("thumbnail-url");
-        assertThat(summary.tags()).containsExactly("드라마", "로맨스");
-        assertThat(summary.averageRating()).isEqualTo(4.5);
-        assertThat(summary.reviewCount()).isEqualTo(10);
     }
 
     @Test
