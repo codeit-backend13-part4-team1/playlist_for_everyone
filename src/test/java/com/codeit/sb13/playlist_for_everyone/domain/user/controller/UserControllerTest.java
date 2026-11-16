@@ -11,6 +11,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.UserSortBy;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.service.PasswordChangeService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserAdministrationService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.config.MDCLoggingInterceptor;
@@ -73,6 +74,8 @@ class UserControllerTest {
     private static final UUID SESSION_ID =
             UUID.fromString("33333333-3333-3333-3333-333333333333");
 
+    private static final String PASSWORD_URL = "/api/user/{userId}/password";
+
     private static final String TOKEN = "test-access-token";
 
     @Autowired
@@ -95,6 +98,9 @@ class UserControllerTest {
 
     @MockitoBean
     private UserService userService;
+
+    @MockitoBean
+    private PasswordChangeService passwordChangeService;
 
     // SecurityConfig가 로그인 세션 저장소를 주입받는다.
     @MockitoBean
@@ -594,6 +600,89 @@ class UserControllerTest {
                 .andExpect(status().isUnauthorized());
 
         verifyNoInteractions(userAdministrationService);
+    }
+
+    @Test
+    @DisplayName("본인은 비밀번호를 변경할 수 있다.")
+    void 본인은_비밀번호를_변경할_수_있다() throws Exception {
+        prepareAuthenticatedUser(Role.USER);
+
+        mockMvc.perform(patch(PASSWORD_URL, ADMIN_ID)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN)
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"password": "new-password"}
+                                """))
+                .andExpect(status().isNoContent());
+
+        verify(passwordChangeService).changePassword(ADMIN_ID, "new-password");
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = Role.class)
+    @DisplayName("다른 사용자의 비밀번호는 관리자도 변경할 수 없다.")
+    void 다른_사용자의_비밀번호는_변경할_수_없다(Role role) throws Exception {
+        prepareAuthenticatedUser(role);
+
+        mockMvc.perform(patch(PASSWORD_URL, TARGET_USER_ID)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN)
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"password": "new-password"}
+                        """))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(passwordChangeService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{}", "{\"password\": \"\"}", "{\"password\": \"   \"}"})
+    @DisplayName("새 비밀번호가 없거나 비어 있으면 400을 반환한다.")
+    void 새_비밀번호가_비어_있으면_400을_반환한다(String body) throws Exception {
+        prepareAuthenticatedUser(Role.USER);
+
+        mockMvc.perform(patch(PASSWORD_URL, ADMIN_ID)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN)
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(passwordChangeService);
+    }
+
+    @ParameterizedTest
+    @MethodSource("tooLongPasswords")
+    @DisplayName("새 비밀번호가 UTF-8 72바이트를 넘으면 400을 반환한다.")
+    void 새_비밀번호가_72바이트를_넘으면_400을_반환한다(String password) throws Exception {
+        prepareAuthenticatedUser(Role.USER);
+
+        mockMvc.perform(patch(PASSWORD_URL, ADMIN_ID)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN)
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {"password": "%s"}
+                            """.formatted(password)))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(passwordChangeService);
+    }
+
+    @Test
+    @DisplayName("인증되지 않은 사용자는 비밀번호를 변경할 수 없다.")
+    void 인증되지_않은_사용자는_비밀번호를_변경할_수_없다() throws Exception {
+        mockMvc.perform(patch(PASSWORD_URL, ADMIN_ID)
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {"password": "new-password"}
+                            """))
+                .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(passwordChangeService);
     }
 
     static Stream<String> tooLongPasswords() {
