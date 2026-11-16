@@ -5,6 +5,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.conversation.event.DirectMes
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.event.impl.RedisDirectMessagePublisher;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.event.impl.RedisDirectMessageSubscriber;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.event.impl.RedisDirectMessageSubscription;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.DirectMessageDeliveryService;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.impl.DirectMessageDeliveryServiceImpl;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisBrokerRegister;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -24,6 +26,7 @@ class DirectMessageTransportConfigTest {
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
             .withUserConfiguration(
                     DirectMessageTransportConfig.class,
+                    DirectMessageDeliveryServiceImpl.class,
                     RedisDirectMessagePublisher.class,
                     RedisDirectMessageSubscriber.class,
                     RedisDirectMessageSubscription.class
@@ -50,7 +53,8 @@ class DirectMessageTransportConfigTest {
             assertThat(context).hasSingleBean(DirectMessageTransportProperties.class)
                     .hasSingleBean(DirectMessagePublisher.class)
                     .hasSingleBean(DirectMessageSubscription.class)
-                    .hasSingleBean(RedisDirectMessageSubscriber.class);
+                    .hasSingleBean(RedisDirectMessageSubscriber.class)
+                    .hasSingleBean(DirectMessageDeliveryService.class);
 
             DirectMessageTransportProperties properties = context.getBean(DirectMessageTransportProperties.class);
             assertThat(properties.transport()).isEqualTo("redis");

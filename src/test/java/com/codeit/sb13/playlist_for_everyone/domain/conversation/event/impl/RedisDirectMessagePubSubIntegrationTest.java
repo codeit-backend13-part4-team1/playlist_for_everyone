@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.conversation.event.impl;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.config.DirectMessageTransportConfig;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.response.MessageDto;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.event.DirectMessagePublisher;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.impl.DirectMessageDeliveryServiceImpl;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.global.config.RedisConfig;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisBrokerRegister;
@@ -40,6 +41,7 @@ import static org.mockito.Mockito.*;
         classes = {
                 RedisConfig.class,
                 DirectMessageTransportConfig.class,
+                DirectMessageDeliveryServiceImpl.class,
                 RedisBrokerRegister.class,
                 RedisDirectMessagePublisher.class,
                 RedisDirectMessageSubscriber.class,
@@ -204,6 +206,7 @@ public class RedisDirectMessagePubSubIntegrationTest {
                 .withUserConfiguration(
                         RedisConfig.class,
                         DirectMessageTransportConfig.class,
+                        DirectMessageDeliveryServiceImpl.class,
                         RedisBrokerRegister.class,
                         RedisDirectMessagePublisher.class,
                         RedisDirectMessageSubscriber.class,

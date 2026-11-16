@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.conversation.event.impl;
 
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.response.MessageDto;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.DirectMessageDeliveryService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserSummary;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -11,8 +12,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.connection.DefaultMessage;
 import org.springframework.data.redis.connection.Message;
 import org.springframework.data.redis.connection.MessageListener;
-import org.springframework.messaging.MessageDeliveryException;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -30,7 +29,7 @@ class RedisDirectMessageSubscriberTest {
     private static final String CHANNEL = "test:dm:events";
 
     @Mock
-    private SimpMessagingTemplate messagingTemplate;
+    private DirectMessageDeliveryService deliveryService;
 
     private ObjectMapper objectMapper;
     private MessageListener subscriber;
@@ -38,26 +37,24 @@ class RedisDirectMessageSubscriberTest {
     @BeforeEach
     void setUp(){
         objectMapper = JsonMapper.builder().build();
-        subscriber = new RedisDirectMessageSubscriber(objectMapper, messagingTemplate);
+        subscriber = new RedisDirectMessageSubscriber(objectMapper, deliveryService);
     }
 
     @Test
-    @DisplayName("정상 Redis DM을 수신하면 메시지 정보를 보존해 해당 대화방 경로로 한 번 전달한다.")
-    void onMessage_deliversMessageToConversationDestination(){
+    @DisplayName("정상 Redis DM을 수신하면 메시지 정보를 보존해 전달 서비스에 한 번 위임한다.")
+    void onMessage_delegatesDeserializedMessageToDeliveryService(){
         MessageDto message = createMessage();
         Message redisMessage = toRedisMessage(message);
 
         subscriber.onMessage(redisMessage, null);
-        verify(messagingTemplate).convertAndSend(
-                "/sub/conversations/"+message.conversationId()
-        + "/direct-messages",message);
+        verify(deliveryService).sendToLocalSubscribers(message);
 
-        verifyNoMoreInteractions(messagingTemplate);
+        verifyNoMoreInteractions(deliveryService);
     }
 
     @Test
-    @DisplayName("잘못된 JSON은 전송 없이 건너뛰고 다음 정상 DM은 해당 대화방으로 전달한다.")
-    void onMessage_deliversValidMessageAfterMalformedJson(){
+    @DisplayName("잘못된 JSON은 서비스 호출 없이 건너뛰고 다음 정상 DM은 전달 서비스에 한 번 위임한다.")
+    void onMessage_delegatesValidMessageAfterMalformedJson(){
         Message invalidMessage = new DefaultMessage(
                 CHANNEL.getBytes(StandardCharsets.UTF_8),
                 "{invalid-json}".getBytes(StandardCharsets.UTF_8)
@@ -69,44 +66,10 @@ class RedisDirectMessageSubscriberTest {
         assertThatCode(() -> subscriber.onMessage(invalidMessage, null))
                 .doesNotThrowAnyException();
 
-        verifyNoInteractions(messagingTemplate);
+        verifyNoInteractions(deliveryService);
         subscriber.onMessage(validMessage, null);
-        verify(messagingTemplate).convertAndSend(
-                "/sub/conversations/"+message.conversationId()
-        + "/direct-messages",message);
-        verifyNoMoreInteractions(messagingTemplate);
-    }
-
-    @Test
-    @DisplayName("WebSocket 전송에 실패한 DM은 재시도하지 않고 같은 대화방의 다음 DM을 전달한다.")
-    void onMessage_deliversNextMessageAfterDeliveryFailureWithoutRetrying(){
-        MessageDto failedMessage = createMessage();
-        MessageDto nextMessage = new MessageDto(UUID.randomUUID(),
-                failedMessage.conversationId(),
-                failedMessage.createdAt().plusSeconds(1),
-                failedMessage.sender(),
-                failedMessage.receiver(),
-                "다음 정상 메시지"
-        );
-
-        Message failedRedisMessage = toRedisMessage(failedMessage);
-        Message nextRedisMessage = toRedisMessage(nextMessage);
-
-        String destination = "/sub/conversations/" + failedMessage.conversationId()
-                + "/direct-messages";
-
-        doThrow(new MessageDeliveryException("테스트용 WebSocket 전송 실패"))
-                .when(messagingTemplate)
-                .convertAndSend(destination, failedMessage);
-
-        assertThatCode(()-> subscriber.onMessage(failedRedisMessage, null))
-                .doesNotThrowAnyException();
-        assertThatCode(() -> subscriber.onMessage(nextRedisMessage, null))
-                .doesNotThrowAnyException();
-
-        verify(messagingTemplate).convertAndSend(destination, failedMessage);
-        verify(messagingTemplate).convertAndSend(destination, nextMessage);
-        verifyNoMoreInteractions(messagingTemplate);
+        verify(deliveryService).sendToLocalSubscribers(message);
+        verifyNoMoreInteractions(deliveryService);
     }
 
     private MessageDto createMessage() {
