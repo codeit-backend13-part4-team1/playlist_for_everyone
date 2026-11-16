@@ -56,4 +56,13 @@ public class ContentReader {
         );
     }
 
+    @Transactional(readOnly = true)
+    public List<ContentResult<ContentSummary>> getSummariesByIds(List<UUID> contentIds) {
+        if (contentIds.isEmpty()) {
+            return List.of();
+        }
+
+        return null;
+    }
+
 }
