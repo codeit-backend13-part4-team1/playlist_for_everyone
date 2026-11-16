@@ -1,7 +1,8 @@
-# 조회와 응답 변환
+# 대화방 조회와 공통 응답 변환
 
-생성 시 기존 대화방을 반환하거나 조회 API를 호출할 때는 실제 최신 메시지와 요청자 기준 미읽음 상태를 사용합니다.
+대화방 생성 시 기존 대화방을 반환하거나 대화방 조회 API를 호출할 때는 실제 최신 메시지와 요청자 기준 미읽음 상태를 사용합니다.
 조회 결과를 준비하는 역할과 응답·프로필 이미지 URL을 만드는 역할을 분리했습니다.
+이 페이지는 대화방 Projection과 공통 Mapper를 설명합니다. 메시지 목록 자체의 조회 흐름은 [DM 메시지 조회](07-direct-message-query.md)에서 다룹니다.
 
 ## 생성 입력과 조회 조건
 
@@ -34,6 +35,10 @@ Querydsl의 `Projections.constructor()`가 아래 값을 `ConversationDetailResu
 단건 조회는 ID와 참여자 조건을 함께 적용하고, 사용자 쌍 조회에는 요청자와 상대방으로 구성한 쌍을 전달해야 합니다.
 대화방은 있지만 메시지가 없으면 Projection은 존재하고, 메시지만 null이며 미읽음 여부는 false입니다.
 
+DM 조회·읽음의 사전 참여 검증은 `ConversationService.validateParticipant()`가 `ConversationReader.validateParticipant()`에 위임합니다.
+이 경로는 대화방 엔티티를 조회하여 참여자를 검사하며, 미존재·비참여 모두 `ConversationNotFoundException`으로 처리합니다.
+응답용 Projection을 만드는 단건 조회와 역할이 다릅니다.
+
 ## 최신 메시지를 선택하는 방법
 
 공통 조회 쿼리는 메시지를 LEFT JOIN으로 연결하여 메시지가 없는 대화방도 결과에 남깁니다.
@@ -59,6 +64,7 @@ ID는 생성 시각이 같을 때 순서를 결정하기 위한 값이며, ID �
 | 최신 메시지는 읽었지만 이전 수신 메시지가 미읽음 | true |
 
 생성·조회 API 호출 자체가 읽음 상태를 변경하지는 않습니다.
+[DM 누적 읽음 처리](08-direct-message-read.md) 이후에는 다음 대화방 조회에서 남은 수신 미읽음 메시지로 `hasUnread`를 다시 계산합니다.
 
 ## 사용자·프로필 정보를 준비하는 두 경로
 
@@ -87,6 +93,7 @@ User 엔티티를 반환하므로 사용자 엔티티 의존성은 남아 있고
 `DirectMessageMapper`는 null 입력을 그대로 null로 반환합니다.
 메시지가 있으면 실제 발신자·수신자의 사용자 요약을 만들어 `MessageDto`로 변환합니다.
 이 타입은 공식 명세의 `DirectMessageDto`와 같은 JSON 필드를 제공합니다.
+같은 Mapper·DTO를 대화방의 `lastestMessage`와 DM 목록의 `data`에서 공유합니다. 메시지의 읽음 상태는 이 DTO에 포함하지 않습니다.
 
 `UserSummaryMapper`는 이미지가 없으면 URL을 null로 반환하고, 있으면 파일 Key로 `FileStorage`에 URL 생성을 요청합니다.
 따라서 필요한 연관관계는 미리 조회되어 있어야 하며, URL 생성 과정에서는 별도의 오류가 발생할 수 있습니다.

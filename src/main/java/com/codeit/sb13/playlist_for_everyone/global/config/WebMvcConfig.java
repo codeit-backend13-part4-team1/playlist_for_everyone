@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.global.config;
 
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.entity.ConversationSortBy;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.entity.DirectMessageSortBy;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.SortBy;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistSortBy;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.UserSortBy;
@@ -21,6 +22,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
         registry.addConverter(String.class, PlaylistSortBy.class, PlaylistSortBy::from);
         registry.addConverter(String.class, UserSortBy.class, UserSortBy::from);
         registry.addConverter(String.class, ConversationSortBy.class, ConversationSortBy::from);
+        registry.addConverter(String.class, DirectMessageSortBy.class, DirectMessageSortBy::from);
     }
 
     @Override

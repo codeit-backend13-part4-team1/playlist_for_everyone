@@ -8,7 +8,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * 조회된 메시지의 발신자·수신자 요약 정보를 구성하여 응답으로 변환한다.
+ * 대화방의 최신 메시지와 DM 목록에 공통으로 사용하는 메시지 응답 변환기다.
+ * 요청자에 따라 발신자·수신자를 바꾸지 않고 저장된 메시지의 실제 방향으로 요약 정보를 구성한다.
  * UserSummaryMapper를 통해 프로필 이미지 URL도 생성하므로 필요한 연관관계가 조회되어 있어야 한다.
  * 메시지나 읽음 상태를 변경하지 않으며, URL 생성 중 발생한 예외는 호출자에게 전달한다.
  */
