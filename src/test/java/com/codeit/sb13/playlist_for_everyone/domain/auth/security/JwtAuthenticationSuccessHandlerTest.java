@@ -9,6 +9,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionR
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
+import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -37,6 +38,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -403,6 +405,28 @@ class JwtAuthenticationSuccessHandlerTest {
                 replacedSessionId,
                 UserSessionRevokedEvent.RevokeReason.DUPLICATE_LOGIN
         ));
+    }
+
+    @Test
+    @DisplayName("이전 세션 무효화 후속 처리가 실패해도 로그인은 성공한다")
+    void 무효화_이벤트_처리가_실패해도_로그인은_성공한다() throws Exception {
+        UUID replacedSessionId = UUID.fromString("33333333-3333-3333-3333-333333333333");
+        Authentication authentication = prepareAuthentication();
+
+        given(userSessionRepository.start(USER_ID, REFRESH_TOKEN_VALIDITY))
+                .willReturn(new SessionStartResult(SESSION_ID, replacedSessionId));
+        given(jwtTokenProvider.createRefreshToken(USER_ID, SESSION_ID))
+                .willReturn(REFRESH_TOKEN);
+
+        // 웹소켓 종료 같은 후속 리스너가 예외를 던지는 상황
+        willThrow(new IllegalStateException("후속 처리 실패"))
+                .given(eventPublisher).publishEvent(any(Object.class));
+
+        successHandler.onAuthenticationSuccess(request, response, authentication);
+
+        // 이미 세션과 Refresh Token을 저장했으므로 로그인 응답까지 정상으로 끝나야 한다.
+        assertThat(response.getStatus()).isEqualTo(HttpServletResponse.SC_OK);
+        assertThat(response.getHeader(HttpHeaders.SET_COOKIE)).contains(REFRESH_TOKEN);
     }
 
 
