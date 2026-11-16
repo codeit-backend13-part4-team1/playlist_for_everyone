@@ -153,3 +153,9 @@ everyone:
         cron: "${EVERYONE_COLLECTION_SCHEDULE_SPORTSDB_CRON:-}"
         league-id: "${EVERYONE_COLLECTION_SCHEDULE_SPORTSDB_LEAGUE_ID:}"
         season: "${EVERYONE_COLLECTION_SCHEDULE_SPORTSDB_SEASON:}"
+
+  dm:
+    websocket:
+      transport: ${EVERYONE_DM_WEBSOCKET_TRANSPORT:redis}
+      redis:
+        channel: ${EVERYONE_DM_WEBSOCKET_REDIS_CHANNEL:everyone:dm:events}
