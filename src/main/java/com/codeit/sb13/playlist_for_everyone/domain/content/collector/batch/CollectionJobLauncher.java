@@ -57,7 +57,18 @@ public class CollectionJobLauncher {
         jobOperator.start(sportsDbCollectionJob, parameters);
     }
 
-    /** 강제 종료로 남은 수집 실행 복구 */
+    /** 이전 프로세스가 종료된 뒤 남은 수집 실행 복구 */
     public void recoverInterruptedExecutions() {
+        for (var execution : jobRepository.findRunningJobExecutions(
+                tmdbCollectionJob.getName()
+        )) {
+            jobOperator.recover(execution);
+        }
+
+        for (var execution : jobRepository.findRunningJobExecutions(
+                sportsDbCollectionJob.getName()
+        )) {
+            jobOperator.recover(execution);
+        }
     }
 }
