@@ -31,9 +31,6 @@ public class WebSocketEventListener {
     private final DestinationMatcher unsubscribe;
     private final SessionMatcher disconnect;
 
-    private final SimpUserRegistry userRegistry;
-    private final WebSocketSessionRegistry webSocketSessionRegistry;
-
     @PostConstruct
     public void init(){
         // watchingSession 경로 이벤트 등록.
@@ -92,8 +89,8 @@ public class WebSocketEventListener {
 
     /**
      * 웹 소켓 연결이 종료되고 난 후,
-     * Disconnect 메세지를 ChannelInterceptor 에 "송신하기 전"에
-     * 동기적으로 발생시키는 이벤트.
+     * Disconnect 메세지를 ChannelInterceptor 에 "송신하기 전"
+     * 혹은 이미 소켓이 닫히고 난 후에 동기적으로 발생시키는 이벤트.
      * @param event 세션Id 와 closeStatus 를 담고 있음.
      */
     @EventListener

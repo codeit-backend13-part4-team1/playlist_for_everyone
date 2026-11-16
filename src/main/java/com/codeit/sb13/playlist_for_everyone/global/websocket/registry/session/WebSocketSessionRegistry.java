@@ -5,6 +5,7 @@ import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSession;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * raw 웹 소켓(Session)을 등록하는 인터페이스
@@ -37,5 +38,13 @@ public interface WebSocketSessionRegistry {
      * @return WebSession 리스트
      */
     List<WSSession> queryAll(List<String> sessionIdList);
+
+    /**
+     * 세션을 인증한 인증정보(사용자ID, 로그인 세션 ID)를 바탕으로 세션을 조회한다.
+     * @param userId 유저 ID
+     * @param sessionId 세션 ID
+     * @return 해당 인증정보를 가진 세션 리스트
+     */
+    List<WSSession> findByUserIdAndSessionId(UUID userId, UUID sessionId);
 
 }

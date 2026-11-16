@@ -7,8 +7,10 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.service.lock.SpreadLock;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSession;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.DestinationMatcher;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.SessionMatcher;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistry;
 import io.jsonwebtoken.JwtException;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +29,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
@@ -58,6 +61,8 @@ public class WebSocketInterceptorTest {
     SessionMatcher sessionMatcher;
     @Mock
     DestinationMatcher destinationMatcher;
+    @Mock
+    WebSocketSessionRegistry sessionRegistry;
 
     @InjectMocks
     private WebSocketInterceptor interceptor;
@@ -140,6 +145,10 @@ public class WebSocketInterceptorTest {
                 interceptor,
                 "delay",
                 new HeartBeatDelay(2000L,new SpreadLock())); // 딜레이 텀
+
+        // 세션 등록 시뮬레이션
+        WSSession mockSession = mock(WSSession.class);
+        given(sessionRegistry.query(any())).willReturn(Optional.of(mockSession));
     }
 
 

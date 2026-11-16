@@ -3,10 +3,8 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSession;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
+
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Component
@@ -43,6 +41,29 @@ public class WebSocketSessionRegistryImpl implements WebSocketSessionRegistry {
                 .map(data::get)
                 .filter(Objects::nonNull)
                 .toList();
+    }
+
+    @Override
+    public List<WSSession> findByUserIdAndSessionId(UUID userId, UUID sessionId){
+        return data.values().stream()
+                .filter(
+                        session -> checkSessionUser(session,userId.toString())
+                                && checkLoginSessionId(session,sessionId.toString()))
+                .toList();
+    }
+
+    private boolean checkSessionUser(WSSession session,String targetId){
+        if (session == null) return false;
+        String userId = session.userId();
+        if (userId == null) return false;
+        return userId.equals(targetId);
+    }
+
+    private boolean checkLoginSessionId(WSSession session, String loginSessionId){
+        if (session == null) return false;
+        String sessionId = session.loginSessionId();
+        if (sessionId == null) return false;
+        return sessionId.equals(loginSessionId);
     }
 
 }
