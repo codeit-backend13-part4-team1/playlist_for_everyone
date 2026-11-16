@@ -1,7 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription;
 
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -20,7 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 public class SubscriptionRegistryImpl implements SubscriptionRegistry {
 
-    private final WebSocketRegistry socketRegistry;
+    private final WebSocketSessionRegistry socketRegistry;
     /*
      * 기본 세션 SocketConnection(sessionId,null) 을 키로 구독을 할 때마다 Set 에 엔티티 객체를 추가한다.
      */

@@ -14,7 +14,8 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocke
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketDestinationInvalidException;
 import com.codeit.sb13.playlist_for_everyone.global.service.MatchRule;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSession;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.*;
@@ -55,7 +56,7 @@ public class WatchingSession {
     private final WatchingSessionService watchingSessionService;
     private final SubscriptionRegistry subscriptionRegistry;
     private final UserSummaryMapper userSummaryMapper;
-    private final WebSocketRegistry webSocketRegistry;
+    private final WebSocketSessionRegistry webSocketSessionRegistry;
 
     public String topic(SessionInfo info){
         return watchingSessionService.topic(info);
@@ -160,7 +161,9 @@ public class WatchingSession {
         List<String> sessionIds = watchingSessionService.disconnectWithContentDeleted(contentId);
         for (String sessionId : sessionIds)
             try {
-                webSocketRegistry.close(sessionId);
+                WSSession session = webSocketSessionRegistry.query(sessionId)
+                        .orElseThrow(WebSocketSessionNotFoundException::new);
+                session.disconnect();
             } catch (Exception e) {
                 log.error("Failed to close websocket session: {}", sessionId, e);
             }
@@ -169,7 +172,9 @@ public class WatchingSession {
     public void disconnectWithSessionIds(String sessionId){
         watchingSessionService.disconnectWithSessionIds(sessionId);
         try {
-            webSocketRegistry.close(sessionId);
+            WSSession session = webSocketSessionRegistry.query(sessionId)
+                    .orElseThrow(WebSocketSessionNotFoundException::new);
+            session.disconnect();
         } catch (Exception e) {
             log.error("Failed to close websocket session: {}", sessionId, e);
         }

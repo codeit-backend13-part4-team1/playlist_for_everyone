@@ -2,7 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSession;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -10,7 +10,6 @@ import org.springframework.messaging.simp.user.SimpUser;
 import org.springframework.messaging.simp.user.SimpUserRegistry;
 import org.springframework.stereotype.Component;
 
-import java.util.Objects;
 import java.util.UUID;
 
 @Slf4j
@@ -19,7 +18,7 @@ import java.util.UUID;
 public class WebSocketServiceImpl implements WebSocketService{
     private final SimpUserRegistry userRegistry;
     private final UserService userService;
-    private final WebSocketRegistry webSocketRegistry;
+    private final WebSocketSessionRegistry webSocketSessionRegistry;
     private final WatchingSession watchingSession;
 
     @Override

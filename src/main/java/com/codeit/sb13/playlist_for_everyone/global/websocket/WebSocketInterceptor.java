@@ -1,10 +1,14 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.AccessTokenClaims;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
+import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSession;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.SessionMatcher;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.role.SessionRefreshRule;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +42,7 @@ public class WebSocketInterceptor implements ChannelInterceptor {
 
     private final HeartBeatDelay delay;    // 설정에 하트비트값 추가하면 해당값 입력.
     private final SessionMatcher heartBeatMatcher;
+    private final WebSocketSessionRegistry sessionRegistry;
 
     private final JwtTokenProvider jwtTokenProvider;
     private final UserService userService;
@@ -134,7 +139,8 @@ public class WebSocketInterceptor implements ChannelInterceptor {
     private void authenticate(StompHeaderAccessor accessor) {
         String token = token(accessor);
 
-        UUID userId = jwtTokenProvider.parseAccess(token).userId();
+        AccessTokenClaims accessClaim = jwtTokenProvider.parseAccess(token);
+        UUID userId = accessClaim.userId();
         User user = userService.getById(userId);
 
         if (user.isLocked()) throw new LockedException("잠긴 계정입니다.");
@@ -154,6 +160,12 @@ public class WebSocketInterceptor implements ChannelInterceptor {
         );
 
         accessor.setUser(authentication);
+
+        // 세션 해제를 위한 세션 등록 로직
+        WSSession session =  sessionRegistry.query(accessor.getSessionId())
+                .orElseThrow(WebSocketSessionNotFoundException::new);
+
+        session.connect(userId.toString(), accessClaim.sessionId().toString());
     }
 
     private String token(StompHeaderAccessor accessor) {

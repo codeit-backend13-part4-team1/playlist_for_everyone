@@ -5,7 +5,7 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocke
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.DestinationMatcher;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.SessionMatcher;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.role.*;
 import jakarta.annotation.PostConstruct;
@@ -32,7 +32,7 @@ public class WebSocketEventListener {
     private final SessionMatcher disconnect;
 
     private final SimpUserRegistry userRegistry;
-    private final WebSocketRegistry webSocketRegistry;
+    private final WebSocketSessionRegistry webSocketSessionRegistry;
 
     @PostConstruct
     public void init(){
