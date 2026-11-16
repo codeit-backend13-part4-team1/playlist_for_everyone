@@ -30,7 +30,7 @@ public class CollectionScheduleConfig {
         return scheduler;
     }
 
-    @Bean
+    @Bean(initMethod = "recoverInterruptedExecutions")
     public CollectionJobLauncher collectionJobLauncher(
             JobOperator jobOperator,
             @Qualifier("tmdbCollectionJob") Job tmdbCollectionJob,
