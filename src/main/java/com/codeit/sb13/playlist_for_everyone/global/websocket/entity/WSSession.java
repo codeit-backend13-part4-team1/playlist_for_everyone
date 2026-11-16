@@ -138,7 +138,7 @@ public class WSSession {
      * 웹 세션이 완전하게 등록되어있다고 판단, 이후 작업을 수행해도 좋다는 상태를 설정하기 위한 매서드
      * 인증정보의 기록 등을 수행한다.
      */
-    public void connect(String userId, String loginSessionId){
+    public void connect(@Nullable String userId,@Nullable String loginSessionId){
         if (this.state != State.CREATE) throw new IllegalStateException("세션이 이미 등록되었습니다.");
 
         state(State.REGISTER);
