@@ -1,5 +1,9 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.collector.config;
 
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.CollectionJobLauncher;
+import org.springframework.batch.core.launch.JobOperator;
+import org.springframework.batch.core.job.Job;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -20,5 +24,18 @@ public class CollectionScheduleConfig {
         scheduler.setPoolSize(1);
         scheduler.setThreadNamePrefix("content-collection-");
         return scheduler;
+    }
+
+    @Bean
+    public CollectionJobLauncher collectionJobLauncher(
+            JobOperator jobOperator,
+            @Qualifier("tmdbCollectionJob") Job tmdbCollectionJob,
+            @Qualifier("sportsDbCollectionJob") Job sportsDbCollectionJob
+    ) {
+        return new CollectionJobLauncher(
+                jobOperator,
+                tmdbCollectionJob,
+                sportsDbCollectionJob
+        );
     }
 }
