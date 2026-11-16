@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.AccessTokenClaims;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
@@ -43,7 +44,7 @@ public class WebSocketInterceptor implements ChannelInterceptor {
     private final HeartBeatDelay delay;    // 설정에 하트비트값 추가하면 해당값 입력.
     private final SessionMatcher heartBeatMatcher;
     private final WebSocketSessionRegistry sessionRegistry;
-
+    private final UserSessionRepository userSessionRepository;
     private final JwtTokenProvider jwtTokenProvider;
     private final UserService userService;
 
@@ -141,6 +142,9 @@ public class WebSocketInterceptor implements ChannelInterceptor {
 
         AccessTokenClaims accessClaim = jwtTokenProvider.parseAccess(token);
         UUID userId = accessClaim.userId();
+        UUID loginSessionId = accessClaim.sessionId();
+        userSessionRepository.isCurrent(userId, loginSessionId);
+
         User user = userService.getById(userId);
 
         if (user.isLocked()) throw new LockedException("잠긴 계정입니다.");
