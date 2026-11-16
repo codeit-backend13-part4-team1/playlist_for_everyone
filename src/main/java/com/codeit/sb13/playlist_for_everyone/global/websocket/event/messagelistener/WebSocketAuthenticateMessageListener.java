@@ -1,5 +1,6 @@
-package com.codeit.sb13.playlist_for_everyone.global.websocket.event.auth;
+package com.codeit.sb13.playlist_for_everyone.global.websocket.event.messagelistener;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.event.UserSessionRevokedEvent;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageListener;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.service.WebSocketService;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -24,8 +25,8 @@ public class WebSocketAuthenticateMessageListener extends RedisMessageListener {
 
     @Override
     public void run(Object data){
-        String username = (String) data;
-        webSocketService.revokeAuth(username);
+        UserSessionRevokedEvent event = (UserSessionRevokedEvent) data;
+        webSocketService.disconnectWithAuthRevokeEvent(event.userId(), event.revokedSessionId());
     }
 
     public String topic(){

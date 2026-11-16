@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.watch;
 
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.event.UserSessionRevokedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.AccessTokenClaims;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.SessionStartResult;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
@@ -360,7 +361,6 @@ public class WatchingSessionServiceE2E {
 
         UUID contentId = UUID.randomUUID();
 
-
         StompSession session = getSession(client).get(5, TimeUnit.SECONDS);
         try {
 
@@ -395,9 +395,11 @@ public class WatchingSessionServiceE2E {
     }
 
     @Test
-    @DisplayName("유저 로그인에 따른 로그인 해제 기능 실행 시, 유저에 대한 모든 세션이 끊긴다.")
+    @DisplayName("유저 로그인에 따른 로그인 해제 기능 실행 시, 해당 로그인 세션에 연결된 세션이 끊긴다.")
     void userLogoutTest() throws Exception {
         WebSocketStompClient client = new WebSocketStompClient(new StandardWebSocketClient());
+
+        AccessTokenClaims claims = jwtTokenProvider.parseAccess(accessToken);
 
         StompSession session = getSession(client).get(5, TimeUnit.SECONDS);
         StompSession session2 = getSession(client).get(5, TimeUnit.SECONDS);
@@ -406,14 +408,14 @@ public class WatchingSessionServiceE2E {
         List<StompSession> sessions = Arrays.asList(session, session2, session3);
         try {
             applicationEventPublisher.publishEvent(
-                    new UserSessionRevokedEvent(userId,UUID.randomUUID(), UserSessionRevokedEvent.RevokeReason.DUPLICATE_LOGIN)
+                    new UserSessionRevokedEvent(claims.userId(), claims.sessionId(), UserSessionRevokedEvent.RevokeReason.DUPLICATE_LOGIN)
             );
 
             await()
                     .atMost(5, TimeUnit.SECONDS)
                     .pollInterval(100, TimeUnit.MILLISECONDS)
                     .untilAsserted(() ->
-                            assertThat(sessions).allMatch(ses -> !ses.isConnected())
+                            assertThat(sessions).anyMatch(ses -> !ses.isConnected())
                     );
 
             for (StompSession s : sessions) {

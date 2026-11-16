@@ -1,8 +1,9 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.registry.connection;
 
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSession;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistryImpl;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -37,7 +38,7 @@ import static org.mockito.Mockito.mock;
 public class SubscriptionRegistryTest {
 
     @Mock
-    WebSocketRegistry socketRegistry;
+    WebSocketSessionRegistry socketRegistry;
 
     SubscriptionRegistry subscriptionRegistry;
 
@@ -61,7 +62,7 @@ public class SubscriptionRegistryTest {
 
     void setSocketRegistryHasSession(String sessionId){
         given(socketRegistry.query(sessionId))
-                .willReturn(Optional.of(mock(WebSocketSession.class)));
+                .willReturn(Optional.of(mock(WSSession.class)));
     }
 
     @BeforeEach

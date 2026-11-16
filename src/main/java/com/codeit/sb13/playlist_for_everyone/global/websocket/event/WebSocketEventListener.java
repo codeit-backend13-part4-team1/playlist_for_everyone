@@ -5,7 +5,7 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocke
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.DestinationMatcher;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.SessionMatcher;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.role.*;
 import jakarta.annotation.PostConstruct;
@@ -30,9 +30,6 @@ public class WebSocketEventListener {
     private final DestinationMatcher subscribe;
     private final DestinationMatcher unsubscribe;
     private final SessionMatcher disconnect;
-
-    private final SimpUserRegistry userRegistry;
-    private final WebSocketRegistry webSocketRegistry;
 
     @PostConstruct
     public void init(){
@@ -92,8 +89,8 @@ public class WebSocketEventListener {
 
     /**
      * 웹 소켓 연결이 종료되고 난 후,
-     * Disconnect 메세지를 ChannelInterceptor 에 "송신하기 전"에
-     * 동기적으로 발생시키는 이벤트.
+     * Disconnect 메세지를 ChannelInterceptor 에 "송신하기 전"
+     * 혹은 이미 소켓이 닫히고 난 후에 동기적으로 발생시키는 이벤트.
      * @param event 세션Id 와 closeStatus 를 담고 있음.
      */
     @EventListener
