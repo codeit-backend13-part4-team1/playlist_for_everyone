@@ -20,7 +20,7 @@ public class WebSocketServiceImpl implements WebSocketService{
     public void disconnectWithAuthRevokeEvent(UUID userId, UUID sessionId){
         Objects.requireNonNull(userId);
         Objects.requireNonNull(sessionId);
-        webSocketSessionRegistry.findByUserIdAndSessionId(userId,sessionId)
+        webSocketSessionRegistry.findByUserIdAndLoginSessionId(userId,sessionId)
                 .forEach(session -> {
                     try {
                         session.disconnect();
