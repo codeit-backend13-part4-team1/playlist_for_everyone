@@ -5,13 +5,13 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRe
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistSearchRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistUpdateRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.PlaylistContentSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.PlaylistResponse;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Playlist;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistContent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistSortBy;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Subscription;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistContentAddedEvent;
-import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistCreatedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistSubscribedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistRepository;
@@ -44,11 +44,22 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-
+/**
+ * 플레이리스트 서비스 구현체.
+ *
+ * <p>응답을 만드는 메서드(create, getPlaylist, getPlaylists, updatePlaylist)는 DB 처리를
+ * {@link PlaylistReader}, {@link PlaylistWriter}의 트랜잭션에 맡기고, 소유자 프로필 이미지 URL과
+ * 콘텐츠 썸네일 URL은 그 트랜잭션이 끝난 뒤 이 클래스에서 만든다.
+ * 이 클래스에는 클래스 단위 트랜잭션을 두지 않고, 메서드마다 필요한 전파 옵션을 명시한다.
+ *
+ * <p>create·getPlaylist·getPlaylists·updatePlaylist는 서비스가 스스로 트랜잭션을 열지 않는다.
+ * 호출자 트랜잭션이 없으면 URL 생성은 DB 트랜잭션 밖에서 이뤄진다.
+ * (create는 호출자 트랜잭션이 있으면 참여한다.)
+ */
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
 public class PlaylistServiceImpl implements PlaylistService {
 
   private final PlaylistRepository playlistRepository;
@@ -58,99 +69,71 @@ public class PlaylistServiceImpl implements PlaylistService {
   private final ContentRepository contentRepository;
   private final ApplicationEventPublisher eventPublisher;
   private final UserSummaryMapper  userSummaryMapper;
+  private final PlaylistReader playlistReader;
+  private final PlaylistContentSummaryMapper playlistContentSummaryMapper;
+  private final PlaylistWriter playlistWriter;
 
   private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
 
   @Override
-  @Transactional
+  @Transactional(propagation = Propagation.SUPPORTS)
   public PlaylistResponse create(UUID ownerId, PlaylistCreateRequest request) {
-    User user = userRepository.findById(ownerId)
-        .orElseThrow(() -> new UserNotFoundException(
-            Map.of("userId", ownerId)));
+    // 호출자 트랜잭션이 없으면 트랜잭션 없이 실행되어, 저장·이벤트 발행은 Writer의 트랜잭션에서 끝나고
+    // 프로필 이미지 URL 생성은 커밋 이후에 한다. 호출자 트랜잭션이 있으면 그 트랜잭션에 참여한다.
+    Playlist saved = playlistWriter.create(ownerId, request);
 
-    Playlist playlist = new Playlist(user, request.title(), request.description());
-
-    Playlist saved = playlistRepository.save(playlist);
-
-    eventPublisher.publishEvent(new PlaylistCreatedEvent(
-        saved.getId(),
-        saved.getTitle(),
-        user.getId(),
-        user.getName()));
-
-    UserSummary userSummary = userSummaryMapper.toSummary(user);
-
-    return PlaylistResponse.from(saved, userSummary, false);
-    // 방금 생성된 플레이리스트라 구독 정보가 없으므로 항상 false이다.
-
+    // 방금 생성된 플레이리스트라 구독 정보와 콘텐츠가 없으므로 구독 여부는 false, 콘텐츠는 빈 목록이다.
+    return toResponse(saved, false, List.of());
   }
 
   @Override
+  @Transactional(propagation = Propagation.NOT_SUPPORTED)
   public PlaylistResponse getPlaylist(UUID playlistId, UUID requesterId) {
-
-    Playlist playlist = playlistRepository.findWithOwnerById(playlistId)
-        .orElseThrow(() -> new PlayListNotFoundException(
-            Map.of("playlistId", playlistId)));
-
-    User owner = playlist.getOwner();
-
-    boolean subscribedByMe = subscriptionRepository
-        .existsByPlaylistIdAndSubscriberId(playlistId, requesterId);
-
-    UserSummary userSummary = userSummaryMapper.toSummary(owner);
-
-    return PlaylistResponse.from(playlist, userSummary, subscribedByMe);
+    // 조회 트랜잭션은 Reader에서 끝나고, 프로필 이미지 URL 생성은 트랜잭션 밖에서 한다.
+    PlaylistReader.PlaylistDetail detail = playlistReader.readOne(playlistId, requesterId);
+    return toResponse(detail.playlist(), detail.subscribedByMe(), detail.contents());
   }
 
   @Override
+  @Transactional(propagation = Propagation.NOT_SUPPORTED)
   public CursorResponse<PlaylistResponse> getPlaylists(
       PlaylistSearchRequest request, UUID requesterId) {
 
     PlaylistSearchCondition condition = toCondition(request);
 
-    List<Playlist> fetched = playlistRepository.search(condition);
-    long totalCount = playlistRepository.count(condition);
+    PlaylistReader.PlaylistPage result = playlistReader.readPage(condition, requesterId);
+    List<Playlist> page = result.playlists();
 
-    boolean hasNext = fetched.size() > condition.limit();
-    List<Playlist> page = hasNext ? fetched.subList(0, condition.limit()) : fetched;
-
-    Set<UUID> subscribedIds = findSubscribedIds(page, requesterId);
     List<PlaylistResponse> data = page.stream()
-        .map(playlist -> toResponse(playlist, subscribedIds.contains(playlist.getId())))
+        .map(playlist -> toResponse(
+            playlist,
+            result.subscribedIds().contains(playlist.getId()),
+            result.contents().getOrDefault(playlist.getId(), List.of())))
         .toList();
 
     String nextCursor = null;
     UUID nextIdAfter = null;
-    if (hasNext) {
+    if (result.hasNext()) {
       Playlist last = page.get(page.size() - 1);
       nextCursor = toCursor(last, condition.sortBy());
       nextIdAfter = last.getId();
     }
 
     return new CursorResponse<>(
-        data, nextCursor, nextIdAfter, hasNext, totalCount,
+        data, nextCursor, nextIdAfter, result.hasNext(), result.totalCount(),
         condition.sortBy().getSortKey(), condition.sortDirection());
   }
 
   @Override
   @PreAuthorize("isAuthenticated() and @playlistGuard.canModify(#playlistId, #requesterId)")
-  @Transactional
+  @Transactional(propagation = Propagation.NOT_SUPPORTED)
   public PlaylistResponse updatePlaylist(
       UUID playlistId, PlaylistUpdateRequest request, UUID requesterId) {
 
-    Playlist playlist = playlistRepository.findWithOwnerById(playlistId)
-        .orElseThrow(() -> new PlayListNotFoundException(
-            Map.of("playlistId", playlistId)
-        ));
+    playlistWriter.update(playlistId, request);
 
-
-    playlist.update(request.title(), request.description());
-
-    boolean subscribedByMe = subscriptionRepository
-        .existsByPlaylistIdAndSubscriberId(playlistId, requesterId);
-
-    return toResponse(playlist, subscribedByMe);
-
+    PlaylistReader.PlaylistDetail detail = playlistReader.readOne(playlistId, requesterId);
+    return toResponse(detail.playlist(), detail.subscribedByMe(), detail.contents());
   }
 
   @Override
@@ -271,6 +254,12 @@ public class PlaylistServiceImpl implements PlaylistService {
     playlistRepository.decreaseSubscriberCount(playlistId);
   }
 
+  @Override
+  @Transactional(readOnly = true)
+  public List<UUID> findSubscriberIds(UUID playlistId) {
+    return subscriptionRepository.findSubscriberIds(playlistId);
+  }
+
 
   //---------[헬퍼 메서드]
   private PlaylistSearchCondition toCondition(PlaylistSearchRequest request) {
@@ -280,15 +269,6 @@ public class PlaylistServiceImpl implements PlaylistService {
         request.limit(), request.sortBy(), request.sortDirection());
   }
 
-  private Set<UUID> findSubscribedIds(List<Playlist> playlists, UUID requesterId) {
-    if (playlists.isEmpty()) {
-      return Set.of();
-    }
-    List<UUID> playlistIds = playlists.stream().map(Playlist::getId).toList();
-    return new HashSet<>(
-        subscriptionRepository.findSubscribedPlaylistIds(requesterId, playlistIds));
-  }
-
   private String toCursor(Playlist playlist, PlaylistSortBy sortBy) {
     return switch (sortBy) {
       case UPDATED_AT -> playlist.getUpdatedAt().toString();
@@ -296,10 +276,13 @@ public class PlaylistServiceImpl implements PlaylistService {
     };
   }
 
-  private PlaylistResponse toResponse(Playlist playlist, boolean subscribedByMe) {
-    User owner = playlist.getOwner();
-    UserSummary userSummary = userSummaryMapper.toSummary(owner);
-    return PlaylistResponse.from(playlist, userSummary, subscribedByMe);
+  private PlaylistResponse toResponse(
+      Playlist playlist, boolean subscribedByMe, List<PlaylistContentData> contents) {
+    UserSummary userSummary = userSummaryMapper.toSummary(playlist.getOwner());
+    List<PlaylistContentSummary> summaries = contents.stream()
+        .map(playlistContentSummaryMapper::toSummary)
+        .toList();
+    return PlaylistResponse.from(playlist, userSummary, subscribedByMe, summaries);
   }
 
   private boolean isUniqueViolation(Throwable throwable) {

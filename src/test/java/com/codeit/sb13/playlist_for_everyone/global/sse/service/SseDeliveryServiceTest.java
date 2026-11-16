@@ -12,11 +12,10 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -40,20 +39,24 @@ class SseDeliveryServiceTest {
     @Mock
     private SseEmitterRepository repository;
 
+    @Mock
+    private SseDeliveryCoordinator deliveryCoordinator;
+
     private SseDeliveryService service;
+    private final UUID receiverId = UUID.randomUUID();
+    private final Connection connection = Connection.create();
 
     @BeforeEach
     void setUp() {
-        service = new SseDeliveryService(repository, JsonMapper.builder().build());
+        service = new SseDeliveryService(repository, deliveryCoordinator);
     }
 
     @Test
-    @DisplayName("수신자의 연결을 조회하여 SSE 이벤트를 전송한다.")
-    void sendEventToReceiverConnection() throws IOException {
-        UUID receiverId = UUID.randomUUID();
+    @DisplayName("수신자의 연결을 조회하여 조정기에 전송을 요청한다.")
+    void requestsDeliveryForReceiverConnection() throws IOException {
         SseEmitter emitter = mock(SseEmitter.class);
         when(repository.findAllByUserId(receiverId))
-                .thenReturn(Map.of(Connection.create(), emitter));
+                .thenReturn(Map.of(connection, emitter));
 
         SseEvent<Map<String, String>> event = new SseEvent<>(
                 UUID.randomUUID(),
@@ -65,65 +68,21 @@ class SseDeliveryServiceTest {
         service.sendToLocalConnections(event);
 
         verify(repository).findAllByUserId(receiverId);
-        verify(emitter).send(any(SseEmitter.SseEventBuilder.class));
+        verify(deliveryCoordinator).requestDelivery(receiverId, connection);
+        verify(deliveryCoordinator, times(1)).requestDelivery(any(), any());
+        verify(emitter, never()).send(any(SseEmitter.SseEventBuilder.class));
     }
 
     @Test
-    @DisplayName("전송하는 SSE 이벤트에 이벤트 ID와 이름 및 데이터가 포함된다.")
-    void sendEventPreservesIdNameAndData() throws IOException {
-        UUID receiverId = UUID.randomUUID();
-        UUID eventId = UUID.randomUUID();
-        Connection connection = Connection.create();
-        String eventName = Event.NOTIFICATIONS.getName();
-        Map<String, String> payload = Map.of("message", "테스트 알림");
-
-        SseEmitter emitter = mock(SseEmitter.class);
-
-        when(repository.findAllByUserId(receiverId))
-                .thenReturn(Map.of(connection, emitter));
-
-        SseEvent<Map<String, String>> event = new SseEvent<>(eventId, receiverId, eventName, payload);
-
-        service.sendToLocalConnections(event);
-
-        ArgumentCaptor<SseEmitter.SseEventBuilder> evetCaptor = ArgumentCaptor.forClass(SseEmitter.SseEventBuilder.class);
-
-        verify(emitter).send(evetCaptor.capture());
-
-        List<Object> parts = evetCaptor.getValue().build().stream()
-                .map(part -> part.getData())
-                .toList();
-
-        assertThat(parts).hasSize(3);
-
-        assertThat(parts.get(0))
-                .isEqualTo("id:" + eventId
-                + "\nevent:" +eventName
-                + "\ndata:");
-        assertThat(parts.get(2)).isEqualTo("\n\n");
-        assertThat(parts.get(1)).isInstanceOf(String.class);
-
-        JsonMapper jsonMapper = JsonMapper.builder().build();
-
-        // 서비스가 준비한 JSON의 구조와 값을 비교한다. 실제 HTTP 응답은 통합 테스트에서 확인한다.
-        assertThat(jsonMapper.readTree((String) parts.get(1)))
-                .isEqualTo(jsonMapper.valueToTree(payload));
-
-    }
-
-    @Test
-    @DisplayName("수신자의 연결이 여러 개이면 모든 연결에 SSE 이벤트를 전송한다.")
-    void sendEventToAllReceiverConnections() throws IOException {
-        UUID receiverId = UUID.randomUUID();
-
-        Connection firstConnection = Connection.create();
+    @DisplayName("수신자의 연결이 여러 개이면 각 연결에 대해 조정기에 전송을 요청한다")
+    void requestsDeliveryForAllReceiverConnections() throws IOException {
         Connection secondConnection = Connection.create();
 
         SseEmitter firstEmitter = mock(SseEmitter.class);
         SseEmitter secondEmitter = mock(SseEmitter.class);
 
         when(repository.findAllByUserId(receiverId)).thenReturn(Map.of(
-                firstConnection, firstEmitter,
+                connection, firstEmitter,
                 secondConnection, secondEmitter
         ));
 
@@ -136,12 +95,17 @@ class SseDeliveryServiceTest {
 
         service.sendToLocalConnections(event);
 
-        verify(firstEmitter).send(any(SseEmitter.SseEventBuilder.class));
-        verify(secondEmitter).send(any(SseEmitter.SseEventBuilder.class));
+        verify(repository).findAllByUserId(receiverId);
+        verify(deliveryCoordinator).requestDelivery(receiverId, connection);
+        verify(deliveryCoordinator).requestDelivery(receiverId, secondConnection);
+        verify(deliveryCoordinator, times(2)).requestDelivery(any(), any());
+
+        verify(firstEmitter, never()).send(any(SseEmitter.SseEventBuilder.class));
+        verify(secondEmitter, never()).send(any(SseEmitter.SseEventBuilder.class));
     }
 
     @Test
-    @DisplayName("수신자의 연결이 없으면 예외나 연결 삭제 요청 없이 종료한다.")
+    @DisplayName("수신자의 연결이 없으면 조정기 전송이나 연결 삭제를 요청하지 않는다.")
     void sendEventWithoutConnectionsDoesNotFail(){
         UUID receiverId = UUID.randomUUID();
 
@@ -159,12 +123,13 @@ class SseDeliveryServiceTest {
                 .doesNotThrowAnyException();
 
         verify(repository).findAllByUserId(receiverId);
-        verify(repository, never()).delete(any(),any());
+        verify(repository, never()).delete(any(), any());
+        verifyNoInteractions(deliveryCoordinator);
     }
 
     @Test
-    @DisplayName("전송 중 IOException이 발생하면 실패한 연결만 삭제하고 다음 연결에 계속 전송한다.")
-    void ioFailureDeletesOnlyFailedConnectionAndContinuesSending() throws IOException {
+    @DisplayName("조정기 요청 중 I/O 오류가 발생하면 실패한 연결의 종료를 위임하고 다음 연결을 처리한다.")
+    void ioFailureClosesOnlyFailedConnectionAndContinuesSending() throws IOException {
 
         UUID receiverId = UUID.randomUUID();
 
@@ -181,9 +146,9 @@ class SseDeliveryServiceTest {
 
         when(repository.findAllByUserId(receiverId)).thenReturn(connections);
 
-        doThrow(new IOException("전송 실패"))
-                .when(failedEmitter)
-                .send(any(SseEmitter.SseEventBuilder.class));
+        doThrow(new UncheckedIOException("테스트용 전송 실패", new IOException("전송 실패")))
+                .when(deliveryCoordinator)
+                .requestDelivery(receiverId, failedConnection);
 
         SseEvent<Map<String, String>> event = new SseEvent<>(
                 UUID.randomUUID(),
@@ -195,19 +160,16 @@ class SseDeliveryServiceTest {
         assertThatCode(() -> service.sendToLocalConnections(event))
                 .doesNotThrowAnyException();
 
-        verify(failedEmitter).send(any(SseEmitter.SseEventBuilder.class));
-        verify(repository).delete(receiverId, failedConnection);
-        verify(repository, times(1)).delete(any(), any());
-
-        verify(healthyEmitter).send(any(SseEmitter.SseEventBuilder.class));
+        verify(deliveryCoordinator).requestDelivery(receiverId, failedConnection);
+        verify(deliveryCoordinator).closeConnection(receiverId, failedConnection);
+        verify(deliveryCoordinator).requestDelivery(receiverId, healthyConnection);
+        verifyNoMoreInteractions(deliveryCoordinator);
+        verify(repository, never()).delete(any(), any());
     }
 
     @Test
-    @DisplayName("전송 중 IllegalStateException 발생하면 실패한 연결만 삭제하고 다음 연결에 계속 전송한다.")
-    void illegalStateFailureDeletesOnlyFailedConnectionAndContinuesSending() throws IOException {
-
-        UUID receiverId = UUID.randomUUID();
-
+    @DisplayName("조정기 요청 중 상태 예외가 발생하면 실패한 연결의 종료를 위임하고 다음 연결을 처리한다.")
+    void illegalStateFailureClosesOnlyFailedConnectionAndContinuesSending() throws IOException {
         Connection failedConnection = Connection.create();
         Connection healthyConnection = Connection.create();
 
@@ -221,8 +183,8 @@ class SseDeliveryServiceTest {
         when(repository.findAllByUserId(receiverId)).thenReturn(connections);
 
         doThrow(new IllegalStateException("이미 종료된 연결"))
-                .when(failedEmitter)
-                .send(any(SseEmitter.SseEventBuilder.class));
+                .when(deliveryCoordinator)
+                .requestDelivery(receiverId, failedConnection);
 
         SseEvent<Map<String, String>> event = new SseEvent<>(
                 UUID.randomUUID(),
@@ -234,11 +196,11 @@ class SseDeliveryServiceTest {
         assertThatCode(() -> service.sendToLocalConnections(event))
                 .doesNotThrowAnyException();
 
-        verify(failedEmitter).send(any(SseEmitter.SseEventBuilder.class));
-        verify(repository).delete(receiverId, failedConnection);
-        verify(repository, times(1)).delete(any(), any());
-
-        verify(healthyEmitter).send(any(SseEmitter.SseEventBuilder.class));
+        verify(deliveryCoordinator).requestDelivery(receiverId, failedConnection);
+        verify(deliveryCoordinator).closeConnection(receiverId, failedConnection);
+        verify(deliveryCoordinator).requestDelivery(receiverId, healthyConnection);
+        verifyNoMoreInteractions(deliveryCoordinator);
+        verify(repository, never()).delete(any(), any());
     }
 
     @Test
@@ -300,12 +262,12 @@ class SseDeliveryServiceTest {
                 .doesNotThrowAnyException();
 
         verify(repository).findAll();
-        verify(repository, never()).delete(any(),any());
+        verify(repository, never()).delete(any(), any());
     }
 
     @Test
-    @DisplayName("하트비트 전송 중 IOException이 발생하면 실패한 연결만 삭제하고 다른 연결에도 계속 전송한다.")
-    void heartbeatIoFailureDeletesOnlyFailedConnectionAndContinuesSending() throws IOException {
+    @DisplayName("하트비트 I/O 실패 시 실패한 연결만 정리를 위임하고 나머지 전송을 계속한다.")
+    void heartbeatIoFailureDelegatesCleanupOnlyForFailedConnectionAndContinuesSending() throws IOException {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
 
@@ -336,8 +298,9 @@ class SseDeliveryServiceTest {
                 .doesNotThrowAnyException();
 
         verify(failedEmitter).send(any(SseEmitter.SseEventBuilder.class));
-        verify(repository).delete(firstUserId, failedConnection);
-        verify(repository, times(1)).delete(any(), any());
+        verify(deliveryCoordinator).cleanupConnection(eq(firstUserId), eq(failedConnection));
+        verify(deliveryCoordinator, times(1)).cleanupConnection(any(), any());
+        verify(repository, never()).delete(any(), any());
 
         verify(healthyEmitter).send(any(SseEmitter.SseEventBuilder.class));
         verify(otherUserEmitter).send(any(SseEmitter.SseEventBuilder.class));
@@ -345,8 +308,8 @@ class SseDeliveryServiceTest {
     }
 
     @Test
-    @DisplayName("하트비트 전송 중 IllegalStateException이 발생하면 실패한 연결만 삭제하고 다른 연결에도 계속 전송한다.")
-    void heartbeatIllegalStateFailureDeletesOnlyFailedConnectionAndContinuesSending() throws IOException {
+    @DisplayName("하트비트 상태 예외 발생 시 실패한 연결만 정리를 위임하고 나머지 전송을 계속한다.")
+    void heartbeatIllegalStateFailureDelegatesCleanupOnlyForFailedConnectionAndContinuesSending() throws IOException {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
 
@@ -377,8 +340,9 @@ class SseDeliveryServiceTest {
                 .doesNotThrowAnyException();
 
         verify(failedEmitter).send(any(SseEmitter.SseEventBuilder.class));
-        verify(repository).delete(firstUserId, failedConnection);
-        verify(repository, times(1)).delete(any(), any());
+        verify(deliveryCoordinator).cleanupConnection(eq(firstUserId), eq(failedConnection));
+        verify(deliveryCoordinator, times(1)).cleanupConnection(any(), any());
+        verify(repository, never()).delete(any(), any());
 
         verify(healthyEmitter).send(any(SseEmitter.SseEventBuilder.class));
         verify(otherUserEmitter).send(any(SseEmitter.SseEventBuilder.class));

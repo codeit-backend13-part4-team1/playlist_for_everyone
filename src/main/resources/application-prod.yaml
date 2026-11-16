@@ -40,3 +40,7 @@ everyone:
 
   jwt:
     refresh-cookie-secure: true
+
+  sse:
+    history:
+      key-prefix: ${EVERYONE_SSE_HISTORY_KEY_PREFIX:everyone:prod:sse:history}

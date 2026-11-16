@@ -195,7 +195,7 @@ class UserServiceTest {
 
         ReflectionTestUtils.setField(user, "id", userId);
 
-        given(userRepository.findById(userId))
+        given(userRepository.findWithProfileImageById(userId))
                 .willReturn(Optional.of(user));
 
         User result = userService.getById(userId);
@@ -203,7 +203,7 @@ class UserServiceTest {
         assertThat(result).isSameAs(user);
         assertThat(result.getId()).isEqualTo(userId);
 
-        verify(userRepository).findById(userId);
+        verify(userRepository).findWithProfileImageById(userId);
     }
 
     @Test
@@ -211,7 +211,7 @@ class UserServiceTest {
     void 사용자가_없으면_예외가_발생한다() {
         UUID userId = UUID.randomUUID();
 
-        given(userRepository.findById(userId))
+        given(userRepository.findWithProfileImageById(userId))
                 .willReturn(Optional.empty());
 
         assertThatThrownBy(() -> userService.getById(userId))
@@ -225,7 +225,7 @@ class UserServiceTest {
                         }
                 );
 
-        verify(userRepository).findById(userId);
+        verify(userRepository).findWithProfileImageById(userId);
     }
 
     @Test
@@ -234,7 +234,7 @@ class UserServiceTest {
         UUID userId = UUID.randomUUID();
         User user = createProfileTestUser(userId);
 
-        given(userRepository.findById(userId))
+        given(userRepository.findWithProfileImageById(userId))
                 .willReturn(Optional.of(user));
 
         UserDto result = userService.getUserDtoById(userId);
@@ -248,7 +248,7 @@ class UserServiceTest {
         assertThat(result.locked()).isFalse();
         assertThat(result.profileImageUrl()).isNull();
 
-        verify(userRepository).findById(userId);
+        verify(userRepository).findWithProfileImageById(userId);
 
         // 이미지가 없으면 불필요한 파일 조회나 URL 생성을 하지 않는다.
         verifyNoInteractions(fileService);
@@ -271,7 +271,7 @@ class UserServiceTest {
         String expectedUrl =
                 "https://example.com/profile.png?signature=test";
 
-        given(userRepository.findById(userId))
+        given(userRepository.findWithProfileImageById(userId))
                 .willReturn(Optional.of(user));
         given(fileService.getFileUrl(fileId))
                 .willReturn(expectedUrl);
@@ -287,7 +287,7 @@ class UserServiceTest {
         assertThat(result.profileImageUrl()).isEqualTo(expectedUrl);
 
         // 사용자 ID가 아닌 연결된 파일 ID로 URL을 요청해야 한다.
-        verify(userRepository).findById(userId);
+        verify(userRepository).findWithProfileImageById(userId);
         verify(fileService).getFileUrl(fileId);
     }
 
@@ -296,7 +296,7 @@ class UserServiceTest {
     void 응답_조회_시_사용자가_없으면_예외가_발생한다() {
         UUID userId = UUID.randomUUID();
 
-        given(userRepository.findById(userId))
+        given(userRepository.findWithProfileImageById(userId))
                 .willReturn(Optional.empty());
 
         assertThatThrownBy(() -> userService.getUserDtoById(userId))
@@ -310,7 +310,7 @@ class UserServiceTest {
                         }
                 );
 
-        verify(userRepository).findById(userId);
+        verify(userRepository).findWithProfileImageById(userId);
         verifyNoInteractions(fileService);
     }
 
@@ -326,7 +326,7 @@ class UserServiceTest {
         RuntimeException failure =
                 new IllegalStateException("파일 URL 생성 실패");
 
-        given(userRepository.findById(userId))
+        given(userRepository.findWithProfileImageById(userId))
                 .willReturn(Optional.of(user));
         given(fileService.getFileUrl(fileId))
                 .willThrow(failure);

@@ -56,9 +56,9 @@ sequenceDiagram
     end
 ```
 
-그림의 리스너는 커밋 후 소비 방식을 설명합니다.
-현재 팔로우 서비스 통합 테스트에서는 테스트 전용 리스너가 이 동작을 기록합니다.
-운영 알림 리스너가 이미 연결됐다는 뜻은 아닙니다.
+운영 코드의 `NotificationDomainEventListener`가 커밋 후 이벤트를 받아 공통 알림 생성 요청으로 재발행합니다.
+팔로우 서비스 통합 테스트는 알림 소비 리스너를 Mock으로 격리하고, 테스트 전용 리스너로 커밋 후 수신을 기록합니다.
+실제 알림 저장까지의 흐름은 [알림 연동 가이드](../notification/07-domain-event-integration.md)에서 확인합니다.
 
 일반 `@EventListener`는 커밋 성공까지 기다린다는 계약이 없습니다.
 커밋된 관계에만 후속 작업을 수행하려면 수신 측에서 `@TransactionalEventListener(AFTER_COMMIT)`을 사용해야 합니다.
@@ -77,14 +77,15 @@ sequenceDiagram
 따라서 발행 횟수와 커밋 후 처리 횟수를 같은 의미로 해석하지 않습니다.
 현재 이벤트 발행은 프로세스 내부 Spring 이벤트이며, 영속 메시지 저장·재시도·전달 보장을 추가한 구조는 아닙니다.
 
-## 검증 범위와 후속 연동
+## 검증 범위와 알림 연동
 
 `FollowSecurityIntegrationTest`에서 실제 JWT 등록 요청의 이벤트를 관찰해 두 사용자 ID와 DB에서 조회한 이름을 확인했습니다.
 JWT 누락·만료·변조로 등록이 거부되면 관계 저장과 이벤트 발행이 없다는 점도 검증했습니다.
 중복·롤백에 따른 커밋 후 수신 여부는 서비스 통합 테스트의 별도 관찰자로 확인합니다.
 
-업무 이벤트를 알림 생성 요청으로 연결하는 작업은 [#45](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/45)에서 다룹니다.
-현재 테스트의 커밋 후 관찰을 실제 알림 저장이나 SSE 전달 성공으로 해석하지 않습니다.
+팔로우 알림은 상위 [#45](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/45)의 첫 구현 단위인 [#155](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/155)에 연결되어 있습니다.
+`NotificationIntegrationTest`에서 실제 팔로우 등록부터 알림 저장·SSE 발행 요청과 재발행 실패 시 팔로우 유지를 검증합니다.
+팔로우 테스트의 발행·커밋 관찰과 알림 테스트의 저장·전송 검증을 구분합니다. Redis·HTTP 수신은 별도 테스트가 담당합니다.
 테스트별 역할과 실행 방법은 [테스트 가이드](05-testing.md)를 참고합니다.
 
 ## 관련 코드

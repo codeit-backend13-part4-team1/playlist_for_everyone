@@ -66,7 +66,7 @@ class JwtTokenProviderTest {
     @Test
     @DisplayName("Access Token에 사용자 ID, jti, 종류와 발급, 만료 시각을 담는다")
     void Access_Token에_필요한_정보를_담는다() {
-        String token = jwtTokenProvider.createAccessToken(USER_ID);
+        String token = jwtTokenProvider.createAccessToken(USER_ID, SESSION_ID);
 
         //Provider의 파싱 메서드와 독립적으로 발급 결과를 확인한다.
         Claims claims = readClaims(token);
@@ -88,8 +88,8 @@ class JwtTokenProviderTest {
     @DisplayName("같은 사용자자에게 같은 시각에 발급해도 jti가 서로 다르다")
     void 토큰을_발급할_때바다_서로_다른_jti를_사용한다() {
         //Clock이 고정되어 있으므로 두 토큰의 사용자 ID와 발급 시각은 같다.
-        String firstToken = jwtTokenProvider.createAccessToken(USER_ID);
-        String secondToken = jwtTokenProvider.createAccessToken(USER_ID);
+        String firstToken = jwtTokenProvider.createAccessToken(USER_ID, SESSION_ID);
+        String secondToken = jwtTokenProvider.createAccessToken(USER_ID, SESSION_ID);
 
         Claims firstClaims = readClaims(firstToken);
         Claims secondClaims = readClaims(secondToken);
@@ -104,16 +104,6 @@ class JwtTokenProviderTest {
 
 
     @Test
-    @DisplayName("유효한 Access Token을 검ㅈ으하면 사용자 ID를 반한다")
-    void 유효한_Access_Token에서_사용자_ID를_반환한다() {
-        String token = jwtTokenProvider.createAccessToken(USER_ID);
-
-        UUID result = jwtTokenProvider.parseAccessToken(token);
-
-        assertThat(result).isEqualTo(USER_ID);
-    }
-
-    @Test
     @DisplayName("만료된 Access Token은 거절한다.")
     void 만료된_Access_Token은_거절한다() {
         // 현재 시각보다 1초 전에 만려된 토큰을 준비한다.
@@ -124,7 +114,7 @@ class JwtTokenProviderTest {
                 signingKey
         );
 
-        assertThatThrownBy(() -> jwtTokenProvider.parseAccessToken(token))
+        assertThatThrownBy(() -> jwtTokenProvider.parseAccess(token))
                 .isInstanceOf(ExpiredJwtException.class);
     }
 
@@ -141,7 +131,7 @@ class JwtTokenProviderTest {
                 anotherKey
         );
 
-        assertThatThrownBy(() -> jwtTokenProvider.parseAccessToken(token))
+        assertThatThrownBy(() -> jwtTokenProvider.parseAccess(token))
                 .isInstanceOf(JwtException.class);
     }
 
@@ -149,7 +139,7 @@ class JwtTokenProviderTest {
     @DisplayName("JWT 형식이 아닌 문자열은 거절한다")
     void JWT_형식이_아니면_거절한다() {
         assertThatThrownBy(
-                () -> jwtTokenProvider.parseAccessToken("not-a-jwt")
+                () -> jwtTokenProvider.parseAccess("not-a-jwt")
         ).isInstanceOf(JwtException.class);
     }
 
@@ -164,7 +154,7 @@ class JwtTokenProviderTest {
                 signingKey
         );
 
-        assertThatThrownBy(() -> jwtTokenProvider.parseAccessToken(token))
+        assertThatThrownBy(() -> jwtTokenProvider.parseAccess(token))
                 .isInstanceOf(JwtException.class);
     }
 
@@ -178,7 +168,7 @@ class JwtTokenProviderTest {
                 signingKey
         );
 
-        assertThatThrownBy(() -> jwtTokenProvider.parseAccessToken(token))
+        assertThatThrownBy(() -> jwtTokenProvider.parseAccess(token))
                 .isInstanceOf(JwtException.class);
     }
 
@@ -193,7 +183,7 @@ class JwtTokenProviderTest {
         );
 
         // UUID 변환 실패도 JWT 검증 실패로 처리하도록 계약을 정한다.
-        assertThatThrownBy(() -> jwtTokenProvider.parseAccessToken(token))
+        assertThatThrownBy(() -> jwtTokenProvider.parseAccess(token))
                 .isInstanceOf(JwtException.class);
     }
 
@@ -207,7 +197,7 @@ class JwtTokenProviderTest {
                 signingKey
         );
 
-        assertThatThrownBy(() -> jwtTokenProvider.parseAccessToken(token))
+        assertThatThrownBy(() -> jwtTokenProvider.parseAccess(token))
                 .isInstanceOf(JwtException.class);
     }
 
@@ -254,4 +244,110 @@ class JwtTokenProviderTest {
                 .compact();
     }
 
+
+    // ===== 로그인 세션 ID(sid) =====
+
+    private static final UUID SESSION_ID =
+            UUID.fromString("22222222-2222-2222-2222-222222222222");
+
+    @Test
+    @DisplayName("Access Token에 로그인 세션 ID를 담는다.")
+    void Access_Token에_세션_ID를_담는다() {
+        String token = jwtTokenProvider.createAccessToken(USER_ID, SESSION_ID);
+
+        // Provider의 파싱 메서드와 독립적으로 발급 결과를 확인한다.
+        Claims claims = readClaims(token);
+
+        assertThat(claims.getSubject()).isEqualTo(USER_ID.toString());
+        assertThat(claims.get("sid", String.class)).isEqualTo(SESSION_ID.toString());
+        assertThat(claims.getId()).isNotBlank();
+        assertThat(claims.get("tokenType", String.class)).isEqualTo("ACCESS");
+        assertThat(claims.getExpiration().toInstant()).isEqualTo(NOW.plus(ACCESS_TOKEN_VALIDITY));
+    }
+
+    @Test
+    @DisplayName("같은 세션으로 발급해도 토큰마다 jti가 다르다.")
+    void 같은_세션이어도_jti는_다르다() {
+        String first = jwtTokenProvider.createAccessToken(USER_ID, SESSION_ID);
+        String second = jwtTokenProvider.createRefreshToken(USER_ID, SESSION_ID);
+
+        assertThat(readClaims(first).getId()).isNotEqualTo(readClaims(second).getId());
+    }
+
+    @Test
+    @DisplayName("유효한 Access Token을 검증하면 사용자 ID와 로그인 세션 ID를 반환한다")
+    void 유효한_Access_Token에서_세션_정보를_반환한다() {
+        String token = jwtTokenProvider.createAccessToken(USER_ID, SESSION_ID);
+
+        AccessTokenClaims claims = jwtTokenProvider.parseAccess(token);
+
+        assertThat(claims).isEqualTo(new AccessTokenClaims(USER_ID, SESSION_ID));
+    }
+
+    @Test
+    @DisplayName("로그인 세션 ID가 없는 Access Token은 거절한다")
+    void 세션_ID가_없는_Access_Token은_거절한다() {
+        // 세션 관리 이전 형식의 토큰. 같은 키로 서명해 sid 검증만 실패하게 한다.
+        String token = Jwts.builder()
+                .subject(USER_ID.toString())
+                .id(UUID.randomUUID().toString())
+                .claim("tokenType", "ACCESS")
+                .issuedAt(Date.from(NOW))
+                .expiration(Date.from(NOW.plus(ACCESS_TOKEN_VALIDITY)))
+                .signWith(signingKey, Jwts.SIG.HS256)
+                .compact();
+
+        assertThatThrownBy(() -> jwtTokenProvider.parseAccess(token))
+                .isInstanceOf(JwtException.class);
+    }
+
+    @Test
+    @DisplayName("로그인 세션 ID가 UUID 형식이 아니면 거절한다")
+    void 세션_ID가_UUID가_아니면_거절한다() {
+        String token = Jwts.builder()
+                .subject(USER_ID.toString())
+                .id(UUID.randomUUID().toString())
+                .claim("sid", "not-a-uuid")
+                .claim("tokenType", "ACCESS")
+                .issuedAt(Date.from(NOW))
+                .expiration(Date.from(NOW.plus(ACCESS_TOKEN_VALIDITY)))
+                .signWith(signingKey, Jwts.SIG.HS256)
+                .compact();
+
+        assertThatThrownBy(() -> jwtTokenProvider.parseAccess(token))
+                .isInstanceOf(JwtException.class);
+    }
+
+    @Test
+    @DisplayName("Refresh Token은 Access Token 검증을 통과하지 못한다")
+    void Refresh_Token은_parseAccess를_통과하지_못한다() {
+        String refreshToken = jwtTokenProvider.createRefreshToken(USER_ID, SESSION_ID);
+
+        assertThatThrownBy(() -> jwtTokenProvider.parseAccess(refreshToken))
+                .isInstanceOf(JwtException.class);
+    }
+
+    @Test
+    @DisplayName("만료된 Access Token은 parseAccess에서 거절한다")
+    void 만료된_Access_Token은_parseAccess에서_거절한다() {
+        String token = jwtTokenProvider.createAccessToken(USER_ID, SESSION_ID);
+
+        // 만료 이후 시각의 Provider로 검증한다.
+        JwtTokenProvider later = new JwtTokenProvider(
+                signingKey,
+                ACCESS_TOKEN_VALIDITY,
+                REFRESH_TOKEN_VALIDITY,
+                Clock.fixed(NOW.plus(ACCESS_TOKEN_VALIDITY).plusSeconds(1), ZoneOffset.UTC)
+        );
+
+        assertThatThrownBy(() -> later.parseAccess(token))
+                .isInstanceOf(ExpiredJwtException.class);
+    }
+
+    @Test
+    @DisplayName("로그인 세션 ID 없이 Access Token을 발급할 수 없다")
+    void 세션_ID_없이_Access_Token을_발급할_수_없다() {
+        assertThatThrownBy(() -> jwtTokenProvider.createAccessToken(USER_ID, null))
+                .isInstanceOf(NullPointerException.class);
+    }
 }

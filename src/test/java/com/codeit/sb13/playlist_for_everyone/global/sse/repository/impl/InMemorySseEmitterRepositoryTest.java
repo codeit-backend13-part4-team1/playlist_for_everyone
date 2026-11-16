@@ -126,6 +126,71 @@ class InMemorySseEmitterRepositoryTest {
     }
 
     @Test
+    @DisplayName("사용자와 연결 식별자로 등록된 emitter의 동일한 객체를 조회한다.")
+    void findsEmitterByUserIdAndConnection(){
+        SseEmitterRepository repository = new InMemorySseEmitterRepository();
+        UUID userId = UUID.randomUUID();
+        Connection connection = Connection.create();
+        SseEmitter emitter = new SseEmitter();
+        repository.save(userId, connection, emitter);
+
+        assertThat(repository.findByUserIdAndConnection(userId, connection)).containsSame(emitter);
+        assertThat(repository.findByUserIdAndConnection(userId, Connection.create())).isEmpty();
+        assertThat(repository.findByUserIdAndConnection(UUID.randomUUID(), connection)).isEmpty();
+        repository.delete(userId, connection);
+        assertThat(repository.findByUserIdAndConnection(userId, connection)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("같은 연결의 재등록은 같은 객체여도 거부하고 기존 emitter를 유지한다.")
+    void rejectsDuplicateRegistrationAndPreservesEmitter(){
+        SseEmitterRepository repository = new InMemorySseEmitterRepository();
+        UUID userId = UUID.randomUUID();
+        Connection connection = Connection.create();
+        SseEmitter emitter = new SseEmitter();
+        repository.save(userId, connection, emitter);
+
+        assertThatThrownBy(() -> repository.save(userId, connection, emitter))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("이미 등록된 SSE 연결입니다.");
+        assertThatThrownBy(() -> repository.save(userId, connection, new SseEmitter()))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(repository.findByUserIdAndConnection(userId, connection)).containsSame(emitter);
+    }
+
+    @Test
+    @DisplayName("같은 연결에 동시에 등록하면 하나만 성공하고 성공한 emitter를 유지한다.")
+    void concurrentRegistrationKeepsOnlySuccessfulEmitter() throws Exception {
+        SseEmitterRepository repository = new InMemorySseEmitterRepository();
+        UUID userId = UUID.randomUUID();
+        Connection connection = Connection.create();
+        CyclicBarrier barrier = new CyclicBarrier(2);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        Callable<SseEmitter> register = () -> {
+            SseEmitter emitter = new SseEmitter();
+            barrier.await(3, TimeUnit.SECONDS);
+            try {
+                repository.save(userId, connection, emitter);
+                return emitter;
+            } catch (IllegalStateException duplicate) {
+                return null;
+            }
+        };
+        try {
+            Future<SseEmitter> first = executor.submit(register);
+            Future<SseEmitter> second = executor.submit(register);
+            SseEmitter firstResult = first.get(3, TimeUnit.SECONDS);
+            SseEmitter secondResult = second.get(3, TimeUnit.SECONDS);
+            assertThat(firstResult == null).isNotEqualTo(secondResult == null);
+            SseEmitter winner = firstResult != null ? firstResult : secondResult;
+            assertThat(repository.findByUserIdAndConnection(userId, connection)).containsSame(winner);
+            assertThat(repository.findAllByUserId(userId)).hasSize(1);
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
     @DisplayName("마지막 연결을 삭제하면 해당 사용자의 연결 조회 결과가 비어 있다.")
     void deleteLastConnectionReturnsEmptyMap(){
         SseEmitterRepository repository = new InMemorySseEmitterRepository();
@@ -282,9 +347,10 @@ class InMemorySseEmitterRepositoryTest {
 
         Connection oldConnection = Connection.create();
         Connection newConnection = Connection.create();
+        SseEmitter oldEmitter = new SseEmitter();
         SseEmitter newEmitter = new SseEmitter();
 
-        repository.save(userId, oldConnection, new SseEmitter());
+        repository.save(userId, oldConnection, oldEmitter);
         ExecutorService executor = Executors.newFixedThreadPool(2);
 
         // 두 작업이 모두 준비된 뒤 출발하도록 맞춘다. 어느 작업이 먼저 Map을 변경할지는 강제하지 않는다.

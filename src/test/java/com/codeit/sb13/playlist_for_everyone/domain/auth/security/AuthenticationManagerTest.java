@@ -1,5 +1,8 @@
 package com.codeit.sb13.playlist_for_everyone.domain.auth.security;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.entity.TemporaryPassword;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.entity.TemporaryPasswordStatus;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.TemporaryPasswordRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.global.config.PasswordEncoderConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.SecurityAuthenticationConfig;
@@ -20,6 +23,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.authentication.BadCredentialsException;
 
 
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -38,6 +43,9 @@ class AuthenticationManagerTest {
     @Mock
     private CustomUserDetailsService userDetailsService;
 
+    @Mock
+    private TemporaryPasswordRepository temporaryPasswordRepository;
+
     private PasswordEncoder passwordEncoder;
     private AuthenticationManager authenticationManager;
 
@@ -50,7 +58,8 @@ class AuthenticationManagerTest {
         // Spring 컨텍스트나 DB는 실행하지 않는다.
         authenticationManager = new SecurityAuthenticationConfig().authenticationManager(
                 userDetailsService,
-                passwordEncoder
+                passwordEncoder,
+                temporaryPasswordRepository
         );
     }
 
@@ -137,6 +146,37 @@ class AuthenticationManagerTest {
 
         assertThatThrownBy(() ->
                 authenticationManager.authenticate(request))
+                .isInstanceOf(LockedException.class);
+    }
+
+    @Test
+    @DisplayName("원래 비밀번호가 틀려도 사용 가능한 임시 비밀번호가 맞으면 인증에 성공한다.")
+    void 임시_비밀번호로_인증에_성공한다() {
+        given(userDetailsService.loadUserByUsername(EMAIL))
+                .willReturn(new SecurityUser(USER_ID, EMAIL, passwordEncoder.encode(PASSWORD), Role.USER, false));
+        given(temporaryPasswordRepository.findAllByUserIdAndStatus(USER_ID, TemporaryPasswordStatus.ACTIVE))
+                .willReturn(List.of(TemporaryPassword.issue(
+                        USER_ID, passwordEncoder.encode("Temp3!pass#X"), LocalDateTime.now().plusMinutes(3)
+                )));
+        Authentication result = authenticationManager.authenticate(
+                UsernamePasswordAuthenticationToken.unauthenticated(EMAIL, "Temp3!pass#X")
+        );
+
+        assertThat(result.isAuthenticated()).isTrue();
+        assertThat(((SecurityUser) result.getPrincipal()).getUserId()).isEqualTo(USER_ID);
+        // 인증 후에도 비밀번호가 남지 않는다.
+        assertThat(result.getCredentials()).isNull();
+    }
+
+    @Test
+    @DisplayName("잠긴 계정은 임시 비밀번호가 있어도 잠금 예외로 끝난다.")
+    void 잠긴_계정은_임시_비밀번호로도_인증할_수_없다() {
+        given(userDetailsService.loadUserByUsername(EMAIL))
+                .willReturn(new SecurityUser(USER_ID, EMAIL, passwordEncoder.encode(PASSWORD), Role.USER, true));
+
+        // 잠금 예외는 다음 Provider로 넘어가지 않는다. 임시 비밀번호는 조회조차 하지 않는다.
+        assertThatThrownBy(() -> authenticationManager.authenticate(
+                UsernamePasswordAuthenticationToken.unauthenticated(EMAIL, "Temp3!pass#X")))
                 .isInstanceOf(LockedException.class);
     }
 

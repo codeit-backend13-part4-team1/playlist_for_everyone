@@ -20,6 +20,9 @@ Mock으로 확인한 정책, 실제 DB 제약조건, 실제 JWT HTTP 요청은 �
 
 메서드 인가 테스트의 Guard는 Mock입니다. Guard 자체의 소유자 판단은 별도 Guard 테스트와 서비스 통합 테스트에서 확인합니다.
 서비스 통합 테스트는 일부 충돌 시나리오에서 `FollowSaver` Spy로 실행 순서를 조정합니다.
+서비스·JWT 통합 테스트의 `NotificationDomainEventListener`는 Mock으로 격리합니다.
+관계 저장과 이벤트 발행은 실제로 수행하되, 후속 알림 저장이나 외부 전송이 팔로우 검증에 영향을 주지 않게 합니다.
+실제 알림 연동은 [NotificationIntegrationTest의 검증 범위](../notification/02-testing.md#커밋롤백-검증-읽기)에서 확인합니다.
 
 ## 컨트롤러와 JWT 통합 테스트의 인증 준비
 
@@ -88,6 +91,8 @@ JWT 통합 테스트는 전체를 `@Transactional`로 감싸지 않고 사용자
 ```bash
 ./gradlew test --tests 'com.codeit.sb13.playlist_for_everyone.domain.follow.*'
 ```
+
+팔로우 알림 연동을 포함한 회귀 검증은 [알림 테스트 실행 방법](../notification/02-testing.md#실행-방법)의 #155 명령을 사용합니다.
 
 결과는 `build/reports/tests/test/index.html`에서 확인합니다.
 명령은 실행 방법 안내이며, 현재 문서 작성으로 모든 테스트 통과를 보증하는 것은 아닙니다.

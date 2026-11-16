@@ -1,10 +1,12 @@
 package com.codeit.sb13.playlist_for_everyone.domain.user.service;
 
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.event.UserRoleChangedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
+import com.codeit.sb13.testsupport.auth.InMemoryUserSessionConfig;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -29,6 +31,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -45,7 +48,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @ActiveProfiles("test")
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@Import(UserAdministrationServiceIntegrationTest.EventTestConfig.class)
+@Import({
+        UserAdministrationServiceIntegrationTest.EventTestConfig.class,
+        InMemoryUserSessionConfig.class
+})
 @DisplayName("PostgreSQL 사용자 권한 및 계정 잠금 통합 테스트")
 class UserAdministrationServiceIntegrationTest {
 
@@ -67,6 +73,10 @@ class UserAdministrationServiceIntegrationTest {
 
     @Autowired
     private UserAdministrationService userAdministrationService;
+
+    // 커밋 후 리스너가 실제로 세션을 종료하는지 확인한다.
+    @Autowired
+    private UserSessionRepository userSessionRepository;
 
     @Autowired
     private UserRepository userRepository;
@@ -227,6 +237,71 @@ class UserAdministrationServiceIntegrationTest {
         assertThat(eventCollector.events()).isEmpty();
     }
 
+    @Test
+    @DisplayName("권한 변경이 커밋되면 해당 사용자의 로그인 세션을 종료한다")
+    void 권한_변경이_커밋되면_로그인_세션을_종료한다() {
+        User savedUser = saveUser(Role.USER, false);
+        UUID sessionId = startSession(savedUser.getId());
+
+        userAdministrationService.updateRole(savedUser.getId(), Role.ADMIN);
+
+        assertThat(userSessionRepository.isCurrent(savedUser.getId(), sessionId)).isFalse();
+    }
+
+    @Test
+    @DisplayName("계정 잠금이 커밋되면 해당 사용자의 로그인 세션을 종료한다")
+    void 계정_잠금이_커밋되면_로그인_세션을_종료한다() {
+        User savedUser = saveUser(Role.USER, false);
+        UUID sessionId = startSession(savedUser.getId());
+
+        userAdministrationService.updateLocked(savedUser.getId(), true);
+
+        assertThat(userSessionRepository.isCurrent(savedUser.getId(), sessionId)).isFalse();
+    }
+
+    @Test
+    @DisplayName("계정 잠금을 해제하면 로그인 세션을 유지한다")
+    void 잠금_해제는_로그인_세션을_유지한다() {
+        User savedUser = saveUser(Role.USER, true);
+        UUID sessionId = startSession(savedUser.getId());
+
+        userAdministrationService.updateLocked(savedUser.getId(), false);
+
+        assertThat(userSessionRepository.isCurrent(savedUser.getId(), sessionId)).isTrue();
+    }
+
+    @Test
+    @DisplayName("같은 권한으로 요청하면 로그인 세션을 유지한다")
+    void 동일_권한이면_로그인_세션을_유지한다() {
+        User savedUser = saveUser(Role.USER, false);
+        UUID sessionId = startSession(savedUser.getId());
+
+        userAdministrationService.updateRole(savedUser.getId(), Role.USER);
+
+        assertThat(userSessionRepository.isCurrent(savedUser.getId(), sessionId)).isTrue();
+    }
+
+    @Test
+    @DisplayName("권한 변경이 롤백되면 로그인 세션을 유지한다")
+    void 권한_변경이_롤백되면_로그인_세션을_유지한다() {
+        User savedUser = saveUser(Role.USER, false);
+        UUID sessionId = startSession(savedUser.getId());
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+
+        IllegalStateException failure = new IllegalStateException("테스트용 후속 작업 실패");
+
+        assertThatThrownBy(() ->
+                transaction.executeWithoutResult(status -> {
+                    userAdministrationService.updateRole(savedUser.getId(), Role.ADMIN);
+                    userAdministrationService.updateLocked(savedUser.getId(), true);
+                    throw failure;
+                })
+        ).isSameAs(failure);
+
+        // DB 변경이 취소되었으므로 사용자를 로그아웃시키지 않는다.
+        assertThat(userSessionRepository.isCurrent(savedUser.getId(), sessionId)).isTrue();
+    }
+
     private User saveUser(Role role, boolean locked) {
         User user = User.builder()
                 .email("administration-" + UUID.randomUUID() + "@example.com")
@@ -240,6 +315,13 @@ class UserAdministrationServiceIntegrationTest {
         }
 
         return userRepository.saveAndFlush(user);
+    }
+
+    /**
+     * 로그인한 상태를 준비
+     */
+    private UUID startSession(UUID userId) {
+        return userSessionRepository.start(userId, Duration.ofHours(1)).sessionId();
     }
 
     private User findUser(UUID userId) {

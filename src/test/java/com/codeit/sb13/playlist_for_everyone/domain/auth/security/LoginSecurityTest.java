@@ -3,7 +3,12 @@ package com.codeit.sb13.playlist_for_everyone.domain.auth.security;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.controller.AuthController;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.SessionStartResult;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.TemporaryPasswordRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AuthService;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.service.PasswordChangeService;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.service.PasswordResetService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.controller.UserController;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
@@ -29,6 +34,9 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 
 import java.time.Duration;
@@ -68,6 +76,9 @@ class LoginSecurityTest {
 
     private static final UUID USER_ID =
             UUID.fromString("11111111-1111-1111-1111-111111111111");
+    private static final UUID SESSION_ID =
+            UUID.fromString("22222222-2222-2222-2222-222222222222");
+
     private static final String REFRESH_TOKEN = "issued-refresh-token";
 
     private static final Duration REFRESH_TOKEN_EXPIRATION = Duration.ofDays(3);
@@ -112,6 +123,19 @@ class LoginSecurityTest {
     @MockitoBean
     private AuthService authService;
 
+    // SecurityConfig가 로그인 세션 저장소를 주입받는다.
+    @MockitoBean
+    private UserSessionRepository userSessionRepository;
+
+    @MockitoBean
+    private PasswordResetService passwordResetService;
+
+    @MockitoBean
+    private PasswordChangeService passwordChangeService;
+
+    @MockitoBean
+    private TemporaryPasswordRepository temporaryPasswordRepository;
+
     @Test
     @DisplayName("올바른 이메일과 비밀번호로 로그인하면 토큰과 사용자 정보를 반환한다")
     void 정상_로그인에_성공한다() throws Exception {
@@ -129,11 +153,14 @@ class LoginSecurityTest {
 
         // 성공 응답뿐 아니라 실제 인증 경로가 실행됐는지도 확인한다.
         verify(userDetailsService).loadUserByUsername(EMAIL);
-        verify(jwtTokenProvider).createAccessToken(USER_ID);
+        verify(jwtTokenProvider).createAccessToken(USER_ID, SESSION_ID);
 
         // SecurityConfig가 Refresh Token을 지원하는 성공 핸들러를
         // 실제 로그인 경로에 연결했는지 확인한다.
-        verify(jwtTokenProvider).createRefreshToken(USER_ID);
+        verify(jwtTokenProvider).createRefreshToken(USER_ID, SESSION_ID);
+
+        // SecurityConfig가 로그인 세션 저장소를 성공 핸들러에 연결했는지 확인한다.
+        verify(userSessionRepository).start(USER_ID, REFRESH_TOKEN_EXPIRATION);
 
         // 테스트 설정의 3일이 저장소 TTL로 전달되어야 한다.
         verify(refreshTokenRepository).save(
@@ -177,7 +204,7 @@ class LoginSecurityTest {
     void 잘못된_비밀번호로_로그인하면_실패한다() throws Exception {
         prepareSecurityUser(false);
 
-        expectLoginFailure("wrong-password");
+        expectLoginFailure("wrong-password", 2);
     }
 
     @Test
@@ -186,7 +213,7 @@ class LoginSecurityTest {
         given(userDetailsService.loadUserByUsername(EMAIL))
                 .willThrow(new UsernameNotFoundException("사용자 없음"));
 
-        expectLoginFailure(PASSWORD);
+        expectLoginFailure(PASSWORD, 2);
     }
 
     @Test
@@ -194,7 +221,7 @@ class LoginSecurityTest {
     void 잠긴_사용자는_로그인할_수_없다() throws Exception {
         prepareSecurityUser(true);
 
-        expectLoginFailure(PASSWORD);
+        expectLoginFailure(PASSWORD, 1);
     }
 
     @Test
@@ -261,8 +288,8 @@ class LoginSecurityTest {
 
         // 두 번 모두 실제 로그인 인증 과정과 토큰 저장 요청까지 도달해야 한다.
         verify(userDetailsService, times(2)).loadUserByUsername(EMAIL);
-        verify(jwtTokenProvider, times(2)).createAccessToken(USER_ID);
-        verify(jwtTokenProvider, times(2)).createRefreshToken(USER_ID);
+        verify(jwtTokenProvider, times(2)).createAccessToken(USER_ID, SESSION_ID);
+        verify(jwtTokenProvider, times(2)).createRefreshToken(USER_ID, SESSION_ID);
 
         verify(refreshTokenRepository, times(2)).save(
                 USER_ID,
@@ -327,7 +354,7 @@ class LoginSecurityTest {
                 .header(CSRF_HEADER_NAME, csrfCookie.getValue());
     }
 
-    private void expectLoginFailure(String password) throws Exception {
+    private void expectLoginFailure(String password, int expectedUserLookups) throws Exception {
         MvcResult result = mockMvc.perform(signIn(password))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.exceptionName")
@@ -338,7 +365,7 @@ class LoginSecurityTest {
 
         // 단순히 보호 경로라서 401이 나온 것을 성공으로 착각하지 않도록,
         // 로그인 과정에서 사용자 조회가 실행됐는지 함께 확인한다.
-        verify(userDetailsService).loadUserByUsername(EMAIL);
+        verify(userDetailsService, times(expectedUserLookups)).loadUserByUsername(EMAIL);
 
         // 인증 실패 후 성공 핸들러의 사용자 조회·토큰 발급은 실행되지 않는다.
         verifyNoInteractions(userService, jwtTokenProvider, refreshTokenRepository);
@@ -402,9 +429,14 @@ class LoginSecurityTest {
 
         given(userService.getUserDtoById(USER_ID))
                 .willReturn(userDto);
-        given(jwtTokenProvider.createAccessToken(USER_ID))
+
+        // 로그인 성공 시 세션을 시작한다. Redis 동작은 저장소 테스트에서 검증한다.
+        given(userSessionRepository.start(eq(USER_ID), any(Duration.class)))
+                .willReturn(new SessionStartResult(SESSION_ID, null));
+
+        given(jwtTokenProvider.createAccessToken(USER_ID, SESSION_ID))
                 .willReturn(ACCESS_TOKEN);
-        given(jwtTokenProvider.createRefreshToken(USER_ID))
+        given(jwtTokenProvider.createRefreshToken(USER_ID, SESSION_ID))
                 .willReturn(REFRESH_TOKEN);
     }
 

@@ -10,7 +10,7 @@ import org.springframework.data.repository.query.Param;
 import java.util.Optional;
 import java.util.UUID;
 
-public interface UserRepository extends JpaRepository<User, UUID> {
+public interface UserRepository extends JpaRepository<User, UUID>, UserCustomRepository{
 
     boolean existsByEmail(String email);
 
@@ -24,4 +24,12 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     @Query("SELECT u FROM User u WHERE u.id = :userId")
     Optional<User> findByIdForUpdate(@Param("userId") UUID userId);
 
+
+    /**
+     * 프로필 이미지를 함께 조회한다.
+     *
+     * 이미지가 없는 사용자도 조회되도록 LEFT JOIN으로 가져온다.
+     */
+    @Query("SELECT u FROM User u LEFT JOIN FETCH u.profileImage WHERE u.id = :userId")
+    Optional<User> findWithProfileImageById(@Param("userId") UUID userId);
 }

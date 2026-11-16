@@ -18,7 +18,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Redis 이벤트를 {@code SseEvent<JsonNode>}로 읽어 현재 서버의 연결에 전달한다.
+ * Redis 이벤트를 {@code SseEvent<JsonNode>}로 읽어 현재 서버의 후속 이력 조회를 요청한다.
+ * 실제 HTTP 데이터는 공유 이력에서 읽으며, 메시지를 받았다는 사실만으로 수신 완료를 판단하지 않는다.
  * 알림·DM DTO 타입에 의존하지 않으며, 수신한 메시지를 다시 Redis로 발행하지 않는다.
  * 수신자 연결이 없는 경우의 정상 종료와 개별 연결 전송 실패 처리는 SseDeliveryService가 담당한다.
  *

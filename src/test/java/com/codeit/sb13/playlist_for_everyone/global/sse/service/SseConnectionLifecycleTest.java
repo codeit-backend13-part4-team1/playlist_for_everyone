@@ -20,9 +20,10 @@ import java.util.UUID;
 import static org.mockito.Mockito.*;
 
 /**
- * 실제 Spring 컨텍스트를 닫아 ContextClosedEvent와 연결 정리 메서드의 연결을 확인한다.
+ * 실제 Spring 컨텍스트를 닫아 ContextClosedEvent와 조정기의 연결 정리 위임을 확인한다.
  * 서비스 메서드를 직접 호출하는 단위 테스트와 달리 EventListener 등록까지 검증한다.
- * emitter와 저장소는 Mock이므로 실제 HTTP 응답 종료까지 완료됐다는 뜻은 아니다.
+ * emitter·저장소·조정기는 Mock이므로 실제 HTTP 응답 종료나 저장소 삭제 완료를 검증하지는 않는다.
+ * Lifecycle Mock과의 호출 순서는 실제 하트비트·재시도 실행 중 작업이 모두 종료됐다는 보장을 뜻하지 않는다.
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("SSE 연결 종료 생명주기")
@@ -31,9 +32,12 @@ public class SseConnectionLifecycleTest {
     @Mock
     SseEmitterRepository repository;
 
+    @Mock
+    private SseDeliveryCoordinator deliveryCoordinator;
+
     @Test
-    @DisplayName("컨텍스트가 종료되면 등록된 에미터의 종료와 연결 삭제를 요청한다.")
-    void contextCloseRequestsConnectionCleanup(){
+    @DisplayName("컨텍스트가 종료되면 에미터 종료를 요청하고 연결 정리를 조정기에 위임한다.")
+    void contextCloseRequestsCompletionAndDelegatesCleanup(){
         UUID userId = UUID.randomUUID();
         Connection connection = Connection.create();
         SseEmitter emitter = mock(SseEmitter.class);
@@ -49,21 +53,24 @@ public class SseConnectionLifecycleTest {
         // try 블록을 벗어날 때 context.close가 호출되며 실제 종료 이벤트가 발행된다.
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()){
             context.registerBean(SseConnectionService.class,
-                    ()-> new SseConnectionService(repository, properties));
+                    ()-> new SseConnectionService(repository, properties, deliveryCoordinator));
 
             context.refresh();
             verify(emitter, never()).complete();
+            verify(deliveryCoordinator, never()).cleanupConnection(any(), any());
             verify(repository, never()).delete(any(), any());
         }
 
         verify(emitter).complete();
-        verify(repository).delete(userId, connection);
+        verify(deliveryCoordinator).cleanupConnection(eq(userId), eq(connection));
+        verify(deliveryCoordinator, times(1)).cleanupConnection(any(), any());
+        verify(repository, never()).delete(any(), any());
 
     }
 
     @Test
-    @DisplayName("Lifecycle 빈이 종료되기 전에 SSE 에미터 종료와 연결 삭제를 요청한다.")
-    void contextCloseCleansConnectionsBeforeLifecycleStop(){
+    @DisplayName("Lifecycle 빈이 종료되기 전에 SSE 에미터 종료를 요청하고 연결 정리를 위임한다.")
+    void contextCloseDelegatesCleanupBeforeLifecycleStop(){
         UUID userId = UUID.randomUUID();
         Connection connection = Connection.create();
 
@@ -82,7 +89,7 @@ public class SseConnectionLifecycleTest {
 
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()){
             context.registerBean(SseConnectionService.class,
-                    ()-> new SseConnectionService(repository, properties));
+                    ()-> new SseConnectionService(repository, properties, deliveryCoordinator));
             context.registerBean("testLifecycle", Lifecycle.class, () -> lifecycle);
             context.refresh();
 
@@ -94,8 +101,10 @@ public class SseConnectionLifecycleTest {
         completionOrder.verify(emitter).complete();
         completionOrder.verify(lifecycle).stop();
 
-        InOrder deletionOrder = inOrder(repository, lifecycle);
-        deletionOrder.verify(repository).delete(userId, connection);
-        deletionOrder.verify(lifecycle).stop();
+        InOrder cleanupOrder = inOrder(deliveryCoordinator, lifecycle);
+        cleanupOrder.verify(deliveryCoordinator).cleanupConnection(eq(userId), eq(connection));
+        cleanupOrder.verify(lifecycle).stop();
+        verify(deliveryCoordinator, times(1)).cleanupConnection(any(), any());
+        verify(repository, never()).delete(any(), any());
     }
 }

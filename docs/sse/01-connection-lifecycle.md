@@ -1,97 +1,106 @@
 # 1. 연결 생성과 종료
 
-연결 서비스는 emitter를 만들고, 저장하고, 종료 시 저장소에서 제거하는 과정을 관리합니다.
-핵심은 **사용자 ID와 연결 ID를 함께 사용하여 종료된 연결만 정리하는 것**입니다.
+연결 서비스는 emitter 생성과 콜백 연결을 담당하고, 상태·저장소 등록과 정리는 조정기에 위임합니다.
+사용자 ID와 연결 ID를 함께 사용하여 **해당 연결만 정리**합니다. 큰 흐름은 [전체 흐름](00-overall-flow.md)을 참고합니다.
 
 ## 연결 요청 계약
 
 | 항목 | 현재 동작 |
 | --- | --- |
-| 경로 | `GET /api/sse` |
-| 인증 | `Authorization: Bearer <accessToken>`으로 인증한 사용자의 ID를 사용합니다. |
-| 응답 | `200`, `Content-Type: text/event-stream` |
-| 선택 입력 | `lastEventId` 쿼리. UUID로 변환할 수 없는 값은 연결 시작 전 `400` JSON 응답입니다. |
-| 재연결 | 새 연결 ID와 emitter를 만듭니다. 기존 연결은 자신의 종료 절차로 정리합니다. |
+| 경로 | GET /api/sse |
+| 인증 | Bearer JWT로 인증한 사용자의 ID |
+| 성공 응답 | 200, text/event-stream |
+| 선택 입력 | lastEventId 쿼리의 이벤트 UUID |
+| 형식 오류 | 연결 시작 전 400 JSON 응답 |
+| 초기 일시적 조회 실패 | 지정된 두 예외에 한해 503 JSON 응답 |
+| 재연결 | 새 연결 ID·emitter·복구 상태 생성 |
 
-컨트롤러는 `SecurityUser`에서 사용자 ID를 꺼냅니다. 요청 파라미터로 다른 사용자의 ID를 받지 않습니다.
-`lastEventId`는 현재 형식만 검증하며 서비스로 전달하지 않습니다. 누락 이벤트 복구는 후속 작업입니다.
+컨트롤러는 `SecurityUser`의 사용자 ID와 `lastEventId`를 서비스에 전달합니다.
+다른 수신자를 요청 파라미터로 지정하지 않습니다.
+커서가 없거나 본인 보관 이력에서 찾을 수 없으면 과거 전체를 보내지 않고 현재 끝 위치를 기준으로 시작합니다.
 
 ## 연결이 만들어지는 순서
 
 ```mermaid
 sequenceDiagram
-    participant Browser as 클라이언트
-    participant MVC as Spring MVC
-    participant Controller as 컨트롤러
-    participant Service as 연결 서비스
-    participant Repository as 메모리 저장소
-    Browser->>MVC: GET /api/sse (JWT 인증 통과)
-    MVC->>Controller: 인증된 사용자 전달
-    Controller->>Service: connect(userId)
-    Note over Service: 연결 ID와 emitter 생성, 콜백 등록
-    Service->>Repository: save(userId, connection, emitter)
-    Note over Service: 초기 connected 주석 send 호출
-    Service-->>Controller: emitter 반환
-    Controller-->>MVC: emitter 반환
-    MVC-->>Browser: emitter 초기화 후 초기 주석 전송
+    participant B as 클라이언트
+    participant C as 컨트롤러
+    participant S as 연결 서비스
+    participant D as 전송 조정기
+    participant R as emitter 저장소
+    B->>C: GET /api/sse?lastEventId=UUID (인증)
+    C->>S: connect(userId, lastEventId)
+    Note over S: 연결 ID·emitter 생성, 콜백 등록
+    S->>D: register(userId, connection, emitter)
+    D->>R: 상태 잠금 안에서 emitter 저장
+    R-->>D: 등록 완료
+    D-->>S: 상태·연결 등록 완료
+    S->>S: connected 주석 준비
+    S->>D: 초기 이력 복구
+    D-->>S: 복구 완료 / 후속 조회 기준 확보
+    S-->>C: emitter
+    C-->>B: MVC 초기화 후 스트림 시작
 ```
 
-콜백은 먼저 등록하지만, 이 시점에는 실행하지 않습니다.
-MVC가 완료·타임아웃·오류를 통지할 때 등록해 둔 작업이 실행됩니다.
+콜백 등록은 실행 예약이며 이 시점에 콜백을 직접 실행하지 않습니다.
+초기 주석과 복구 데이터의 `send()`는 MVC 초기화 전에 버퍼에 쌓일 수 있습니다.
+호출이 반환되었다고 브라우저 수신까지 끝난 것은 아닙니다.
 
-초기 주석 전송보다 저장을 먼저 수행하여, 실패 시 동일한 연결을 저장소에서 제거할 수 있게 합니다.
-컨트롤러가 반환되기 전 `send()`는 전송 handler가 준비되지 않아 데이터를 버퍼에 보관할 수 있습니다.
-따라서 이 호출이 끝났다는 것만으로 브라우저가 이미 데이터를 받았다고 판단하지 않습니다.
+최초 주석 `:connected`에는 이벤트 ID가 없어 클라이언트의 마지막 수신 이벤트 ID를 바꾸지 않습니다.
 
-최초 프레임은 다음과 같습니다. 주석 뒤의 빈 줄이 프레임의 끝입니다.
+상태나 저장소에 같은 사용자·연결 키가 있으면 등록을 거부합니다.
+저장소 등록이 실패하면 조정기는 이번에 만든 상태만 취소하고 기존 연결은 보존합니다.
+그래서 등록 호출은 연결 서비스의 전송 실패 처리 `try` 밖에 둡니다. 등록 실패까지 일반 정리로 처리하면 기존 연결을 지울 수 있습니다.
 
-```text
-:connected
-
-```
-
-업무 이벤트가 아닌 주석에는 `id`를 붙이지 않아 마지막 이벤트 ID를 변경하지 않습니다.
+초기 복구와 그동안 도착한 신호의 처리 순서는 [복구 문서](10-recovery-and-retry.md)를 참고합니다.
 
 ## 콜백과 여러 탭의 관계
 
-예를 들어 같은 사용자의 탭 A와 탭 B는 서로 다른 연결 ID를 가집니다.
-탭 A가 종료되면 A를 등록할 때 캡처한 사용자 ID·연결 ID로 삭제하므로 B는 유지됩니다.
+탭 A와 B는 같은 사용자라도 다른 연결 ID를 가집니다.
+A의 콜백은 등록 당시 캡처한 사용자·연결 ID로 A의 상태·예약·로컬 참조만 정리합니다.
 
-| 콜백 | 서비스가 등록한 작업 |
+| 콜백 | 처리 |
 | --- | --- |
-| `onCompletion` | 해당 연결을 저장소에서 삭제합니다. |
-| `onTimeout` | 해당 연결을 삭제하고 `complete()`로 종료를 요청합니다. |
-| `onError` | 해당 연결을 삭제하고 원인에 따라 로그를 남깁니다. 오류에 따른 비동기 응답 종료는 MVC가 관리합니다. |
+| onCompletion | 상태·재시도 예약·emitter 저장소 참조 제거 |
+| onTimeout | 같은 정리 후 complete로 종료 요청 |
+| onError | 같은 정리와 오류 로그. 응답 종료는 MVC도 관여 |
 
-`onError`에서 클라이언트 단절로 식별된 예외는 `DEBUG`로, 그 외 오류는 스택을 포함해 `ERROR`로 기록합니다.
-분류 기준과 전송 실패 로그와의 차이는 [단절과 오류의 로그 기준](02-delivery-heartbeat.md#단절과-오류의-로그-기준)을 참고합니다.
-
-타임아웃 처리 뒤 완료 콜백이 실행되어 같은 연결을 다시 삭제할 수 있습니다.
-저장소는 없는 연결의 삭제도 허용하므로, 중복 삭제가 다른 연결에 영향을 주지 않습니다.
-이전 연결의 콜백이 늦게 실행되어도 새 연결 ID를 삭제하지 않습니다.
+타임아웃 이후 완료 콜백이 반복되어도 중복 정리가 다른 연결에 영향을 주지 않습니다.
+Redis 공유 이력도 연결 종료로 삭제하지 않습니다.
+예약 취소는 실행 중인 I/O의 즉시 중단을 뜻하지 않으며 늦은 예약 작업은 상태를 재확인합니다.
 
 ## 초기 실패와 서버 종료
 
-초기 `send()`에서 `IOException`이 발생하면 연결을 삭제하고 원인을 보존한 `UncheckedIOException`을 던집니다.
-`IllegalStateException`이면 연결을 삭제한 뒤 같은 예외를 다시 던집니다.
-이미 연결된 상태에서의 전송 실패는 [전송 서비스](02-delivery-heartbeat.md)가 처리합니다.
+초기 주석 전송 또는 복구에 실패하면 연결 서비스가 상태·예약·로컬 참조를 정리합니다.
+IOException은 원인을 보존한 UncheckedIOException으로, RuntimeException은 그대로 전달합니다.
 
-서버의 `ContextClosedEvent`를 받으면 현재 서버의 연결들을 순회합니다.
+컨트롤러는 초기 `DataAccessResourceFailureException`·`QueryTimeoutException`만
+SSE 시작 전 503 공통 JSON 오류로 바꿉니다. 모든 데이터 접근 예외를 503으로 처리하지 않습니다.
+연결 이후의 일시적 실패는 [후속 조회 재시도](10-recovery-and-retry.md#실패재시도종료)가 담당합니다.
 
-1. 각 emitter에 `complete()`를 호출하여 MVC에 응답 종료를 요청합니다.
-2. 하나의 종료가 `RuntimeException`으로 실패해도 다음 연결을 계속 처리합니다.
-3. `finally`에서 해당 연결을 저장소에서 삭제합니다.
+서버의 ContextClosedEvent에서는 각 emitter에 complete를 요청하고,
+실패해도 다음 연결로 진행하며 finally에서 상태·예약·저장소 참조를 정리합니다.
+완료 콜백의 즉시 실행에 의존하지 않습니다.
+이 시점에 실행 중인 하트비트가 모두 끝났다고 가정하지 않으며 스케줄러 종료는 Spring이 관리합니다.
 
-`complete()` 호출과 완료 콜백의 실행은 동일한 순간이라고 가정하지 않습니다.
-따라서 종료 정리는 콜백 실행 여부에만 의존하지 않습니다.
-종료 이벤트 수신 시 실행 중인 하트비트가 이미 모두 끝났다고도 가정하지 않습니다. 스케줄러 종료는 Spring이 관리합니다.
+## 종료 요청과 참조 정리
 
-## 관련 코드와 테스트
+| 조정기 진입점 | 역할 |
+| --- | --- |
+| `cleanupConnection(userId, connection)` | 상태·예약·저장소 참조 정리. HTTP 종료는 요청하지 않음 |
+| `closeConnection(userId, connection)` | 상태·예약 정리 후 HTTP 종료 요청과 저장소 참조 정리 |
 
-- [SseController](../../src/main/java/com/codeit/sb13/playlist_for_everyone/global/sse/controller/SseController.java): 인증 사용자와 쿼리 입력을 받습니다.
-- [SseConnectionService](../../src/main/java/com/codeit/sb13/playlist_for_everyone/global/sse/service/SseConnectionService.java): 생성·콜백 등록·초기 전송·종료 정리를 담당합니다.
-- [SseConnectionServiceTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/service/SseConnectionServiceTest.java), [SseConnectionLifecycleTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/service/SseConnectionLifecycleTest.java): 콜백별 정리와 컨텍스트 종료를 검증합니다.
+실제 HTTP 종료와 저장소 삭제는 `SseConnectionCloser`에 위임합니다.
+`close`는 complete가 실패해도 finally에서 `cleanUp`으로 저장소를 삭제합니다.
+삭제에는 사용자·연결 키만 사용하며, `close`에 전달하는 emitter는 종료할 HTTP 응답입니다.
+정리 호출 시 저장소에 emitter가 이미 없어도 남아 있는 상태·예약은 제거합니다.
+일반 전송 실패·예약 실패·재시도 소진은 종료 요청을, 완료·오류 콜백과 하트비트 실패는 참조 정리를 사용합니다.
+
+구현: [SseConnectionService](../../src/main/java/com/codeit/sb13/playlist_for_everyone/global/sse/service/SseConnectionService.java),
+[SseController](../../src/main/java/com/codeit/sb13/playlist_for_everyone/global/sse/controller/SseController.java).
+종료 위임: [SseConnectionCloser](../../src/main/java/com/codeit/sb13/playlist_for_everyone/global/sse/service/SseConnectionCloser.java).
+검증 범위는 [기본 테스트](05-testing.md)와 [이력·종료 테스트](12-history-testing.md)에 정리했습니다.
 
 ---
 
-[← 이전: 안내](README.md) · [목차](README.md) · [다음: 이벤트 전송과 하트비트 →](02-delivery-heartbeat.md)
+[← 전체 흐름](00-overall-flow.md) · [목차](README.md) · [다음: 전송과 하트비트 →](02-delivery-heartbeat.md)

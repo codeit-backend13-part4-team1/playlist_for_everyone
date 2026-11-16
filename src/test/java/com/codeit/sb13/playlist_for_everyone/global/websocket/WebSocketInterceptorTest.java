@@ -1,14 +1,18 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket;
 
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.AccessTokenClaims;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.service.lock.SpreadLock;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSession;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.DestinationMatcher;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.SessionMatcher;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.ConnectionRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistry;
 import io.jsonwebtoken.JwtException;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.*;
@@ -26,6 +30,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
@@ -52,11 +57,11 @@ public class WebSocketInterceptorTest {
     @Mock
     HeartBeatDelay delay;
     @Mock
-    ConnectionRegistry connectionRegistry;
-    @Mock
     SessionMatcher sessionMatcher;
     @Mock
-    DestinationMatcher destinationMatcher;
+    WebSocketSessionRegistry sessionRegistry;
+    @Mock
+    UserSessionRepository userSessionRepository;
 
     @InjectMocks
     private WebSocketInterceptor interceptor;
@@ -88,14 +93,14 @@ public class WebSocketInterceptorTest {
 
     private void tokenSimulateSetup(String token){
         // 토큰이 있다고 가정한다.
-        given(tokenProvider.parseAccessToken(eq(token))).willAnswer(
+        given(tokenProvider.parseAccess(eq(token))).willAnswer(
                 inv -> {
                     String gettedToken = inv.getArgument(0);
 
                     if (!token.equals(gettedToken))
                         throw new JwtException("유효하지 않은 토큰입니다.");
 
-                    return UUID.randomUUID();
+                    return new AccessTokenClaims(UUID.randomUUID(), UUID.randomUUID());
                 });
 
         given(userService.getById(any(UUID.class))).willAnswer(
@@ -132,6 +137,13 @@ public class WebSocketInterceptorTest {
         );
     }
 
+    void sessionRegistryTestSet(){
+        // 세션 등록 시뮬레이션
+        WSSession mockSession = mock(WSSession.class);
+        given(sessionRegistry.query(any())).willReturn(Optional.of(mockSession));
+        given(userSessionRepository.isCurrent(any(UUID.class),any(UUID.class))).willReturn(true);
+    }
+
     @BeforeEach
     public void setup() {
         // 테스트를 위한 딜레이 객체 교체
@@ -150,6 +162,7 @@ public class WebSocketInterceptorTest {
         public void wrightTokenConnectionTest() throws Exception {
             Message<?> message = getMessage(StompCommand.CONNECT, "testSession", "Bearer " + "testToken");
 
+            sessionRegistryTestSet();
             tokenSimulateSetup("testToken");
 
             Message<?> result = interceptor.preSend(message,messageChannel);
@@ -181,98 +194,6 @@ public class WebSocketInterceptorTest {
             ).isInstanceOf(BadCredentialsException.class); // todo - 추후 인증 실패 예외로 바꾸기.
 
             // token 공급자 상호작용 없음.
-        }
-    }
-
-    @Nested
-    @DisplayName("Subscribe 동작 테스트")
-    class Subscribe {
-        private StompHeaderAccessor subscriptionHeader(String destination){
-            StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
-            accessor.setSessionId("test-session-1");
-            accessor.setSubscriptionId("test-subscribe-1");
-            accessor.setDestination(destination);
-            accessor.setLeaveMutable(true);
-            return accessor;
-        }
-
-        @Test
-        @DisplayName("connectionRegistry 에 현재 세션 정보를 저장한다.")
-        public void registerIdTest(){
-            String mockupContentId = UUID.randomUUID().toString();
-            String destination = "/sub/contents/" + mockupContentId + "/watch";
-            Message<byte[]> message = MessageBuilder.createMessage(
-                    new byte[2],
-                    subscriptionHeader(destination).getMessageHeaders()
-            );
-
-            interceptor.preSend(message,messageChannel);
-
-            // 세션 정보 저장 매서드가 호출됨.
-            verify(connectionRegistry,times(1))
-                    .register(any(SessionData.class));
-
-            List<SessionData> sessiondDataList = mockingDetails(connectionRegistry)
-                    .getInvocations()
-                    .stream()
-                    .filter(inv -> inv.getMethod().getName().equals("register"))
-                    .map(inv -> (SessionData) inv.getArguments()[0])
-                    .toList();
-
-            assertThat(sessiondDataList).hasSize(1);
-            assertThat(sessiondDataList.get(0).session()).isEqualTo("test-session-1");
-            assertThat(sessiondDataList.get(0).subscription()).isEqualTo("test-subscribe-1");
-            assertThat(sessiondDataList.get(0).destination()).isEqualTo(destination);
-
-        }
-    }
-
-    @Nested
-    @DisplayName("구독 취소 테스트")
-    class unsubscribeTest {
-
-        @Test
-        @DisplayName("구독 취소 시, connectionRegistry 에서 정보를 취소한다.")
-        void unsubscribeTest1(){
-            Message<?> message = getMessage(StompCommand.UNSUBSCRIBE, "testSession", null);
-
-            interceptor.preSend(message,messageChannel);
-
-            verify(connectionRegistry,times(1)).unregister(any(SessionData.class));
-            List<SessionData> sessiondDataList = mockingDetails(connectionRegistry)
-                    .getInvocations()
-                    .stream()
-                    .filter(inv -> inv.getMethod().getName().equals("unregister"))
-                    .map(inv -> (SessionData) inv.getArguments()[0])
-                    .toList();
-
-            assertThat(sessiondDataList).hasSize(1);
-            assertThat(sessiondDataList.get(0).session()).isEqualTo("testSession");
-            assertThat(sessiondDataList.get(0).subscription()).isEqualTo("test-sub");
-        }
-    }
-
-    @Nested
-    @DisplayName("구독 삭제 테스트")
-    class disconnectTest {
-
-        @Test
-        @DisplayName("연결 끊김시, connectionRegistry 에서 정보를 취소한다.")
-        void disconnectTest1(){
-            Message<?> message = getMessage(StompCommand.DISCONNECT, "testSession", null);
-
-            interceptor.preSend(message,messageChannel);
-
-            verify(connectionRegistry,times(1)).unregister(any(SessionData.class));
-            List<SessionData> sessiondDataList = mockingDetails(connectionRegistry)
-                    .getInvocations()
-                    .stream()
-                    .filter(inv -> inv.getMethod().getName().equals("unregister"))
-                    .map(inv -> (SessionData) inv.getArguments()[0])
-                    .toList();
-
-            assertThat(sessiondDataList).hasSize(1);
-            assertThat(sessiondDataList.get(0).session()).isEqualTo("testSession");
         }
     }
 

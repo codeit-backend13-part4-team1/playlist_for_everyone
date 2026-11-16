@@ -6,10 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -30,13 +27,12 @@ public class RedisTopicRegistry {
     private final RedisBrokerRegister redisBroker;
 
     private final Map<String, RedisMessageListener> listenerMap = new ConcurrentHashMap<>();
-    // content 를 기반으로 session - subscription 쌍을 관리
+    // content(topic) 를 기반으로 session - subscription 쌍을 관리
     private final Map<String, Set<KeyPair>> registerMap = new ConcurrentHashMap<>();
     private final Map<KeyPair,String> registerIndex = new ConcurrentHashMap<>();
 
     // 등록 실패 컨텐츠를 저장하는 셋
     private final Set<String> unregisterFailureSet = new CopyOnWriteArraySet<>();
-
 
     // KeyPair 는 동시에 같은 값이 2개 이상 존재할 수 없다.
     // 동기 작업을 위해 세션 저장소도 해당 클래스만 접근하도록 구성.
@@ -46,6 +42,8 @@ public class RedisTopicRegistry {
         private final String subscription;
 
         public String toString(){ return session + " : " + subscription; }
+
+        public String session(){ return session; }
 
         @Override
         public boolean equals(Object other){
@@ -163,6 +161,19 @@ public class RedisTopicRegistry {
             unregister(key);
         }
 
+    }
+
+    public List<String> disconnectWithContentId(String contentId){
+        List<String> topics = new ArrayList<>();
+        if (registerMap.get(contentId) == null)
+            return topics;
+
+        Set<KeyPair> keyset = registerMap.get(contentId);
+        for (KeyPair topic : keyset){
+            unregister(topic);
+            topics.add(topic.session());
+        }
+        return topics;
     }
 
     @Scheduled(fixedDelay = 60000) // 60초마다 체크

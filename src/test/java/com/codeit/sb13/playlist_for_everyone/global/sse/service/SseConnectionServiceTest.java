@@ -8,9 +8,11 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.MockedConstruction;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
@@ -25,8 +27,8 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 /**
- * 연결 서비스가 저장소와 emitter에 요청해야 하는 동작을 검증한다.
- * 저장소는 인터페이스 Mock으로 대체하며, 실제 Map의 저장 결과는 저장소 테스트에서 확인한다.
+ * 연결 서비스가 조정기에 등록·정리를 위임하고 emitter에 초기 주석을 보내는지 검증한다.
+ * 조정기와 저장소는 Mock으로 대체한다. 실제 등록 결과는 조정기와 저장소 테스트에서 확인한다.
  *
  * <p>MockedConstruction은 테스트 스레드에서 생성하는 SseEmitter를 해당 블록 안에서 Mock으로
  * 대체한다. ArgumentCaptor로 등록된 콜백을 꺼내 직접 실행하므로 브라우저나 타임아웃을 기다리지 않는다.
@@ -40,6 +42,9 @@ class SseConnectionServiceTest {
     @Mock
     private SseEmitterRepository repository;
 
+    @Mock
+    private SseDeliveryCoordinator deliveryCoordinator;
+
     private SseConnectionService service;
 
     @BeforeEach
@@ -48,7 +53,7 @@ class SseConnectionServiceTest {
                 Duration.ofSeconds(15),
                 Duration.ofMinutes(30)
         );
-        service = new SseConnectionService(repository, properties);
+        service = new SseConnectionService(repository, properties, deliveryCoordinator);
     }
 
     @Test
@@ -57,14 +62,35 @@ class SseConnectionServiceTest {
         UUID userId = UUID.randomUUID();
         ArgumentCaptor<Connection> connectionCaptor = ArgumentCaptor.forClass(Connection.class);
 
-        SseEmitter emitter = service.connect(userId);
+        SseEmitter emitter = service.connect(userId, null);
 
         assertThat(emitter).isNotNull();
-        verify(repository).save(eq(userId), connectionCaptor.capture(), same(emitter));
+        verify(deliveryCoordinator).register(eq(userId), connectionCaptor.capture(), same(emitter));
+        verifyNoInteractions(repository);
 
         Connection connection = connectionCaptor.getValue();
         assertThat(connection).isNotNull();
         assertThat(connection.id()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("조정기 등록 실패 시 기존 연결의 정리·종료와 초기 전송을 요청하지 않고 원래 예외를 전달한다.")
+    void registrationFailurePreservesExceptionWithoutCleanup() throws IOException {
+        UUID userId = UUID.randomUUID();
+        IllegalStateException failure = new IllegalStateException("테스트용 등록 실패");
+        doThrow(failure).when(deliveryCoordinator).register(eq(userId), any(), any());
+        try (MockedConstruction<SseEmitter> construction = mockConstruction(SseEmitter.class)) {
+            assertThatThrownBy(() -> service.connect(userId, null)).isSameAs(failure);
+            SseEmitter emitter = construction.constructed().get(0);
+            ArgumentCaptor<Connection> connectionCaptor = ArgumentCaptor.forClass(Connection.class);
+            verify(deliveryCoordinator).register(eq(userId), connectionCaptor.capture(), same(emitter));
+            verify(deliveryCoordinator, never()).cleanupConnection(any(), any());
+            verify(deliveryCoordinator, never()).closeConnection(any(), any());
+            verify(deliveryCoordinator, never()).recover(any(), any(), any());
+            verify(emitter, never()).send(any(SseEmitter.SseEventBuilder.class));
+            verify(emitter, never()).complete();
+            verifyNoInteractions(repository);
+        }
     }
 
     @Test
@@ -76,9 +102,9 @@ class SseConnectionServiceTest {
                 connectionTimeout
         );
         SseConnectionService serviceWithCustomTimeout =
-                new SseConnectionService(repository, properties);
+                new SseConnectionService(repository, properties, deliveryCoordinator);
 
-        SseEmitter emitter = serviceWithCustomTimeout.connect(UUID.randomUUID());
+        SseEmitter emitter = serviceWithCustomTimeout.connect(UUID.randomUUID(), null);
 
         assertThat(emitter.getTimeout()).isEqualTo(connectionTimeout.toMillis());
     }
@@ -90,13 +116,13 @@ class SseConnectionServiceTest {
         ArgumentCaptor<Connection> firstConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
         ArgumentCaptor<Connection> secondConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
 
-        SseEmitter firstEmitter = service.connect(userId);
-        SseEmitter secondEmitter = service.connect(userId);
+        SseEmitter firstEmitter = service.connect(userId, null);
+        SseEmitter secondEmitter = service.connect(userId, null);
 
         assertThat(secondEmitter).isNotSameAs(firstEmitter);
-        verify(repository).save(eq(userId), firstConnectionCaptor.capture(), same(firstEmitter));
-        verify(repository).save(eq(userId), secondConnectionCaptor.capture(), same(secondEmitter));
-        verify(repository, times(2)).save(any(), any(), any());
+        verify(deliveryCoordinator).register(eq(userId), firstConnectionCaptor.capture(), same(firstEmitter));
+        verify(deliveryCoordinator).register(eq(userId), secondConnectionCaptor.capture(), same(secondEmitter));
+        verify(deliveryCoordinator, times(2)).register(any(), any(), any());
 
         assertThat(firstConnectionCaptor.getValue().id()).isNotNull();
         assertThat(secondConnectionCaptor.getValue().id()).isNotNull()
@@ -111,12 +137,12 @@ class SseConnectionServiceTest {
         ArgumentCaptor<Connection> firstConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
         ArgumentCaptor<Connection> secondConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
 
-        SseEmitter firstEmitter = service.connect(firstUserId);
-        SseEmitter secondEmitter = service.connect(secondUserId);
+        SseEmitter firstEmitter = service.connect(firstUserId, null);
+        SseEmitter secondEmitter = service.connect(secondUserId, null);
 
-        verify(repository).save(eq(firstUserId), firstConnectionCaptor.capture(), same(firstEmitter));
-        verify(repository).save(eq(secondUserId), secondConnectionCaptor.capture(), same(secondEmitter));
-        verify(repository, times(2)).save(any(), any(), any());
+        verify(deliveryCoordinator).register(eq(firstUserId), firstConnectionCaptor.capture(), same(firstEmitter));
+        verify(deliveryCoordinator).register(eq(secondUserId), secondConnectionCaptor.capture(), same(secondEmitter));
+        verify(deliveryCoordinator, times(2)).register(any(), any(), any());
 
         assertThat(secondEmitter).isNotSameAs(firstEmitter);
         assertThat(firstConnectionCaptor.getValue().id()).isNotNull();
@@ -125,38 +151,44 @@ class SseConnectionServiceTest {
     }
 
     @Test
-    @DisplayName("연결 완료 콜백이 실행되면 등록 당시의 사용자와 연결 식별자로 삭제를 요청한다.")
-    void completionCallbackRequestsDeletionOfRegisteredConnection() {
+    @DisplayName("연결 완료 콜백이 실행되면 HTTP 종료를 다시 요청하지 않고 연결 정리를 조정기에 위임한다.")
+    void completionCallbackDelegatesConnectionCleanup() {
         UUID userId = UUID.randomUUID();
 
         try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
-            SseEmitter emitter = service.connect(userId);
+            SseEmitter emitter = service.connect(userId, null);
             ArgumentCaptor<Connection> connectionCaptor = ArgumentCaptor.forClass(Connection.class);
-            verify(repository).save(eq(userId), connectionCaptor.capture(), same(emitter));
+            verify(deliveryCoordinator).register(eq(userId), connectionCaptor.capture(), same(emitter));
 
             ArgumentCaptor<Runnable> completionCaptor = ArgumentCaptor.forClass(Runnable.class);
             verify(emitter).onCompletion(completionCaptor.capture());
+            verify(deliveryCoordinator, never()).cleanupConnection(any(), any());
 
             // onCompletion은 등록 메서드다. 등록한 Runnable을 실행하여 완료 상황을 재현한다.
             completionCaptor.getValue().run();
 
-            verify(repository).delete(userId, connectionCaptor.getValue());
-            verify(repository, times(1)).delete(any(), any());
+            Connection connection = connectionCaptor.getValue();
+
+            verify(deliveryCoordinator).cleanupConnection(eq(userId), eq(connection));
+            verify(deliveryCoordinator, times(1)).cleanupConnection(any(), any());
+            verify(deliveryCoordinator, never()).closeConnection(any(), any());
+            verify(repository, never()).delete(any(), any());
+            verify(emitter, never()).complete();
         }
     }
 
     @Test
-    @DisplayName("같은 사용자의 연결 중 완료된 연결에 대해서만 삭제를 요청한다.")
-    void completionCallbackRequestsDeletionOnlyForCompletedConnection() {
+    @DisplayName("같은 사용자의 연결 중 완료된 연결에 대해서만 조정기에 정리를 위임한다.")
+    void completionCallbackDelegatesCleanupOnlyForCompletedConnection() {
         UUID userId = UUID.randomUUID();
 
         try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
-            SseEmitter firstEmitter = service.connect(userId);
-            SseEmitter secondEmitter = service.connect(userId);
+            SseEmitter firstEmitter = service.connect(userId, null);
+            SseEmitter secondEmitter = service.connect(userId, null);
             ArgumentCaptor<Connection> firstConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
             ArgumentCaptor<Connection> secondConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
-            verify(repository).save(eq(userId), firstConnectionCaptor.capture(), same(firstEmitter));
-            verify(repository).save(eq(userId), secondConnectionCaptor.capture(), same(secondEmitter));
+            verify(deliveryCoordinator).register(eq(userId), firstConnectionCaptor.capture(), same(firstEmitter));
+            verify(deliveryCoordinator).register(eq(userId), secondConnectionCaptor.capture(), same(secondEmitter));
             assertThat(secondConnectionCaptor.getValue()).isNotEqualTo(firstConnectionCaptor.getValue());
 
             ArgumentCaptor<Runnable> completionCaptor = ArgumentCaptor.forClass(Runnable.class);
@@ -164,98 +196,106 @@ class SseConnectionServiceTest {
 
             completionCaptor.getValue().run();
 
-            verify(repository).delete(userId, firstConnectionCaptor.getValue());
-            verify(repository, times(1)).delete(any(), any());
+            verify(deliveryCoordinator).cleanupConnection(eq(userId), eq(firstConnectionCaptor.getValue()));
+            verify(deliveryCoordinator, times(1)).cleanupConnection(any(), any());
+            verify(repository, never()).delete(any(), any());
         }
     }
 
     @Test
-    @DisplayName("한 사용자의 연결이 완료되면 해당 사용자 연결에 대해서만 삭제를 요청한다.")
-    void completionCallbackRequestsDeletionOnlyForCompletedUser() {
+    @DisplayName("한 사용자의 연결이 완료되면 해당 사용자 연결에 대해서만 조정기에 정리를 위임한다.")
+    void completionCallbackDelegatesCleanupOnlyForCompletedUser() {
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
 
         try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
-            SseEmitter firstEmitter = service.connect(firstUserId);
-            SseEmitter secondEmitter = service.connect(secondUserId);
+            SseEmitter firstEmitter = service.connect(firstUserId, null);
+            SseEmitter secondEmitter = service.connect(secondUserId, null);
             ArgumentCaptor<Connection> firstConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
             ArgumentCaptor<Connection> secondConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
-            verify(repository).save(eq(firstUserId), firstConnectionCaptor.capture(), same(firstEmitter));
-            verify(repository).save(eq(secondUserId), secondConnectionCaptor.capture(), same(secondEmitter));
+            verify(deliveryCoordinator).register(eq(firstUserId), firstConnectionCaptor.capture(), same(firstEmitter));
+            verify(deliveryCoordinator).register(eq(secondUserId), secondConnectionCaptor.capture(), same(secondEmitter));
 
             ArgumentCaptor<Runnable> completionCaptor = ArgumentCaptor.forClass(Runnable.class);
             verify(firstEmitter).onCompletion(completionCaptor.capture());
 
             completionCaptor.getValue().run();
 
-            verify(repository).delete(firstUserId, firstConnectionCaptor.getValue());
-            verify(repository, times(1)).delete(any(), any());
+            verify(deliveryCoordinator).cleanupConnection(eq(firstUserId), eq(firstConnectionCaptor.getValue()));
+            verify(deliveryCoordinator, times(1)).cleanupConnection(any(), any());
+            verify(repository, never()).delete(any(), any());
         }
     }
 
     @Test
-    @DisplayName("새 연결이 등록된 뒤 이전 연결의 완료 콜백을 다시 실행해도 이전 연결만 삭제 요청한다.")
-    void repeatedCompletionCallbackRequestsDeletionOnlyForOldConnection() {
+    @DisplayName("새 연결이 등록된 뒤 이전 연결의 완료 콜백을 다시 실행해도 이전 연결만 정리를 위임한다.")
+    void repeatedCompletionCallbackDelegatesCleanupOnlyForOldConnection() {
         UUID userId = UUID.randomUUID();
 
         try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
-            SseEmitter oldEmitter = service.connect(userId);
+            SseEmitter oldEmitter = service.connect(userId, null);
             ArgumentCaptor<Connection> oldConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
-            verify(repository).save(eq(userId), oldConnectionCaptor.capture(), same(oldEmitter));
+            verify(deliveryCoordinator).register(eq(userId), oldConnectionCaptor.capture(), same(oldEmitter));
 
             ArgumentCaptor<Runnable> completionCaptor = ArgumentCaptor.forClass(Runnable.class);
             verify(oldEmitter).onCompletion(completionCaptor.capture());
             Runnable oldCompletion = completionCaptor.getValue();
 
             oldCompletion.run();
-            verify(repository).delete(userId, oldConnectionCaptor.getValue());
+            verify(deliveryCoordinator).cleanupConnection(eq(userId), eq(oldConnectionCaptor.getValue()));
 
-            SseEmitter newEmitter = service.connect(userId);
+            SseEmitter newEmitter = service.connect(userId, null);
             ArgumentCaptor<Connection> newConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
-            verify(repository).save(eq(userId), newConnectionCaptor.capture(), same(newEmitter));
+            verify(deliveryCoordinator).register(eq(userId), newConnectionCaptor.capture(), same(newEmitter));
             assertThat(newConnectionCaptor.getValue()).isNotEqualTo(oldConnectionCaptor.getValue());
 
             // 이전 연결의 지연된 콜백이 다시 도착해도 새 연결 ID를 삭제 대상으로 사용하면 안 된다.
             oldCompletion.run();
 
-            verify(repository, times(2)).delete(userId, oldConnectionCaptor.getValue());
-            verify(repository, times(2)).delete(any(), any());
+            verify(deliveryCoordinator, times(2)).cleanupConnection(eq(userId), eq(oldConnectionCaptor.getValue()));
+            verify(deliveryCoordinator, times(2)).cleanupConnection(any(), any());
+
+            verify(repository, never()).delete(any(), any());
         }
     }
 
     @Test
-    @DisplayName("연결 시간이 초과되면 해당 연결의 삭제와 에미터 종료를 요청한다.")
-    void timeoutCallbackRequestsDeletionAndCompletion() {
+    @DisplayName("타임아웃 콜백이 실행되면 연결 정리를 조정기에 위임하고 에미터 종료를 요청한다.")
+    void timeoutCallbackDelegatesCleanupAndRequestsCompletion() {
         UUID userId = UUID.randomUUID();
 
         try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
-            SseEmitter emitter = service.connect(userId);
+            SseEmitter emitter = service.connect(userId, null);
             ArgumentCaptor<Connection> connectionCaptor = ArgumentCaptor.forClass(Connection.class);
-            verify(repository).save(eq(userId), connectionCaptor.capture(), same(emitter));
+            verify(deliveryCoordinator).register(eq(userId), connectionCaptor.capture(), same(emitter));
 
             ArgumentCaptor<Runnable> timeoutCaptor = ArgumentCaptor.forClass(Runnable.class);
             verify(emitter).onTimeout(timeoutCaptor.capture());
+            verify(deliveryCoordinator, never()).cleanupConnection(any(), any());
 
             timeoutCaptor.getValue().run();
 
-            verify(repository).delete(userId, connectionCaptor.getValue());
-            verify(repository, times(1)).delete(any(), any());
+            Connection connection = connectionCaptor.getValue();
+
+            verify(deliveryCoordinator).cleanupConnection(eq(userId), eq(connection));
+            verify(deliveryCoordinator, times(1)).cleanupConnection(any(), any());
+            verify(repository, never()).delete(any(), any());
             verify(emitter).complete();
         }
     }
 
     @Test
-    @DisplayName("같은 사용자의 연결 중 타임아웃된 연결에 대해서만 삭제와 종료를 요청한다.")
-    void timeoutCallbackRequestsCleanupOnlyForTimedOutConnection() {
+    @DisplayName("같은 사용자의 연결 중 타임아웃된 연결만 정리를 위임하고 종료를 요청한다.")
+    void timeoutCallbackDelegatesCleanupOnlyForTimedOutConnection() {
         UUID userId = UUID.randomUUID();
 
         try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
-            SseEmitter firstEmitter = service.connect(userId);
-            SseEmitter secondEmitter = service.connect(userId);
+            SseEmitter firstEmitter = service.connect(userId, null);
+            SseEmitter secondEmitter = service.connect(userId, null);
             ArgumentCaptor<Connection> firstConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
             ArgumentCaptor<Connection> secondConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
-            verify(repository).save(eq(userId), firstConnectionCaptor.capture(), same(firstEmitter));
-            verify(repository).save(eq(userId), secondConnectionCaptor.capture(), same(secondEmitter));
+            verify(deliveryCoordinator).register(eq(userId), firstConnectionCaptor.capture(), same(firstEmitter));
+            verify(deliveryCoordinator).register(eq(userId), secondConnectionCaptor.capture(), same(secondEmitter));
             assertThat(secondConnectionCaptor.getValue()).isNotEqualTo(firstConnectionCaptor.getValue());
 
             ArgumentCaptor<Runnable> timeoutCaptor = ArgumentCaptor.forClass(Runnable.class);
@@ -263,8 +303,9 @@ class SseConnectionServiceTest {
 
             timeoutCaptor.getValue().run();
 
-            verify(repository).delete(userId, firstConnectionCaptor.getValue());
-            verify(repository, times(1)).delete(any(), any());
+            verify(deliveryCoordinator).cleanupConnection(eq(userId), eq(firstConnectionCaptor.getValue()));
+            verify(deliveryCoordinator, times(1)).cleanupConnection(any(), any());
+            verify(repository, never()).delete(any(), any());
             verify(firstEmitter).complete();
             verify(secondEmitter, never()).complete();
             verify(secondEmitter, never()).completeWithError(any());
@@ -272,14 +313,14 @@ class SseConnectionServiceTest {
     }
 
     @Test
-    @DisplayName("타임아웃 후 이전 연결의 완료 콜백이 실행돼도 새 연결의 삭제나 종료를 요청하지 않는다.")
-    void completionAfterTimeoutRequestsCleanupOnlyForOldConnection() {
+    @DisplayName("타임아웃 후 이전 연결의 완료 콜백이 실행돼도 이전 연결만 정리를 위임하고 새 연결은 유지한다.")
+    void completionAfterTimeoutDelegatesCleanupOnlyForOldConnection() {
         UUID userId = UUID.randomUUID();
 
         try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
-            SseEmitter oldEmitter = service.connect(userId);
+            SseEmitter oldEmitter = service.connect(userId, null);
             ArgumentCaptor<Connection> oldConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
-            verify(repository).save(eq(userId), oldConnectionCaptor.capture(), same(oldEmitter));
+            verify(deliveryCoordinator).register(eq(userId), oldConnectionCaptor.capture(), same(oldEmitter));
 
             ArgumentCaptor<Runnable> timeoutCaptor = ArgumentCaptor.forClass(Runnable.class);
             ArgumentCaptor<Runnable> completionCaptor = ArgumentCaptor.forClass(Runnable.class);
@@ -287,55 +328,60 @@ class SseConnectionServiceTest {
             verify(oldEmitter).onCompletion(completionCaptor.capture());
 
             timeoutCaptor.getValue().run();
-            verify(repository).delete(userId, oldConnectionCaptor.getValue());
+            verify(deliveryCoordinator).cleanupConnection(eq(userId), eq(oldConnectionCaptor.getValue()));
             verify(oldEmitter).complete();
 
-            SseEmitter newEmitter = service.connect(userId);
+            SseEmitter newEmitter = service.connect(userId, null);
             ArgumentCaptor<Connection> newConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
-            verify(repository).save(eq(userId), newConnectionCaptor.capture(), same(newEmitter));
+            verify(deliveryCoordinator).register(eq(userId), newConnectionCaptor.capture(), same(newEmitter));
             assertThat(newConnectionCaptor.getValue()).isNotEqualTo(oldConnectionCaptor.getValue());
 
             completionCaptor.getValue().run();
 
-            verify(repository, times(2)).delete(userId, oldConnectionCaptor.getValue());
-            verify(repository, times(2)).delete(any(), any());
+            verify(deliveryCoordinator, times(2)).cleanupConnection(eq(userId), eq(oldConnectionCaptor.getValue()));
+            verify(deliveryCoordinator, times(2)).cleanupConnection(any(), any());
+            verify(repository, never()).delete(any(), any());
             verify(newEmitter, never()).complete();
             verify(newEmitter, never()).completeWithError(any());
         }
     }
 
     @Test
-    @DisplayName("연결 오류 콜백이 실행되면 등록 당시의 사용자와 연결 식별자로 삭제를 요청한다.")
-    void errorCallbackRequestsDeletionOfRegisteredConnection() {
+    @DisplayName("오류 콜백이 실행되면 해당 연결의 정리를 조정기에 위임한다.")
+    void errorCallbackDelegatesCleanupOfRegisteredConnection() {
         UUID userId = UUID.randomUUID();
 
         try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
-            SseEmitter emitter = service.connect(userId);
+            SseEmitter emitter = service.connect(userId, null);
             ArgumentCaptor<Connection> connectionCaptor = ArgumentCaptor.forClass(Connection.class);
-            verify(repository).save(eq(userId), connectionCaptor.capture(), same(emitter));
+            verify(deliveryCoordinator).register(eq(userId), connectionCaptor.capture(), same(emitter));
 
             ArgumentCaptor<Consumer<Throwable>> errorCaptor = ArgumentCaptor.captor();
             verify(emitter).onError(errorCaptor.capture());
+            verify(deliveryCoordinator, never()).cleanupConnection(any(), any());
 
             errorCaptor.getValue().accept(new IOException("연결 오류"));
 
-            verify(repository).delete(userId, connectionCaptor.getValue());
-            verify(repository, times(1)).delete(any(), any());
+            Connection connection = connectionCaptor.getValue();
+
+            verify(deliveryCoordinator).cleanupConnection(eq(userId), eq(connection));
+            verify(deliveryCoordinator, times(1)).cleanupConnection(any(), any());
+            verify(repository, never()).delete(any(), any());
         }
     }
 
     @Test
-    @DisplayName("같은 사용자의 연결 중 오류가 발생한 연결에 대해서만 삭제를 요청하고 다른 연결은 종료하지 않는다.")
-    void errorCallbackRequestsCleanupOnlyForFailedConnection() {
+    @DisplayName("같은 사용자의 연결 중 오류가 발생한 연결만 정리를 위임하고 다른 연결은 종료하지 않는다.")
+    void errorCallbackDelegatesCleanupOnlyForFailedConnection() {
         UUID userId = UUID.randomUUID();
 
         try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
-            SseEmitter firstEmitter = service.connect(userId);
-            SseEmitter secondEmitter = service.connect(userId);
+            SseEmitter firstEmitter = service.connect(userId, null);
+            SseEmitter secondEmitter = service.connect(userId, null);
             ArgumentCaptor<Connection> firstConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
             ArgumentCaptor<Connection> secondConnectionCaptor = ArgumentCaptor.forClass(Connection.class);
-            verify(repository).save(eq(userId), firstConnectionCaptor.capture(), same(firstEmitter));
-            verify(repository).save(eq(userId), secondConnectionCaptor.capture(), same(secondEmitter));
+            verify(deliveryCoordinator).register(eq(userId), firstConnectionCaptor.capture(), same(firstEmitter));
+            verify(deliveryCoordinator).register(eq(userId), secondConnectionCaptor.capture(), same(secondEmitter));
             assertThat(secondConnectionCaptor.getValue()).isNotEqualTo(firstConnectionCaptor.getValue());
 
             ArgumentCaptor<Consumer<Throwable>> errorCaptor = ArgumentCaptor.captor();
@@ -343,8 +389,9 @@ class SseConnectionServiceTest {
 
             errorCaptor.getValue().accept(new IOException("연결 오류"));
 
-            verify(repository).delete(userId, firstConnectionCaptor.getValue());
-            verify(repository, times(1)).delete(any(), any());
+            verify(deliveryCoordinator).cleanupConnection(eq(userId), eq(firstConnectionCaptor.getValue()));
+            verify(deliveryCoordinator, times(1)).cleanupConnection(any(), any());
+            verify(repository, never()).delete(any(), any());
             verify(secondEmitter, never()).complete();
             verify(secondEmitter, never()).completeWithError(any());
         }
@@ -356,7 +403,7 @@ class SseConnectionServiceTest {
         UUID userId = UUID.randomUUID();
 
         try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
-            SseEmitter emitter = service.connect(userId);
+            SseEmitter emitter = service.connect(userId, null);
             ArgumentCaptor<SseEmitter.SseEventBuilder> eventCaptor =
                     ArgumentCaptor.forClass(SseEmitter.SseEventBuilder.class);
 
@@ -370,34 +417,35 @@ class SseConnectionServiceTest {
     }
 
     @Test
-    @DisplayName("초기 주석은 등록 요청 후 전송하며 실패하면 동일 연결의 삭제를 요청하고 원본 예외를 보존한다.")
-    void initialCommentFailureRequestsDeletionAndPreservesCause() {
+    @DisplayName("초기 주석 전송에 실패하면 연결 정리를 조정기에 위임하고 원래 예외를 보존한다.")
+    void initialCommentFailureDelegatesCleanupAndPreservesCause() {
         UUID userId = UUID.randomUUID();
         IOException sendFailure = new IOException("초기 주석 전송 실패");
         ArgumentCaptor<Connection> connectionCaptor = ArgumentCaptor.forClass(Connection.class);
 
-        // send가 호출되는 바로 그 시점에 save가 이미 실행됐는지 확인하고 예외를 발생시킨다.
+        // send가 호출되는 바로 그 시점에 조정기 등록이 이미 실행됐는지 확인하고 예외를 발생시킨다.
         // 실제 초기 send는 버퍼링될 수 있으므로, 여기서는 서비스가 직접 잡는 예외 처리 경로를 검증한다.
-        try (MockedConstruction<SseEmitter> ignored = mockConstruction(
+        try (MockedConstruction<SseEmitter> emitterConstruction = mockConstruction(
                 SseEmitter.class,
                 (emitter, context) -> doAnswer(invocation -> {
-                    verify(repository).save(eq(userId), connectionCaptor.capture(), same(emitter));
+                    verify(deliveryCoordinator).register(eq(userId), connectionCaptor.capture(), same(emitter));
                     throw sendFailure;
                 }).when(emitter).send(any(SseEmitter.SseEventBuilder.class))
         )) {
-            assertThatThrownBy(() -> service.connect(userId))
+            assertThatThrownBy(() -> service.connect(userId, null))
                     .isInstanceOf(UncheckedIOException.class)
                     .cause()
                     .isSameAs(sendFailure);
 
-            verify(repository).delete(userId, connectionCaptor.getValue());
-            verify(repository, times(1)).delete(any(), any());
+            verify(deliveryCoordinator).cleanupConnection(eq(userId), eq(connectionCaptor.getValue()));
+            verify(deliveryCoordinator, times(1)).cleanupConnection(any(), any());
+            verify(repository, never()).delete(any(), any());
         }
     }
 
     @Test
-    @DisplayName("전체 연결 정리를 요청하면 등록된 에미터의 종료와 연결 삭제를 요청한다.")
-    void closeAllLocalConnectionsRequestsCompletionAndDeletion(){
+    @DisplayName("전체 연결 정리를 요청하면 에미터 종료를 요청하고 연결 정리를 조정기에 위임한다.")
+    void closeAllLocalConnectionsRequestsCompletionAndDelegatesCleanup(){
         UUID userId = UUID.randomUUID();
         Connection connection = Connection.create();
         SseEmitter emitter = mock(SseEmitter.class);
@@ -410,35 +458,38 @@ class SseConnectionServiceTest {
 
         service.closeAllLocalConnections();
 
-        verify(emitter).complete();;
-        verify(repository).delete(userId, connection);
+        verify(emitter).complete();
+        verify(deliveryCoordinator).cleanupConnection(eq(userId), eq(connection));
+        verify(deliveryCoordinator, times(1)).cleanupConnection(any(), any());
+        verify(repository, never()).delete(any(), any());
     }
 
     @Test
-    @DisplayName("초기 주석 전송 중 상태 예외가 발생하면 해당 연결을 삭제하고 원본예외를 전달한다.")
-    void initialCommentIllegalStateRequestDeletionAndRethrowsOriginalException(){
+    @DisplayName("초기 주석 전송 중 상태 예외가 발생하면 연결 정리를 조정기에 위임하고 원래 예외를 전달한다.")
+    void initialCommentIllegalStateDelegatesCleanupAndRethrowsOriginalException(){
         UUID userId = UUID.randomUUID();
         IllegalStateException sendFailure = new IllegalStateException("이미 종료된 연결입니다.");
 
         ArgumentCaptor<Connection> connectionCaptor = ArgumentCaptor.forClass(Connection.class);
 
-        try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class,
+        try (MockedConstruction<SseEmitter> emitterConstruction = mockConstruction(SseEmitter.class,
                 (emitter, context)-> doAnswer(invocation -> {
-                    verify(repository).save(eq(userId), connectionCaptor.capture(), same(emitter));
+                    verify(deliveryCoordinator).register(eq(userId), connectionCaptor.capture(), same(emitter));
                     throw sendFailure;
                 }).when(emitter).send(any(SseEmitter.SseEventBuilder.class))
         )){
-            assertThatThrownBy(()-> service.connect(userId))
+            assertThatThrownBy(()-> service.connect(userId, null))
                     .isSameAs(sendFailure);
 
-            verify(repository).delete(userId, connectionCaptor.getValue());
-            verify(repository, times(1)).delete(any(), any());
+            verify(deliveryCoordinator).cleanupConnection(eq(userId), eq(connectionCaptor.getValue()));
+            verify(deliveryCoordinator, times(1)).cleanupConnection(any(), any());
+            verify(repository, never()).delete(any(), any());
         }
     }
 
     @Test
-    @DisplayName("한 연결의 종료가 실패해도 해당 연결을 삭제하고 나머지 사용자 연결의 정리를 계속한다.")
-    void closeAllContinuesCleanupWhenCompletionFails(){
+    @DisplayName("한 연결의 종료가 실패해도 해당 연결의 정리를 위임하고 나머지 사용자 연결의 정리를 계속한다.")
+    void closeAllContinuesCleanupDelegationWhenCompletionFails(){
         UUID firstUserId = UUID.randomUUID();
         UUID secondUserId = UUID.randomUUID();
 
@@ -471,10 +522,126 @@ class SseConnectionServiceTest {
         verify(sameUserEmitter).complete();
         verify(otherUserEmitter).complete();
 
-        verify(repository).delete(firstUserId, failedConnection);
-        verify(repository).delete(firstUserId, sameUserConnection);
-        verify(repository).delete(secondUserId, otherUserConnection);
-        verify(repository, times(3)).delete(any(), any());
+        verify(deliveryCoordinator).cleanupConnection(eq(firstUserId), eq(failedConnection));
+        verify(deliveryCoordinator).cleanupConnection(eq(firstUserId), eq(sameUserConnection));
+        verify(deliveryCoordinator).cleanupConnection(eq(secondUserId), eq(otherUserConnection));
+        verify(deliveryCoordinator, times(3)).cleanupConnection(any(), any());
+        verify(repository, never()).delete(any(), any());
+    }
 
+    @Test
+    @DisplayName("조정기에 연결 등록을 위임한 뒤 마지막 이벤트 ID로 복구를 요청한다.")
+    void connectDelegatesRegistrationBeforeRequestingRecovery(){
+        UUID userId = UUID.randomUUID();
+        UUID lastEventId = UUID.randomUUID();
+
+        ArgumentCaptor<Connection> connectionCaptor = ArgumentCaptor.forClass(Connection.class);
+        SseEmitter emitter = service.connect(userId, lastEventId);
+
+        InOrder inOrder = inOrder(deliveryCoordinator);
+        inOrder.verify(deliveryCoordinator)
+                        .register(eq(userId), connectionCaptor.capture(), same(emitter));
+
+        Connection connection = connectionCaptor.getValue();
+
+        inOrder.verify(deliveryCoordinator)
+                .recover(userId, connection, lastEventId);
+    }
+
+    @Test
+    @DisplayName("마지막 이벤트 ID가 없어도 등록한 연결의 복구를 요청한다.")
+    void connectRequestsCoordinatorRecoveryWithoutLastEventId(){
+        UUID userId = UUID.randomUUID();
+
+        ArgumentCaptor<Connection> connectionCaptor = ArgumentCaptor.forClass(Connection.class);
+
+        SseEmitter emitter = service.connect(userId, null);
+
+        verify(deliveryCoordinator)
+                .register(eq(userId), connectionCaptor.capture(), same(emitter));
+
+        verify(deliveryCoordinator)
+                .recover(eq(userId), eq(connectionCaptor.getValue()), isNull());
+    }
+
+    @Test
+    @DisplayName("복구 이력 조회에 실패하면 등록된 연결의 정리를 위임하고 원래 예외를 전달한다.")
+    void recoveryLookupFailureDelegatesRegisteredConnectionCleanup(){
+        UUID userId = UUID.randomUUID();
+        UUID lastEventId = UUID.randomUUID();
+
+        DataAccessResourceFailureException failure = new DataAccessResourceFailureException("테스트용 이력 조회 실패");
+
+        ArgumentCaptor<Connection> connectionCaptor = ArgumentCaptor.forClass(Connection.class);
+        ArgumentCaptor<SseEmitter> emitterCaptor = ArgumentCaptor.forClass(SseEmitter.class);
+
+        doThrow(failure)
+                .when(deliveryCoordinator)
+                .recover(eq(userId), any(Connection.class), eq(lastEventId));
+
+        assertThatThrownBy(() -> service.connect(userId, lastEventId))
+                .isSameAs(failure);
+
+        verify(deliveryCoordinator)
+                .register(eq(userId), connectionCaptor.capture(), emitterCaptor.capture());
+
+        verify(deliveryCoordinator).cleanupConnection(eq(userId), eq(connectionCaptor.getValue()));
+        verify(deliveryCoordinator, times(1)).cleanupConnection(any(), any());
+        verify(repository, never()).delete(any(), any());
+    }
+
+    @Test
+    @DisplayName("복구 전송 중 I/O 오류가 발생하면 등록된 연결의 정리를 위임하고 원래 예외를 전달한다.")
+    void recoveryIoFailureDelegatesRegisteredConnectionCleanup(){
+        UUID userId = UUID.randomUUID();
+        UUID lastEventId = UUID.randomUUID();
+
+        UncheckedIOException failure = new UncheckedIOException("SSE 복구 이벤트 전송에 실패했습니다.", new IOException("테스트용 복구 전송 실패"));
+
+        ArgumentCaptor<Connection> connectionCaptor = ArgumentCaptor.forClass(Connection.class);
+        ArgumentCaptor<SseEmitter> emitterCaptor = ArgumentCaptor.forClass(SseEmitter.class);
+
+        doThrow(failure)
+                .when(deliveryCoordinator)
+                .recover(
+                        eq(userId),
+                        any(Connection.class),
+                        eq(lastEventId)
+                );
+
+        assertThatThrownBy(()-> service.connect(userId, lastEventId))
+                .isSameAs(failure);
+
+        verify(deliveryCoordinator).register(eq(userId), connectionCaptor.capture(), emitterCaptor.capture());
+        verify(deliveryCoordinator).cleanupConnection(eq(userId), eq(connectionCaptor.getValue()));
+        verify(deliveryCoordinator, times(1)).cleanupConnection(any(), any());
+        verify(repository, never()).delete(any(), any());
+    }
+
+    @Test
+    @DisplayName("복구 전송 중 상태 예외가 발생하면 등록된 연결의 정리를 위임하고 원래 예외를 전달한다.")
+    void recoveryIllegalStateFailureDelegatesRegisteredConnectionCleanup(){
+        UUID userId = UUID.randomUUID();
+        UUID lastEventId = UUID.randomUUID();
+
+        IllegalStateException failure = new IllegalStateException("테스트용 복구 전송 상태 오류");
+        ArgumentCaptor<Connection> connectionCaptor = ArgumentCaptor.forClass(Connection.class);
+        ArgumentCaptor<SseEmitter> emitterCaptor = ArgumentCaptor.forClass(SseEmitter.class);
+
+        doThrow(failure)
+                .when(deliveryCoordinator)
+                .recover(
+                        eq(userId),
+                        any(Connection.class),
+                        eq(lastEventId)
+                );
+
+        assertThatThrownBy(() -> service.connect(userId, lastEventId))
+                .isSameAs(failure);
+
+        verify(deliveryCoordinator).register(eq(userId), connectionCaptor.capture(), emitterCaptor.capture());
+        verify(deliveryCoordinator).cleanupConnection(eq(userId), eq(connectionCaptor.getValue()));
+        verify(deliveryCoordinator, times(1)).cleanupConnection(any(), any());
+        verify(repository, never()).delete(any(), any());
     }
 }

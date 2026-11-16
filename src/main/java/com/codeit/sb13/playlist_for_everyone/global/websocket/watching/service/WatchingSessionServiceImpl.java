@@ -13,7 +13,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WebSocketUtils.check;
@@ -38,6 +41,20 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
         return watchingSessionRepository.getWatcherCount(contentId.toString());
     }
 
+    @Override
+    public Map<String, Long> getCurrentViewerCountWithContents(List<UUID> contentIds){
+        List<String> idList = contentIds.stream().map(UUID::toString).toList();
+        return watchingSessionRepository
+                .getWatcherCountWithMultipleContents(idList);
+    }
+
+    @Override
+    public List<String> disconnectWithContentId(UUID contentId){
+//        return watchingSessionRepository.disconnectWithContentId(contentId.toString());
+        return null;
+    }
+
+
     /**
      * 세션 경로에 따라 채팅, 혹은 뷰어 세션을 분간하고,
      * 해당 세션의 메세지 토픽을 반환한다.
@@ -53,6 +70,7 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
 
         if (MatchRule.check(destination,watchingSessionUrlPattern())) type = WatchingSessionType.VIEW;
         if (MatchRule.check(destination,watchingChatUrlPattern())) type = WatchingSessionType.CHAT;
+        if (MatchRule.check(destination,watchingChatSendUrlPattern())) type = WatchingSessionType.CHAT;
 
         return switch (type) {
             case VIEW -> merge(MESSAGE_VIEW_PREFIX, MatchRule.extract(destination,UUID_REGEX));
@@ -123,6 +141,30 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
         }
 
     }
+
+    /*
+     * 임시로 이 컨텐츠, 세션에 대한 리소스 등록 해제에 있어서 세션 - 구독 은 content 와 1 대 1 로 매칭된다고 가정한다.
+     * 프론트 데모 페이지에서 1:1 매칭으로 서비스를 구현 해 두었기에 일단 매칭하고,
+     * 단일 세션에 여러 구독을 붙이는 것은 추후 리팩토링을 통해 구현한다.
+     */
+    @Override
+    public List<String> disconnectWithContentDeleted(UUID contentId) {
+        // 시청에서 content 기반으로 구독 해지
+        watchingSessionRepository.deleteWithContentId(contentId);
+        // content 기반 메세지 구독 리스트
+        String chatTopic = MESSAGE_CHAT_PREFIX + contentId;
+        String viewTopic = MESSAGE_VIEW_PREFIX + contentId;
+        Stream<String> chatTopicStream = topicRegistry.disconnectWithContentId(chatTopic).stream();
+        Stream<String> viewTopicStream = topicRegistry.disconnectWithContentId(viewTopic).stream();
+        return Stream.concat(chatTopicStream, viewTopicStream).collect(Collectors.toList());
+    }
+
+    @Override
+    public void disconnectWithSessionIds(String sessionId){
+        watchingSessionRepository.delete(sessionId);
+        topicRegistry.disconnect(sessionId);
+    }
+
 
     private void checkAuth(SessionInfo info){
         SecurityUser user = check(info.user());

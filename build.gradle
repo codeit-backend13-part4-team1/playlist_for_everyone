@@ -56,7 +56,7 @@ dependencies {
 
 	// 외부 연동 및 배치
 	implementation 'org.springframework.boot:spring-boot-starter-mail'
-	implementation 'org.springframework.boot:spring-boot-starter-batch'
+	implementation 'org.springframework.boot:spring-boot-starter-batch-jdbc'
 	implementation platform("software.amazon.awssdk:bom:${dependencyVersions.awsSdk}")
 	implementation 'software.amazon.awssdk:s3'
 	implementation 'org.springframework.boot:spring-boot-starter-restclient'
@@ -75,7 +75,7 @@ dependencies {
 
 	// Spring Boot 4 기능별 테스트 지원 (공통 테스트 도구 포함)
 	testImplementation 'org.springframework.boot:spring-boot-starter-actuator-test'
-	testImplementation 'org.springframework.boot:spring-boot-starter-batch-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-batch-jdbc-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-data-redis-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-flyway-test'

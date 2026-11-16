@@ -1,13 +1,18 @@
 package com.codeit.sb13.playlist_for_everyone.domain.auth.security;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.dto.response.JwtDto;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.event.UserSessionRevokedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.SessionStartResult;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseCookie;
@@ -19,12 +24,14 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Objects;
+import java.util.UUID;
 
 /**
  * 로그인 인증 성공 후 토큰 발급과 HTTP 응답 작성을 담당한다.
  *
  * 비밀번호 검증은 AuthenticationManager가 수행한다.
  */
+@Slf4j
 public class JwtAuthenticationSuccessHandler implements AuthenticationSuccessHandler {
 
     private static final String REFRESH_COOKIE_NAME = "REFRESH_TOKEN";
@@ -35,25 +42,32 @@ public class JwtAuthenticationSuccessHandler implements AuthenticationSuccessHan
     private final ObjectMapper objectMapper;
 
     private final RefreshTokenRepository refreshTokenRepository;
+    private final UserSessionRepository userSessionRepository;
+    private final ApplicationEventPublisher eventPublisher;
     private final Duration refreshTokenValidity;
     private final boolean refreshCookieSecure;
 
     /**
-     * Refresh Token 발급·저장과 쿠키 전달에 필요한 의존성을 받는다.
+     * 로그인 세션 시작, Refresh Token 발급·저장과 쿠키 전달에 필요한 의존성을 전달받는다.
      *
      * 실제 서버 연결시 Provider와 같은 Refresh Token 유효기간을 전달해야 한다.
+     * 로그인 세션도 같은 기간 동안 유지된다.
      */
 
     public JwtAuthenticationSuccessHandler(JwtTokenProvider jwtTokenProvider,
                                            UserService userService,
                                            ObjectMapper objectMapper,
                                            RefreshTokenRepository refreshTokenRepository,
+                                           UserSessionRepository userSessionRepository,
+                                           ApplicationEventPublisher eventPublisher,
                                            Duration refreshTokenValidity,
                                            boolean refreshCookieSecure) {
         this.jwtTokenProvider = Objects.requireNonNull(jwtTokenProvider);
         this.userService = Objects.requireNonNull(userService);
         this.objectMapper = Objects.requireNonNull(objectMapper);
         this.refreshTokenRepository = Objects.requireNonNull(refreshTokenRepository);
+        this.userSessionRepository = Objects.requireNonNull(userSessionRepository);
+        this.eventPublisher = Objects.requireNonNull(eventPublisher);
         this.refreshTokenValidity = Objects.requireNonNull(refreshTokenValidity);
 
         if (refreshTokenValidity.isZero() || refreshTokenValidity.isNegative()) {
@@ -67,16 +81,27 @@ public class JwtAuthenticationSuccessHandler implements AuthenticationSuccessHan
 
         // 클라이언트가 보낸 ID가 아니라 인증이 완료된 사용자의 ID를 사용한다.
         SecurityUser principal = (SecurityUser) authentication.getPrincipal();
+        UUID userId = principal.getUserId();
 
-        UserDto userDto = userService.getUserDtoById(principal.getUserId());
+        // 응답에 필요한 사용자 정보를 먼저 준비 한다.
+        // 여기서 실패하면 기존 로그인 세션을 교체하지 않는다.
+        UserDto userDto = userService.getUserDtoById(userId);
 
-        String accessToken = jwtTokenProvider.createAccessToken(principal.getUserId());
+        // 새 로그인 세션을 시작한다. 기존 세션이 있으면 이 시점에 교체되어
+        // 이전 로그인에서 발급한 토큰은 더 이상 현재 세션이 아니게 된다.
+        SessionStartResult session = userSessionRepository.start(userId, refreshTokenValidity);
 
-        String refreshToken = jwtTokenProvider.createRefreshToken(principal.getUserId());
+        // 두 토큰에 같은 세션 ID를 넣는다. 재발급할 때도 이 세션 ID를 유지한다.
+        String accessToken = jwtTokenProvider.createAccessToken(userId, session.sessionId());
+        String refreshToken = jwtTokenProvider.createRefreshToken(userId, session.sessionId());
 
         ResponseCookie refreshCookie = createRefreshCookie(refreshToken);
 
-        refreshTokenRepository.save(principal.getUserId(), refreshToken, refreshTokenValidity);
+        refreshTokenRepository.save(userId, refreshToken, refreshTokenValidity);
+
+        // 교체된 이전 로그인이 있으면 알린다.
+        // 로그인 성공 처리는 트랜잭션 밖이므로 바로 발행한다.
+        session.replaced().ifPresent(replacedSessionId -> publishSessionReplaced(userId, replacedSessionId));
 
         // Access Token은 JSON으로, Refresh Token은 HttpOnly 쿠키로 전달한다.
         JwtDto jwtDto = new JwtDto(userDto, accessToken);
@@ -89,6 +114,19 @@ public class JwtAuthenticationSuccessHandler implements AuthenticationSuccessHan
 
         // 로그인 성공 응답은 세션이나 리다이렉트 없이 JSON으로 반환한다.
         objectMapper.writeValue(response.getWriter(), jwtDto);
+    }
+
+    private void publishSessionReplaced(UUID userId, UUID replacedSessionId) {
+        try {
+            eventPublisher.publishEvent(new UserSessionRevokedEvent(
+                    userId,
+                    replacedSessionId,
+                    UserSessionRevokedEvent.RevokeReason.DUPLICATE_LOGIN
+            ));
+        } catch (RuntimeException exception) {
+            log.error("이전 로그인 세션 종료 후속 처리에 실패했습니다. userId={}, sessionId={}",
+                    userId, replacedSessionId, exception);
+        }
     }
 
     /**

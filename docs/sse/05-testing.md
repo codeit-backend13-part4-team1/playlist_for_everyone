@@ -1,171 +1,91 @@
 # 5. 테스트 읽기와 실행
 
-SSE 테스트는 설정 바인딩, 저장소·서비스 동작, MVC 계약, 실제 HTTP 프레임과 Redis 분산 전송을 검증합니다.
-**어떤 역할을 검증하고 어떤 의존성을 대체했는지**부터 읽으면 테스트를 이해하기 쉽습니다.
-알림 저장·커밋부터 실제 수신까지의 #51 검증은 [알림 전송 테스트](../notification/02-testing.md)에서 별도로 설명합니다.
+먼저 어떤 역할을 검증하고 어떤 의존성을 대체했는지 확인합니다.
+공유 이력·복구·재시도의 상세 검증은 [12. 이력 테스트](12-history-testing.md)에 모았습니다.
 
 ## 테스트별 책임
 
-| 테스트 | 검증하는 내용 |
+| 테스트 | 현재 검증 대상 |
 | --- | --- |
-| [SsePropertiesTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/config/SsePropertiesTest.java) | 설정 누락·허용 범위 위반 시 바인딩 실패, 정상값·경계값 바인딩 성공 |
-| [InMemorySseEmitterRepositoryTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/repository/impl/InMemorySseEmitterRepositoryTest.java) | 실제 메모리 저장소의 등록·삭제·조회 사본·동시 등록과 삭제 |
-| [SseConnectionServiceTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/service/SseConnectionServiceTest.java) | 연결 식별자, 콜백 등록, 초기 주석, 실패·종료 시 정리 요청 |
-| [SseDeliveryServiceTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/service/SseDeliveryServiceTest.java) | 이벤트 ID·이름과 JSON 구조, 여러 연결 전송, 실패한 연결만 삭제하고 계속 전송 |
-| [SseConnectionLifecycleTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/service/SseConnectionLifecycleTest.java) | 실제 컨텍스트 종료 이벤트가 연결 정리 메서드를 호출하는지 |
-| [SseHeartbeatSchedulerTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/scheduler/SseHeartbeatSchedulerTest.java) | 스케줄러 메서드가 전송 서비스에 하트비트를 요청하는지 |
-| [SseHeartbeatSchedulingTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/scheduler/SseHeartbeatSchedulingTest.java) | 설정 간격과 지정한 실행기로 작업이 등록되고, 등록된 작업이 서비스를 호출하는지 |
-| [SchedulerConfigTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/config/SchedulerConfigTest.java) | 실제 전용 스레드 실행, 종료 후 작업 거부, 반복 작업 취소 |
-| [SseControllerTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/controller/SseControllerTest.java) | 인증 사용자, 쿼리 검증, 캐시 금지 응답, ASYNC 종료 시 인증 복원 |
-| [SseStreamingIntegrationTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/controller/SseStreamingIntegrationTest.java) | 실제 HTTP의 초기 주석과 알림·DM 프레임, JSON 변환 실패 후 동일 연결로 다음 정상 이벤트 수신 |
+| SsePropertiesTest | 연결·하트비트 설정값의 정상값·경계값·실패 |
+| InMemorySseEmitterRepositoryTest | 실제 저장소 등록·중복 거부·단건 조회·삭제·조회 사본·동시 변경 |
+| SseConnectionServiceTest | 새 연결 ID, 콜백, 조정기에 등록·복구·정리 위임, 등록 실패 시 기존 연결 보존을 위한 호출 계약 |
+| SseDeliveryServiceTest | 수신자별 연결의 조정기 호출, 일반 실패의 종료 위임과 하트비트 실패의 정리 위임 |
+| SseConnectionLifecycleTest | 실제 컨텍스트 종료 이벤트에서 emitter 종료 요청과 조정기 정리 위임 |
+| SseHeartbeatSchedulerTest / SseHeartbeatSchedulingTest | 하트비트 요청과 지정 실행기 등록 |
+| SchedulerConfigTest | 실제 하트비트 실행기 스레드·종료·취소 |
+| SseControllerTest | 인증 사용자·쿼리·응답·ASYNC 종료 계약 |
+| SseStreamingIntegrationTest | 실제 HTTP 프레임과 초기 조회 실패의 503 응답 |
+
+소스: [SSE 테스트](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse),
+[공통 설정 테스트](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/config).
 
 ## 설정 바인딩 테스트
 
-`SsePropertiesTest`는 `ApplicationContextRunner`에 `SseConfig`만 등록합니다.
-`withPropertyValues`로 설정값을 제공하고, 해당 컨텍스트가 시작되는지와 바인딩된 `Duration` 값을 확인합니다.
+ApplicationContextRunner는 필요한 설정 클래스만 등록하고 withPropertyValues로 값을 제공합니다.
+이 runner가 application.yaml과 테스트 프로필을 자동으로 읽는 것은 아닙니다.
+따라서 설정 누락 검증은 최종 값이 없는 경우이며, 환경변수를 생략해 YAML 기본값을 쓰는 실행과 다릅니다.
 
-| 입력 사례 | 기대 결과 |
+| 설정 | 검증 방식 |
 | --- | --- |
-| 하트비트 간격 누락·0·음수 | 컨텍스트 시작 실패 |
-| 연결 제한 시간 누락·0·음수·`500us` | 컨텍스트 시작 실패 |
-| 하트비트 `15s`, 연결 제한 시간 `1ms` | 시작 성공, 연결 제한 시간의 최솟값 바인딩 확인 |
-| 하트비트 `15s`, 연결 제한 시간 `30m` | 시작 성공, 두 값의 바인딩 확인 |
+| 연결·하트비트 | SseConfig와 SseProperties의 값 바인딩 |
+| 전송 방식·채널 | SseTransportConfig와 전송 설정의 유효성 |
+| 이력·재시도 | SseHistoryConfig·SseRetryConfig의 값과 이름 있는 빈 |
+| 발행 구현체 선택 | SseEventPublisherConfigTest의 기본 주입·delegate 연결 |
 
-이 runner는 `application.yaml`이나 테스트 프로필 설정 파일을 자동으로 읽지 않습니다.
-따라서 여기서 **누락**은 최종 설정값 자체가 없는 경우입니다. 환경변수를 생략해 YAML 기본값을 사용하는 일반 실행과 구분합니다.
-Spring Boot 설정 파일을 읽는 통합 테스트와도 설정을 공급하는 방식이 다릅니다.
+## Mock과 실제 HTTP의 차이
 
-## Mock 테스트에서 읽어야 할 부분
-
-서비스 테스트는 저장소 인터페이스를 Mock으로 대체합니다.
-실제 저장 결과보다 어떤 사용자·연결로 등록이나 삭제를 요청했는지 확인하며, 저장 결과는 저장소 테스트가 맡습니다.
-
-| 도구·준비 방식 | 사용하는 이유 |
+| 방식 | 해석 |
 | --- | --- |
-| `MockedConstruction<SseEmitter>` | 서비스가 내부에서 생성하는 emitter의 콜백 등록과 전송 호출을 관찰합니다. 해당 테스트 블록이 끝나면 해제합니다. |
-| `ArgumentCaptor`로 콜백 캡처 | 등록된 완료·타임아웃·오류 콜백을 직접 실행하여 후속 요청을 확인합니다. |
-| `doAnswer`로 초기 전송 실패 재현 | 전송 호출 시점에 등록이 먼저 요청되었는지와 예외 정리를 확인합니다. |
-| 실패 연결이 먼저인 `LinkedHashMap` | 첫 전송이 실패해도 다음 연결에 실제로 전송을 시도했는지 확인합니다. |
+| MockedConstruction으로 emitter 관찰 | 서비스 내부에서 생성한 객체의 콜백·호출을 확인 |
+| ArgumentCaptor로 콜백 실행 | 등록된 정리 동작을 확인. MVC가 그 시각에 실제 종료했다는 뜻은 아님 |
+| Mock 조정기·저장소 | 연결 서비스·생명주기 테스트의 위임 검증. 실제 상태·저장소 정리를 검증하지 않음 |
+| 실제 저장소·조정기 + Mock closer | 조정기 테스트의 등록·상태 전환·정리 위임. Mock closer 호출만으로 저장소가 삭제되지는 않음 |
+| 실제 저장소·조정기·closer | 재시도 생명주기·소진 테스트의 실제 저장소 삭제와 늦은 예약 차단 |
+| 실제 HTTP reader | 프레임 id·event·data와 스트림 종료 확인 |
 
-Mock emitter의 `complete()`는 실제 MVC 완료 콜백을 자동 실행하지 않습니다.
-전송 서비스 테스트는 실제 `JsonMapper`를 사용하고, builder에 담긴 JSON 문자열을 파싱하여 원본 데이터와 구조·값을 비교합니다.
-emitter는 Mock이므로 실제 HTTP 전송과 MVC 메시지 변환기는 실행하지 않습니다. 최종 응답의 이중 인코딩 여부는 HTTP 통합 테스트에서 확인합니다.
-
-현재 서비스 테스트는 실패한 연결의 삭제와 나머지 연결의 계속 전송을 확인합니다.
-로그 수준이나 출력 내용·스택 포함 여부를 검증하는 테스트는 없으므로, 해당 정책은 [로그 기준](02-delivery-heartbeat.md#단절과-오류의-로그-기준)과 구현을 함께 확인합니다.
-
-## 실제 MVC·HTTP 테스트의 범위
-
-`SseControllerTest`는 소켓 없이 MockMvc로 요청 바인딩과 보안 필터를 검증합니다.
-일반 계약은 `user(principal)`로 인증을 준비하지만, ASYNC 회귀 테스트는 Bearer 요청으로 JWT 필터를 통과합니다.
-`complete()` 후 `asyncDispatch()`를 실행하여 종료 시 인증이 복원되는 경로까지 확인합니다.
-
-`SseStreamingIntegrationTest`는 임의 포트의 실제 Tomcat에 연결합니다.
-MVC·보안 필터·서비스·메모리 저장소는 실제로 사용하고, 토큰 검증과 사용자 조회 등의 인증 의존성은 Mock으로 대체합니다.
-DB·Redis·주기적 하트비트 스케줄러는 이 테스트 컨텍스트에 포함하지 않습니다.
-
-1. 최초 `:connected`와 뒤의 빈 줄을 읽습니다.
-2. 알림 또는 DM 이벤트를 로컬 전송 서비스에 전달합니다.
-3. `id`, 명세 문자열 `event`, JSON 구조 `data`, 프레임 끝의 빈 줄을 확인합니다.
-
-별도의 `serializationFailureKeepsConnection()`은 최초 프레임을 받은 뒤 JSON 변환 실패를 재현합니다.
-전송 호출에서 예외가 전파되지 않고, 저장소에 기존 emitter가 그대로 남는지 확인합니다.
-이어서 정상 이벤트를 보내고 재연결 없이 같은 reader에서 ID·이름·JSON 데이터·끝의 빈 줄을 읽습니다.
-중간 줄을 건너뛰지 않아 실패한 이벤트의 불완전한 프레임이 남는 경우도 검출합니다.
-
-SSE는 계속 열리는 응답이므로 EOF까지 읽지 않고 필요한 줄만 읽습니다.
-연결·읽기에 제한 시간을 두고, `finally`에서 서버의 연결 정리와 클라이언트 연결 해제를 수행합니다.
-이 테스트는 공통 payload로 프레임을 검증하며 실제 알림·DM 업무 이벤트 생성까지 검증하지는 않습니다.
-
-`SseEvent` 생성자 전용 테스트는 없습니다. Redis 발행·수신 테스트에서는 `data`의 null 허용과 수신 메시지의 필수 필드 누락 거부를 확인합니다.
+SseStreamingIntegrationTest의 인증 의존성 대체와 NotificationSseIntegrationTest의 실제 JWT 검증은 구분합니다.
+전자의 JSON 변환 실패 사례도 현재는 공통 발행 단계의 실패 뒤 기존 연결로 다음 정상 이벤트를 받는 검증입니다.
+실패한 이벤트가 이미 브라우저로 일부 전송되었다고 해석하지 않습니다.
 
 ## Redis 테스트의 범위
 
-아래 테스트는 모두 `global.sse` 패키지에 있습니다. 각 클래스의 한글 `@DisplayName`으로 구체적인 사례를 확인합니다.
-
-| 테스트 | 실제 의존성과 확인하는 내용 |
+| 테스트 | 실제로 사용하는 부분 |
 | --- | --- |
-| `RedisSseEventPublisherTest` / `RedisSseEventSubscriberTest` | 실제 JSON 매퍼 사용. Redis·전송 서비스는 Mock. 필드 보존, 발행 실패, 잘못된 메시지 후 정상 수신, null data |
-| `SseTransportPropertiesTest` / `RedisSseTransportConfigTest` | 설정값 검증과 Redis 구현체 선택. Redis 의존성은 Mock |
-| `RedisSseSubscriptionTest` / `RedisSseSubscriptionLifecycleTest` | 등록·해제 요청, 컨텍스트 생명주기, 자동 구독 비활성화. 등록 창구는 Mock |
-| [RedisSsePubSubIntegrationTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/event/impl/RedisSsePubSubIntegrationTest.java) | 실제 Redis와 독립 컨텍스트 사용. 전달 서비스는 Mock. 중첩 JSON 보존, 서버 간 수신, 구독 연결 복구 후 새 이벤트 수신 |
-| [RedisSseDeliveryIntegrationTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse/event/impl/RedisSseDeliveryIntegrationTest.java) | 실제 Redis·전송 서비스·메모리 저장소 사용. emitter는 Mock. 여러 서버·연결로 전달, 다른 사용자 제외, 정상 발행의 중복 호출 방지 |
+| RedisSsePubSubIntegrationTest | 실제 Redis·독립 컨텍스트, 로컬 전송 서비스는 Mock |
+| RedisSseDeliveryIntegrationTest | 실제 Redis 발행·수신·이력 기반 로컬 전달, emitter는 Mock |
+| HistorySavingSseEventPublisherIntegrationTest | 실제 Redis 저장과 전송 실패 후 이력 보존 |
+| NotificationSseIntegrationTest | 실제 PostgreSQL·Redis·JWT·HTTP 수신 |
 
-두 Redis 통합 테스트는 Testcontainers의 Redis 7.4를 사용하므로 Docker가 필요합니다. 로컬 Redis나 Compose 서비스는 사용하지 않습니다.
-독립 컨텍스트는 서버별 빈·저장소를 구분하지만 별도 OS 프로세스는 아닙니다. 실제 프로세스와 HTTP 연결은 [Compose 수신 검증](08-redis-verification.md)에서 확인합니다.
-알림 저장과 실제 HTTP 수신까지 연결한 자동 검증은 `domain.notification`의 [NotificationSseIntegrationTest](../notification/02-testing.md#실제-http-수신-검증-읽기)가 맡습니다.
-재연결 테스트는 테스트 Redis의 Pub/Sub 연결을 끊은 뒤 재구독과 새 이벤트 수신을 확인하며, 끊긴 동안의 이벤트 복구를 보장하지 않습니다.
+Pub/Sub 연결을 끊었다가 재구독하는 테스트는 새 신호 수신을 확인합니다.
+보관 이력의 복구 보장은 별도의 [이력·복구 테스트](12-history-testing.md)에서 확인합니다.
+독립 Spring 컨텍스트는 같은 JVM의 두 서버 구성이며 별도 OS 프로세스는 아닙니다.
 
-테스트 프로필은 `everyone.sse.subscription-enabled=false`로 SSE 자동 구독을 끕니다. Redis SSE 통합 테스트에서만 `true`와 전용 테스트 채널을 명시합니다.
-이 설정은 다른 기능의 Redis 의존성까지 끄지 않습니다. 설정 파일을 읽지 않는 `ApplicationContextRunner`에서는 필요한 값을 직접 지정합니다.
-위 Redis 발행·수신 테스트는 로그의 출력 필드를 자동 단언하지 않으므로, [로그 기준](06-redis-transport.md#실패-처리와-로그)은 구현과 함께 확인합니다.
-알림 전송 리스너의 실패 로그는 별도의 `NotificationSseEventListenerTest`에서 검증합니다.
+test 프로필은 자동 구독을 끄고 테스트용 이력 접두사를 사용합니다.
+Redis SSE 통합 테스트는 구독을 켜고 필요하면 클래스별 채널·접두사를 지정합니다.
+이 설정이 다른 기능의 Redis 의존성까지 없애지는 않습니다.
 
-## 동시성과 종료 테스트의 해석
+## 실행 방법과 검증 한계
 
-동시 등록·삭제 테스트는 시작 지점을 `CyclicBarrier`로 맞추고 `Future.get`으로 결과를 확인합니다.
-모든 스레드 실행 순서를 강제하거나 검증하는 테스트는 아니며, 자세한 보장 범위는 [저장소 문서](03-repository-concurrency.md)를 참고합니다.
-
-하트비트 등록 테스트는 실제 시간을 기다리는 대신 Mock 실행기에 등록된 `Runnable`을 직접 실행합니다.
-전용 실행기의 실제 스레드와 종료 후 작업 거부·취소는 `SchedulerConfigTest`에서 별도로 확인합니다.
-
-컨텍스트 종료 테스트의 `Lifecycle.stop` 순서 검증이 실행 중인 모든 하트비트의 선행 종료를 의미하지는 않습니다.
-Mock emitter의 종료 요청을 확인한 것과 실제 HTTP 종료 처리가 완료된 것도 구분합니다.
-
-## 실행 방법
-
-프로젝트 루트에서 실행합니다. Spring Boot 설정 파일을 읽는 테스트는 [테스트 기본 설정](../../src/test/resources/application.properties)으로 `test` 프로필을 활성화합니다.
-Mock 단위 테스트와 위의 `ApplicationContextRunner` 테스트는 이 설정 파일의 로딩을 전제로 하지 않습니다.
-
-설정값 검증만 확인할 때:
+Docker가 필요한 통합 테스트를 실행하기 전에 Docker 엔진을 켭니다.
 
 ```bash
-./gradlew test \
-  --tests 'com.codeit.sb13.playlist_for_everyone.global.sse.config.SsePropertiesTest' \
-  --no-daemon --console=plain
+./gradlew test --tests 'com.codeit.sb13.playlist_for_everyone.global.sse.*' \
+  --tests 'com.codeit.sb13.playlist_for_everyone.global.config.Sse*Test' \
+  --tests 'com.codeit.sb13.playlist_for_everyone.global.config.SchedulerConfigTest'
 ```
 
-발행·수신 단위 테스트만 확인할 때(Docker 불필요):
+이 패키지 필터에는 알림 도메인이 포함되지 않습니다.
+알림 저장·수신은 [알림 실행 명령](../notification/02-testing.md#실행-방법),
+최근 연결·만료 검증은 [이력 테스트 실행 명령](12-history-testing.md#실행-방법)을 사용합니다.
+결과는 build/reports/tests/test/index.html에서 확인합니다.
 
-```bash
-./gradlew test --tests '*RedisSseEventPublisherTest' \
-  --tests '*RedisSseEventSubscriberTest' --no-daemon --console=plain
-```
-
-Redis 통합 테스트만 확인할 때(Docker 필요):
-
-```bash
-./gradlew test --tests '*RedisSsePubSubIntegrationTest' \
-  --tests '*RedisSseDeliveryIntegrationTest' --no-daemon --console=plain
-```
-
-공통 SSE와 전용 스케줄러를 확인할 때(Redis 통합 테스트를 포함하므로 Docker 필요):
-
-```bash
-./gradlew test \
-  --tests 'com.codeit.sb13.playlist_for_everyone.global.sse.*' \
-  --tests 'com.codeit.sb13.playlist_for_everyone.global.config.SchedulerConfigTest' \
-  --no-daemon --console=plain
-```
-
-위 명령의 패키지 필터에는 알림 도메인 테스트가 포함되지 않습니다. 알림 저장 연동은 [별도 실행 명령](../notification/02-testing.md#실행-방법)으로 확인합니다.
-
-JWT·보안 설정까지 함께 회귀 검증할 때(Docker 필요):
-
-```bash
-./gradlew test \
-  --tests 'com.codeit.sb13.playlist_for_everyone.global.sse.*' \
-  --tests 'com.codeit.sb13.playlist_for_everyone.global.config.SchedulerConfigTest' \
-  --tests 'com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtAuthenticationFilterTest' \
-  --tests 'com.codeit.sb13.playlist_for_everyone.global.config.SecurityConfigTest' \
-  --no-daemon --console=plain
-```
-
-프로젝트 전체 빌드·테스트·커버리지 검증은 Docker를 실행한 상태에서 `./gradlew build --no-daemon --console=plain`으로 수행합니다.
-SSE의 Redis 통합 테스트와 다른 도메인의 Testcontainers 기반 테스트가 포함되어 있기 때문입니다.
-결과는 `build/reports/tests/test/index.html`, 커버리지는 `build/reports/jacoco/test/html/index.html`에서 확인합니다.
-이는 테스트 실행 후 생성되는 파일 경로입니다.
+동시성 테스트는 지정한 경합 상황을 재현하며 모든 가능한 실행 순서를 검증하지 않습니다.
+Mock 예약 작업을 직접 실행한 결과를 실제 대기시간 측정으로 해석하지 않습니다.
+ContextClosedEvent의 정리 검증도 실행 중인 모든 하트비트·I/O가 먼저 끝났다는 보장은 아닙니다.
+이 테스트의 emitter는 Mock이므로 실제 HTTP 종료 여부는 HTTP 통합 테스트와 구분합니다.
+실제 부하·메모리 조정은 [운영 가이드](11-history-operations.md)에서 구분합니다.
 
 ---
 
-[← 이전: 비동기 응답과 인증](04-async-security.md) · [목차](README.md) · [다음: Redis 전송 구조와 설정 →](06-redis-transport.md)
+[← 비동기 인증](04-async-security.md) · [목차](README.md) · [다음: Redis 전송 →](06-redis-transport.md)

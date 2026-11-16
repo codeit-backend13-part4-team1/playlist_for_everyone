@@ -19,13 +19,25 @@
 
 | 계약 | 역할 |
 | --- | --- |
-| `save(userId, connection, emitter)` | 사용자 아래에 연결을 등록합니다. |
+| `save(userId, connection, emitter)` | 사용자 아래에 연결을 등록합니다. 같은 키는 덮어쓰지 않고 거부합니다. |
+| `findByUserIdAndConnection(userId, connection)` | 단건을 `Optional<SseEmitter>`로 반환합니다. 없으면 빈 결과입니다. |
 | `findAllByUserId(userId)` | 해당 사용자의 모든 로컬 연결을 조회합니다. |
 | `delete(userId, connection)` | 지정한 연결만 제거합니다. |
 | `findAll()` | 하트비트·서버 종료 처리에 사용할 로컬 연결들을 조회합니다. |
 
 `SseEmitter`에는 실제 HTTP 응답과 관련된 상태가 있으므로 Redis에 넣어 다른 서버에서 사용하는 대상이 아닙니다.
 서버 간에는 이벤트 데이터를 전달하고, 각 서버가 자신의 emitter를 찾아 전송합니다.
+
+이 저장소의 사용자별 Map과 전송 조정기의 연결별 state는 다른 자료구조입니다.
+전자는 emitter를 보관하고, 후자는 초기 복구·처리 위치·전송 중복·재시도 예약만 관리합니다.
+조정기는 emitter 필드를 두지 않고 초기 복구와 후속 전송 때 단건 조회합니다.
+조회 시 emitter가 없으면 남은 상태·예약도 정리합니다. 조회 성공이 이후 전송 시점까지 연결 생존을 보장하지는 않습니다.
+전송 조정기의 잠금은 사용자 전체가 아닌 해당 연결의 state에 적용합니다.
+자세한 범위는 [연결별 상태와 동시성](10-recovery-and-retry.md#연결별-상태와-동시성)을 참고합니다.
+
+연결 서비스는 매번 새 UUID를 발급하며 **재연결에 이전 연결 ID를 재사용하지 않는 계약**을 따릅니다.
+저장소는 현재 등록된 키의 덮어쓰기를 막습니다. 같은 emitter를 다시 저장해도 거부합니다.
+삭제된 ID를 영구 기록하여 모든 재사용을 차단하는 구조는 아니므로 호출부도 새 ID 계약을 지켜야 합니다.
 
 ## 등록과 삭제를 `compute`로 묶는 이유
 
@@ -46,12 +58,14 @@
 ```java
 sseEmitters.compute(userId, (id, connections) -> {
     Map<Connection, SseEmitter> userConnections = initializeConnections(connections);
-    userConnections.put(connection, sseEmitter);
+    if (userConnections.putIfAbsent(connection, sseEmitter) != null) {
+        throw new IllegalStateException("이미 등록된 SSE 연결입니다.");
+    }
     return userConnections;
 });
 ```
 
-삭제도 같은 방식으로 연결 제거와 빈 사용자 Map 제거를 묶습니다.
+삭제는 `computeIfPresent`로 연결 제거와 빈 사용자 Map 제거를 묶습니다.
 해당 사용자 키의 등록·삭제가 중간 단계에서 서로 끼어들지 않도록 하는 구조입니다.
 이 범위에 실제 네트워크 전송은 포함하지 않습니다.
 
@@ -75,7 +89,9 @@ sseEmitters.compute(userId, (id, connections) -> {
 ## 테스트를 읽을 때
 
 저장소 테스트는 구현체를 실제로 만들어 등록·조회·삭제 결과를 확인합니다.
-서비스 테스트의 Mock 저장소는 이 저장 동작을 검증하지 않고, 서비스가 계약대로 호출하는지를 확인합니다.
+연결 서비스 테스트는 Mock 조정기에 대한 등록·정리 위임을 확인합니다.
+조정기 테스트는 실제 저장소를 사용하지만 종료 컴포넌트가 Mock이므로 삭제 완료까지 검증하지 않습니다.
+실제 조합과 검증 범위는 [테스트 가이드](05-testing.md#mock과-실제-http의-차이)에서 구분합니다.
 
 동시 등록·삭제 테스트는 `CyclicBarrier`로 두 작업의 시작 시점을 맞추고 새 연결이 유지되는지 확인합니다.
 `Future.get`으로 작업 완료와 예외를 확인하며 대기 시간을 제한합니다.

@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.auth.jwt;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
@@ -24,8 +25,6 @@ import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.UUID;
-
 /**
  * 요청의 Bearer 토큰을 검증하고 Spring Security 인증 정보를 설정한다.
  *
@@ -38,15 +37,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider jwtTokenProvider;
     private final UserService userService;
+    private final UserSessionRepository userSessionRepository;
     private final AuthenticationEntryPoint authenticationEntryPoint;
     // 인증 정보를 이 객체 내부가 아닌 HttpServletRequest의 속성에 저장한다.
     // 기본 속성 이름을 사용하므로 보안 필터 체인의 요청 속성 저장소도 같은 값을 읽을 수 있다.
     // 저장 범위는 동일 HTTP 요청이며, HTTP 세션이나 Redis에 사용자 인증을 보관하는 설정이 아니다.
     private final SecurityContextRepository securityContextRepository = new RequestAttributeSecurityContextRepository();
 
-    public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider, UserService userService, AuthenticationEntryPoint authenticationEntryPoint) {
+    public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider, UserService userService, UserSessionRepository userSessionRepository, AuthenticationEntryPoint authenticationEntryPoint) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.userService = userService;
+        this.userSessionRepository = userSessionRepository;
         this.authenticationEntryPoint = authenticationEntryPoint;
     }
 
@@ -154,8 +155,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
      * 토큰과 현재 사용자 상태를 확인한 뒤 인증 객체를 만든다.
      */
     private Authentication createAuthentication(String token, HttpServletRequest request) {
-        UUID userId = jwtTokenProvider.parseAccessToken(token);
-        User user = userService.getById(userId);
+        // 서명, 만료, 토큰 종류, 사용자 ID, 로그인 세션 ID를 검증한다.
+        // sid가 없는 이전 형식의 토큰은 여기서 JwtException으로 거부된다.
+        AccessTokenClaims claims = jwtTokenProvider.parseAccess(token);
+
+        // 다른 곳에서 다시 로그인했거나 강제 로그아웃된 세션의 토큰은 거부한다.
+        // 무효한 토큰이면 DB를 조회하지 않도록 사용자 조회보다 먼저 확인한다.
+        if (!userSessionRepository.isCurrent(claims.userId(), claims.sessionId())) {
+            throw new BadCredentialsException("만료된 로그인 세션입니다.");
+        }
+
+        User user = userService.getById(claims.userId());
 
         // 토큰이 유효하더라도 현재 계정이 잠겨 있으면 인증하지 않는다.
         if (user.isLocked()) {

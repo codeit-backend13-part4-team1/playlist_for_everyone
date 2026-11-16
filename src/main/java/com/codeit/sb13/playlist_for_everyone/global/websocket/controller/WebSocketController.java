@@ -3,7 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.controller;
 
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatSendRequest;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingChatSendEvent;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.chat.WatchingChatSendEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;

@@ -7,6 +7,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -28,9 +29,18 @@ public class InMemorySseEmitterRepository implements SseEmitterRepository {
       // 마지막 연결 삭제가 사용자 Map을 제거하는 순간, 별도로 추가한 새 연결이 함께 유실되는 경합을 막는다.
       sseEmitters.compute(userId, (id, connections)->{
           Map<Connection, SseEmitter> userConnections = initializeConnections(connections);
-          userConnections.put(connection, sseEmitter);
+          // 기존 연결 객체를 교체하면 늦은 콜백이 새 연결을 지울 수 있으므로 덮어쓰기를 거부한다.
+          if (userConnections.putIfAbsent(connection, sseEmitter) != null) {
+              throw new IllegalStateException("이미 등록된 SSE 연결입니다.");
+          }
           return userConnections;
       });
+    }
+
+    @Override
+    public Optional<SseEmitter> findByUserIdAndConnection(UUID userId, Connection connection) {
+        Map<Connection, SseEmitter> connections = sseEmitters.get(userId);
+        return connections == null ? Optional.empty() : Optional.ofNullable(connections.get(connection));
     }
 
     @Override
@@ -42,11 +52,8 @@ public class InMemorySseEmitterRepository implements SseEmitterRepository {
 
     @Override
     public void delete(UUID userId, Connection connection) {
-        // 연결 제거와 빈 사용자 Map 정리를 save와 같은 키의 원자적 변경 안에서 처리한다.
-        sseEmitters.compute(userId, (id, connections)->{
-            if (connections == null){
-                return null;
-            }
+        // save와 같은 사용자 키에서 연결 제거와 빈 Map 제거를 묶는다. 사용자 키가 없으면 새 Map을 만들지 않는다.
+        sseEmitters.computeIfPresent(userId, (id, connections)->{
             connections.remove(connection);
             return removeEmptyConnections(connections);
         });

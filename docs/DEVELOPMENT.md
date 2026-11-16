@@ -4,8 +4,9 @@
 
 > **문서 기준 안내:** 아래에는 공통 기반을 처음 준비하던 시점의 설명이 일부 남아 있습니다.
 > 도메인 구현 현황과 개발용 보안 전환 설명은 최신 코드와 다를 수 있습니다.
-> 현재 SSE 연결·Redis 분산 전송·인증·테스트는 [SSE 구현 가이드](sse/README.md), 알림 생성·전송·조회·읽음 처리와 JWT 인증은 [알림 구현 가이드](notification/README.md)를 기준으로 확인합니다.
+> 현재 SSE 연결·공유 이력·Redis 분산 전송·복구·인증·테스트는 [SSE 구현 가이드](sse/README.md), 알림 생성·전송·조회·읽음 처리와 JWT 인증은 [알림 구현 가이드](notification/README.md)를 기준으로 확인합니다.
 > 팔로우 등록·취소·조회와 인증·이벤트의 구현 및 검증 범위는 [팔로우 구현 가이드](follow/README.md)를 참고합니다.
+> 대화방 생성·조회와 DM 메시지 조회·누적 읽음 처리, JWT·CSRF 검증은 [대화방·DM 구현 가이드](conversation/README.md)를 참고합니다.
 
 ## 현재 개발 상태
 
@@ -16,14 +17,16 @@
 | 공통 기반 | 예외 처리, 응답 DTO, 엔티티 기반 클래스, JPA Auditing, Querydsl 설정, MDC 로그, 비밀번호 인코더, OpenAPI 설정 구현 |
 | 도메인 예외 | 공통 예외 기반 위에 도메인 오류 정의. 팔로우는 자기 팔로우·대상 미존재·관계 미존재·생성 실패 예외 사용 |
 | 팔로우 | 등록·취소·조회, 중복 복구와 생성 이벤트 구현. #76의 실제 JWT HTTP 통합 검증 및 Swagger 정리 완료 |
+| 대화방·DM | #58 대화방 생성·중복 복구, #59 대화방 검색·커서 조회, #60 DM 도메인·메시지 조회·누적 읽음 처리 구현. [전체 흐름](conversation/README.md), [DM 조회](conversation/07-direct-message-query.md), [DM 읽음](conversation/08-direct-message-read.md) 참고 |
 | 로컬 인프라 | Docker Compose에 PostgreSQL과 Redis 서비스 정의 |
 | 공통 보안 | JWT 필터와 경로별 인증·인가 적용. 팔로우·알림 API는 인증 필요, 쿠키 기반 CSRF 보호 활성화 |
-| SSE | 인증된 사용자의 다중 연결, 하트비트, 종료 정리와 Redis Pub/Sub 분산 전송 구현. [SSE 구현 가이드](sse/README.md) 참고 |
-| 알림 전송 | 공통 알림 생성 요청 → 독립 저장·커밋 → Redis → 실제 SSE 수신 연동 구현. [알림 전송 흐름](notification/01-creation-and-delivery.md) 참고 |
+| SSE | 다중 연결·하트비트·종료 정리, 공유 이력 저장·재연결 복구, 연결별 후속 조회·제한된 재시도. [SSE 구현 가이드](sse/README.md) 참고 |
+| 알림 전송 | 공통 생성 요청 → 독립 저장·커밋 → 공유 이력 → Pub/Sub → 이력 조회·삭제 필터 → SSE 수신. [알림 전송 흐름](notification/01-creation-and-delivery.md) 참고 |
+| 업무 이벤트 알림 | [#155 팔로우](notification/07-domain-event-integration.md)·[#156 권한 변경·구독](notification/08-role-subscription-integration.md)·[#157 플레이리스트 생성·콘텐츠 추가](notification/09-playlist-event-integration.md)의 업무 커밋 후 공통 요청 재발행·독립 저장 연결. 실제 서비스부터 SSE 발행 요청까지 검증 |
 | 알림 수신자 | 사용자 조회 컴포넌트를 통해 User 연관관계로 저장. 요청·응답의 수신자 UUID 계약 유지. [연관관계와 검증](notification/06-receiver-association.md) 참고 |
 | 알림 조회·읽음 | JWT 사용자를 수신자 조건으로 사용하여 목록·전체 개수를 조회하고 알림 삭제로 읽음 처리. [조회·인증 흐름](notification/03-query-and-security.md) 참고 |
-| SSE·알림 후속 | 업무별 알림 생성 요청 변환(#45)·DM 본문 연동·Kafka·이력 복구·연결 수 제한 |
-| 후속 기능 | 팔로우 CSRF 연동·검증은 #114, 알림 CSRF 연동·검증은 #124, 팔로우 이벤트의 알림 생성 연동은 #45. 다른 기능의 진행 상태는 개별 이슈 참고 |
+| SSE·알림 후속 | 위 다섯 업무 이벤트 외의 알림 연동(#45)·DM 본문 연동·Kafka·연결 수 제한·보관 초기값의 운영 부하 검증 |
+| 후속 기능 | 팔로우 CSRF 연동·검증은 #114, 알림 CSRF 연동·검증은 #124. 다른 기능의 진행 상태는 개별 이슈 참고 |
 
 라이브러리 의존성과 로컬 인프라를 준비한 상태와 기능 구현 완료를 구분합니다. Redis 서비스는 Compose에 포함되어 있으며, 이를 사용하는 캐시·세션 기능은 구현 전입니다. Kafka와 Elasticsearch는 현재 Compose에 포함되어 있지 않습니다.
 
@@ -171,6 +174,12 @@ Swagger UI와 OpenAPI 문서의 GET 조회는 `dev`가 활성화되고 `prod`는
 | `EVERYONE_SSE_TRANSPORT` | `redis` | SSE 브로커 전송 방식. 현재 Redis 구현체 지원 |
 | `EVERYONE_SSE_REDIS_CHANNEL` | `everyone:sse:events` | 같은 환경의 서버가 공유할 SSE 전용 채널 |
 | `EVERYONE_SSE_SUBSCRIPTION_ENABLED` | `true` | SSE 자동 구독 여부. 다른 기능의 Redis 사용까지 끄지 않음 |
+| `EVERYONE_SSE_HISTORY_KEY_PREFIX` | `everyone:dev:sse:history` | dev 기본값. prod는 `everyone:prod:sse:history`, test는 전용 값. 같은 환경 서버끼리 공유 |
+| `EVERYONE_SSE_HISTORY_RETENTION` | `10m` | 개별 이벤트 보관기간·비활성 키 TTL의 초기값 |
+| `EVERYONE_SSE_HISTORY_MAX_EVENTS_PER_USER` | `1000` | 사용자별 이력 상한. 전체 사용자 합계 상한이 아님 |
+| `EVERYONE_SSE_RETRY_INITIAL_DELAY` | `1s` | 후속 조회의 첫 재시도 대기 간격 |
+| `EVERYONE_SSE_RETRY_MAX_DELAY` | `30s` | 재시도 간격의 상한 |
+| `EVERYONE_SSE_RETRY_MAX_RETRIES` | `3` | 최초 시도 제외. 성공하면 횟수·간격 초기화 |
 | `EVERYONE_JPA_DDL_AUTO` | `validate` | 엔티티와 DB 스키마 일치 여부 검증 |
 | `EVERYONE_JPA_FORMAT_SQL` | `true` | 개발 환경 SQL 포맷 설정 |
 | `EVERYONE_JPA_SHOW_SQL` | `false` | 개발 환경 JPA SQL 출력 설정 |
@@ -184,7 +193,9 @@ Swagger UI와 OpenAPI 문서의 GET 조회는 `dev`가 활성화되고 `prod`는
 | `EVERYONE_SPORTSDB_API_KEY` | `123` | TheSportsDB API 키. 생략하면 공개 무료 키 `123` 사용 |
 
 SSE 환경변수를 생략하면 위 기본값을 사용합니다. 개발에서는 `.env.dev`, 운영에서는 외부 환경변수로 조정합니다.
-설정 검증과 시작 실패 조건은 [연결·하트비트 설정](sse/02-delivery-heartbeat.md#설정값과-허용-범위)과 [Redis 전송·구독 설정](sse/06-redis-transport.md#설정과-구독-생명주기)을 참고합니다.
+설정 검증과 시작 실패 조건은 [연결·하트비트](sse/02-delivery-heartbeat.md#설정값과-허용-범위), [Redis 전송·구독](sse/06-redis-transport.md#설정과-구독-생명주기), [이력·재시도 운영 설정](sse/11-history-operations.md)을 참고합니다.
+이력 접두사와 Pub/Sub 채널은 별도 설정입니다. 접두사 변경은 기존 키를 자동 이전하지 않으며,
+보관 초기값은 사용자 수·이벤트 크기·Redis 메모리와 지연을 측정해 조정합니다.
 두 서버를 함께 실행하려면 [다중 서버 실행](sse/07-redis-multi-node.md), 같은 사용자의 두 연결로 이벤트를 보내려면 [실제 수신 검증](sse/08-redis-verification.md)을 따라 진행합니다.
 
 S3 관련 값은 현재 공통 설정에 선언되어 있지만 실제 S3 연동 기능은 구현 전입니다.
@@ -362,11 +373,18 @@ Docker Desktop 또는 Docker 엔진을 실행한 뒤 프로젝트 루트에서 �
 공통 테스트는 `test` 프로필과 H2를 사용합니다. 알림 통합 테스트는 Testcontainers로 별도의 PostgreSQL 16 컨테이너를 실행하고 실제 Flyway 마이그레이션을 적용합니다.
 SSE Redis 통합 테스트는 별도의 Redis 7.4 컨테이너로 실제 Pub/Sub을 검증합니다. 전체 테스트와 빌드에는 Docker가 필요하며, 로컬 PostgreSQL·Redis나 `.env.dev`는 필요하지 않습니다.
 `NotificationSseIntegrationTest`는 PostgreSQL과 Redis를 함께 사용하여 알림 저장부터 실제 HTTP 수신까지 확인합니다. [검증 범위와 실행 명령](notification/02-testing.md)을 참고합니다.
+실제 팔로우·권한 변경·구독의 이벤트 변환과 알림 저장은 `NotificationIntegrationTest`가 검증하며, 이 클래스의 SSE 발행자는 Mock입니다.
+권한 변경·구독은 실제 업무 커밋·롤백을, 재발행 실패 격리는 실제 팔로우 사례를 확인합니다.
+플레이리스트 생성·콘텐츠 추가는 `NotificationPlaylistIntegrationTest`에서 실제 커밋·롤백과 수신자 조회·첫 저장 실패 후 처리를 확인합니다.
+이 클래스도 SSE 발행자를 Mock으로 대체합니다. [수신자 조회·저장소 Spy의 역할과 실행 방법](notification/10-playlist-event-testing.md)을 참고합니다.
 조회·삭제는 서비스 단위 테스트, PostgreSQL 저장소·서비스 통합 테스트와 실제 JWT 필터를 거치는 MockMvc 통합 테스트로 확인합니다.
 [조회·인증 테스트 가이드](notification/04-query-and-security-testing.md)에 역할별 실행 명령과 CSRF 임시 제외 범위를 정리했습니다.
 같은 알림을 동시에 읽음 처리할 때의 DB 잠금 대기와 커밋 순서는 [동시 삭제 검증](notification/05-concurrent-deletion-testing.md)을 참고합니다.
 수신자 미존재 처리·삭제 후 사용자 보존·DTO 변환 중 추가 SQL 검증은 [수신자 연관관계 가이드](notification/06-receiver-association.md)를 참고합니다.
 최초 실행 시 테스트용 컨테이너 이미지 다운로드가 필요할 수 있습니다. 테스트 프로필은 SSE 자동 구독을 끄고, Redis SSE 통합 테스트에서만 명시적으로 활성화합니다.
+
+대화방·DM 테스트는 현재 18개 클래스이며, 이 중 9개 클래스가 PostgreSQL·Flyway를 사용합니다. [전체 실행과 기존 검증 기록](conversation/04-testing.md)을 참고합니다.
+메시지 조회·누적 읽음의 테스트 역할, 실제 JWT·CSRF 요청과 Swagger 통합 표시 범위는 [DM 테스트 가이드](conversation/09-direct-message-testing.md)에 정리했습니다.
 
 제목 말줄임 단위 테스트만 확인하려면 Docker 없이 다음 명령을 사용할 수 있습니다.
 
@@ -420,16 +438,21 @@ CI는 성공한 빌드의 JaCoCo XML에서 전체 LINE 수치로 SVG 배지를 �
 - 공통 예외 테스트에는 [TestEveryOneException](../src/test/java/com/codeit/sb13/testsupport/exception/TestEveryOneException.java)을 사용합니다. 도메인 예외 예시의 변경이 공통 동작 테스트에 영향을 주지 않도록 분리합니다.
 - 기존 테스트는 애플리케이션 컨텍스트, 예외 응답, 검증 오류, MDC, JPA Auditing, Querydsl 조회, 비밀번호 인코더, OpenAPI 설정을 확인합니다.
 - 알림 테스트는 제목 말줄임·입력 검증, 업무 커밋 후 저장, 알림 커밋 후 SSE 발행, 롤백·트랜잭션 외 발행 시 미처리를 확인합니다. `NotificationIntegrationTest`는 실제 PostgreSQL과 `TransactionTemplate`을 사용하고, SSE 발행자는 Mock으로 대체하여 저장·전송 실패 격리를 검증합니다.
+- 플레이리스트 알림은 수신자 중복·행위자 제외를 단위 테스트로, 처리 시점의 관계 조회와 업무 커밋 후 독립 저장을 통합 테스트로 확인합니다. 첫 저장 실패는 Spy로 유도하며, 검증 범위는 [플레이리스트 알림 테스트](notification/10-playlist-event-testing.md)에 정리했습니다.
 - 알림 조회·삭제는 MVC·서비스 단위·저장소·서비스 통합·JWT 통합 테스트로 나눕니다. 서비스 단위 테스트는 소유자별 삭제 여부, 저장소 테스트는 목록·개수·커서 조회, `NotificationServiceIntegrationTest`는 실제 잠금 대기와 삭제 커밋을 확인합니다. [검증 범위와 실행 명령](notification/04-query-and-security-testing.md)을 참고합니다.
 - `NotificationSecurityIntegrationTest`는 실제 JWT·사용자 조회·서비스·PostgreSQL을 사용하여 본인 데이터 제한과 인증 실패 시 데이터 보존을 확인합니다. 이 클래스의 MockMvc 요청에서만 CSRF 검사를 임시 제외하며, 실제 CSRF 검증은 #124에서 진행합니다.
 - 공통 예외 핸들러·인터셉터의 MVC 테스트는 Security 필터를 제외합니다. 이 테스트의 통과는 인증·인가 동작 검증을 의미하지 않습니다.
 - 팔로우는 단위·MVC·PostgreSQL 저장소·서비스 통합 테스트와 실제 JWT HTTP 통합 테스트를 구분합니다. MVC 테스트의 Principal 준비는 JWT 검증을 대체하지 않습니다. [팔로우 테스트 가이드](follow/05-testing.md)에 검증 범위·실행 명령과 #76의 완료 기록을 정리했습니다.
-- SSE MVC 테스트는 실제 보안 필터를 포함하여 인증 사용자와 ASYNC 종료 시 인증 복원을 확인합니다. 공통 `SseStreamingIntegrationTest`는 인증 의존성을 Mock으로 대체하고, 실제 HTTP 프레임과 JSON 변환 실패 시 기존 연결 유지를 검증합니다.
+- SSE MVC 테스트는 실제 보안 필터를 포함하여 인증 사용자와 ASYNC 종료 시 인증 복원을 확인합니다. 공통 `SseStreamingIntegrationTest`는 인증 의존성을 Mock으로 대체하고, 실제 HTTP 프레임·발행 단계 JSON 변환 실패 후 연결 유지·초기 조회 실패의 503 응답을 검증합니다.
 - SSE 설정 테스트는 연결 설정에 `SseConfig`, 전송 설정에 `SseTransportConfig`를 사용하고 필요한 값을 직접 제공합니다.
 - SSE Redis 통합 테스트는 공통 발행 구현체, JSON 보존, 독립 컨텍스트 간 전달과 구독 연결 복구 후 새 이벤트 수신을 확인합니다. emitter를 Mock으로 사용하는 검증과 실제 HTTP 검증의 차이는 [SSE 테스트 가이드](sse/05-testing.md#redis-테스트의-범위)를 참고합니다.
+- 공유 이력의 저장·중복·만료, 연결별 복구·재시도·종료 정리는 [이력 테스트 가이드](sse/12-history-testing.md)에서 검증 역할과 실행 명령을 구분합니다.
 
 `NotificationSseIntegrationTest`는 실제 JWT·사용자 조회·PostgreSQL·Redis·HTTP를 연결해 DTO와 이벤트 ID 보존, 다른 사용자 미전달, A에서 저장한 알림의 B 수신을 확인합니다.
-A·B는 동일 JVM의 독립 컨텍스트와 서로 다른 HTTP 포트이며, 이 검증에 로그인 API·업무별 알림 생성 요청 변환(#45)·DM 연동은 포함하지 않습니다.
+삭제된 알림 필터, 다른 서버 재연결, 중복·역순 신호, 연결별 복구와 이력 만료 후 신규 수신도 포함합니다.
+A·B는 동일 JVM의 독립 컨텍스트와 서로 다른 HTTP 포트이며, 이 검증에 로그인 API·업무 이벤트 변환·DM 연동은 포함하지 않습니다.
+팔로우(#155)·권한 변경·구독(#156)의 업무 이벤트 변환부터 SSE 발행 요청까지는 `NotificationIntegrationTest`에서 별도로 검증합니다.
+플레이리스트 생성·콘텐츠 추가(#157)는 `NotificationPlaylistIntegrationTest`에서 검증합니다. 두 클래스는 실제 HTTP 수신까지 검증하는 테스트와 구분합니다.
 공통 Redis 전송 테스트와 알림 연동 테스트의 차이는 [알림 테스트 가이드](notification/02-testing.md)에 정리합니다.
 최신 결과와 수치는 각자의 코드에서 명령을 실행해 보고서로 확인합니다.
 
@@ -465,10 +488,58 @@ IntelliJ에서 `TmdbClientLiveTest`의 실행 설정에
 토큰은 수동 확인용 테스트 실행 설정에만 추가하고,
 일반 자동 테스트와 CI에는 설정하지 않습니다.
 
+#### TMDB 콘텐츠 수집 배치
+
+`tmdbCollectionJob`은 영화 수집 후 TV 수집을 실행합니다.
+각 Step에서 조회한 데이터를 변환하고 콘텐츠와 태그를 저장합니다.
+
+- `maxPages`: 필수 실행 파라미터. Long 타입의 1 이상 500 이하 값을 전달합니다.
+- `maxPages=5`이면 영화와 TV를 각각 최대 5페이지씩 수집합니다.
+- 실제 마지막 페이지에 도달하면 설정한 페이지 수보다 먼저 종료합니다.
+- 같은 출처·타입·외부 ID의 콘텐츠는 중복 저장하지 않습니다.
+- 기존에 저장된 콘텐츠의 정보는 덮어쓰지 않습니다.
+
+앱 시작 시 배치는 자동 실행하지 않습니다.
+정기 실행은 후속 작업에서 연결합니다.
+
+##### 실패 처리와 재시작
+
+콘텐츠 한 건마다 트랜잭션을 커밋합니다.
+중간에 실패해도 앞서 커밋한 콘텐츠는 유지됩니다.
+
+제목 누락, 제목 100자 초과, 태그 50자 초과는 수집 데이터
+검증 오류로 처리합니다. 각 Step에서 최대 10건까지 건너뛰며,
+11번째 오류가 발생하면 해당 Step과 Job이 실패합니다.
+API 연결 오류나 DB 오류는 이 건너뛰기 대상에 포함하지 않습니다.
+
+배치 실행 이력과 읽기 위치는 PostgreSQL의 BATCH_* 테이블에 저장합니다.
+실패한 작업은 `JobOperator.restart(failedExecution)`으로 재시작합니다.
+새로운 run.id로 실행하면 재시작이 아니라 별개의 작업으로 처리됩니다.
+
+재시작할 때 기록된 페이지를 다시 조회하고, 처리한 위치까지 건너뜁니다.
+TMDB 인기 목록의 순서가 바뀌면 항목이 중복 조회되거나 누락될 수 있습니다.
+DB 중복 저장은 방지하지만, 외부 목록 변경에 따른 누락까지 보장하지는 않습니다.
+
+##### 배치 테스트
+
+실제 TMDB 대신 가짜 응답을 사용하므로 토큰이 필요하지 않습니다.
+Job 테스트는 PostgreSQL 컨테이너를 사용하므로 Docker가 필요합니다.
+
+```bash
+./gradlew test --tests '*TmdbMovieReaderTest' --tests '*TmdbTvReaderTest' --tests '*TmdbCollectionJobTest'
+```
+
+영화·TV와 태그 저장, 영화 수집 중 실패 후 재시작,
+잘못된 데이터 건너뛰기, 건너뛰기 제한 초과,
+실행 파라미터 검증을 확인합니다.
+
+실제 TMDB 응답을 DB에 저장하는 수집 실행은 별도로 확인해야 합니다.
+
 ### TheSportsDB API 연동
 
 리그 ID와 시즌을 기준으로 경기 목록을 조회합니다.
-DB 저장 및 Content 필드 변환은 후속 작업입니다.
+조회한 응답은 공통 콘텐츠 형식으로 변환하며,
+수집 배치를 통해 콘텐츠와 태그를 DB에 저장합니다.
 
 기본적으로 공개 무료 API 키 `123`을 사용합니다.
 다른 키를 사용할 때는 `.env.dev` 또는 실행 환경변수에
@@ -479,6 +550,8 @@ DB 저장 및 Content 필드 변환은 후속 작업입니다.
 조회 결과가 시즌 전체 경기 목록이라고 보장할 수 없습니다.
 
 연결 제한 시간은 기본 3초, 읽기 제한 시간은 기본 10초입니다.
+읽기 제한 시간은 전체 다운로드 시간이 아니라 다음 데이터를 기다리는 시간입니다.
+응답 시작 전이나 본문 전송 중 읽기 시간이 초과되면 TIMEOUT으로 분류합니다.
 
 #### 자동 테스트
 
@@ -501,6 +574,67 @@ RUN_SPORTSDB_LIVE_TEST=true ./gradlew test --tests '*SportsDbClientLiveTest' --r
 설정하지 않으면 건너뜁니다.
 일반 자동 테스트와 CI에는 이 실행 변수를 설정하지 않습니다.
 
+#### 스포츠 콘텐츠 수집 배치
+
+`sportsDbCollectionJob`은 지정한 리그·시즌의 경기 목록을 조회하고,
+공통 콘텐츠 형식으로 변환해 콘텐츠와 태그를 저장합니다.
+
+- `leagueId`: 필수 문자열 파라미터. 예: `"4328"`
+- `season`: 필수 문자열 파라미터. 예: `"2014-2015"`
+- 두 파라미터 모두 누락·빈 문자열·공백 문자열을 허용하지 않습니다.
+- 실제 존재하는 리그·시즌인지는 파라미터 검증에서 확인하지 않습니다.
+- API가 반환한 경기 목록을 처리하며, 시즌 전체 경기 수집을 보장하지 않습니다.
+- 동일한 출처·타입·외부 ID의 콘텐츠는 중복 저장하지 않습니다.
+- 재수집 시 기존 콘텐츠와 태그는 덮어쓰지 않습니다.
+
+앱 시작 시 배치는 자동 실행하지 않습니다.
+정기 실행과 실패 시 자동 재시도는 후속 작업입니다.
+
+##### 실패 처리와 재시작
+
+콘텐츠 한 건마다 트랜잭션을 커밋합니다.
+중간에 실패해도 앞서 커밋한 콘텐츠는 유지됩니다.
+
+제목 누락, 제목 100자 초과, 태그 50자 초과는
+데이터 검증 오류로 최대 10건까지 건너뜁니다.
+
+읽기 위치와 누적 건너뛰기 횟수를 함께 저장하며,
+실패한 작업을 재시작할 때도 저장된 횟수를 이어서 계산합니다.
+누적 한도를 넘기는 다음 오류에서는 Step과 Job이 실패합니다.
+새로운 run.id로 시작한 별개의 수집 실행은 0건부터 계산합니다.
+
+10건은 초기 기준이며, 실제 수집량과 오류율을 확인한 뒤 조정할 예정입니다.
+외부 ID 누락, 통신 오류, DB 오류는 건너뛰기 대상에 포함하지 않습니다.
+
+빈 경기 목록은 정상 종료하고, 응답 객체 자체가 없으면 실패합니다.
+
+실행 이력과 읽기 위치는 PostgreSQL의 배치 메타데이터 테이블에 저장합니다.
+실패한 작업은 `JobOperator.restart(failedExecution)`으로 재시작합니다.
+새로운 `run.id`로 시작하면 실패한 작업의 재시작이 아니라 별개의 수집 실행입니다.
+
+재시작하면 경기 목록을 다시 조회하고, 기록된 위치부터 읽습니다.
+목록이 줄어 기록된 위치를 복원할 수 없으면 실패합니다.
+목록의 순서나 구성이 바뀌면 일부 경기가 중복 조회되거나 누락될 수 있습니다.
+중복 저장은 방지하지만, 목록 변경으로 인한 누락까지 해결한 것은 아닙니다.
+
+##### 배치 테스트
+
+실제 외부 API 대신 Mock 응답을 사용합니다.
+Reader 테스트는 Docker 없이 실행할 수 있고,
+Job 테스트는 PostgreSQL 컨테이너를 사용하므로 Docker가 필요합니다.
+
+```bash
+./gradlew test --tests '*SportsDbEventReaderTest' --tests '*SportsDbCollectionJobTest'
+```
+
+콘텐츠·태그 저장, 재수집 중복 방지, 파라미터 검증,
+건너뛰기 허용·초과, 실패 후 재시작과 기존 저장 유지,
+TMDB·스포츠 Job의 공존 및 클라이언트 호출 분리를 검증합니다.
+
+2026-11-11에 실제 API로 리그 4328, 시즌 2014-2015 수집 배치를 실행해
+COMPLETED를 확인했습니다.
+로컬 PostgreSQL에서 경기 ID·제목·종목 및 리그 태그가 저장된 것을 확인했습니다.
+
 ## 협업과 후속 작업
 
 기능 작업에는 [이슈 템플릿](../.github/ISSUE_TEMPLATE/feature.md)을, 변경 공유에는 [PR 템플릿](../.github/PULL_REQUEST_TEMPLATE.md)을 사용합니다. PR에는 변경 이유, 실행한 테스트와 결과, 후속 작업을 기록합니다. 공통 응답이나 설정을 변경하면 관련 테스트와 이 문서도 함께 확인합니다.
@@ -510,10 +644,11 @@ RUN_SPORTSDB_LIVE_TEST=true ./gradlew test --tests '*SportsDbClientLiveTest' --r
 다음 항목은 후속 작업으로 관리합니다.
 
 - 도메인별 API·서비스·엔티티와 PostgreSQL/Flyway 검증
-- 활성화된 공통 CSRF 기반을 사용하는 팔로우 연동·검증(#114), 알림 연동·검증(#124)과 이벤트의 알림 생성 연동(#45)
+- 활성화된 공통 CSRF 기반을 사용하는 팔로우 연동·검증(#114), 알림 연동·검증(#124)
 - 목록 API의 커서 규칙 확정과 직렬화·페이징 테스트
 - Redis 기반 캐시·세션 기능 구현과 데이터 보관 정책 결정
 - 배치, S3, WebSocket 등 기능별 구현과 필요한 인프라 추가
-- 업무별 알림 생성 요청 변환(#45), DM 본문 전송 연동, SSE Kafka 구현체, [공유 이력·재연결 복구 #53](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/53), [동시 연결 수 제한·모니터링 #107](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/107)
+- 팔로우(#155)·권한 변경·구독(#156)·플레이리스트 생성·콘텐츠 추가(#157) 외 업무 이벤트의 알림 연동(#45), DM 본문 전송 연동, SSE Kafka 구현체, 이력 보관 초기값의 운영 부하 검증, [동시 연결 수 제한·모니터링 #107](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/107)
 - README 배지 자동 게시 방식 확정 및 연결
 - 배포 파이프라인 구성
+
