@@ -76,6 +76,8 @@ class UserControllerTest {
 
     private static final String PASSWORD_URL = "/api/users/{userId}/password";
 
+    private static final String USER_URL = "/api/users/{userId}";
+
     private static final String TOKEN = "test-access-token";
 
     @Autowired
@@ -252,6 +254,52 @@ class UserControllerTest {
                 .andExpect(jsonPath("$.details.password").isArray());
 
         verifyNoInteractions(userService);
+    }
+
+    @Test
+    @DisplayName("로그인한 사용자는 다른 사용자의 상세 정보를 조회할 수 있다.")
+    void 다른_사용자의_상세_정보를_조회할_수_있다() throws Exception {
+        prepareAuthenticatedUser(Role.USER);
+        UserDto target = new UserDto(
+                TARGET_USER_ID,
+                LocalDateTime.of(2026, 11, 1, 12, 0),
+                "target@example.com",
+                "대상 사용자",
+                "https://cdn.example.com/profile.png",
+                Role.USER,
+                false
+        );
+        given(userService.getUserDtoById(TARGET_USER_ID)).willReturn(target);
+
+        mockMvc.perform(get(USER_URL, TARGET_USER_ID)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(TARGET_USER_ID.toString()))
+                .andExpect(jsonPath("$.name").value("대상 사용자"))
+                .andExpect(jsonPath("$.profileImageUrl").value("https://cdn.example.com/profile.png"));
+    }
+
+    @Test
+    @DisplayName("없는 사용자를 조회하면 404를 반환한다.")
+    void 없는_사용자를_조회하면_404를_반환한다() throws Exception {
+        prepareAuthenticatedUser(Role.USER);
+        given(userService.getUserDtoById(TARGET_USER_ID))
+                .willThrow(new UserNotFoundException(Map.of("userId", TARGET_USER_ID)));
+
+        mockMvc.perform(get(USER_URL, TARGET_USER_ID)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN))
+                .andExpect(status().isNotFound())
+                // 엔드포인트가 없을 때의 404(NoResourceFoundException)와 구분한다.
+                .andExpect(jsonPath("$.exceptionName").value("UserNotFoundException"));
+    }
+
+    @Test
+    @DisplayName("인증되지 않은 사용자는 사용자 상세 정보를 조회할 수 없다.")
+    void 인증되지_않은_사용자는_상세_정보를_조회할_수_없다() throws Exception {
+        mockMvc.perform(get(USER_URL, TARGET_USER_ID))
+                .andExpect(status().isUnauthorized());
+
+        verify(userService, never()).getUserDtoById(any());
     }
 
     @ParameterizedTest
