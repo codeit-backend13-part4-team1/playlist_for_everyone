@@ -3,6 +3,8 @@ package com.codeit.sb13.playlist_for_everyone.domain.content.service;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentResult;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentThumbnailData;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentDetailProjection;
@@ -35,7 +37,7 @@ public class ContentService {
     private final FileService fileService;
 
     @Transactional
-    public ContentDto create(ContentCreateRequest request, MultipartFile file) {
+    public ContentResult create(ContentCreateRequest request, MultipartFile file) {
         // 관리자 콘텐츠는 썸네일 파일 없이는 등록이 불가합니다.
         if (file == null || file.isEmpty()) {
             throw new FileEmptyException(Map.of());
@@ -55,36 +57,49 @@ public class ContentService {
         normalizeTags(request.tags()).forEach(content::addTag);
 
         Content savedContent = contentRepository.save(content);
-        String thumbnailUrl = generateThumbnailUrl(savedContent);
+        // Presigned URL 대신 파일 Key만 추출
+        ContentThumbnailData thumbnailData = getThumbnailData(savedContent);
 
-        return contentMapper.toDto(
+        ContentDto contentDto = contentMapper.toDto(
                 savedContent,
-                thumbnailUrl,
-                0.0, 0, 0L);
+                thumbnailData.thumbnailUrl(),
+                0.0, 0, 0L
+        );
+
+        return new ContentResult(
+                contentDto,
+                thumbnailData.fileKey()
+        );
     }
 
     @Transactional(readOnly = true)
-    public ContentDto getById(UUID contentId) {
+    public ContentResult getById(UUID contentId) {
         ContentDetailProjection detail = contentRepository.findDetailById(contentId)
                 .orElseThrow(() -> new ContentNotFoundException(
                         Map.of("contentId", contentId)
                 ));
         Content content = detail.getContent();
 
-        String thumbnailUrl = generateThumbnailUrl(content);
+        ContentThumbnailData thumbnailData = getThumbnailData(content);
 
         long watcherCount = watchingSessionService.getCurrentViewerCount(contentId);
 
-        return contentMapper.toDto(
+        ContentDto contentDto = contentMapper.toDto(
                 content,
-                thumbnailUrl,
+                thumbnailData.thumbnailUrl(),
                 detail.getAverageRating(),
                 Math.toIntExact(detail.getReviewCount()),
-                watcherCount);
+                watcherCount
+        );
+
+        return new ContentResult(
+                contentDto,
+                thumbnailData.fileKey()
+        );
     }
 
     @Transactional
-    public ContentDto update(UUID contentId, ContentUpdateRequest request, MultipartFile file) {
+    public ContentResult update(UUID contentId, ContentUpdateRequest request, MultipartFile file) {
         ContentDetailProjection detail = contentRepository.findDetailById(contentId)
                 .orElseThrow(() -> new ContentNotFoundException(
                         Map.of("contentId", contentId)
@@ -109,7 +124,6 @@ public class ContentService {
             FileInfo oldFileInfo = content.getFileInfo();
 
             FileInfo newFileInfo = fileService.upload(file);
-
             content.updateThumbnail(null, newFileInfo);
 
             // 변경된 외래 키를 DB에 먼저 반영
@@ -121,16 +135,21 @@ public class ContentService {
             }
         }
 
-        String thumbnailUrl = generateThumbnailUrl(content);
+        ContentThumbnailData thumbnailData = getThumbnailData(content);
 
         long watcherCount = watchingSessionService.getCurrentViewerCount(contentId);
 
-        return contentMapper.toDto(
+        ContentDto contentDto = contentMapper.toDto(
                 content,
-                thumbnailUrl,
+                thumbnailData.thumbnailUrl(),
                 detail.getAverageRating(),
                 Math.toIntExact(detail.getReviewCount()),
                 watcherCount
+        );
+
+        return new ContentResult(
+                contentDto,
+                thumbnailData.fileKey()
         );
     }
 
@@ -162,14 +181,14 @@ public class ContentService {
         );
     }
 
-    // Presigned URL 생성
-    private String generateThumbnailUrl(Content content) {
+    // Presigned URL Key 반환
+    private ContentThumbnailData getThumbnailData(Content content) {
         FileInfo fileInfo = content.getFileInfo();
 
-        return fileInfo != null
-                ? fileService.getFileUrl(fileInfo.getId())
-                // 외부 API 콘텐츠는 기존 썸네일 URL 사용
-                : content.getThumbnailUrl();
+        return new ContentThumbnailData(
+                content.getThumbnailUrl(),
+                fileInfo != null ? fileInfo.getKey() : null
+        );
     }
 
     // 태그 중복 검사

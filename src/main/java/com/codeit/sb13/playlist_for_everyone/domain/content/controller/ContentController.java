@@ -5,10 +5,13 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.dto.condition.Conten
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentResult;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSummary;
+import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentSearchService;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
+import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -26,6 +29,8 @@ public class ContentController implements ContentApi {
 
     private final ContentService contentService;
     private final ContentSearchService contentSearchService;
+    private final FileService fileService;
+    private final ContentMapper contentMapper;
 
     @Override
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -33,8 +38,16 @@ public class ContentController implements ContentApi {
             @Valid @RequestPart("request") ContentCreateRequest request,
             @RequestPart("thumbnail") MultipartFile file
     ) {
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(contentService.create(request, file));
+        ContentResult result = contentService.create(request, file);
+
+        ContentDto dto = result.dto();
+
+        String thumbnailUrl = result.fileKey() != null
+                ? fileService.getFileUrlByKey(result.fileKey())
+                : dto.thumbnailUrl();
+
+        ContentDto response = contentMapper.withThumbnailUrl(dto, thumbnailUrl);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @GetMapping
@@ -47,7 +60,16 @@ public class ContentController implements ContentApi {
     @Override
     @GetMapping("/{contentId}")
     public ResponseEntity<ContentDto> get(@PathVariable UUID contentId) {
-        return ResponseEntity.ok(contentService.getById(contentId));
+        ContentResult result = contentService.getById(contentId);
+
+        ContentDto dto = result.dto();
+
+        String thumbnailUrl = result.fileKey() != null
+                ? fileService.getFileUrlByKey(result.fileKey())
+                : dto.thumbnailUrl();
+
+        ContentDto response = contentMapper.withThumbnailUrl(dto, thumbnailUrl);
+        return ResponseEntity.ok(response);
     }
 
     @Override
@@ -60,9 +82,16 @@ public class ContentController implements ContentApi {
             @Valid @RequestPart("request") ContentUpdateRequest request,
             @RequestPart(value="thumbnail", required=false) MultipartFile file
     ) {
-        return ResponseEntity.ok(
-                contentService.update(contentId, request, file)
-        );
+        ContentResult result = contentService.update(contentId, request, file);
+
+        ContentDto dto = result.dto();
+
+        String thumbnailUrl = result.fileKey() != null
+                ? fileService.getFileUrlByKey(result.fileKey())
+                : dto.thumbnailUrl();
+
+        ContentDto response = contentMapper.withThumbnailUrl(dto, thumbnailUrl);
+        return ResponseEntity.ok(response);
     }
 
     @Override

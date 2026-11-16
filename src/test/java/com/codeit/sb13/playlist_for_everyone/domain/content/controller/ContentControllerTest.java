@@ -4,13 +4,16 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.dto.condition.Conten
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentResult;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
+import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentSearchService;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
 import org.mockito.ArgumentCaptor;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpMethod;
@@ -50,6 +53,12 @@ public class ContentControllerTest {
     private ObjectMapper objectMapper;
 
     @MockitoBean
+    private FileService fileService;
+
+    @MockitoBean
+    private ContentMapper contentMapper;
+
+    @MockitoBean
     private ContentService contentService;
 
     @MockitoBean
@@ -68,53 +77,41 @@ public class ContentControllerTest {
         );
 
         UUID contentId = UUID.randomUUID();
+        String key = "contents/test-thumbnail.jpg";
+        String presignedUrl = "https://example.com/thumbnail.jpg";
 
-        ContentDto response = new ContentDto(
+        ContentDto dto = new ContentDto(
                 contentId,
                 ContentType.tvSeries,
                 "너말고다른연애",
                 "KBS 드라마 입니다.",
-                "https://example.com/thumbnail.jpg",
+                null,
                 List.of("드라마", "로맨스"),
-                0.0,
-                0,
-                0L
+                0.0, 0, 0L
         );
 
-        when(contentService.create(
-                any(ContentCreateRequest.class),
-                any(MultipartFile.class)
-        )).thenReturn(response);
+        when(contentService.create(any(ContentCreateRequest.class), any(MultipartFile.class)))
+                .thenReturn(new ContentResult(dto, key));
+
+        when(fileService.getFileUrlByKey(key)).thenReturn(presignedUrl);
+
+        when(contentMapper.withThumbnailUrl(dto, presignedUrl))
+                .thenCallRealMethod();
 
         // when & then
-        // 201 응답 확인
         mockMvc.perform(multipart("/api/contents")
                         .file(createJsonRequestPart(request))
                         .file(createThumbnail())
                         .with(csrf()))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").value(contentId.toString()))
-                .andExpect(jsonPath("$.title").value("너말고다른연애"))
-                .andExpect(jsonPath("$.description").value("KBS 드라마 입니다."))
-                .andExpect(jsonPath("$.tags[0]").value("드라마"))
-                .andExpect(jsonPath("$.tags[1]").value("로맨스"));
-
-        // 콘텐츠 생성 서비스 호출 확인
-        // 서비스에 전달된 요청 데이터 확인
-        ArgumentCaptor<ContentCreateRequest> captor =
-                ArgumentCaptor.forClass(ContentCreateRequest.class);
+                .andExpect(jsonPath("$.thumbnailUrl").value(presignedUrl));
 
         verify(contentService).create(
-                captor.capture(),
+                any(ContentCreateRequest.class),
                 any(MultipartFile.class)
         );
-
-        ContentCreateRequest capturedRequest = captor.getValue();
-
-        assertThat(capturedRequest.type()).isEqualTo(ContentType.tvSeries);
-        assertThat(capturedRequest.title()).isEqualTo("너말고다른연애");
-        assertThat(capturedRequest.description()).isEqualTo("KBS 드라마 입니다.");
-        assertThat(capturedRequest.tags()).containsExactly("드라마", "로맨스");
+        verify(fileService).getFileUrlByKey(key);
     }
 
     @Test
@@ -296,6 +293,7 @@ public class ContentControllerTest {
     void getContent_success() throws Exception {
         // given
         UUID contentId = UUID.randomUUID();
+        String thumbnailUrl = "https://example.com/thumbnail.jpg";
 
         ContentDto contentDto = new ContentDto(
                 contentId,
@@ -310,6 +308,9 @@ public class ContentControllerTest {
         );
 
         when(contentService.getById(contentId))
+                .thenReturn(new ContentResult(contentDto, null));
+
+        when(contentMapper.withThumbnailUrl(contentDto, thumbnailUrl))
                 .thenReturn(contentDto);
 
         // when & then
@@ -350,6 +351,8 @@ public class ContentControllerTest {
     void update_success() throws Exception {
         // given
         UUID contentId = UUID.randomUUID();
+        String key = "contents/test-thumbnail.jpg";
+        String presignedUrl = "https://example.com/thumbnail.jpg";
 
         ContentUpdateRequest request = new ContentUpdateRequest(
                 "너 말고 다른 연애",
@@ -357,23 +360,30 @@ public class ContentControllerTest {
                 List.of("드라마", "로맨스")
         );
 
-        ContentDto response = new ContentDto(
-                contentId,
-                ContentType.tvSeries,
-                "너 말고 다른 연애",
-                "서강준, 안은진 주연",
-                "https://example.com/thumbnail.jpg",
-                List.of("드라마", "로맨스"),
-                4.5,
-                10,
-                0L
+        ContentDto dto = new ContentDto(
+                contentId, ContentType.tvSeries,
+                "너 말고 다른 연애", "서강준, 안은진 주연",
+                null, List.of("드라마", "로맨스"),
+                4.5, 10, 0L
         );
 
-        when(contentService.update(
-                eq(contentId),
-                any(ContentUpdateRequest.class),
-                isNull()
-        )).thenReturn(response);
+        when(contentService.update(eq(contentId), any(ContentUpdateRequest.class), isNull()))
+                .thenReturn(new ContentResult(dto, key));
+
+        when(fileService.getFileUrlByKey(key)).thenReturn(presignedUrl);
+
+        when(contentMapper.withThumbnailUrl(dto, presignedUrl))
+                .thenAnswer(invocation -> {
+                    ContentDto source = invocation.getArgument(0);
+                    String url = invocation.getArgument(1);
+
+                    return new ContentDto(
+                            source.id(), source.type(), source.title(),
+                            source.description(), url, source.tags(),
+                            source.averageRating(), source.reviewCount(),
+                            source.watcherCount()
+                    );
+                });
 
         // when & then
         mockMvc.perform(multipart(HttpMethod.PATCH, "/api/contents/{contentId}", contentId)
@@ -382,25 +392,12 @@ public class ContentControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(contentId.toString()))
                 .andExpect(jsonPath("$.title").value("너 말고 다른 연애"))
-                .andExpect(jsonPath("$.description").value("서강준, 안은진 주연"))
+                .andExpect(jsonPath("$.thumbnailUrl").value(presignedUrl))
                 .andExpect(jsonPath("$.tags[0]").value("드라마"))
                 .andExpect(jsonPath("$.tags[1]").value("로맨스"));
 
-        // 서비스에 전달된 요청 데이터 확인
-        ArgumentCaptor<ContentUpdateRequest> captor =
-                ArgumentCaptor.forClass(ContentUpdateRequest.class);
-
-        verify(contentService).update(
-                eq(contentId),
-                captor.capture(),
-                isNull()
-        );
-
-        ContentUpdateRequest capturedRequest = captor.getValue();
-
-        assertThat(capturedRequest.title()).isEqualTo("너 말고 다른 연애");
-        assertThat(capturedRequest.description()).isEqualTo("서강준, 안은진 주연");
-        assertThat(capturedRequest.tags()).containsExactly("드라마", "로맨스");
+        verify(contentService).update(eq(contentId), any(ContentUpdateRequest.class), isNull());
+        verify(fileService).getFileUrlByKey(key);
     }
 
     @Test
@@ -409,6 +406,8 @@ public class ContentControllerTest {
     void update_withoutTitleAndDescription() throws Exception {
         // given
         UUID contentId = UUID.randomUUID();
+        String key = "contents/test-thumbnail.jpg";
+        String presignedUrl = "https://example.com/thumbnail.jpg";
 
         ContentUpdateRequest request = new ContentUpdateRequest(
                 null,
@@ -416,23 +415,20 @@ public class ContentControllerTest {
                 List.of("로맨스")
         );
 
-        ContentDto response = new ContentDto(
-                contentId,
-                ContentType.tvSeries,
-                "기존 제목",
-                "기존 설명",
-                "https://example.com/thumbnail.jpg",
-                List.of("로맨스"),
-                0.0,
-                0,
-                0L
+        ContentDto dto = new ContentDto(
+                contentId, ContentType.tvSeries,
+                "기존 제목", "기존 설명",
+                null, List.of("로맨스"),
+                4.5, 10, 0L
         );
 
-        when(contentService.update(
-                eq(contentId),
-                any(ContentUpdateRequest.class),
-                isNull()
-        )).thenReturn(response);
+        when(contentService.update(eq(contentId), any(ContentUpdateRequest.class), isNull()))
+                .thenReturn(new ContentResult(dto, key));
+
+        when(fileService.getFileUrlByKey(key)).thenReturn(presignedUrl);
+
+        when(contentMapper.withThumbnailUrl(dto, presignedUrl))
+                .thenCallRealMethod();
 
         // when & then
         mockMvc.perform(multipart(HttpMethod.PATCH, "/api/contents/{contentId}", contentId)
@@ -442,7 +438,10 @@ public class ContentControllerTest {
                 .andExpect(jsonPath("$.id").value(contentId.toString()))
                 .andExpect(jsonPath("$.title").value("기존 제목"))
                 .andExpect(jsonPath("$.description").value("기존 설명"))
-                .andExpect(jsonPath("$.tags[0]").value("로맨스"));
+                .andExpect(jsonPath("$.tags[0]").value("로맨스"))
+                .andExpect(jsonPath("$.thumbnailUrl").value(presignedUrl));
+
+        verify(fileService).getFileUrlByKey(key);
     }
 
     @Test
