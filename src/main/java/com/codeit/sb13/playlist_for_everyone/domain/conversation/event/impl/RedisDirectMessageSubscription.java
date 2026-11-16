@@ -13,14 +13,17 @@ public class RedisDirectMessageSubscription implements DirectMessageSubscription
     private final MessageListener subscriber;
     private final DirectMessageTransportProperties properties;
 
-
     @Override
     public void start() {
-        throw new UnsupportedOperationException();
+       redisBrokerRegister.register(
+               subscriber,
+               properties.redis().channel());
     }
 
     @Override
     public void stop() {
-        throw new UnsupportedOperationException();
+        redisBrokerRegister.unregister(
+                subscriber,
+                properties.redis().channel());
     }
 }
