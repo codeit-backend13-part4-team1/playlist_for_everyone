@@ -97,4 +97,31 @@ class CollectionJobLauncherTest {
         verify(jobRepository).findRunningJobExecutions("sportsDbCollectionJob");
         verifyNoInteractions(jobOperator);
     }
+
+    @Test
+    void 이전에_남은_두_수집_작업의_실행을_복구한다() {
+        var jobOperator = mock(JobOperator.class);
+        var jobRepository = mock(JobRepository.class);
+        var tmdbJob = mock(Job.class);
+        var sportsDbJob = mock(Job.class);
+        var tmdbExecution = mock(JobExecution.class);
+        var sportsDbExecution = mock(JobExecution.class);
+
+        when(tmdbJob.getName()).thenReturn("tmdbCollectionJob");
+        when(sportsDbJob.getName()).thenReturn("sportsDbCollectionJob");
+
+        when(jobRepository.findRunningJobExecutions("tmdbCollectionJob"))
+                .thenReturn(Set.of(tmdbExecution));
+        when(jobRepository.findRunningJobExecutions("sportsDbCollectionJob"))
+                .thenReturn(Set.of(sportsDbExecution));
+
+        var launcher = new CollectionJobLauncher(
+                jobOperator, tmdbJob, sportsDbJob, jobRepository
+        );
+
+        launcher.recoverInterruptedExecutions();
+
+        verify(jobOperator).recover(tmdbExecution);
+        verify(jobOperator).recover(sportsDbExecution);
+    }
 }

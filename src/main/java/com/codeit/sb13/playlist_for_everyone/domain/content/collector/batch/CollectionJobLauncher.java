@@ -56,4 +56,8 @@ public class CollectionJobLauncher {
 
         jobOperator.start(sportsDbCollectionJob, parameters);
     }
+
+    /** 강제 종료로 남은 수집 실행 복구 */
+    public void recoverInterruptedExecutions() {
+    }
 }
