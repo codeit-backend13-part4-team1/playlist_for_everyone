@@ -209,6 +209,8 @@ public class SecurityConfig {
                             ).permitAll()
                             .requestMatchers("/ws", "/ws/**")
                             .permitAll()
+                            .requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/health/**")
+                            .permitAll()
 
                             .anyRequest().authenticated();
                 })
