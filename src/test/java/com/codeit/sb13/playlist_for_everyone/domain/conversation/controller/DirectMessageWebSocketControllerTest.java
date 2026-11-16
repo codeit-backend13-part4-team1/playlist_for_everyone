@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.test.context.ContextConfiguration;
@@ -20,8 +21,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = DirectMessageWebSocketController.class)
@@ -40,10 +40,7 @@ class DirectMessageWebSocketControllerTest {
         UUID conversationId = UUID.randomUUID();
         UUID requesterId = UUID.randomUUID();
 
-        SecurityUser user = getSecurityUser(requesterId);
-
-        Authentication authentication = new UsernamePasswordAuthenticationToken(
-                user, null, user.getAuthorities());
+        Authentication authentication = getAuthentication(requesterId);
 
         DirectMessageSendRequest request = new DirectMessageSendRequest("안녕하세요.");
         controller.send(conversationId, request, authentication);
@@ -64,9 +61,7 @@ class DirectMessageWebSocketControllerTest {
         UUID conversationId = UUID.randomUUID();
         UUID requesterId = UUID.randomUUID();
 
-        SecurityUser user = getSecurityUser(requesterId);
-
-        Authentication authentication = new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
+        Authentication authentication = getAuthentication(requesterId);
         DirectMessageSendRequest request = new DirectMessageSendRequest("안녕하세요.");
 
         DirectMessageSendCommand command = new DirectMessageSendCommand(conversationId, requesterId, request.content());
@@ -81,6 +76,34 @@ class DirectMessageWebSocketControllerTest {
 
     }
 
+    @Test
+    @DisplayName("인증정보가 없으면 인증 예외를 발생시키고 서비스를 호출하지 않는다.")
+    void send_rejectsMissingAuthenticationWithoutCallingService(){
+        UUID conversationId = UUID.randomUUID();
+        DirectMessageSendRequest request = new DirectMessageSendRequest("안녕하세요.");
+
+        assertThatThrownBy(() -> controller.send(conversationId, request, null))
+                .isInstanceOf(BadCredentialsException.class);
+
+        verifyNoMoreInteractions(directMessageService);
+    }
+
+    @Test
+    @DisplayName("principal이 SecurityUser가 아니면 인증 예외를 발생시키고 서비스를 호출하지 않는다.")
+    void send_rejectsUnexpectedPrincipalWithoutCallingService(){
+        UUID conversationId = UUID.randomUUID();
+        DirectMessageSendRequest request = new DirectMessageSendRequest("안녕하세요.");
+
+        SecurityUser user = getSecurityUser(UUID.randomUUID());
+        Authentication authentication = new UsernamePasswordAuthenticationToken(
+                user.getUsername(), null, user.getAuthorities());
+
+        assertThatThrownBy(() -> controller.send(conversationId, request, authentication))
+                .isInstanceOf(BadCredentialsException.class);
+
+        verifyNoInteractions(directMessageService);
+    }
+
     private SecurityUser getSecurityUser(UUID requesterId) {
         return new SecurityUser(
                 requesterId,
@@ -91,4 +114,9 @@ class DirectMessageWebSocketControllerTest {
         );
     }
 
+    private Authentication getAuthentication(UUID requesterId) {
+        SecurityUser user = getSecurityUser(requesterId);
+
+        return new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
+    }
 }
