@@ -42,4 +42,50 @@ class CollectionSchedulePropertiesTest {
     @EnableConfigurationProperties(CollectionScheduleProperties.class)
     static class TestConfig {
     }
+
+    @Test
+    void 실행_시간과_수집_범위의_기본값을_확인한다() {
+        contextRunner.run(context -> {
+            assertThat(context).hasNotFailed();
+
+            var properties = context.getBean(CollectionScheduleProperties.class);
+
+            assertThat(properties.getZone()).isEqualTo("Asia/Seoul");
+            assertThat(properties.getTmdb().getCron()).isEqualTo("-");
+            assertThat(properties.getTmdb().getMaxPages()).isEqualTo(5L);
+            assertThat(properties.getSportsdb().getCron()).isEqualTo("-");
+            assertThat(properties.getSportsdb().getLeagueId()).isNull();
+            assertThat(properties.getSportsdb().getSeason()).isNull();
+        });
+    }
+
+    @Test
+    void 설정한_실행_시간과_수집_범위를_읽는다() {
+        contextRunner
+                .withPropertyValues(
+                        "everyone.collection.schedule.zone=UTC",
+                        "everyone.collection.schedule.tmdb.cron=0 0 3 * * *",
+                        "everyone.collection.schedule.tmdb.max-pages=10",
+                        "everyone.collection.schedule.sportsdb.cron=0 0 4 * * *",
+                        "everyone.collection.schedule.sportsdb.league-id=4328",
+                        "everyone.collection.schedule.sportsdb.season=2014-2015"
+                )
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+
+                    var properties =
+                            context.getBean(CollectionScheduleProperties.class);
+
+                    assertThat(properties.getZone()).isEqualTo("UTC");
+                    assertThat(properties.getTmdb().getCron())
+                            .isEqualTo("0 0 3 * * *");
+                    assertThat(properties.getTmdb().getMaxPages()).isEqualTo(10L);
+                    assertThat(properties.getSportsdb().getCron())
+                            .isEqualTo("0 0 4 * * *");
+                    assertThat(properties.getSportsdb().getLeagueId())
+                            .isEqualTo("4328");
+                    assertThat(properties.getSportsdb().getSeason())
+                            .isEqualTo("2014-2015");
+                });
+    }
 }
