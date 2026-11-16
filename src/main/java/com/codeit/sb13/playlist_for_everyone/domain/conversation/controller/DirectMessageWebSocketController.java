@@ -3,7 +3,11 @@ package com.codeit.sb13.playlist_for_everyone.domain.conversation.controller;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.request.DirectMessageSendRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.DirectMessageService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.messaging.handler.annotation.DestinationVariable;
+import org.springframework.messaging.handler.annotation.MessageMapping;
+import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
@@ -17,8 +21,12 @@ public class DirectMessageWebSocketController {
 
     private final DirectMessageService directMessageService;
 
+
+    @MessageMapping("/conversations/{conversationId}/direct-messages")
     public void send(
+            @DestinationVariable("conversationId")
             UUID conversationId,
+            @Payload @Valid
             DirectMessageSendRequest request,
             Authentication authentication){
 
