@@ -1,10 +1,9 @@
-package com.codeit.sb13.playlist_for_everyone.domain.conversation.config;
+package com.codeit.sb13.playlist_for_everyone.global.config;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.security.DirectMessageAuthorizationManager;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.ConversationService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
-import com.codeit.sb13.playlist_for_everyone.global.config.WebSocketConfig;
 import com.codeit.sb13.playlist_for_everyone.global.exception.conversation.ConversationNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.WebSocketInterceptor;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketRegistry;
@@ -51,12 +50,12 @@ import static org.mockito.Mockito.*;
 @WebAppConfiguration
 @ContextConfiguration(classes = {
         WebSocketConfig.class,
-        DirectMessageWebSocketAuthorizationConfig.class,
+        WebSocketAuthorizationConfig.class,
         DirectMessageAuthorizationManager.class
 })
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@DisplayName("DM WebSocket 인바운드 채널 인가")
-public class DirectMessageWebSocketInboundSecurityTest {
+@DisplayName("WebSocket 인바운드 채널 인가")
+public class WebSocketInboundSecurityTest {
 
     @Autowired
     @Qualifier("clientInboundChannel")

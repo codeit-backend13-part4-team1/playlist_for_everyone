@@ -1,4 +1,4 @@
-package com.codeit.sb13.playlist_for_everyone.domain.conversation.config;
+package com.codeit.sb13.playlist_for_everyone.global.config;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.security.DirectMessageAuthorizationManager;
@@ -39,13 +39,14 @@ import static org.mockito.Mockito.*;
 
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = {
-        DirectMessageWebSocketAuthorizationConfig.class,
+        WebSocketAuthorizationConfig.class,
         DirectMessageAuthorizationManager.class
 })
-class DirectMessageWebSocketAuthorizationConfigTest {
+@DisplayName("WebSocket 메시지 종류와 목적지별 인가 설정")
+class WebSocketAuthorizationConfigTest {
 
     @Autowired
-    @Qualifier("directMessageWebSocketAuthorizationManager")
+    @Qualifier("webSocketAuthorizationManager")
     private AuthorizationManager<Message<?>> authorizationManager;
 
     @MockitoBean
