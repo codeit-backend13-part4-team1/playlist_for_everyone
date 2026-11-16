@@ -10,13 +10,16 @@ public class CollectionJobLauncher {
 
     private final JobOperator jobOperator;
     private final Job tmdbCollectionJob;
+    private final Job sportsDbCollectionJob;
 
     public CollectionJobLauncher(
             JobOperator jobOperator,
-            Job tmdbCollectionJob
+            Job tmdbCollectionJob,
+            Job sportsDbCollectionJob
     ) {
         this.jobOperator = jobOperator;
         this.tmdbCollectionJob = tmdbCollectionJob;
+        this.sportsDbCollectionJob = sportsDbCollectionJob;
     }
 
     public void startTmdb(long maxPages) throws Exception {
@@ -26,5 +29,9 @@ public class CollectionJobLauncher {
                 .toJobParameters();
 
         jobOperator.start(tmdbCollectionJob, parameters);
+    }
+
+    public void startSportsDb(String leagueId, String season) throws Exception {
+
     }
 }
