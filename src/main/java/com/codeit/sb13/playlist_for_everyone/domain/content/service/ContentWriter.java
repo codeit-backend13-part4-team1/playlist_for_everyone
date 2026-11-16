@@ -112,14 +112,13 @@ public class ContentWriter {
         }
 
         ContentThumbnailData thumbnailData = getThumbnailData(content);
-        long watcherCount = watchingSessionService.getCurrentViewerCount(contentId);
 
         ContentDto contentDto = contentMapper.toDto(
                 content,
                 thumbnailData.thumbnailUrl(),
                 detail.getAverageRating(),
                 Math.toIntExact(detail.getReviewCount()),
-                watcherCount
+                0L
         );
 
         return new ContentResult(

@@ -130,7 +130,7 @@ public class ContentMapperTest {
         );
 
         // when
-        ContentDto result = contentMapper.withThumbnailUrl(dto, presignedUrl);
+        ContentDto result = contentMapper.toContentDto(dto, presignedUrl, null);
 
         // then
         assertThat(result)
@@ -139,7 +139,37 @@ public class ContentMapperTest {
                 .isEqualTo(dto);
 
         assertThat(result.thumbnailUrl()).isEqualTo(presignedUrl);
+        assertThat(result.watcherCount()).isEqualTo(20L);
         assertThat(dto.thumbnailUrl()).isNull();
+    }
+
+    @Test
+    @DisplayName("기존 DTO의 시청자 수만 변경한다.")
+    void toContentDto_updateWatcherCount() {
+        // given
+        ContentDto dto = new ContentDto(
+                UUID.randomUUID(),
+                ContentType.tvSeries,
+                "너말고다른연애",
+                "KBS 드라마 입니다.",
+                "https://example.com/thumbnail.jpg",
+                List.of("드라마", "로맨스"),
+                4.5,
+                10,
+                0L
+        );
+
+        // when
+        ContentDto result = contentMapper.toContentDto(dto, null, 20L);
+
+        // then
+        assertThat(result)
+                .usingRecursiveComparison()
+                .ignoringFields("watcherCount")
+                .isEqualTo(dto);
+
+        assertThat(result.watcherCount()).isEqualTo(20L);
+        assertThat(dto.watcherCount()).isZero();
     }
 
 }

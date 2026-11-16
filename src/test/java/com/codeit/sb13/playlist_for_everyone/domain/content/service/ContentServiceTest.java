@@ -4,48 +4,28 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentC
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentResult;
-import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
-import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentSource;
-import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentTag;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
-import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentDetailProjection;
-import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
-import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
-import com.codeit.sb13.playlist_for_everyone.domain.review.repository.ReviewRepository;
-import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
-import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
 import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-@DisplayName("Content 서비스 테스트")
+@DisplayName("콘텐츠 서비스 테스트")
 public class ContentServiceTest {
-
-    @Mock
-    private ContentRepository contentRepository;
-
-    @Mock
-    private ReviewRepository reviewRepository;
 
     @Mock
     private ContentReader reader;
@@ -54,7 +34,7 @@ public class ContentServiceTest {
     private ContentWriter writer;
 
     @Mock
-    private PlaylistContentRepository playlistContentRepository;
+    private WatchingSessionService watchingSessionService;
 
     @Mock
     private ContentMapper contentMapper;
@@ -64,12 +44,6 @@ public class ContentServiceTest {
 
     @InjectMocks
     private ContentService contentService;
-
-    private FileInfo mockFileUpload(MultipartFile file) {
-        FileInfo fileInfo = mock(FileInfo.class);
-        given(fileService.upload(file)).willReturn(fileInfo);
-        return fileInfo;
-    }
 
     @Test
     @DisplayName("콘텐츠 생성 후 Presigned URL을 포함한 DTO를 반환한다.")
@@ -103,23 +77,33 @@ public class ContentServiceTest {
         given(fileService.getFileUrlByKey(key))
                 .willReturn(presignedUrl);
 
-        given(contentMapper.withThumbnailUrl(dto, presignedUrl))
-                .willReturn(new ContentDto(
-                        dto.id(), dto.type(), dto.title(),
-                        dto.description(), presignedUrl, dto.tags(),
-                        dto.averageRating(), dto.reviewCount(),
-                        dto.watcherCount()
-                ));
+        ContentDto expected = new ContentDto(
+                dto.id(),
+                dto.type(),
+                dto.title(),
+                dto.description(),
+                presignedUrl,
+                dto.tags(),
+                dto.averageRating(),
+                dto.reviewCount(),
+                dto.watcherCount()
+        );
+
+        given(contentMapper.toContentDto(dto, presignedUrl, null))
+                .willReturn(expected);
 
         // when
         ContentDto result = contentService.create(request, file);
 
         // then
+        // then
+        assertThat(result).isSameAs(expected);
         assertThat(result.thumbnailUrl()).isEqualTo(presignedUrl);
 
         verify(writer).create(request, file);
         verify(fileService).getFileUrlByKey(key);
-        verify(contentMapper).withThumbnailUrl(dto, presignedUrl);
+        verify(contentMapper).toContentDto(dto, presignedUrl, null);
+        verifyNoInteractions(watchingSessionService);
     }
 
     @Test
@@ -128,6 +112,7 @@ public class ContentServiceTest {
         // given
         UUID contentId = UUID.randomUUID();
         String thumbnailUrl = "https://example.com/thumbnail.jpg";
+        long watcherCount = 15L;
 
         ContentDto dto = mock(ContentDto.class);
         ContentDto expected = mock(ContentDto.class);
@@ -135,7 +120,9 @@ public class ContentServiceTest {
         given(dto.thumbnailUrl()).willReturn(thumbnailUrl);
         given(reader.getById(contentId))
                 .willReturn(new ContentResult(dto, null));
-        given(contentMapper.withThumbnailUrl(dto, thumbnailUrl))
+        given(watchingSessionService.getCurrentViewerCount(contentId))
+                .willReturn(watcherCount);
+        given(contentMapper.toContentDto(dto, thumbnailUrl, watcherCount))
                 .willReturn(expected);
 
         // when
@@ -145,8 +132,6 @@ public class ContentServiceTest {
         assertThat(result).isSameAs(expected);
 
         verify(reader).getById(contentId);
-        verify(contentMapper).withThumbnailUrl(dto, thumbnailUrl);
-        verifyNoInteractions(fileService);
     }
 
     @Test
@@ -156,6 +141,7 @@ public class ContentServiceTest {
         UUID contentId = UUID.randomUUID();
         String fileKey = "contents/test-thumbnail.jpg";
         String presignedUrl = "https://s3.example.com/test-thumbnail.jpg";
+        long watcherCount = 15L;
 
         ContentDto dto = mock(ContentDto.class);
         ContentDto expected = mock(ContentDto.class);
@@ -166,7 +152,10 @@ public class ContentServiceTest {
         given(fileService.getFileUrlByKey(fileKey))
                 .willReturn(presignedUrl);
 
-        given(contentMapper.withThumbnailUrl(dto, presignedUrl))
+        given(watchingSessionService.getCurrentViewerCount(contentId))
+                .willReturn(watcherCount);
+
+        given(contentMapper.toContentDto(dto, presignedUrl, watcherCount))
                 .willReturn(expected);
 
         // when
@@ -176,8 +165,9 @@ public class ContentServiceTest {
         assertThat(result).isSameAs(expected);
 
         verify(reader).getById(contentId);
+        verify(watchingSessionService).getCurrentViewerCount(contentId);
         verify(fileService).getFileUrlByKey(fileKey);
-        verify(contentMapper).withThumbnailUrl(dto, presignedUrl);
+        verify(contentMapper).toContentDto(dto, presignedUrl, watcherCount);
     }
 
     @Test
@@ -185,6 +175,7 @@ public class ContentServiceTest {
     void update_success() {
         // given
         UUID contentId = UUID.randomUUID();
+        long watcherCount = 15L;
 
         ContentUpdateRequest request = new ContentUpdateRequest(
                 "수정된 제목",
@@ -204,7 +195,10 @@ public class ContentServiceTest {
         given(fileService.getFileUrlByKey(key))
                 .willReturn(presignedUrl);
 
-        given(contentMapper.withThumbnailUrl(dto, presignedUrl))
+        given(watchingSessionService.getCurrentViewerCount(contentId))
+                .willReturn(watcherCount);
+
+        given(contentMapper.toContentDto(dto, presignedUrl, watcherCount))
                 .willReturn(expected);
 
         // when
@@ -214,8 +208,9 @@ public class ContentServiceTest {
         assertThat(result).isSameAs(expected);
 
         verify(writer).update(contentId, request, null);
+        verify(watchingSessionService).getCurrentViewerCount(contentId);
         verify(fileService).getFileUrlByKey(key);
-        verify(contentMapper).withThumbnailUrl(dto, presignedUrl);
+        verify(contentMapper).toContentDto(dto, presignedUrl, watcherCount);
     }
 
     @Test

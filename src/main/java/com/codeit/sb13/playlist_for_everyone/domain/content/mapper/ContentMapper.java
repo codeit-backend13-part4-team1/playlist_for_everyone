@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.mapper;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentResult;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentTag;
@@ -51,17 +52,21 @@ public class ContentMapper {
         );
     }
 
-    public ContentDto withThumbnailUrl(ContentDto dto, String thumbnailUrl) {
+    public ContentDto toContentDto(
+            ContentDto dto,
+            String thumbnailUrl,
+            Long watcherCount
+    ) {
         return new ContentDto(
                 dto.id(),
                 dto.type(),
                 dto.title(),
                 dto.description(),
-                thumbnailUrl,
+                thumbnailUrl != null ? thumbnailUrl : dto.thumbnailUrl(),
                 dto.tags(),
                 dto.averageRating(),
                 dto.reviewCount(),
-                dto.watcherCount()
+                watcherCount != null ? watcherCount : dto.watcherCount()
         );
     }
 

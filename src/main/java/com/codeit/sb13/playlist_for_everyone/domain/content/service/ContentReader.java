@@ -21,7 +21,6 @@ import java.util.UUID;
 public class ContentReader {
 
     private final ContentRepository contentRepository;
-    private final WatchingSessionService watchingSessionService;
     private final ContentMapper contentMapper;
 
     @Transactional(readOnly = true)
@@ -40,7 +39,7 @@ public class ContentReader {
                 content.getThumbnailUrl(),
                 detail.getAverageRating(),
                 Math.toIntExact(detail.getReviewCount()),
-                watchingSessionService.getCurrentViewerCount(contentId)
+                0L
         );
 
         return new ContentResult(
