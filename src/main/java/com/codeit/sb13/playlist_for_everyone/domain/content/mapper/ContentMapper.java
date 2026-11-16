@@ -50,4 +50,8 @@ public class ContentMapper {
         );
     }
 
+    public ContentDto withThumbnailUrl(ContentDto dto, String thumbnailUrl) {
+        return null;
+    }
+
 }

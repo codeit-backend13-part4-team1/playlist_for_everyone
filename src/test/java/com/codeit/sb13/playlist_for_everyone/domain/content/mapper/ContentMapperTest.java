@@ -7,6 +7,9 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+import java.util.UUID;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 @DisplayName("ContentMapper 테스트")
@@ -104,6 +107,38 @@ public class ContentMapperTest {
         assertThat(summary.tags()).containsExactly("드라마", "로맨스");
         assertThat(summary.averageRating()).isEqualTo(4.5);
         assertThat(summary.reviewCount()).isEqualTo(10);
+    }
+
+    @Test
+    @DisplayName("기존 DTO의 썸네일 URL만 변경한다.")
+    void withThumbnailUrl_success() {
+        // given
+        UUID contentId = UUID.randomUUID();
+        String presignedUrl = "https://example.com/thumbnail.jpg";
+
+        ContentDto dto = new ContentDto(
+                contentId,
+                ContentType.tvSeries,
+                "너말고다른연애",
+                "KBS 드라마 입니다.",
+                null,
+                List.of("드라마", "로맨스"),
+                4.5,
+                10,
+                20L
+        );
+
+        // when
+        ContentDto result = contentMapper.withThumbnailUrl(dto, presignedUrl);
+
+        // then
+        assertThat(result)
+                .usingRecursiveComparison()
+                .ignoringFields("thumbnailUrl")
+                .isEqualTo(dto);
+
+        assertThat(result.thumbnailUrl()).isEqualTo(presignedUrl);
+        assertThat(dto.thumbnailUrl()).isNull();
     }
 
 }
