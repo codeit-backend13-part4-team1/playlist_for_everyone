@@ -17,6 +17,7 @@ class CollectionJobLauncherTest {
     void 수집할_페이지_수를_전달해_TMDB_배치를_실행한다() throws Exception {
         var jobOperator = mock(JobOperator.class);
         var tmdbJob = mock(Job.class);
+        var sportsDbJob = mock(Job.class);
         var launcher = new CollectionJobLauncher(jobOperator, tmdbJob, sportsDbJob);
 
         launcher.startTmdb(5L);

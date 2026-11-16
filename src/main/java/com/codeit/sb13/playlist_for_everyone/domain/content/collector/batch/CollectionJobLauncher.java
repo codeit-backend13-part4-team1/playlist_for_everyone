@@ -32,6 +32,12 @@ public class CollectionJobLauncher {
     }
 
     public void startSportsDb(String leagueId, String season) throws Exception {
+        var parameters = new JobParametersBuilder()
+                .addString("leagueId", leagueId)
+                .addString("season", season)
+                .addString("run.id", UUID.randomUUID().toString())
+                .toJobParameters();
 
+        jobOperator.start(sportsDbCollectionJob, parameters);
     }
 }
