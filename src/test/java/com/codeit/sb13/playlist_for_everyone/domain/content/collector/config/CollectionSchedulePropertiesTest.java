@@ -1,8 +1,13 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.collector.config;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.context.properties.bind.validation.BindValidationException;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.boot.validation.autoconfigure.ValidationAutoConfiguration;
 import org.springframework.context.annotation.Configuration;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -11,6 +16,9 @@ class CollectionSchedulePropertiesTest {
 
     private final ApplicationContextRunner contextRunner =
             new ApplicationContextRunner()
+                    .withConfiguration(
+                            AutoConfigurations.of(ValidationAutoConfiguration.class)
+                    )
                     .withUserConfiguration(TestConfig.class);
 
     @Test
@@ -86,6 +94,41 @@ class CollectionSchedulePropertiesTest {
                             .isEqualTo("4328");
                     assertThat(properties.getSportsdb().getSeason())
                             .isEqualTo("2014-2015");
+                });
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {-1, 0, 501, 2147483648L})
+    void 페이지_수가_범위를_벗어나면_설정_로딩에_실패한다(long maxPages) {
+        contextRunner
+                .withPropertyValues(
+                        "everyone.collection.schedule.enabled=true",
+                        "everyone.collection.schedule.tmdb.max-pages=" + maxPages
+                )
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .hasRootCauseInstanceOf(BindValidationException.class)
+                            .hasStackTraceContaining("maxPages");
+                });
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {1, 500})
+    void 페이지_수의_최솟값과_최댓값을_허용한다(long maxPages) {
+        contextRunner
+                .withPropertyValues(
+                        "everyone.collection.schedule.enabled=true",
+                        "everyone.collection.schedule.tmdb.max-pages=" + maxPages
+                )
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+
+                    var properties =
+                            context.getBean(CollectionScheduleProperties.class);
+
+                    assertThat(properties.getTmdb().getMaxPages())
+                            .isEqualTo(maxPages);
                 });
     }
 }
