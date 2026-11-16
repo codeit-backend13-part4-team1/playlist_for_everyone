@@ -1,15 +1,15 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.event;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.event.UserSessionRevokedEvent;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.event.auth.WebSocketAuthenticateRevokeEvent;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.service.WebSocketService;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSession;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionContentDeleteEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
+
+import java.util.UUID;
 
 /**
  * 웹 소켓 도메인의 이벤트를 처리하는 클래스.
@@ -21,7 +21,6 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class LocalEventListener {
     private final WebSocketService webSocketService;
-    private final WatchingSession watchingSession;
 
     /**
      * 인증이 만료된 유저의 세션을 삭제하는 이벤트
@@ -29,6 +28,8 @@ public class LocalEventListener {
      */
     @EventListener
     public void onAuthRevoke(UserSessionRevokedEvent event){
-        webSocketService.revokeAuth(event.userId().toString());
+        UUID userId = event.userId();
+        UUID sessionId = event.revokedSessionId();
+        webSocketService.disconnectWithAuthRevokeEvent(userId,sessionId);
     }
 }

@@ -110,7 +110,11 @@ public class PlaylistServiceImplTest {
         playlistContentQueryRepository
     );
 
-    PlaylistWriter playlistWriter = new PlaylistWriter(playlistRepository);
+    PlaylistWriter playlistWriter = new PlaylistWriter(
+        playlistRepository,
+        userRepository,
+        eventPublisher
+    );
 
     playlistService = new PlaylistServiceImpl(
         playlistRepository, userRepository,
@@ -129,7 +133,9 @@ public class PlaylistServiceImplTest {
     User owner = createUser(ownerId);
     PlaylistCreateRequest request = new PlaylistCreateRequest("제목", "설명");
 
-    given(userRepository.findById(ownerId)).willReturn(Optional.of(owner));
+    given(userRepository.findWithProfileImageById(ownerId))
+        .willReturn(Optional.of(owner));
+
     given(playlistRepository.save(any(Playlist.class)))
         .willAnswer(invocation -> invocation.getArgument(0));
 
@@ -154,7 +160,8 @@ public class PlaylistServiceImplTest {
     PlaylistCreateRequest request = new PlaylistCreateRequest("title", "description");
     UserSummary summary = new UserSummary(ownerId, "tester", null);
 
-    given(userRepository.findById(ownerId)).willReturn(Optional.of(owner));
+    given(userRepository.findWithProfileImageById(ownerId))
+        .willReturn(Optional.of(owner));
     given(playlistRepository.save(any(Playlist.class)))
         .willAnswer(invocation -> invocation.getArgument(0));
     given(userSummaryMapper.toSummary(owner)).willReturn(summary);
@@ -171,6 +178,29 @@ public class PlaylistServiceImplTest {
   }
 
   @Test
+  @DisplayName("생성 응답의 소유자에 프로필 이미지 URL이 담긴다")
+  void 플레이리스트_생성_응답의_소유자에_프로필_이미지_URL이_담긴다() {
+    // given
+    UUID ownerId = UUID.randomUUID();
+    User owner = createUserWithProfileImage(ownerId, "profile/owner.png");
+    UserSummary summary = new UserSummary(
+        ownerId, "tester", "https://cdn.test/profile/owner.png");
+    given(userRepository.findWithProfileImageById(ownerId))
+        .willReturn(Optional.of(owner));
+    given(playlistRepository.save(any(Playlist.class)))
+        .willAnswer(invocation -> invocation.getArgument(0));
+    given(userSummaryMapper.toSummary(owner)).willReturn(summary);
+
+    // when
+    PlaylistResponse response = playlistService.create(
+        ownerId, new PlaylistCreateRequest("제목", "설명"));
+
+    // then
+    assertThat(response.owner().profileImageUrl())
+        .isEqualTo("https://cdn.test/profile/owner.png");
+  }
+
+  @Test
   @DisplayName("생성에 성공하면 Play;listCreatedEvent를 발행한다")
   void 플레이리슽_생성에_성공하면_성공_이벤트를_발행한다() {
     // given
@@ -179,7 +209,7 @@ public class PlaylistServiceImplTest {
     User owner = createUser(ownerId);
     PlaylistCreateRequest request = new PlaylistCreateRequest("제목", "설명");
 
-    given(userRepository.findById(ownerId))
+    given(userRepository.findWithProfileImageById(ownerId))
         .willReturn(Optional.of(owner));
 
     given(playlistRepository.save(any(Playlist.class)))
@@ -209,7 +239,8 @@ public class PlaylistServiceImplTest {
     // given
     UUID ownerId = UUID.randomUUID();
     PlaylistCreateRequest request = new PlaylistCreateRequest("title", "description");
-    given(userRepository.findById(ownerId)).willReturn(Optional.empty());
+    given(userRepository.findWithProfileImageById(ownerId))
+        .willReturn(Optional.empty());
 
     // when & then
     assertThatThrownBy(() -> playlistService.create(ownerId, request))
@@ -1065,27 +1096,6 @@ public class PlaylistServiceImplTest {
     assertThat(event.subscriberName()).isEqualTo("tester");
   }
 
-  @Test
-  @DisplayName("생성 응답의 소유자에 프로필 이미지 URL이 담긴다")
-  void 플레이리스트_생성_응답의_소유자에_프로필_이미지_URL이_담긴다() {
-    // given
-    UUID ownerId = UUID.randomUUID();
-    User owner = createUserWithProfileImage(ownerId, "profile/owner.png");
-    UserSummary summary = new UserSummary(
-        ownerId, "tester", "https://cdn.test/profile/owner.png");
-    given(userRepository.findById(ownerId)).willReturn(Optional.of(owner));
-    given(playlistRepository.save(any(Playlist.class)))
-        .willAnswer(invocation -> invocation.getArgument(0));
-    given(userSummaryMapper.toSummary(owner)).willReturn(summary);
-
-    // when
-    PlaylistResponse response = playlistService.create(
-        ownerId, new PlaylistCreateRequest("제목", "설명"));
-
-    // then
-    assertThat(response.owner().profileImageUrl())
-        .isEqualTo("https://cdn.test/profile/owner.png");
-  }
 
   @Test
   @DisplayName("단건 조회 응답의 소유자에 프로필 이미지 URL이 담긴다")
