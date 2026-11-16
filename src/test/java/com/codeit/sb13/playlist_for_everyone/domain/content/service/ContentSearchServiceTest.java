@@ -1,89 +1,133 @@
-
 package com.codeit.sb13.playlist_for_everyone.domain.content.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.condition.ContentSearchCondition;
-import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSearchResult;
-import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
-import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
-import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
+import com.codeit.sb13.playlist_for_everyone.global.config.CacheConfig;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
+import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.cache.CacheManager;
+import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
+import org.springframework.context.annotation.Bean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.*;
 
-@ExtendWith(MockitoExtension.class)
-@DisplayName("Content 검색 서비스 테스트")
-class ContentSearchServiceTest {
+@SpringBootTest(classes = {
+        ContentSearchService.class,
+        ContentSearchServiceTest.TestCacheConfig.class
+})
+@DisplayName("콘텐츠 검색 서비스 테스트")
+public class ContentSearchServiceTest {
 
-    @Mock
-    private ContentRepository contentRepository;
+    @TestConfiguration
+    @EnableCaching
+    static class TestCacheConfig {
 
-    @Mock
-    private ContentMapper contentMapper;
+        @Bean
+        CacheManager cacheManager() {
+            return new ConcurrentMapCacheManager(
+                    CacheConfig.CONTENT_SEARCH
+            );
+        }
+    }
 
-    @InjectMocks
+    @Autowired
     private ContentSearchService contentSearchService;
 
+    @Autowired
+    private CacheManager cacheManager;
+
+    @MockitoBean
+    private ContentSearchQueryService queryService;
+
     private ContentSearchCondition condition;
-    private Content content1;
-    private Content content2;
-    private Content content3;
 
     @BeforeEach
     void setUp() {
+        cacheManager.getCache(CacheConfig.CONTENT_SEARCH).clear();
+        reset(queryService);
+
         condition = new ContentSearchCondition(
                 null, null, null, null, null,
                 2, SortDirection.DESCENDING, "rate"
         );
 
-        content1 = Content.createAdminContent(
-                ContentType.tvSeries,
-                "드라마1",
-                "드라마설명1",
-                null
-        );
-        content2 = Content.createAdminContent(
+    }
+
+    private ContentSummary createSummary() {
+        return new ContentSummary(
+                UUID.randomUUID(),
                 ContentType.movie,
                 "영화1",
                 "영화설명1",
-                null
+                null,
+                List.of("액션", "드라마"),
+                4.5,
+                3
         );
-        content3 = Content.createAdminContent(
-                ContentType.sport,
-                "스포츠1",
-                "스포츠설명1",
-                null
+    }
+
+    private CursorResponse<ContentSummary> createResponse() {
+        return new CursorResponse<>(
+                List.of(createSummary()),
+                null,
+                null,
+                false,
+                1L,
+                "rate",
+                SortDirection.DESCENDING
         );
     }
 
     @Test
-    @DisplayName("콘텐츠 검색 시 요청한 개수만 반환하고 다음 페이지 커서를 생성한다.")
-    void searchContents_returnsCursorPageWithNextCursor() {
+    @DisplayName("최초 검색 시 QueryService를 호출한다")
+    void search_cacheMiss() {
         // given
-        given(contentRepository.search(condition))
-                .willReturn(List.of(
-                        new ContentSearchResult(content1, 5.0, 2),
-                        new ContentSearchResult(content2, 4.5, 3),
-                        new ContentSearchResult(content3, 3.0, 1)
-                ));
+        CursorResponse<ContentSummary> response = createResponse();
+
+        given(queryService.search(condition)).willReturn(response);
 
         // when
-        var result = contentSearchService.search(condition);
+        CursorResponse<ContentSummary> result =
+                contentSearchService.search(condition);
 
         // then
-        assertThat(result.data()).hasSize(2);
-        assertThat(result.hasNext()).isTrue();
-        assertThat(result.nextCursor()).isEqualTo("4.5");
+        assertThat(result).isEqualTo(response);
+        verify(queryService, times(1)).search(condition);
     }
+
+    @Test
+    @DisplayName("동일한 검색 조건은 캐시된 결과를 반환한다")
+    void search_cacheHit() {
+        // given
+        CursorResponse<ContentSummary> response = createResponse();
+
+        given(queryService.search(condition)).willReturn(response);
+
+        // when
+        CursorResponse<ContentSummary> first =
+                contentSearchService.search(condition);
+
+        CursorResponse<ContentSummary> second =
+                contentSearchService.search(condition);
+
+        // then
+        assertThat(first).isEqualTo(response);
+        assertThat(second).isEqualTo(response);
+        verify(queryService, times(1)).search(condition);
+    }
+
 }
