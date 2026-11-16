@@ -7,6 +7,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.SessionStart
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.TemporaryPasswordRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AuthService;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.service.PasswordChangeService;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.PasswordResetService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.controller.UserController;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
@@ -128,6 +129,9 @@ class LoginSecurityTest {
 
     @MockitoBean
     private PasswordResetService passwordResetService;
+
+    @MockitoBean
+    private PasswordChangeService passwordChangeService;
 
     @MockitoBean
     private TemporaryPasswordRepository temporaryPasswordRepository;

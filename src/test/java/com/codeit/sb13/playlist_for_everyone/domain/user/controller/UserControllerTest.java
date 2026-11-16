@@ -74,7 +74,7 @@ class UserControllerTest {
     private static final UUID SESSION_ID =
             UUID.fromString("33333333-3333-3333-3333-333333333333");
 
-    private static final String PASSWORD_URL = "/api/user/{userId}/password";
+    private static final String PASSWORD_URL = "/api/users/{userId}/password";
 
     private static final String TOKEN = "test-access-token";
 

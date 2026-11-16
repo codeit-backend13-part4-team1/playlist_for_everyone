@@ -10,6 +10,7 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundE
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -42,7 +43,7 @@ class PasswordChangeServiceTest {
     @Mock
     private PasswordEncoder passwordEncoder;
 
-    @Mock
+    @InjectMocks
     private PasswordChangeService passwordChangeService;
 
 
