@@ -21,6 +21,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -31,7 +32,7 @@ import static org.mockito.Mockito.*;
         ContentSearchCacheService.class,
         ContentSearchCacheServiceTest.TestCacheConfig.class
 })
-@DisplayName("콘텐츠 검색 서비스 테스트")
+@DisplayName("콘텐츠 검색 캐시 서비스 테스트")
 public class ContentSearchCacheServiceTest {
 
     @TestConfiguration
@@ -47,7 +48,7 @@ public class ContentSearchCacheServiceTest {
     }
 
     @Autowired
-    private ContentSearchCacheService contentSearchService;
+    private ContentSearchCacheService cacheService;
 
     @Autowired
     private CacheManager cacheManager;
@@ -59,7 +60,7 @@ public class ContentSearchCacheServiceTest {
 
     @BeforeEach
     void setUp() {
-        cacheManager.getCache(CacheConfig.CONTENT_SEARCH).clear();
+        Objects.requireNonNull(cacheManager.getCache(CacheConfig.CONTENT_SEARCH)).clear();
         reset(queryService);
 
         condition = new ContentSearchCondition(
@@ -67,6 +68,44 @@ public class ContentSearchCacheServiceTest {
                 2, SortDirection.DESCENDING, "rate"
         );
 
+    }
+
+    @Test
+    @DisplayName("최초 검색 시 QueryService를 호출한다")
+    void search_cacheMiss() {
+        // given
+        CursorResponse<ContentResult> response = createResponse();
+
+        given(queryService.search(condition)).willReturn(response);
+
+        // when
+        CursorResponse<ContentResult> result =
+                cacheService.search(condition);
+
+        // then
+        assertThat(result).isEqualTo(response);
+        verify(queryService, times(1)).search(condition);
+    }
+
+    @Test
+    @DisplayName("동일한 검색 조건은 캐시된 결과를 반환한다")
+    void search_cacheHit() {
+        // given
+        CursorResponse<ContentResult> response = createResponse();
+
+        given(queryService.search(condition)).willReturn(response);
+
+        // when
+        CursorResponse<ContentResult> first =
+                cacheService.search(condition);
+
+        CursorResponse<ContentResult> second =
+                cacheService.search(condition);
+
+        // then
+        assertThat(first).isEqualTo(response);
+        assertThat(second).isEqualTo(response);
+        verify(queryService, times(1)).search(condition);
     }
 
     private ContentResult createResult() {
@@ -98,44 +137,6 @@ public class ContentSearchCacheServiceTest {
                 "rate",
                 SortDirection.DESCENDING
         );
-    }
-
-    @Test
-    @DisplayName("최초 검색 시 QueryService를 호출한다")
-    void search_cacheMiss() {
-        // given
-        CursorResponse<ContentResult> response = createResponse();
-
-        given(queryService.search(condition)).willReturn(response);
-
-        // when
-        CursorResponse<ContentResult> result =
-                contentSearchService.search(condition);
-
-        // then
-        assertThat(result).isEqualTo(response);
-        verify(queryService, times(1)).search(condition);
-    }
-
-    @Test
-    @DisplayName("동일한 검색 조건은 캐시된 결과를 반환한다")
-    void search_cacheHit() {
-        // given
-        CursorResponse<ContentResult> response = createResponse();
-
-        given(queryService.search(condition)).willReturn(response);
-
-        // when
-        CursorResponse<ContentResult> first =
-                contentSearchService.search(condition);
-
-        CursorResponse<ContentResult> second =
-                contentSearchService.search(condition);
-
-        // then
-        assertThat(first).isEqualTo(response);
-        assertThat(second).isEqualTo(response);
-        verify(queryService, times(1)).search(condition);
     }
 
 }
