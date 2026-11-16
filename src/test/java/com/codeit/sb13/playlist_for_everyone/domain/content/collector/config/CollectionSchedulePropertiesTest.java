@@ -2,6 +2,8 @@ package com.codeit.sb13.playlist_for_everyone.domain.content.collector.config;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -9,6 +11,8 @@ import org.springframework.boot.context.properties.bind.validation.BindValidatio
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.validation.autoconfigure.ValidationAutoConfiguration;
 import org.springframework.context.annotation.Configuration;
+
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -130,5 +134,34 @@ class CollectionSchedulePropertiesTest {
                     assertThat(properties.getTmdb().getMaxPages())
                             .isEqualTo(maxPages);
                 });
+    }
+
+    @ParameterizedTest
+    @MethodSource("잘못된_cron_설정")
+    void 실행_시간이_잘못되면_설정_로딩에_실패한다(
+            String provider,
+            String cron
+    ) {
+        contextRunner
+                .withPropertyValues(
+                        "everyone.collection.schedule.enabled=true",
+                        "everyone.collection.schedule." + provider + ".cron=" + cron,
+                        "everyone.collection.schedule.sportsdb.league-id=4328",
+                        "everyone.collection.schedule.sportsdb.season=2014-2015"
+                )
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .hasRootCauseInstanceOf(BindValidationException.class)
+                            .hasStackTraceContaining("cron");
+                });
+    }
+
+    static Stream<Arguments> 잘못된_cron_설정() {
+        return Stream.of("tmdb", "sportsdb")
+                .flatMap(provider ->
+                        Stream.of("", "   ", "invalid", "0 0 25 * * *")
+                                .map(cron -> Arguments.of(provider, cron))
+                );
     }
 }
