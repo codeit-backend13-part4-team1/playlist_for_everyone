@@ -7,6 +7,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +26,7 @@ public class PasswordChangeService {
     /**
      * 로그인한 사용자 비밀번호를 변경한다.
      */
+    @PreAuthorize("isAuthenticated() and #userId == authentication.principal.userId")
     @Transactional
     public void changePassword(UUID userId, String newPassword) {
         User user = userRepository.findByIdForUpdate(userId)

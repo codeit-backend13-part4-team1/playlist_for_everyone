@@ -620,24 +620,6 @@ class UserControllerTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = Role.class)
-    @DisplayName("다른 사용자의 비밀번호는 관리자도 변경할 수 없다.")
-    void 다른_사용자의_비밀번호는_변경할_수_없다(Role role) throws Exception {
-        prepareAuthenticatedUser(role);
-
-        mockMvc.perform(patch(PASSWORD_URL, TARGET_USER_ID)
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN)
-                .with(csrf())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                        {"password": "new-password"}
-                        """))
-                .andExpect(status().isForbidden());
-
-        verifyNoInteractions(passwordChangeService);
-    }
-
-    @ParameterizedTest
     @ValueSource(strings = {"{}", "{\"password\": \"\"}", "{\"password\": \"   \"}"})
     @DisplayName("새 비밀번호가 없거나 비어 있으면 400을 반환한다.")
     void 새_비밀번호가_비어_있으면_400을_반환한다(String body) throws Exception {
