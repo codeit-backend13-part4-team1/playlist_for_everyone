@@ -107,10 +107,10 @@ public class WSSession {
 
     /**
      * 세션에 새 구독 을 추가하는 로직.
-     * 같은 세션 안에 같은 구독 ID 혹은 같은 경로 가 있을 경우, 구독이 추가되지 않는다.
+     * 같은 세션 안에 같은 구독 ID 혹은 가 있을 경우, 구독이 추가되지 않는다.
      */
     public void subscribe(String subscriptionId, String destination, @Nullable Consumer<?> callback){
-        if (this.state != State.REGISTER) throw new IllegalStateException("세션에서 구독을 시행할 수 없습니다.");
+        if (state() != State.REGISTER) throw new IllegalStateException("세션에서 구독을 시행할 수 없습니다.");
 
         WSSubscription subscription = new WSSubscription(subscriptionId, destination, callback);
         subscriptions.compute(subscriptionId, (k, v) -> {
@@ -123,7 +123,7 @@ public class WSSession {
      * 인자에 해당하는 구독을 제거하는 로직.
      */
     public void unsubscribe(String subscriptionId){
-        if (this.state != State.REGISTER) throw new IllegalStateException("세션에서 구독을 취소할 수 없습니다.");
+        if (state() != State.REGISTER) throw new IllegalStateException("세션에서 구독을 취소할 수 없습니다.");
 
         subscriptions.computeIfPresent(subscriptionId, (k, v) -> {
 
@@ -139,8 +139,7 @@ public class WSSession {
      * 인증정보의 기록 등을 수행한다.
      */
     public void connect(@Nullable String userId,@Nullable String loginSessionId){
-        if (this.state != State.CREATE) throw new IllegalStateException("세션이 이미 등록되었습니다.");
-
+        if (state() != State.CREATE) throw new IllegalStateException("세션이 이미 등록되었습니다.");
         state(State.REGISTER);
 
         this.userId = userId;
@@ -155,11 +154,8 @@ public class WSSession {
      * 세션을 종료할 때 실행되는 로직.
      */
     public void disconnect() throws IOException {
-        // 삭제 전 생성 방어
-        if (this.state == State.CREATE) throw new IllegalStateException("세션이 아직 등록되지 않았습니다.");
-        // 중복 삭제 방어
-        if (this.state == State.DESTROY) return;
-
+        // 삭제 전 생성, 및 중복 삭제 방어
+        if (state() == State.DESTROY) return;
         // 원자성 있게 상태 변경.
         state(State.DESTROY);
 
@@ -184,6 +180,11 @@ public class WSSession {
         }
     }
 
+    private State state(){
+        synchronized (this){
+            return state;
+        }
+    }
 
 
     private void close() throws IOException {

@@ -29,7 +29,6 @@ public class WebSocketServiceImpl implements WebSocketService{
                                 this.getClass().getSimpleName(),
                                 session.id()
                         );
-                        throw new RuntimeException(e);
                     }
                 });
     }
