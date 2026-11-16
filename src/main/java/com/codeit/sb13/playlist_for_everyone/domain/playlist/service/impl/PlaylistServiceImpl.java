@@ -12,7 +12,6 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistCont
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistSortBy;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Subscription;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistContentAddedEvent;
-import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistCreatedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistSubscribedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistRepository;
@@ -47,10 +46,20 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-
+/**
+ * 플레이리스트 서비스 구현체.
+ *
+ * <p>응답을 만드는 메서드(create, getPlaylist, getPlaylists, updatePlaylist)는 DB 처리를
+ * {@link PlaylistReader}, {@link PlaylistWriter}의 트랜잭션에 맡기고, 소유자 프로필 이미지 URL과
+ * 콘텐츠 썸네일 URL은 그 트랜잭션이 끝난 뒤 이 클래스에서 만든다.
+ * 이 클래스에는 클래스 단위 트랜잭션을 두지 않고, 메서드마다 필요한 전파 옵션을 명시한다.
+ *
+ * <p>create·getPlaylist·getPlaylists·updatePlaylist는 서비스가 스스로 트랜잭션을 열지 않는다.
+ * 호출자 트랜잭션이 없으면 URL 생성은 DB 트랜잭션 밖에서 이뤄진다.
+ * (create는 호출자 트랜잭션이 있으면 참여한다.)
+ */
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
 public class PlaylistServiceImpl implements PlaylistService {
 
   private final PlaylistRepository playlistRepository;
@@ -67,27 +76,14 @@ public class PlaylistServiceImpl implements PlaylistService {
   private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
 
   @Override
-  @Transactional
+  @Transactional(propagation = Propagation.SUPPORTS)
   public PlaylistResponse create(UUID ownerId, PlaylistCreateRequest request) {
-    User user = userRepository.findById(ownerId)
-        .orElseThrow(() -> new UserNotFoundException(
-            Map.of("userId", ownerId)));
+    // 호출자 트랜잭션이 없으면 트랜잭션 없이 실행되어, 저장·이벤트 발행은 Writer의 트랜잭션에서 끝나고
+    // 프로필 이미지 URL 생성은 커밋 이후에 한다. 호출자 트랜잭션이 있으면 그 트랜잭션에 참여한다.
+    Playlist saved = playlistWriter.create(ownerId, request);
 
-    Playlist playlist = new Playlist(user, request.title(), request.description());
-
-    Playlist saved = playlistRepository.save(playlist);
-
-    eventPublisher.publishEvent(new PlaylistCreatedEvent(
-        saved.getId(),
-        saved.getTitle(),
-        user.getId(),
-        user.getName()));
-
-    UserSummary userSummary = userSummaryMapper.toSummary(user);
-
-    return PlaylistResponse.from(saved, userSummary, false, List.of());
-    // 방금 생성된 플레이리스트라 구독 정보가 없으므로 항상 false이다.
-
+    // 방금 생성된 플레이리스트라 구독 정보와 콘텐츠가 없으므로 구독 여부는 false, 콘텐츠는 빈 목록이다.
+    return toResponse(saved, false, List.of());
   }
 
   @Override
@@ -259,6 +255,7 @@ public class PlaylistServiceImpl implements PlaylistService {
   }
 
   @Override
+  @Transactional(readOnly = true)
   public List<UUID> findSubscriberIds(UUID playlistId) {
     return subscriptionRepository.findSubscriberIds(playlistId);
   }
