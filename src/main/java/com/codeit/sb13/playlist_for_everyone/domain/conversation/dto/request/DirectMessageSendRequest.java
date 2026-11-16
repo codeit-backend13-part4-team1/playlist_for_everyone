@@ -1,4 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.request;
 
-public record DirectMessageSendRequest(String content) {
+import jakarta.validation.constraints.NotBlank;
+
+public record DirectMessageSendRequest(@NotBlank String content) {
 }
