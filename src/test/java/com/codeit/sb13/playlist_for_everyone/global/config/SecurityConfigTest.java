@@ -302,6 +302,22 @@ class SecurityConfigTest {
                 .andExpect(status().isOk());
     }
 
+    @Test
+    @DisplayName("헬스 체크는 인증 없이 접근할 수 있다.")
+    void 헬스_체크는_인증_없이_접근할_수_있다() throws Exception {
+        mockMvc.perform(get("/actuator/health"))
+                .andExpect(result ->
+                        assertThat(result.getResponse().getStatus()).isNotEqualTo(401));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/actuator/env", "/actuator/heapdump", "/actuator/metrics"})
+    @DisplayName("헬스 체크 외 Actuator 엔드포인트는 인증 없이 접근할 수 없다.")
+    void 헬스_체크_외_액추에이터는_인증이_필요하다(String path) throws Exception {
+        mockMvc.perform(get(path))
+                .andExpect(status().isUnauthorized());
+    }
+
 
     /**
      *  보안 설정을 검증하기 위한 테스트 전용 Controller.
