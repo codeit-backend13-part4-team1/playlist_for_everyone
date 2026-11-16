@@ -38,15 +38,7 @@ public class ContentController implements ContentApi {
             @Valid @RequestPart("request") ContentCreateRequest request,
             @RequestPart("thumbnail") MultipartFile file
     ) {
-        ContentResult result = contentService.create(request, file);
-
-        ContentDto dto = result.dto();
-
-        String thumbnailUrl = result.fileKey() != null
-                ? fileService.getFileUrlByKey(result.fileKey())
-                : dto.thumbnailUrl();
-
-        ContentDto response = contentMapper.withThumbnailUrl(dto, thumbnailUrl);
+        ContentDto response = contentService.create(request, file);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -73,16 +65,7 @@ public class ContentController implements ContentApi {
             @Valid @RequestPart("request") ContentUpdateRequest request,
             @RequestPart(value="thumbnail", required=false) MultipartFile file
     ) {
-        ContentResult result = contentService.update(contentId, request, file);
-
-        ContentDto dto = result.dto();
-
-        String thumbnailUrl = result.fileKey() != null
-                ? fileService.getFileUrlByKey(result.fileKey())
-                : dto.thumbnailUrl();
-
-        ContentDto response = contentMapper.withThumbnailUrl(dto, thumbnailUrl);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(contentService.update(contentId, request, file));
     }
 
     @Override

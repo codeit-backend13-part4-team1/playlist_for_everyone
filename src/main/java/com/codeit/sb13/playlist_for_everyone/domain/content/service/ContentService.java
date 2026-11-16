@@ -35,108 +35,24 @@ public class ContentService {
     private final PlaylistContentRepository playlistContentRepository;
     private final ContentMapper contentMapper;
     private final ContentReader contentReader;
+    private final ContentWriter contentWriter;
     private final FileService fileService;
 
-    @Transactional
-    public ContentResult create(ContentCreateRequest request, MultipartFile file) {
-        // 관리자 콘텐츠는 썸네일 파일 없이는 등록이 불가합니다.
-        if (file == null || file.isEmpty()) {
-            throw new FileEmptyException(Map.of());
-        }
-
-        // S3 업로드 및 파일 정보 저장
-        FileInfo fileInfo = fileService.upload(file);
-
-        Content content = Content.createAdminContent(
-                request.type(),
-                request.title(),
-                request.description(),
-                null,
-                fileInfo
-        );
-
-        normalizeTags(request.tags()).forEach(content::addTag);
-
-        Content savedContent = contentRepository.save(content);
-        // Presigned URL 대신 파일 Key만 추출
-        ContentThumbnailData thumbnailData = getThumbnailData(savedContent);
-
-        ContentDto contentDto = contentMapper.toDto(
-                savedContent,
-                thumbnailData.thumbnailUrl(),
-                0.0, 0, 0L
-        );
-
-        return new ContentResult(
-                contentDto,
-                thumbnailData.fileKey()
-        );
+    public ContentDto create(ContentCreateRequest request, MultipartFile file) {
+        return resolveThumbnailUrl(contentWriter.create(request, file));
     }
 
     public ContentDto getById(UUID contentId) {
-        ContentResult result = contentReader.getById(contentId);
-
-        String thumbnailUrl = result.fileKey() != null
-                // 관리자 생성 콘텐츠
-                ? fileService.getFileUrlByKey(result.fileKey())
-                // 외부 API 콘텐츠
-                : result.dto().thumbnailUrl();
-
-        return contentMapper.withThumbnailUrl(result.dto(), thumbnailUrl);
+        return resolveThumbnailUrl(contentReader.getById(contentId));
     }
 
-    @Transactional
-    public ContentResult update(UUID contentId, ContentUpdateRequest request, MultipartFile file) {
-        ContentDetailProjection detail = contentRepository.findDetailById(contentId)
-                .orElseThrow(() -> new ContentNotFoundException(
-                        Map.of("contentId", contentId)
-                ));
-
-        Content content = detail.getContent();
-
-        // 제목, 설명, 태그 수정
-        if (request != null) {
-            List<String> tags = request.tags() == null
-                    ? null
-                    : normalizeTags(request.tags());
-
-            content.update(
-                    request.title(),
-                    request.description(),
-                    tags
-            );
-        }
-
-        if (file != null && !file.isEmpty()) {
-            FileInfo oldFileInfo = content.getFileInfo();
-
-            FileInfo newFileInfo = fileService.upload(file);
-            content.updateThumbnail(null, newFileInfo);
-
-            // 변경된 외래 키를 DB에 먼저 반영
-            contentRepository.flush();
-
-            // 기존 파일 삭제
-            if (oldFileInfo != null) {
-                fileService.delete(oldFileInfo.getId());
-            }
-        }
-
-        ContentThumbnailData thumbnailData = getThumbnailData(content);
-
-        long watcherCount = watchingSessionService.getCurrentViewerCount(contentId);
-
-        ContentDto contentDto = contentMapper.toDto(
-                content,
-                thumbnailData.thumbnailUrl(),
-                detail.getAverageRating(),
-                Math.toIntExact(detail.getReviewCount()),
-                watcherCount
-        );
-
-        return new ContentResult(
-                contentDto,
-                thumbnailData.fileKey()
+    public ContentDto update(
+            UUID contentId,
+            ContentUpdateRequest request,
+            MultipartFile file
+    ) {
+        return resolveThumbnailUrl(
+                contentWriter.update(contentId, request, file)
         );
     }
 
@@ -168,30 +84,12 @@ public class ContentService {
         );
     }
 
-    // Presigned URL Key 반환
-    private ContentThumbnailData getThumbnailData(Content content) {
-        FileInfo fileInfo = content.getFileInfo();
+    private ContentDto resolveThumbnailUrl(ContentResult result) {
+        String thumbnailUrl = result.fileKey() != null
+                ? fileService.getFileUrlByKey(result.fileKey())
+                : result.dto().thumbnailUrl();
 
-        return new ContentThumbnailData(
-                content.getThumbnailUrl(),
-                fileInfo != null ? fileInfo.getKey() : null
-        );
-    }
-
-    // 태그 중복 검사
-    // 태그가 없는 경우 빈 리스트로 처리
-    // 중간 공백을 제외한 문자열이 같으면 먼저 입력된 태그만 저장
-    private List<String> normalizeTags(List<String> tags) {
-        Set<String> seen = new HashSet<>();
-
-        return Optional.ofNullable(tags)
-                .orElseGet(List::of)
-                .stream()
-                .filter(Objects::nonNull)
-                .map(String::strip)
-                .filter(tag -> !tag.isBlank())
-                .filter(tag -> seen.add(tag.replaceAll("(?U)\\s+", "")))
-                .toList();
+        return contentMapper.withThumbnailUrl(result.dto(), thumbnailUrl);
     }
 
 }

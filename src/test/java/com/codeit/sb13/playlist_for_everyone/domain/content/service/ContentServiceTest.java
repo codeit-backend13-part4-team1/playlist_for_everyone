@@ -48,7 +48,10 @@ public class ContentServiceTest {
     private ReviewRepository reviewRepository;
 
     @Mock
-    private ContentReader contentReader;
+    private ContentReader reader;
+
+    @Mock
+    private ContentWriter writer;
 
     @Mock
     private PlaylistContentRepository playlistContentRepository;
@@ -69,7 +72,7 @@ public class ContentServiceTest {
     }
 
     @Test
-    @DisplayName("관리자 콘텐츠를 정상적으로 생성한다.")
+    @DisplayName("콘텐츠 생성 후 Presigned URL을 포함한 DTO를 반환한다.")
     void create_success() {
         // given
         ContentCreateRequest request = new ContentCreateRequest(
@@ -80,112 +83,43 @@ public class ContentServiceTest {
         );
 
         MultipartFile file = mock(MultipartFile.class);
-        FileInfo fileInfo = mockFileUpload(file);
 
         String key = "contents/test-thumbnail.jpg";
-        given(fileInfo.getKey()).willReturn(key);
+        String presignedUrl = "https://example.com/thumbnail.jpg";
 
-        given(contentRepository.save(any(Content.class)))
-                .willAnswer(invocation -> invocation.getArgument(0));
-
-        // when
-        ContentResult result = contentService.create(request, file);
-
-        // then
-        ArgumentCaptor<Content> captor = ArgumentCaptor.forClass(Content.class);
-        verify(contentRepository).save(captor.capture());
-
-        Content savedContent = captor.getValue();
-
-        assertThat(savedContent)
-                .extracting(
-                        Content::getType,
-                        Content::getTitle,
-                        Content::getDescription,
-                        Content::getThumbnailUrl,
-                        Content::getProvider
-                )
-                .containsExactly(
-                        ContentType.tvSeries,
-                        "너말고다른연애",
-                        "KBS 드라마 입니다.",
-                        null,
-                        ContentSource.ADMIN
-                );
-
-        assertThat(savedContent.getFileInfo()).isSameAs(fileInfo);
-        assertThat(result.fileKey()).isEqualTo(key);
-        assertThat(savedContent.getTags())
-                .extracting(ContentTag::getTag)
-                .containsExactly("드라마", "로맨스");
-
-        verify(fileService).upload(file);
-        verify(contentMapper).toDto(
-                savedContent,
+        ContentDto dto = new ContentDto(
+                UUID.randomUUID(),
+                ContentType.tvSeries,
+                "너말고다른연애",
+                "KBS 드라마 입니다.",
                 null,
+                List.of("드라마", "로맨스"),
                 0.0, 0, 0L
         );
 
-        assertThat(result.fileKey()).isEqualTo(fileInfo.getKey());
-    }
+        given(writer.create(request, file))
+                .willReturn(new ContentResult(dto, key));
 
-    @Test
-    @DisplayName("태그의 불필요한 공백과 중복을 제거한다.")
-    void create_normalizeTags() {
-        // given
-        ContentCreateRequest request = new ContentCreateRequest(
-                ContentType.tvSeries,
-                "너말고다른연애",
-                "KBS 드라마 입니다.",
-                List.of("드라마  ", "드 라 마", "로맨스", "  ", "KBS")
-        );
+        given(fileService.getFileUrlByKey(key))
+                .willReturn(presignedUrl);
 
-        MultipartFile file = mock(MultipartFile.class);
-        mockFileUpload(file);
-
-        when(contentRepository.save(any(Content.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
+        given(contentMapper.withThumbnailUrl(dto, presignedUrl))
+                .willReturn(new ContentDto(
+                        dto.id(), dto.type(), dto.title(),
+                        dto.description(), presignedUrl, dto.tags(),
+                        dto.averageRating(), dto.reviewCount(),
+                        dto.watcherCount()
+                ));
 
         // when
-        contentService.create(request, file);
+        ContentDto result = contentService.create(request, file);
 
         // then
-        ArgumentCaptor<Content> captor = ArgumentCaptor.forClass(Content.class);
-        verify(contentRepository).save(captor.capture());
+        assertThat(result.thumbnailUrl()).isEqualTo(presignedUrl);
 
-        assertThat(captor.getValue().getTags())
-                .extracting(ContentTag::getTag)
-                .containsExactly("드라마", "로맨스", "KBS");
-    }
-
-    @Test
-    @DisplayName("태그가 없어도 콘텐츠가 정상적으로 생성된다.")
-    void create_withoutTags() {
-        // given
-        ContentCreateRequest request = new ContentCreateRequest(
-                ContentType.tvSeries,
-                "너말고다른연애",
-                "KBS 드라마 입니다.",
-                List.of()
-        );
-
-        MultipartFile file = mock(MultipartFile.class);
-        mockFileUpload(file);
-
-        when(contentRepository.save(any(Content.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
-
-        // when
-        contentService.create(request, file);
-
-        // then
-        ArgumentCaptor<Content> captor = ArgumentCaptor.forClass(Content.class);
-
-        verify(contentRepository).save(captor.capture());
-
-        Content savedContent = captor.getValue();
-
-        assertThat(savedContent.getTags()).isEmpty();
+        verify(writer).create(request, file);
+        verify(fileService).getFileUrlByKey(key);
+        verify(contentMapper).withThumbnailUrl(dto, presignedUrl);
     }
 
     @Test
@@ -199,7 +133,7 @@ public class ContentServiceTest {
         ContentDto expected = mock(ContentDto.class);
 
         given(dto.thumbnailUrl()).willReturn(thumbnailUrl);
-        given(contentReader.getById(contentId))
+        given(reader.getById(contentId))
                 .willReturn(new ContentResult(dto, null));
         given(contentMapper.withThumbnailUrl(dto, thumbnailUrl))
                 .willReturn(expected);
@@ -210,7 +144,7 @@ public class ContentServiceTest {
         // then
         assertThat(result).isSameAs(expected);
 
-        verify(contentReader).getById(contentId);
+        verify(reader).getById(contentId);
         verify(contentMapper).withThumbnailUrl(dto, thumbnailUrl);
         verifyNoInteractions(fileService);
     }
@@ -226,7 +160,7 @@ public class ContentServiceTest {
         ContentDto dto = mock(ContentDto.class);
         ContentDto expected = mock(ContentDto.class);
 
-        given(contentReader.getById(contentId))
+        given(reader.getById(contentId))
                 .willReturn(new ContentResult(dto, fileKey));
 
         given(fileService.getFileUrlByKey(fileKey))
@@ -241,284 +175,47 @@ public class ContentServiceTest {
         // then
         assertThat(result).isSameAs(expected);
 
-        verify(contentReader).getById(contentId);
+        verify(reader).getById(contentId);
         verify(fileService).getFileUrlByKey(fileKey);
         verify(contentMapper).withThumbnailUrl(dto, presignedUrl);
     }
 
     @Test
-    @DisplayName("콘텐츠 수정 시 변경 사항과 집계 정보가 반영된다.")
+    @DisplayName("콘텐츠 수정 후 Presigned URL을 포함한 DTO를 반환한다.")
     void update_success() {
         // given
         UUID contentId = UUID.randomUUID();
 
-        Content content = Content.createAdminContent(
-                ContentType.tvSeries,
-                "너말고다른연애",
-                "KBS 드라마 입니다.",
-                "thumbnail-url"
-        );
-        content.addTag("드라마");
-
         ContentUpdateRequest request = new ContentUpdateRequest(
-                "너말고 다른 연애",
-                "서강준, 안은진 주연",
-                List.of("로맨스")
-        );
-
-        ContentDetailProjection detail = mock(ContentDetailProjection.class);
-
-        given(contentRepository.findDetailById(contentId))
-                .willReturn(Optional.of(detail));
-
-        given(detail.getContent()).willReturn(content);
-        given(detail.getAverageRating()).willReturn(4.5);
-        given(detail.getReviewCount()).willReturn(3L);
-
-        // when
-        contentService.update(contentId, request, null);
-
-        // then
-        assertThat(content.getTitle()).isEqualTo("너말고 다른 연애");
-        assertThat(content.getDescription()).isEqualTo("서강준, 안은진 주연");
-        assertThat(content.getTags())
-                .extracting(ContentTag::getTag)
-                .containsExactly("로맨스");
-
-        verify(contentRepository).findDetailById(contentId);
-        verify(contentMapper).toDto(
-                content,
-                "thumbnail-url",
-                4.5, 3, 0L);
-    }
-
-    @Test
-    @DisplayName("존재하지 않는 콘텐츠 수정 시 예외가 발생한다.")
-    void update_notFound() {
-        // given
-        UUID contentId = UUID.randomUUID();
-
-        ContentUpdateRequest request = new ContentUpdateRequest(
-                "너말고 다른연애",
-                "서강준 주연",
+                "수정된 제목",
+                "수정된 설명",
                 List.of("드라마")
         );
 
-        given(contentRepository.findDetailById(contentId))
-                .willReturn(Optional.empty());
+        String key = "contents/updated-thumbnail.jpg";
+        String presignedUrl = "https://example.com/updated.jpg";
 
-        MultipartFile file = mock(MultipartFile.class);
+        ContentDto dto = mock(ContentDto.class);
+        ContentDto expected = mock(ContentDto.class);
 
-        // when & then
-        assertThatThrownBy(() -> contentService.update(contentId, request, file))
-                .isInstanceOf(ContentNotFoundException.class);
+        given(writer.update(contentId, request, null))
+                .willReturn(new ContentResult(dto, key));
 
-        verify(contentRepository).findDetailById(contentId);
-        verifyNoInteractions(contentMapper);
-    }
+        given(fileService.getFileUrlByKey(key))
+                .willReturn(presignedUrl);
 
-    @Test
-    @DisplayName("태그가 null이면 기존 태그를 유지한 채 콘텐츠를 수정한다.")
-    void update_nullTags() {
-        // given
-        UUID contentId = UUID.randomUUID();
-
-        Content content = Content.createAdminContent(
-                ContentType.tvSeries,
-                "너말고다른연애",
-                "KBS 드라마 입니다.",
-                "thumbnail-url"
-        );
-        content.addTag("드라마");
-
-        ContentUpdateRequest request = new ContentUpdateRequest(
-                "너 말고 다른 연애",
-                "수정된 설명",
-                null
-        );
-
-        ContentDetailProjection detail = mock(ContentDetailProjection.class);
-
-        given(contentRepository.findDetailById(contentId))
-                .willReturn(Optional.of(detail));
-        given(detail.getContent()).willReturn(content);
+        given(contentMapper.withThumbnailUrl(dto, presignedUrl))
+                .willReturn(expected);
 
         // when
-        contentService.update(contentId, request, null);
+        ContentDto result = contentService.update(contentId, request, null);
 
         // then
-        assertThat(content.getTitle()).isEqualTo("너 말고 다른 연애");
-        assertThat(content.getTags())
-                .extracting(ContentTag::getTag)
-                .containsExactly("드라마");
-    }
+        assertThat(result).isSameAs(expected);
 
-    @Test
-    @DisplayName("제목과 설명이 null이면 기존 값을 유지하고 태그만 수정한다.")
-    void update_nullTitleAndDescription() {
-        // given
-        UUID contentId = UUID.randomUUID();
-
-        Content content = Content.createAdminContent(
-                ContentType.tvSeries,
-                "너말고다른연애",
-                "KBS 드라마 입니다.",
-                "thumbnail-url"
-        );
-        content.addTag("드라마");
-
-        ContentUpdateRequest request = new ContentUpdateRequest(
-                null,
-                null,
-                List.of("로맨스")
-        );
-
-        ContentDetailProjection detail = mock(ContentDetailProjection.class);
-
-        given(contentRepository.findDetailById(contentId))
-                .willReturn(Optional.of(detail));
-        given(detail.getContent()).willReturn(content);
-
-        // when
-        contentService.update(contentId, request, null);
-
-        // then
-        assertThat(content.getTitle()).isEqualTo("너말고다른연애");
-        assertThat(content.getDescription()).isEqualTo("KBS 드라마 입니다.");
-
-        assertThat(content.getTags())
-                .extracting(ContentTag::getTag)
-                .containsExactly("로맨스");
-    }
-
-    @Test
-    @DisplayName("썸네일 수정 시 정상적으로 수정된다.")
-    void update_thumbnail_success() {
-        // given
-        UUID contentId = UUID.randomUUID();
-
-        // 기존 파일 정보
-        UUID oldFileId = UUID.randomUUID();
-
-        FileInfo oldFileInfo = mock(FileInfo.class);
-        when(oldFileInfo.getId()).thenReturn(oldFileId);
-
-        Content content = Content.createAdminContent(
-                ContentType.tvSeries,
-                "너말고다른연애",
-                "KBS 드라마 입니다.",
-                null,
-                oldFileInfo
-        );
-
-        // 새 파일 정보
-        MultipartFile file = mock(MultipartFile.class);
-        FileInfo newFileInfo = mockFileUpload(file);
-
-        String key = "contents/new-thumbnail.jpg";
-        given(newFileInfo.getKey()).willReturn(key);
-
-        ContentDetailProjection detail = mock(ContentDetailProjection.class);
-
-        given(contentRepository.findDetailById(contentId))
-                .willReturn(Optional.of(detail));
-
-        given(detail.getContent()).willReturn(content);
-
-        // when
-        ContentResult result = contentService.update(contentId, null, file);
-
-        // then
-        assertThat(content.getThumbnailUrl()).isNull();
-        assertThat(content.getFileInfo()).isSameAs(newFileInfo);
-        assertThat(result.fileKey()).isEqualTo(key);
-
-        InOrder inOrder = inOrder(fileService, contentRepository);
-
-        inOrder.verify(fileService).upload(file);
-        inOrder.verify(contentRepository).flush();
-        inOrder.verify(fileService).delete(oldFileId);
-
-        assertThat(result.fileKey()).isEqualTo(newFileInfo.getKey());
-    }
-
-    @Test
-    @DisplayName("기존 파일 정보가 없으면 새 썸네일만 등록한다.")
-    void update_thumbnail_withoutOldFile() {
-        // given
-        UUID contentId = UUID.randomUUID();
-
-        Content content = Content.createAdminContent(
-                ContentType.tvSeries,
-                "너말고다른연애",
-                "KBS 드라마 입니다.",
-                null,
-                null
-        );
-
-        // 새 파일 정보
-        MultipartFile file = mock(MultipartFile.class);
-        FileInfo newFileInfo = mockFileUpload(file);
-
-        String key = "contents/new-thumbnail.jpg";
-        given(newFileInfo.getKey()).willReturn(key);
-
-        ContentDetailProjection detail = mock(ContentDetailProjection.class);
-
-        given(contentRepository.findDetailById(contentId))
-                .willReturn(Optional.of(detail));
-
-        given(detail.getContent()).willReturn(content);
-
-        // when
-        ContentResult result = contentService.update(contentId, null, file);
-
-        // then
-        assertThat(content.getThumbnailUrl()).isNull();
-        assertThat(content.getFileInfo()).isSameAs(newFileInfo);
-        assertThat(result.fileKey()).isEqualTo(key);
-
-        verify(fileService).upload(file);
-        verify(contentRepository).flush();
-        verify(fileService, never()).delete(any());
-    }
-
-    @Test
-    @DisplayName("빈 파일을 전달하면 기존 썸네일을 유지한다.")
-    void update_thumbnail_emptyFile() {
-        // given
-        UUID contentId = UUID.randomUUID();
-        String oldThumbnailUrl = "https://example.com/old.jpg";
-
-        MultipartFile file = mock(MultipartFile.class);
-        FileInfo oldFileInfo = mock(FileInfo.class);
-
-        Content content = Content.createAdminContent(
-                ContentType.tvSeries,
-                "너말고다른연애",
-                "KBS 드라마 입니다.",
-                oldThumbnailUrl,
-                oldFileInfo
-        );
-
-        when(file.isEmpty()).thenReturn(true);
-
-        ContentDetailProjection detail = mock(ContentDetailProjection.class);
-
-        given(contentRepository.findDetailById(contentId))
-                .willReturn(Optional.of(detail));
-
-        given(detail.getContent()).willReturn(content);
-
-        // when
-        contentService.update(contentId, null, file);
-
-        // then
-        assertThat(content.getThumbnailUrl()).isEqualTo(oldThumbnailUrl);
-        assertThat(content.getFileInfo()).isSameAs(oldFileInfo);
-
-        verify(fileService, never()).upload(any());
-        verify(fileService, never()).delete(any());
+        verify(writer).update(contentId, request, null);
+        verify(fileService).getFileUrlByKey(key);
+        verify(contentMapper).withThumbnailUrl(dto, presignedUrl);
     }
 
     @Test
