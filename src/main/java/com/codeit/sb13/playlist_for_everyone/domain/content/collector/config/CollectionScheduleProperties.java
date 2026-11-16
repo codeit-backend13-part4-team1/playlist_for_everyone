@@ -1,11 +1,13 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.collector.config;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.scheduling.support.CronExpression;
 import org.springframework.validation.annotation.Validated;
 
 @Getter
@@ -19,6 +21,8 @@ public class CollectionScheduleProperties {
 
     @Valid
     private Tmdb tmdb = new Tmdb();
+
+    @Valid
     private SportsDb sportsdb = new SportsDb();
 
     @Getter
@@ -29,6 +33,11 @@ public class CollectionScheduleProperties {
         @Min(value = 1, message = "maxPages는 1 이상이어야 합니다.")
         @Max(value = 500, message = "maxPages는 500 이하여야 합니다.")
         private long maxPages = 5;
+
+        @AssertTrue(message = "cron은 올바른 실행 시간 형식이어야 합니다.")
+        public boolean isCronValid() {
+            return "-".equals(cron) || CronExpression.isValidExpression(cron);
+        }
     }
 
     @Getter
@@ -37,5 +46,10 @@ public class CollectionScheduleProperties {
         private String cron = "-";
         private String leagueId;
         private String season;
+
+        @AssertTrue(message = "cron은 올바른 실행 시간 형식이어야 합니다.")
+        public boolean isCronValid() {
+            return "-".equals(cron) || CronExpression.isValidExpression(cron);
+        }
     }
 }
