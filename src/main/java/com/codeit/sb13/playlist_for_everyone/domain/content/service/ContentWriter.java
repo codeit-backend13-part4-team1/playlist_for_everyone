@@ -15,7 +15,6 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNot
 import com.codeit.sb13.playlist_for_everyone.global.exception.file.FileEmptyException;
 import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
 import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -32,7 +31,6 @@ public class ContentWriter {
     private final ContentRepository contentRepository;
     private final ReviewRepository reviewRepository;
     private final PlaylistContentRepository playlistContentRepository;
-    private final WatchingSessionService watchingSessionService;
     private final ContentMapper contentMapper;
     private final FileService fileService;
 
