@@ -21,6 +21,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.mock;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.doThrow;
 
 class CollectionScheduleConfigTest {
 
@@ -194,6 +195,45 @@ class CollectionScheduleConfigTest {
                 )
                 .run(context -> {
                     assertThat(context).hasNotFailed();
+                    verify(jobOperator).recover(execution);
+                });
+    }
+
+    @Test
+    void 실행_복구에_실패하면_애플리케이션_시작을_중단한다() {
+        var jobOperator = mock(JobOperator.class);
+        var jobRepository = mock(JobRepository.class);
+        var tmdbJob = mock(Job.class);
+        var sportsDbJob = mock(Job.class);
+        var execution = mock(JobExecution.class);
+
+        when(tmdbJob.getName()).thenReturn("tmdbCollectionJob");
+        when(sportsDbJob.getName()).thenReturn("sportsDbCollectionJob");
+
+        when(jobRepository.findRunningJobExecutions("tmdbCollectionJob"))
+                .thenReturn(Set.of(execution));
+
+        doThrow(new IllegalStateException("수집 실행 복구 실패"))
+                .when(jobOperator).recover(execution);
+
+        new ApplicationContextRunner()
+                .withBean(JobOperator.class, () -> jobOperator)
+                .withBean(JobRepository.class, () -> jobRepository)
+                .withBean("tmdbCollectionJob", Job.class, () -> tmdbJob)
+                .withBean("sportsDbCollectionJob", Job.class, () -> sportsDbJob)
+                .withUserConfiguration(
+                        CollectionScheduleConfig.class,
+                        SchedulingTestConfig.class
+                )
+                .withPropertyValues(
+                        "everyone.collection.schedule.enabled=true",
+                        "everyone.collection.schedule.tmdb.cron=0 0 3 * * *"
+                )
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .hasRootCauseMessage("수집 실행 복구 실패");
+
                     verify(jobOperator).recover(execution);
                 });
     }
