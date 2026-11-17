@@ -15,7 +15,6 @@ import java.util.function.Consumer;
 public class WSSubscription {
     private final String id;
     private final String destination;
-    private final Consumer<?> callback;
 
     // 객체 고유 정보.
     private final UUID uuid;
@@ -25,12 +24,10 @@ public class WSSubscription {
      * 구독 생성자
      * @param id Spring 에서 생성하는 구독 id.
      * @param destination Spring 에서 생성하는 구독 destination.
-     * @param callback 구독 해제시 트리거 될 콜백 함수.
      */
-    public WSSubscription(String id, String destination, @Nullable Consumer<?> callback) {
+    public WSSubscription(String id, String destination) {
         this.id = Objects.requireNonNull(id);
         this.destination = Objects.requireNonNull(destination);
-        this.callback = callback;
         this.uuid = UUID.randomUUID();
         this.ctime = Instant.now();
     }
@@ -39,11 +36,16 @@ public class WSSubscription {
         return this.id;
     }
 
-    /**
-     * 구독을 해제 할 시 트리거 될 콜백 함수.
-     */
-    public void onUnregister(){
-        if (callback != null) callback.accept(null);
+    public UUID uuid(){
+        return this.uuid;
+    }
+
+    public Instant createdAt(){
+        return this.ctime;
+    }
+
+    public String destination(){
+        return this.destination;
     }
 
 }
