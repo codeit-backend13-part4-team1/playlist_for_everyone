@@ -17,6 +17,8 @@ import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
@@ -29,7 +31,10 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
+import java.util.UUID;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -389,6 +394,86 @@ public class ContentSearchRepositoryTest {
                     assertThat(result.content().getTitle())
                             .contains("시리즈");
                 });
+    }
+
+    @ParameterizedTest
+    @EnumSource(SortDirection.class)
+    @DisplayName("동일한 평점에서 정렬 방향에 따라 UUID 순서로 페이지를 조회한다")
+    void searchContents_sameRatingCursor(SortDirection direction) {
+        // given
+        List<Content> contents = List.of(
+                createContent(ContentType.movie, "동일평점A", "설명"),
+                createContent(ContentType.movie, "동일평점B", "설명"),
+                createContent(ContentType.movie, "동일평점C", "설명"),
+                createContent(ContentType.movie, "동일평점D", "설명")
+        );
+
+        contents.forEach(em::persist);
+        em.flush();
+        em.clear();
+
+        // 리뷰가 없는 콘텐츠는 모두 평균 평점 0.0
+        List<UUID> sortedIds = contents.stream()
+                .map(Content::getId)
+                .sorted(direction == SortDirection.DESCENDING
+                        ? Comparator.comparing(UUID::toString).reversed()
+                        : Comparator.comparing(UUID::toString))
+                .toList();
+
+        ContentSearchCondition firstCondition = new ContentSearchCondition(
+                ContentType.movie,
+                "동일평점",
+                null,
+                null,
+                null,
+                2,
+                direction,
+                "rate"
+        );
+
+        // when - 첫 페이지
+        List<ContentSearchResult> firstResults = contentRepository.searchByDatabase(firstCondition);
+
+        List<UUID> firstPageIds = firstResults.stream()
+                .limit(2)
+                .map(result -> result.content().getId())
+                .toList();
+
+        ContentSearchResult lastContent = firstResults.get(1);
+
+        ContentSearchCondition nextCondition = new ContentSearchCondition(
+                ContentType.movie,
+                "동일평점",
+                null,
+                String.valueOf(lastContent.averageRating()),
+                lastContent.content().getId(),
+                2,
+                direction,
+                "rate"
+        );
+
+        // when - 다음 페이지
+        List<ContentSearchResult> secondResults =
+                contentRepository.searchByDatabase(nextCondition);
+
+        List<UUID> secondPageIds = secondResults.stream()
+                .limit(2)
+                .map(result -> result.content().getId())
+                .toList();
+
+        // then
+        assertThat(firstResults).hasSize(3); // limit + 1
+        assertThat(firstPageIds).containsExactlyElementsOf(sortedIds.subList(0, 2));
+
+        assertThat(lastContent.averageRating()).isZero();
+        assertThat(lastContent.content().getId()).isEqualTo(sortedIds.get(1));
+
+        assertThat(secondResults).hasSize(2);
+        assertThat(secondPageIds).containsExactlyElementsOf(sortedIds.subList(2, 4));
+
+        // 두 페이지를 합쳤을 때 중복·누락이 없는지 확인
+        assertThat(Stream.concat(firstPageIds.stream(), secondPageIds.stream()).toList())
+                .containsExactlyElementsOf(sortedIds);
     }
 
 }
