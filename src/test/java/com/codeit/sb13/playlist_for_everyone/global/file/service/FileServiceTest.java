@@ -174,6 +174,25 @@ public class FileServiceTest {
     }
 
     @Test
+    @DisplayName("파일 Key로 Presigned URL을 생성한다.")
+    void getFileUrlByKey_success() {
+        // given
+        String key = "test-image.png";
+        String expectedUrl = "https://example.com/test-image.png";
+
+        given(fileStorage.getFileUrl(key)).willReturn(expectedUrl);
+
+        // when
+        String result = fileService.getFileUrlByKey(key);
+
+        // then
+        assertThat(result).isEqualTo(expectedUrl);
+
+        verify(fileStorage).getFileUrl(key);
+        verifyNoInteractions(fileInfoRepository);
+    }
+
+    @Test
     @DisplayName("파일 삭제 시 DB 파일 정보를 삭제하고 S3 삭제 이벤트를 발행한다.")
     void delete_publishesEvent() {
         // given
