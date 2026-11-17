@@ -1,11 +1,8 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.entity;
 
-import jakarta.annotation.Nullable;
-
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.function.Consumer;
 
 /**
  * 구독 정보를 구체화 한 클래스.
