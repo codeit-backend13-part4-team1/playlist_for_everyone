@@ -17,20 +17,27 @@ import org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfigurat
 import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.data.redis.connection.Message;
+import org.springframework.data.redis.connection.MessageListener;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -88,6 +95,9 @@ public class RedisDirectMessagePubSubIntegrationTest {
     @MockitoBean
     private SimpMessagingTemplate messagingTemplate;
 
+    @MockitoSpyBean(name = "redisDirectMessageSubscriber")
+    private MessageListener subscriber;
+
     @Test
     @DisplayName("발행한 DM이 Redis를 거쳐 메시지 정보를 보존하며 해당 대화방으로 한 번 전달된다.")
     void deliversPublishedMessageThroughRedis(){
@@ -129,12 +139,31 @@ public class RedisDirectMessagePubSubIntegrationTest {
 
     @Test
     @DisplayName("Redis로 수신한 잘못된 JSON은 전달하지 않고 이후 정상 DM은 해당 대화방으로 전달한다.")
-    void deliversValidMessageAfterMalformedJson(){
-        Long subscriberCount = redisTemplate.convertAndSend(CHANNEL, "{invalid-json}");
+    void deliversValidMessageAfterMalformedJson() throws Exception {
+        String invalidJson = "{invalid-json}";
+        byte[] invalidBody = invalidJson.getBytes(StandardCharsets.UTF_8);
+        CompletableFuture<Void> malformedJsonProcessed = new CompletableFuture<>();
+
+        // 해당 입력의 실제 리스너 처리가 반환된 뒤에만 미전달을 검증한다.
+        doAnswer(invocation -> {
+            try {
+                invocation.callRealMethod();
+                malformedJsonProcessed.complete(null);
+            } catch (Throwable failure) {
+                malformedJsonProcessed.completeExceptionally(failure);
+                throw failure;
+            }
+            return null;
+        }).when(subscriber).onMessage(
+                argThat((Message message) -> message != null && Arrays.equals(message.getBody(), invalidBody)),
+                nullable(byte[].class)
+        );
+
+        Long subscriberCount = redisTemplate.convertAndSend(CHANNEL, invalidJson);
         assertThat(subscriberCount).isPositive();
 
-        verify(messagingTemplate, after(500).never())
-                .convertAndSend(anyString(), any(Object.class));
+        malformedJsonProcessed.get(5, TimeUnit.SECONDS);
+        verifyNoInteractions(messagingTemplate);
 
         MessageDto message = createMessage();
         String destination = getDestination(message.conversationId());
