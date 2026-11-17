@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.review.controller;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewCreateRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.response.ReviewDto;
 import com.codeit.sb13.playlist_for_everyone.domain.review.service.ReviewService;
 import jakarta.validation.Valid;
@@ -10,6 +11,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.UUID;
+
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/reviews")
@@ -25,6 +29,15 @@ public class ReviewController {
         ReviewDto dto = reviewService.save(request, user.getUserId());
 
         return ResponseEntity.status(HttpStatus.CREATED).body(dto);
+    }
+
+    @PatchMapping("/{reviewId}")
+    public ResponseEntity<ReviewDto> update(
+            @PathVariable UUID reviewId,
+            @Valid @RequestBody ReviewUpdateRequest request,
+            @AuthenticationPrincipal SecurityUser user
+    ) {
+        return null;
     }
 
 }

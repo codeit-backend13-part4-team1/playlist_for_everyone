@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.review.controller;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewCreateRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.response.ReviewDto;
 import com.codeit.sb13.playlist_for_everyone.domain.review.service.ReviewService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
@@ -23,6 +24,8 @@ import java.util.UUID;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -130,6 +133,66 @@ public class ReviewControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("리뷰 수정 시 변경된 리뷰 정보를 반환한다.")
+    void updateReview() throws Exception {
+        // given
+        UUID reviewId = UUID.randomUUID();
+        UUID contentId = UUID.randomUUID();
+        UUID authorId = UUID.randomUUID();
+
+        ReviewUpdateRequest request = new ReviewUpdateRequest(
+                "수정된 리뷰입니다.",
+                4.5
+        );
+
+        ReviewDto response = new ReviewDto(
+                reviewId,
+                contentId,
+                null,
+                "수정된 리뷰입니다.",
+                4.5
+        );
+
+        SecurityUser securityUser = new SecurityUser(
+                authorId,
+                "test@example.com",
+                "encodedPassword",
+                Role.USER,
+                false
+        );
+
+        Authentication authentication =
+                new UsernamePasswordAuthenticationToken(
+                        securityUser,
+                        null,
+                        securityUser.getAuthorities()
+                );
+
+        given(reviewService.update(any(ReviewUpdateRequest.class), eq(reviewId), eq(authorId)))
+                .willReturn(response);
+
+        // when & then
+        try {
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+
+            mockMvc.perform(patch("/api/reviews/{reviewId}", reviewId)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.id").value(reviewId.toString()))
+                    .andExpect(jsonPath("$.contentId").value(contentId.toString()))
+                    .andExpect(jsonPath("$.text").value("수정된 리뷰입니다."))
+                    .andExpect(jsonPath("$.rating").value(4.5));
+
+            then(reviewService).should()
+                    .update(any(ReviewUpdateRequest.class), eq(reviewId), eq(authorId));
+
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
     }
 
 }
