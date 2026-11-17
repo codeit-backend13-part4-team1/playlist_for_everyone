@@ -10,6 +10,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.job.Job;
@@ -21,7 +22,9 @@ import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
 import org.springframework.boot.batch.jdbc.autoconfigure.BatchJdbcAutoConfiguration;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
@@ -61,7 +64,9 @@ import static org.mockito.Mockito.when;
         JpaAuditingConfig.class,
         QueryDslConfig.class,
         ContentCollectionService.class,
-        TmdbBatchConfig.class
+        TmdbBatchConfig.class,
+        CollectionStepMetricsListener.class,
+        TmdbCollectionJobTest.MetricsTestConfig.class
 })
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @Testcontainers
@@ -88,8 +93,36 @@ class TmdbCollectionJobTest {
     @MockitoBean
     private TmdbClient tmdbClient;
 
+    @TestConfiguration(proxyBeanMethods = false)
+    static class MetricsTestConfig {
+
+        @Bean
+        SimpleMeterRegistry meterRegistry() {
+            return new SimpleMeterRegistry();
+        }
+    }
+
+    @Autowired
+    private SimpleMeterRegistry meterRegistry;
+
     @Test
     void 영화와_TV와_태그를_저장하고_재수집해도_중복되지_않는다() throws Exception {
+
+        var movieCounter = meterRegistry.counter(
+                "content.collection.items.write",
+                "job", "tmdbCollectionJob",
+                "step", "tmdbMovieCollectionStep"
+        );
+
+        var tvCounter = meterRegistry.counter(
+                "content.collection.items.write",
+                "job", "tmdbCollectionJob",
+                "step", "tmdbTvCollectionStep"
+        );
+
+        double moviesBefore = movieCounter.count();
+        double tvBefore = tvCounter.count();
+
         var movie = new TmdbMovieResponse(
                 550L,
                 "테스트 영화",
@@ -125,6 +158,9 @@ class TmdbCollectionJobTest {
 
         assertThat(execution.getStatus())
                 .isEqualTo(BatchStatus.COMPLETED);
+
+        assertThat(movieCounter.count() - moviesBefore).isEqualTo(1.0);
+        assertThat(tvCounter.count() - tvBefore).isEqualTo(1.0);
 
         var saved = contentRepository.findByProviderAndTypeAndProviderItemId(
                 ContentSource.TMDB,
