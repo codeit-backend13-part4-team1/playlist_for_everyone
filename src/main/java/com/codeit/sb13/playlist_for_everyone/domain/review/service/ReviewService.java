@@ -56,7 +56,18 @@ public class ReviewService {
 
     @Transactional
     public ReviewDto update(ReviewUpdateRequest request, UUID reviewId, UUID authorId) {
-        return null;
+        Review review = reviewRepository.findById(reviewId)
+                .orElseThrow(() -> new ReviewNotFoundException(
+                        Map.of("reviewId", reviewId)
+                ));
+
+        if (!review.getAuthor().getId().equals(authorId)) {
+            throw new AccessDeniedException("리뷰 작성자만 수정할 수 있습니다.");
+        }
+
+        review.update(request.text(), request.rating());
+
+        return reviewMapper.toDto(review);
     }
 
 }

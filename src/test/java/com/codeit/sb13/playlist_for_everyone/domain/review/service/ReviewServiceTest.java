@@ -13,6 +13,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.mapper.UserDtoMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.review.ReviewNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -24,7 +25,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import java.nio.file.AccessDeniedException;
+import org.springframework.security.access.AccessDeniedException;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -231,6 +232,28 @@ public class ReviewServiceTest {
 
         assertThat(review.getText()).isEqualTo("기존 리뷰입니다.");
         assertThat(review.getRating()).isEqualTo(3.0);
+    }
+
+    @Test
+    @DisplayName("리뷰가 존재하지 않으면 수정 시 예외가 발생한다.")
+    void updateReview_withoutReview() {
+        // given
+        UUID reviewId = UUID.randomUUID();
+        UUID authorId = UUID.randomUUID();
+
+        ReviewUpdateRequest request = new ReviewUpdateRequest(
+                "수정된 리뷰입니다.",
+                4.5
+        );
+
+        given(reviewRepository.findById(reviewId))
+                .willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> reviewService.update(request, reviewId, authorId))
+                .isInstanceOf(ReviewNotFoundException.class);
+
+        then(reviewMapper).shouldHaveNoInteractions();
     }
 
 }
