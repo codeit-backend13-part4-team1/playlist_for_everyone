@@ -37,6 +37,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("리뷰 서비스 테스트")
@@ -196,8 +197,7 @@ public class ReviewServiceTest {
                 4.5
         );
 
-        given(reviewRepository.findById(reviewId))
-                .willReturn(Optional.of(review));
+        given(reviewRepository.findById(reviewId)).willReturn(Optional.of(review));
 
         // when
         reviewService.update(request, reviewId, authorId);
@@ -235,8 +235,7 @@ public class ReviewServiceTest {
                 4.5
         );
 
-        given(reviewRepository.findById(reviewId))
-                .willReturn(Optional.of(review));
+        given(reviewRepository.findById(reviewId)).willReturn(Optional.of(review));
 
         // when & then
         assertThatThrownBy(() -> reviewService.update(request, reviewId, otherUserId))
@@ -258,8 +257,7 @@ public class ReviewServiceTest {
                 4.5
         );
 
-        given(reviewRepository.findById(reviewId))
-                .willReturn(Optional.empty());
+        given(reviewRepository.findById(reviewId)).willReturn(Optional.empty());
 
         // when & then
         assertThatThrownBy(() -> reviewService.update(request, reviewId, authorId))
@@ -290,8 +288,7 @@ public class ReviewServiceTest {
                 null
         );
 
-        given(reviewRepository.findById(reviewId))
-                .willReturn(Optional.of(review));
+        given(reviewRepository.findById(reviewId)).willReturn(Optional.of(review));
 
         // when
         reviewService.update(request, reviewId, authorId);
@@ -300,6 +297,63 @@ public class ReviewServiceTest {
         assertThat(review.getText()).isEqualTo("수정된 리뷰입니다.");
         assertThat(review.getRating()).isEqualTo(3.0);
 
+        then(eventPublisher).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("리뷰 작성자가 삭제 요청 시 정상적으로 삭제된다.")
+    void deleteReview() {
+        // given
+        UUID reviewId = UUID.randomUUID();
+        UUID authorId = UUID.randomUUID();
+
+        User author = mock(User.class);
+        given(author.getId()).willReturn(authorId);
+
+        Review review = Review.builder()
+                .content(content)
+                .author(author)
+                .text("삭제될 리뷰입니다.")
+                .rating(3.0)
+                .build();
+
+        given(reviewRepository.findById(reviewId)).willReturn(Optional.of(review));
+
+        // when
+        reviewService.delete(reviewId, authorId);
+
+        // then
+        then(reviewRepository).should().delete(review);
+        then(eventPublisher).should()
+                .publishEvent(any(ContentSearchCacheEvictEvent.class));
+    }
+
+    @Test
+    @DisplayName("리뷰 작성자가 아니면 삭제 시 예외가 발생한다.")
+    void deleteReview_withoutPermission() {
+        // given
+        UUID reviewId = UUID.randomUUID();
+        UUID authorId = UUID.randomUUID();
+        UUID otherUserId = UUID.randomUUID();
+
+        User author = mock(User.class);
+        given(author.getId()).willReturn(authorId);
+
+        Review review = Review.builder()
+                .content(content)
+                .author(author)
+                .text("기존 리뷰입니다.")
+                .rating(3.0)
+                .build();
+
+        given(reviewRepository.findById(reviewId))
+                .willReturn(Optional.of(review));
+
+        // when & then
+        assertThatThrownBy(() -> reviewService.delete(reviewId, otherUserId))
+                .isInstanceOf(AccessDeniedException.class);
+
+        then(reviewRepository).should(never()).delete(any(Review.class));
         then(eventPublisher).shouldHaveNoInteractions();
     }
 

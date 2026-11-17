@@ -85,4 +85,9 @@ public class ReviewService {
         return reviewMapper.toDto(review);
     }
 
+    @Transactional
+    public void delete(UUID reviewId, UUID authorId) {
+
+    }
+
 }
