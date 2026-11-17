@@ -7,6 +7,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentSource;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentTag;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
+import com.codeit.sb13.playlist_for_everyone.domain.content.event.ContentSearchCacheEvictEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
@@ -22,6 +23,8 @@ import org.springframework.boot.testcontainers.service.connection.ServiceConnect
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.test.context.event.ApplicationEvents;
+import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.junit.jupiter.Container;
@@ -48,6 +51,7 @@ import static org.mockito.Mockito.*;
 @ActiveProfiles("test")
 @Import({JpaAuditingConfig.class, QueryDslConfig.class, ContentCollectionService.class})
 @Testcontainers
+@RecordApplicationEvents
 class ContentCollectionServiceTest {
 
     @Container
@@ -59,6 +63,9 @@ class ContentCollectionServiceTest {
 
     @Autowired
     private EntityManager em;
+
+    @Autowired
+    private ApplicationEvents applicationEvents;
 
     @MockitoSpyBean
     private ContentRepository contentRepository;
@@ -482,6 +489,48 @@ class ContentCollectionServiceTest {
                     contentRepository.deleteById(content.getId())
             );
         }
+    }
+
+    @Test
+    void 새_콘텐츠를_저장하면_캐시_무효화_이벤트를_발행한다() {
+        var data = new CollectedContentData(
+                ContentType.movie, "테스트 영화", "영화 설명",
+                "https://example.com/poster.jpg",
+                ContentSource.TMDB, "550",
+                List.of("액션")
+        );
+
+        service.save(data);
+        em.flush();
+
+        assertThat(applicationEvents
+                .stream(ContentSearchCacheEvictEvent.class)
+                .count())
+                .isEqualTo(1L);
+    }
+
+    @Test
+    void 중복_콘텐츠를_수집하면_캐시_무효화_이벤트를_발행하지_않는다() {
+        var data = new CollectedContentData(
+                ContentType.movie, "테스트 영화", "영화 설명",
+                "https://example.com/poster.jpg",
+                ContentSource.TMDB, "550",
+                List.of("액션")
+        );
+
+        service.save(data);
+        em.flush();
+
+        // 처음 저장할 때 기록된 이벤트는 비운다.
+        applicationEvents.clear();
+
+        service.save(data);
+        em.flush();
+
+        assertThat(applicationEvents
+                .stream(ContentSearchCacheEvictEvent.class)
+                .count())
+                .isZero();
     }
 
 }
