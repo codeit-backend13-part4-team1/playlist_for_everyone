@@ -14,6 +14,13 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.util.Optional;
 
+/**
+ * Redis에서 받은 JSON을 MessageDto로 복원하여 로컬 전달 서비스에 넘긴다.
+ *
+ * <p>손상된 JSON의 JacksonException은 기록 후 해당 메시지만 건너뛰고, JSON null도 전달하지 않는다.
+ * 모든 런타임 예외를 삼키는 경계는 아니다. DB 저장·재발행을 하지 않아 수신으로 인한 중복 저장·발행 순환을 막는다.
+ * MessageListener 등록은 RedisDirectMessageSubscription이 담당한다.
+ */
 @Component
 @ConditionalOnProperty(
         prefix = "everyone.dm.websocket",

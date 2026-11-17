@@ -24,6 +24,11 @@ import org.springframework.web.socket.config.annotation.WebSocketTransportRegist
 import org.springframework.web.socket.handler.WebSocketHandlerDecorator;
 import org.springframework.web.socket.messaging.StompSubProtocolErrorHandler;
 
+/**
+ * 콘텐츠와 DM이 공유하는 /ws 연결, 로컬 Simple Broker, 인바운드 인터셉터를 연결한다.
+ * 목적지 인가는 WebSocketAuthorizationConfig, DM 서버 간 전달은 Redis 전송 컴포넌트에 맡긴다.
+ * 이 설정의 변경은 콘텐츠 시청·채팅에도 적용되므로 공통 연결 설정과 도메인 정책을 구분한다.
+ */
 @Configuration
 @EnableWebSocketMessageBroker
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
@@ -53,13 +58,19 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         this.taskScheduler = taskScheduler;
     }
 
+    /**
+     * 기본 WebSocket과 SockJS에 같은 오류 처리기를 연결하고 기본 동일 출처 제한을 유지한다.
+     * SockJS HTTP 요청의 CSRF 예외는 SecurityConfig의 /ws 범위에서 관리한다.
+     * HTTP 연결 허용과 STOMP CONNECT의 JWT 인증은 별개의 단계다.
+     */
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.setErrorHandler(stompErrorHandlerProvider.getObject());
         registry.addEndpoint("/ws");
-        registry.addEndpoint("/ws").withSockJS();   // 레거시
+        registry.addEndpoint("/ws").withSockJS();   // 제공된 프론트의 SockJS 연결과 XHR 폴백 지원.
     }
 
+    /** /pub은 컨트롤러로, /sub는 이 서버의 구독자로 전달한다. Simple Broker 자체는 서버 간 공유되지 않는다. */
     @Override
     public void configureMessageBroker(MessageBrokerRegistry registry) {
         registry.enableSimpleBroker("/sub")
@@ -69,7 +80,8 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     }
 
     /**
-     * 세션을 사용자 코드에서 임의로 관리하기 위한 데코레이터 설정.
+     * 실제 연결을 공통 레지스트리에 등록하여 인증 연결·오류 종료·세션 무효화에서 찾을 수 있게 한다.
+     * 연결 초기화가 실패하거나 연결이 종료되면 등록을 해제하며, 후속 처리 예외가 있어도 종료 정리를 수행한다.
      */
     @Override
     public void configureWebSocketTransport(WebSocketTransportRegistration registry) {

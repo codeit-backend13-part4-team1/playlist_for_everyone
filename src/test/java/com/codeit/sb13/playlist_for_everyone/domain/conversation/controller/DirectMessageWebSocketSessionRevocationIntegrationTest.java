@@ -60,6 +60,12 @@ import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.mockito.Mockito.mock;
 
+/**
+ * 독립된 두 서버 컨텍스트가 공유 Redis의 인증 무효화 이벤트로 해당 로그인 연결만 종료하는지 검증한다.
+ * 실제 JWT·Redis 세션·WebSocket 연결을 사용하고 FileStorage만 대체한다.
+ * 로그인 교체와 이벤트 발행은 테스트가 직접 수행하므로 로그인 API 또는 시간 경과에 따른 자연 만료 검증은 아니다.
+ * DM 메시지 채널과 인증 무효화 채널의 구독 준비를 혼동하지 않는다.
+ */
 @SpringBootTest(
         classes = PlaylistForEveryoneApplication.class,
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,

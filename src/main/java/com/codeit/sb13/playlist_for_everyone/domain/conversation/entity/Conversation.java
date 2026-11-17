@@ -68,6 +68,7 @@ public class Conversation extends CreatedAtEntity {
         return userA.getId().equals(userId) || userB.getId().equals(userId);
     }
 
+    /** 참여 검증을 마친 요청자의 반대편 사용자를 반환한다. 이 메서드 자체는 비참여자를 거절하지 않는다. */
     public User getReceiver(UUID userId){
         if (userA.getId().equals(userId)) {
             return userB;
@@ -75,6 +76,7 @@ public class Conversation extends CreatedAtEntity {
         return userA;
     }
 
+    /** 참여 검증을 마친 요청자에 해당하는 엔티티를 반환한다. 저장 순서 userA·userB와 발신 방향은 별개다. */
     public User getSender(UUID userId){
         if (userA.getId().equals(userId)) {
             return userA;

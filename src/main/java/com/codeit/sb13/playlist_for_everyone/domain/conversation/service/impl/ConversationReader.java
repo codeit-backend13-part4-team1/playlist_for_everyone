@@ -23,7 +23,7 @@ import java.util.function.Function;
  * 시작하고, 있으면 참여한다. 매번 독립적인 새 트랜잭션을 만드는 Saver와 역할이 다르다.
  *
  * <p>일반 단건 조회는 빈 Optional을 반환하고 서비스가 미존재 예외와 HTTP 응답 변환을 결정한다.
- * validateParticipant는 검증 자체가 역할이므로 미존재·비참여 예외를 이곳에서 직접 결정한다.
+ * validateParticipant와 getForParticipant는 참여 검증을 포함하므로 미존재·비참여 예외를 이곳에서 결정한다.
  * DB 조회 실패는 원래 예외를 그대로 전달한다.
  */
 @Component
@@ -88,6 +88,10 @@ public class ConversationReader {
         );
     }
 
+    /**
+     * 송신 저장에 사용할 참여자·프로필을 함께 조회한 뒤 같은 참여 검증을 적용한다.
+     * Saver에서 호출하면 Saver의 쓰기 트랜잭션에 참여한다. 여기서는 프로필 URL을 생성하지 않는다.
+     */
     @Transactional(readOnly = true)
     public Conversation getForParticipant(UUID conversationId, UUID requesterId) {
         return findAndValidateParticipant(
@@ -101,6 +105,7 @@ public class ConversationReader {
         return conversationRepository.findDetailByUserPair(pair);
     }
 
+    /** 검증 규칙은 공유하되, 필요한 연관관계 범위는 호출자가 전달한 조회 함수로 선택한다. */
     private Conversation findAndValidateParticipant(
             UUID conversationId,
             UUID requesterId,

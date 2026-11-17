@@ -36,6 +36,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.Mockito.*;
 
+/**
+ * 실제 Redis를 통한 발행·구독·역직렬화와 로컬 전달 호출을 검증한다.
+ * SimpMessagingTemplate은 Mock이므로 브라우저의 실제 프레임 수신이나 DB 저장 성공을 검증하지 않는다.
+ * 추가 컨텍스트를 사용하는 사례도 같은 JVM 안에서 구성되며 개발용 Compose Redis와 무관하다.
+ */
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.NONE,
         classes = {

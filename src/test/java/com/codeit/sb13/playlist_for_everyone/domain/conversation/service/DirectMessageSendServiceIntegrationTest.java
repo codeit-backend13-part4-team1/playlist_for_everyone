@@ -36,6 +36,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+/**
+ * 실제 PostgreSQL과 서비스 프록시로 저장 커밋·실패·외부 트랜잭션 롤백의 경계를 검증한다.
+ * FileStorage와 DirectMessagePublisher는 Mock이다. 실제 S3·Redis·WebSocket 수신은 이 테스트의 범위가 아니다.
+ * 클래스 전체를 롤백 트랜잭션으로 감싸지 않고 독립 커밋한 준비 데이터와 메시지를 직접 정리한다.
+ */
 @SpringBootTest(
         properties = {
                 "spring.flyway.enabled=true",

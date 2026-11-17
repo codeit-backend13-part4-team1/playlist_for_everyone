@@ -38,6 +38,7 @@ public class WebSocketAuthorizationConfig {
             @Qualifier("directMessageAuthorizationManager")
             AuthorizationManager<MessageAuthorizationContext<?>> directMessageAuthorizationManager
     ){
+        // 먼저 일치한 규칙을 적용한다. CONNECT의 permitAll은 앞선 인터셉터의 JWT 검증을 생략하지 않는다.
         return MessageMatcherDelegatingAuthorizationManager.builder()
                 .simpTypeMatchers(
                         SimpMessageType.CONNECT,
@@ -45,19 +46,23 @@ public class WebSocketAuthorizationConfig {
                         SimpMessageType.UNSUBSCRIBE,
                         SimpMessageType.DISCONNECT
                 ).permitAll()
+                // DM의 정상 전송·구독 두 경로만 참여 검증으로 연결한다.
                 .simpMessageDestMatchers(
                         "/pub/conversations/{conversationId}/direct-messages"
                 ).access(directMessageAuthorizationManager)
                 .simpSubscribeDestMatchers(
                         "/sub/conversations/{conversationId}/direct-messages"
                 ).access(directMessageAuthorizationManager)
+                // DM 접두사 안의 다른 경로·방향은 거절한다. /sub/** 전체의 SEND를 차단하는 규칙은 아니다.
                 .simpDestMatchers(
                         "/pub/conversations/**",
                         "/sub/conversations/**"
                 ).denyAll()
+                // 콘텐츠의 기존 구독 흐름은 유지한다. 콘텐츠 전용 제한은 위 협의 항목에 따라 별도 적용한다.
                 .simpSubscribeDestMatchers(
                         "/sub/contents/**"
                 ).permitAll()
+                // 위에서 허용한 구독 외에는 /sub/** 같은 광범위 구독도 거절한다.
                 .simpTypeMatchers(SimpMessageType.SUBSCRIBE)
                 .denyAll()
                 .anyMessage().permitAll()

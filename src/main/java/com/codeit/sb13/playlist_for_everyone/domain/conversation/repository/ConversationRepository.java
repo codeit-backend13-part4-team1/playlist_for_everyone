@@ -14,6 +14,10 @@ import java.util.UUID;
  */
 public interface ConversationRepository extends JpaRepository<Conversation, UUID>, ConversationCustomRepository {
 
+    /**
+     * DM 저장 후 DTO 변환에 필요한 두 참여자와 프로필을 함께 로딩한다.
+     * 이 조회에는 요청자 조건이 없으므로 호출한 Reader가 별도로 참여 여부를 검증한다.
+     */
     @EntityGraph(attributePaths = {
             "userA", "userA.profileImage",
             "userB", "userB.profileImage"

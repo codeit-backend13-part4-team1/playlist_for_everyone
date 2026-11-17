@@ -12,6 +12,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
 
+/**
+ * 대화방 참여 검증과 DM 한 건의 저장을 독립 트랜잭션으로 묶는다.
+ *
+ * <p>상위 트랜잭션이 있어도 별도로 커밋하므로 외부 롤백과 이후 실시간 발행 실패로 메시지를 잃지 않는다.
+ * 프로필을 포함한 사용자 연관관계는 Reader에서 로딩하지만 URL 생성·Redis 발행은 이곳에서 수행하지 않는다.
+ */
 @Component
 @RequiredArgsConstructor
 public class DirectMessageSaver {
@@ -19,6 +25,10 @@ public class DirectMessageSaver {
     private final DirectMessageRepository directMessageRepository;
     private final ConversationReader conversationReader;
 
+    /**
+     * 채널 인가와 별개로 저장 시점에도 참여 여부를 확인한다. 서비스의 직접 호출에도 같은 저장 규칙을 적용한다.
+     * 명시적 flush 없이 트랜잭션 종료 시 저장을 확정하며, 커밋 실패는 호출자에게 전달되어 발행을 막는다.
+     */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public DirectMessage save(DirectMessageSendCommand command){
         UUID requesterId = command.requesterId();

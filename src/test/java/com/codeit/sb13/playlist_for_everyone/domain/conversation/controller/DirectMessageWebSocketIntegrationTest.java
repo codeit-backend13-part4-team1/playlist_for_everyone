@@ -96,6 +96,13 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 
+/**
+ * 실제 HTTP 포트·STOMP 클라이언트·PostgreSQL·Redis로 연결, 송수신, 출처 제한을 검증한다.
+ * 로그인 API 대신 실제 Redis 로그인 세션과 서명된 JWT를 준비한다. FileStorage는 Mock이다.
+ * Publisher·DeliveryService Spy는 실패 주입·호출 관찰에 사용하며 정상 경로는 실제 구현으로 진행한다.
+ * 두 서버 사례의 B는 같은 JVM 안의 독립 Spring 컨텍스트다. Compose 컨테이너를 대상으로 실행하지 않는다.
+ * 공통 인증 이벤트의 서버 간 전파는 별도의 SessionRevocationIntegrationTest가 담당한다.
+ */
 @SpringBootTest(
         classes = PlaylistForEveryoneApplication.class,
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,

@@ -7,8 +7,9 @@ import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.response.Me
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 
 /**
- * 참여한 대화방의 DM 목록 조회와 누적 읽음 처리를 제공한다.
- * 호출자는 인증된 요청자 ID와 입력 검증을 마친 조건을 전달하며, 두 기능 모두 대화방 참여 여부를 먼저 확인한다.
+ * 참여한 대화방의 DM 송신·목록 조회·누적 읽음 처리를 제공한다.
+ * 호출자는 인증된 요청자 ID와 입력 검증을 마친 조건을 전달한다.
+ * 조회·읽음은 서비스가 참여 검증을 요청하고, 송신은 Saver의 저장 트랜잭션에서 참여자를 확인한다.
  */
 public interface DirectMessageService {
 
@@ -34,5 +35,13 @@ public interface DirectMessageService {
      */
     CursorResponse<MessageDto> search(DirectMessageSearchCondition condition);
 
+    /**
+     * 메시지를 독립 트랜잭션으로 저장한 뒤 응답 변환과 실시간 발행을 순서대로 수행한다.
+     * 발신자는 인증된 요청자이며 수신자는 대화방의 다른 참여자로 결정한다.
+     *
+     * <p>저장 실패 시 발행하지 않는다. 저장 커밋 이후 변환·발행에 실패하면 저장된 메시지는 유지된다.
+     * 반환된 DTO는 발행 요청에 사용한 값이며, 모든 클라이언트의 수신 완료를 뜻하지 않는다.
+     * 이 호출 자체는 메시지를 읽음 처리하지 않는다.
+     */
     MessageDto send(DirectMessageSendCommand command);
 }

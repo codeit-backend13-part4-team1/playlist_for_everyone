@@ -10,6 +10,11 @@ import org.springframework.web.socket.messaging.StompSubProtocolErrorHandler;
 
 import java.util.List;
 
+/**
+ * 인바운드 채널 등의 처리 실패를 공통 오류 전송기로 연결하는 프로토콜 오류 처리기다.
+ * 현재 목적지 목록에 포함된 DM SEND·SUBSCRIBE만 대상으로 하며, 그 밖에는 Spring 기본 처리로 위임한다.
+ * 컨트롤러에서 처리된 예외는 이 경로 대신 해당 컨트롤러의 메시지 예외 처리 메서드를 거친다.
+ */
 @Component
 @RequiredArgsConstructor
 public class WebSocketStompErrorHandler extends StompSubProtocolErrorHandler {
@@ -48,6 +53,7 @@ public class WebSocketStompErrorHandler extends StompSubProtocolErrorHandler {
         }
 
         errorSender.sendToSession(sessionId, ex);
+        // 이미 전송기로 위임했으므로 기본 처리기가 또 다른 ERROR 프레임을 만들지 않도록 한다.
         return null;
     }
 

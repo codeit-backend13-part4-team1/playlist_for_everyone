@@ -20,15 +20,17 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 대화방 참여 검증 후 DM 조회·읽음 처리를 조정하고 조회 결과를 응답으로 변환한다.
+ * DM 송신·조회·읽음 흐름을 조정하고 엔티티를 응답으로 변환한다.
  *
  * <p>직접 트랜잭션을 시작하지 않는다. 조회는 Reader의 읽기 전용 트랜잭션에,
- * 읽음 검증·갱신은 Updater의 쓰기 트랜잭션에 맡긴다. 인증 자체를 수행하지 않으므로
+ * 읽음 검증·갱신은 Updater의 쓰기 트랜잭션에, 송신 저장은 Saver의 독립 트랜잭션에 맡긴다.
+ * 인증 자체를 수행하지 않으므로
  * 호출자가 인증된 요청자 ID를 전달해야 한다.
  *
  * <p>상위 트랜잭션이 없는 일반 HTTP 호출에서는 Reader가 반환된 뒤 DTO와 프로필 URL을 만든다.
  * 상위 트랜잭션이 있으면 Reader가 참여하므로 응답 변환도 그 트랜잭션의 영향을 받는다.
- * 프로필 URL 생성 예외는 호출자에게 그대로 전달한다.
+ * 조회 중 프로필 URL 생성 예외는 호출자에게 그대로 전달한다.
+ * 송신은 Saver가 별도 커밋을 완료한 뒤 변환·발행하며, 변환 실패를 저장 완료 정보가 담긴 발행 예외로 바꾼다.
  */
 @Service
 @RequiredArgsConstructor
@@ -85,6 +87,11 @@ public class DirectMessageServiceImpl implements DirectMessageService {
         );
     }
 
+    /**
+     * 저장 커밋 → 프로필 URL을 포함한 DTO 변환 → 발행 순서를 유지한다.
+     * Saver는 별도 빈의 REQUIRES_NEW 프록시이므로 이 메서드가 결과를 받으면 저장 커밋이 완료된 상태다.
+     * 이후 실패로 이미 커밋한 메시지를 롤백하거나 여기서 자동 재발행하지 않는다.
+     */
     @Override
     public MessageDto send(DirectMessageSendCommand command) {
         DirectMessage savedMessage = directMessageSaver.save(command);

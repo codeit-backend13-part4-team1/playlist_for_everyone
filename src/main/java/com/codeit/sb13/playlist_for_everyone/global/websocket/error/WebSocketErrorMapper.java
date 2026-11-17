@@ -19,6 +19,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * WebSocket 예외를 HTTP와 같은 exceptionName·message·details 구조로 변환한다.
+ *
+ * <p>MessageDeliveryException 래퍼만 벗겨 업무 예외의 코드·상세값을 보존한다.
+ * 그 밖의 예외는 정해진 메시지로 분류하여 내부 예외 메시지를 그대로 노출하지 않는다.
+ * 이 컴포넌트는 전송이나 연결 종료를 수행하지 않는다.
+ */
 @Component
 public class WebSocketErrorMapper {
 
@@ -78,6 +85,7 @@ public class WebSocketErrorMapper {
         );
     }
 
+    /** 같은 필드의 여러 검증 오류를 리스트로 보존하고, 필드가 없는 오류는 객체 이름으로 구분한다. */
     private Map<String, Object> getValidationDetails(MethodArgumentNotValidException exception) {
         BindingResult bindingResult = exception.getBindingResult();
         if (bindingResult == null) {
