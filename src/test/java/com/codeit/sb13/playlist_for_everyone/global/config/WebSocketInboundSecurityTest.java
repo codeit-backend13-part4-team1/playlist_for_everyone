@@ -158,6 +158,35 @@ public class WebSocketInboundSecurityTest {
             "SEND, /pub",
             "SUBSCRIBE, /sub"
     })
+    @DisplayName("대문자 UUID의 DM 전송과 구독은 참여 검증 없이 인바운드 채널에서 거부한다.")
+    void send_rejectsUppercaseDirectMessageDestinationsBeforeParticipantValidation(
+            StompCommand command,
+            String destinationPrefix
+    ){
+        String uppercaseConversationId = "ABCDEFAB-1234-5678-9ABC-DEF012345678";
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(command);
+        accessor.setDestination(destinationPrefix + "/conversations/" + uppercaseConversationId + "/direct-messages");
+        accessor.setSessionId("dm-test-session");
+        accessor.setSessionAttributes(new HashMap<>());
+        accessor.setUser(getAuthentication());
+        if (command == StompCommand.SUBSCRIBE){
+            accessor.setSubscriptionId("dm-subscription");
+        }
+        accessor.setLeaveMutable(true);
+        Message<byte[]> message = MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
+
+        assertThatThrownBy(() -> clientInboundChannel.send(message))
+                .isInstanceOf(MessageDeliveryException.class)
+                .hasCauseInstanceOf(AccessDeniedException.class);
+
+        verifyNoInteractions(conversationService);
+    }
+
+    @ParameterizedTest(name = "[{index}] command={0}")
+    @CsvSource({
+            "SEND, /pub",
+            "SUBSCRIBE, /sub"
+    })
     @DisplayName("인증 정보가 없는 DM 전송과 구독은 참여 검증 없이 거부한다.")
     void send_rejectsDirectMessageFramesWithoutAuthentication(
             StompCommand command,

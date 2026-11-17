@@ -156,6 +156,8 @@ class DirectMessageAuthorizationManagerTest {
     @ValueSource(strings = {
             "not-a-uuid",
             "1-1-1-1-1",
+            "ABCDEFAB-1234-5678-9ABC-DEF012345678",
+            "abcdefab-1234-5678-9Abc-def012345678",
             "*",
             "**"
     })
