@@ -1,6 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.review.repository;
 
-import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.ContentRatingProjection;
+import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRatingProjection;
 import com.codeit.sb13.playlist_for_everyone.domain.review.entity.Review;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
