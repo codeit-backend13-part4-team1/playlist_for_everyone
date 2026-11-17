@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
@@ -13,12 +14,14 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verifyNoInteractions;
 
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistSearchRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistUpdateRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.PlaylistContentSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.PlaylistResponse;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Playlist;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistContent;
@@ -362,6 +365,62 @@ public class PlaylistServiceImplTest {
     assertThat(response.nextIdAfter()).isNull();
     assertThat(response.data()).hasSize(2);
     assertThat(response.totalCount()).isEqualTo(2L);
+  }
+
+  @Test
+  @DisplayName("플레이리스트 목록의 콘텐츠 요약은 중복 없이 한 번만 조회하고, 추가한 순서대로 조립하며, 삭제된 콘텐츠는 건너뛴다")
+  void 목록의_콘텐츠_요약은_한번만_조회하고_추가한_순서로_조립한다() {
+    // given
+    UUID requesterId = UUID.randomUUID();
+    User owner = createUser(UUID.randomUUID());
+    Playlist first = createPlaylist(owner, UUID.randomUUID());
+    Playlist second = createPlaylist(owner, UUID.randomUUID());
+    UUID contentA = UUID.randomUUID();
+    UUID contentB = UUID.randomUUID();
+    UUID contentC = UUID.randomUUID(); // 삭제되어 요약이 돌아오지 않는 콘텐츠
+    PlaylistSearchRequest request =
+        createSearchRequest(10, PlaylistSortBy.UPDATED_AT, SortDirection.DESCENDING);
+
+    given(playlistRepository.search(any(PlaylistSearchCondition.class)))
+        .willReturn(List.of(first, second));
+    given(playlistRepository.count(any(PlaylistSearchCondition.class))).willReturn(2L);
+    given(subscriptionRepository.findSubscribedPlaylistIds(eq(requesterId), anyCollection()))
+        .willReturn(List.of());
+    given(playlistContentRepository.findAllByPlaylistIds(anyCollection()))
+        .willReturn(List.of(
+            new PlaylistContent(first.getId(), contentA),
+            new PlaylistContent(first.getId(), contentB),
+            new PlaylistContent(second.getId(), contentB),
+            new PlaylistContent(second.getId(), contentC)));
+    // 콘텐츠 서비스는 요청 순서와 다르게(B, A) 돌려주고, C는 돌려주지 않는다.
+    given(contentService.getSummariesByIds(anyList())).willReturn(List.of(
+        new ContentSummary(contentB, ContentType.movie, "B 제목", "B 설명",
+            "https://thumb/b", List.of("tag-b"), 4.5, 2),
+        new ContentSummary(contentA, ContentType.sport, "A 제목", "A 설명",
+            "https://thumb/a", List.of(), 0.0, 0)));
+
+    // when
+    CursorResponse<PlaylistResponse> response = playlistService.getPlaylists(request, requesterId);
+
+    // then: 겹치는 B는 한 번만 요청하고, 콘텐츠 서비스는 목록 전체에서 한 번만 호출한다.
+    verify(contentService, times(1)).getSummariesByIds(
+        argThat(ids -> ids.size() == 3 && ids.containsAll(List.of(contentA, contentB, contentC))));
+
+    // 추가한 순서를 유지하고, 요약이 없는 C는 빠진다.
+    assertThat(response.data().get(0).contents())
+        .extracting(PlaylistContentSummary::id).containsExactly(contentA, contentB);
+    assertThat(response.data().get(1).contents())
+        .extracting(PlaylistContentSummary::id).containsExactly(contentB);
+
+    // 콘텐츠 도메인의 contentId가 플레이리스트 응답의 id로 변환되고, 나머지 필드는 그대로 전달된다.
+    PlaylistContentSummary b = response.data().get(1).contents().get(0);
+    assertThat(b.type()).isEqualTo(ContentType.movie);
+    assertThat(b.title()).isEqualTo("B 제목");
+    assertThat(b.description()).isEqualTo("B 설명");
+    assertThat(b.thumbnailUrl()).isEqualTo("https://thumb/b");
+    assertThat(b.tags()).containsExactly("tag-b");
+    assertThat(b.averageRating()).isEqualTo(4.5);
+    assertThat(b.reviewCount()).isEqualTo(2);
   }
 
 
