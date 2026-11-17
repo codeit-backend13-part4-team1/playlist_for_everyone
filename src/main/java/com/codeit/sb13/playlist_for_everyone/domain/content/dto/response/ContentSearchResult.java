@@ -6,4 +6,12 @@ public record ContentSearchResult(
         Content content,
         double averageRating,
         int reviewCount
-) {}
+) {
+    public ContentSearchResult(
+            Content content,
+            Double averageRating,
+            Long reviewCount
+    ) {
+        this(content, averageRating, Math.toIntExact(reviewCount));
+    }
+}

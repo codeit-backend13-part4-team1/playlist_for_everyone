@@ -254,6 +254,30 @@ public class ContentSearchRepositoryTest {
     }
 
     @Test
+    @DisplayName("리뷰가 있으면 평균 평점과 리뷰가 정확하게 조회된다.")
+    void searchContents_withReviews() {
+        // given
+        ContentSearchCondition condition = new ContentSearchCondition(
+                ContentType.movie,
+                "영화시리즈1",
+                null,
+                null,
+                null,
+                10,
+                SortDirection.DESCENDING,
+                "createdAt"
+        );
+
+        // when
+        var result = contentRepository.search(condition);
+
+        // then
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).averageRating()).isEqualTo(4.5);
+        assertThat(result.get(0).reviewCount()).isEqualTo(2);
+    }
+
+    @Test
     @DisplayName("리뷰가 없는 콘텐츠는 평점과 리뷰 수가 0으로 조회된다")
     void searchContents_withoutReviews() {
         // given

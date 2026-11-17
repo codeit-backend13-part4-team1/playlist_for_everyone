@@ -9,6 +9,7 @@ import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
 import com.querydsl.core.Tuple;
 import com.querydsl.core.types.Order;
 import com.querydsl.core.types.OrderSpecifier;
+import com.querydsl.core.types.Projections;
 import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.core.types.dsl.NumberExpression;
@@ -56,8 +57,13 @@ public class ContentSearchRepositoryImpl implements ContentSearchRepository {
         NumberExpression<Double> rating = ratingExpression();
         NumberExpression<Long> reviewCount = reviewCountExpression();
 
-        List<Tuple> results = queryFactory
-                .select(content, rating, reviewCount)
+        List<ContentSearchResult> results = queryFactory
+                .select(Projections.constructor(
+                                ContentSearchResult.class,
+                                content,
+                                rating,
+                                reviewCount
+                        ))
                 .from(content)
                 .where(
                         typeContains(condition.typeEqual()),
@@ -78,13 +84,7 @@ public class ContentSearchRepositoryImpl implements ContentSearchRepository {
                 .limit(condition.limit() + 1L)
                 .fetch();
 
-        return results.stream()
-                .map(tuple -> new ContentSearchResult(
-                        tuple.get(content),
-                        tuple.get(rating),
-                        tuple.get(reviewCount).intValue()
-                ))
-                .toList();
+        return results;
     }
 
     // 콘텐츠 타입 필터 (null이면 조건 제외)
