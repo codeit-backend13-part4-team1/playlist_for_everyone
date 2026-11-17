@@ -15,6 +15,18 @@ public class CollectionStepMetricsListener implements StepExecutionListener {
 
     @Override
     public ExitStatus afterStep(StepExecution stepExecution) {
+        String jobName = stepExecution.getJobExecution()
+                .getJobInstance()
+                .getJobName();
+
+        String stepName = stepExecution.getStepName();
+
+        meterRegistry.counter(
+                "content.collection.items.read",
+                "job", jobName,
+                "step", stepName
+        ).increment(stepExecution.getReadCount());
+
         return null;
     }
 }

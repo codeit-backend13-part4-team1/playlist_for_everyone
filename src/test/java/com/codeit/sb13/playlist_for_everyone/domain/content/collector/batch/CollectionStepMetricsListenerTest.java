@@ -14,7 +14,8 @@ class CollectionStepMetricsListenerTest {
 
     @Test
     void Step이_끝나면_읽은_건수를_기록한다() {
-        try (var registry = new SimpleMeterRegistry()) {
+        var registry = new SimpleMeterRegistry();
+        try {
             var listener = new CollectionStepMetricsListener(registry);
             var stepExecution = mock(StepExecution.class);
             var jobExecution = mock(JobExecution.class);
@@ -37,6 +38,10 @@ class CollectionStepMetricsListenerTest {
 
             assertThat(counter).isNotNull();
             assertThat(counter.count()).isEqualTo(3.0);
+            assertThat(counter).isNotNull();
+            assertThat(counter.count()).isEqualTo(3.0);
+        } finally {
+            registry.close();
         }
     }
 }
