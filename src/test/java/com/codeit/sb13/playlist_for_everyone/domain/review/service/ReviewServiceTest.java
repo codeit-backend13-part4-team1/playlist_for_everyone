@@ -6,8 +6,10 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRe
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.response.ReviewDto;
 import com.codeit.sb13.playlist_for_everyone.domain.review.entity.Review;
+import com.codeit.sb13.playlist_for_everyone.domain.review.mapper.ReviewMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.review.repository.ReviewRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
+import com.codeit.sb13.playlist_for_everyone.domain.user.mapper.UserDtoMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
@@ -15,6 +17,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -43,6 +46,12 @@ public class ReviewServiceTest {
     @Mock
     private ContentRepository contentRepository;
 
+    @Mock
+    private ReviewMapper reviewMapper;
+
+    @Mock
+    private UserDtoMapper userMapper;
+
     @InjectMocks
     private ReviewService reviewService;
 
@@ -61,49 +70,67 @@ public class ReviewServiceTest {
     }
 
     @Test
-    @DisplayName("리뷰 생성 시 콘텐츠, 유저, 텍스트는 필수조건이다.")
+    @DisplayName("리뷰 생성 시 콘텐츠, 작성자, 텍스트, 평점이 정상적으로 저장된다.")
     void saveReview() {
         // given
-        UUID contentId = UUID.randomUUID();
         UUID authorId = UUID.randomUUID();
 
         ReviewCreateRequest request = new ReviewCreateRequest(
-                contentId,
+                content.getId(),
                 "재미있는 드라마였어요.",
                 4.5
         );
 
         User author = mock(User.class);
 
-        given(contentRepository.findById(contentId)).willReturn(Optional.of(content));
+        given(contentRepository.findById(content.getId())).willReturn(Optional.of(content));
         given(userRepository.findById(authorId)).willReturn(Optional.of(author));
 
+        given(reviewRepository.save(any(Review.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+
+        given(reviewMapper.toDto(any(Review.class)))
+                .willAnswer(invocation -> {
+                    Review review = invocation.getArgument(0);
+
+                    return new ReviewDto(
+                            UUID.randomUUID(),
+                            content.getId(),
+                            userMapper.toDto(author),
+                            review.getText(),
+                            review.getRating()
+                    );
+                });
+
         // when
-        ReviewDto dto = reviewService.save(request, authorId);
+        reviewService.save(request, authorId);
 
         // then
-        assertThat(dto).isNotNull();
-        assertThat(dto.contentId()).isEqualTo(contentId);
-        assertThat(dto.text()).isEqualTo("재미있는 드라마였어요.");
-        assertThat(dto.rating()).isEqualTo(4.5);
+        ArgumentCaptor<Review> captor = ArgumentCaptor.forClass(Review.class);
 
-        then(reviewRepository).should().save(any(Review.class));
+        then(reviewRepository).should().save(captor.capture());
+
+        Review savedReview = captor.getValue();
+
+        assertThat(savedReview.getContent()).isEqualTo(content);
+        assertThat(savedReview.getAuthor()).isEqualTo(author);
+        assertThat(savedReview.getText()).isEqualTo("재미있는 드라마였어요.");
+        assertThat(savedReview.getRating()).isEqualTo(4.5);
     }
 
     @Test
     @DisplayName("콘텐츠가 존재하지 않으면 리뷰 생성 시 예외가 발생한다.")
     void saveReviews_withoutContent() {
         // given
-        UUID contentId = UUID.randomUUID();
         UUID authorId = UUID.randomUUID();
 
         ReviewCreateRequest request = new ReviewCreateRequest(
-                contentId,
+                content.getId(),
                 "재미있는 영화였어요.",
                 4.5
         );
 
-        given(contentRepository.findById(contentId)).willReturn(Optional.empty());
+        given(contentRepository.findById(content.getId())).willReturn(Optional.empty());
 
         // when & then
         assertThatThrownBy(() -> reviewService.save(request, authorId))
@@ -116,21 +143,22 @@ public class ReviewServiceTest {
     @DisplayName("유저가 존재하지 않으면 리뷰 생성 시 예외가 발생한다.")
     void saveReviews_withoutAuthor() {
         // given
-        UUID contentId = UUID.randomUUID();
         UUID authorId = UUID.randomUUID();
 
         ReviewCreateRequest request = new ReviewCreateRequest(
-                contentId,
+                content.getId(),
                 "재미있는 영화였어요.",
                 4.5
         );
 
+        given(contentRepository.findById(content.getId())).willReturn(Optional.of(content));
         given(userRepository.findById(authorId)).willReturn(Optional.empty());
 
         // when & then
         assertThatThrownBy(() -> reviewService.save(request, authorId))
                 .isInstanceOf(UserNotFoundException.class);
 
+        then(userRepository).should().findById(authorId);
         then(reviewRepository).shouldHaveNoInteractions();
     }
 
