@@ -87,7 +87,20 @@ public class ReviewService {
 
     @Transactional
     public void delete(UUID reviewId, UUID authorId) {
+        Review review = reviewRepository.findById(reviewId)
+                .orElseThrow(() -> new ReviewNotFoundException(
+                        Map.of("reviewId", reviewId)
+                ));
 
+        // 리뷰 작성자 검증
+        if (!review.getAuthor().getId().equals(authorId)) {
+            throw new AccessDeniedException("리뷰 작성자만 삭제할 수 있습니다.");
+        }
+
+        reviewRepository.delete(review);
+
+        // 리뷰 삭제 시 콘텐츠 검색 캐시 무효화
+        eventPublisher.publishEvent(new ContentSearchCacheEvictEvent());
     }
 
 }
