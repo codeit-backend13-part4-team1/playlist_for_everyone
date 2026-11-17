@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.review.controller;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
+import com.codeit.sb13.playlist_for_everyone.domain.review.controller.swagger.ReviewApi;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.response.ReviewDto;
@@ -17,10 +18,11 @@ import java.util.UUID;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/reviews")
-public class ReviewController {
+public class ReviewController implements ReviewApi {
 
     private final ReviewService reviewService;
 
+    @Override
     @PostMapping
     public ResponseEntity<ReviewDto> create(
             @Valid @RequestBody ReviewCreateRequest request,
@@ -31,6 +33,7 @@ public class ReviewController {
         return ResponseEntity.status(HttpStatus.CREATED).body(dto);
     }
 
+    @Override
     @PatchMapping("/{reviewId}")
     public ResponseEntity<ReviewDto> update(
             @PathVariable UUID reviewId,
