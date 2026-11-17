@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewCreateRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.response.ReviewDto;
 import com.codeit.sb13.playlist_for_everyone.domain.review.entity.Review;
 import com.codeit.sb13.playlist_for_everyone.domain.review.mapper.ReviewMapper;
@@ -23,6 +24,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.nio.file.AccessDeniedException;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -160,6 +162,75 @@ public class ReviewServiceTest {
 
         then(userRepository).should().findById(authorId);
         then(reviewRepository).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("리뷰 수정 시 텍스트와 평점이 정상적으로 변경된다.")
+    void updateReview() {
+        // given
+        UUID reviewId = UUID.randomUUID();
+        UUID authorId = UUID.randomUUID();
+
+        User author = mock(User.class);
+        given(author.getId()).willReturn(authorId);
+
+        Review review = Review.builder()
+                .content(content)
+                .author(author)
+                .text("기존 리뷰입니다.")
+                .rating(3.0)
+                .build();
+
+        ReviewUpdateRequest request = new ReviewUpdateRequest(
+                "재미있는 영화였어요.",
+                4.5
+        );
+
+        given(reviewRepository.findById(reviewId))
+                .willReturn(Optional.of(review));
+
+        // when
+        reviewService.update(request, reviewId, authorId);
+
+        // then
+        assertThat(review.getText()).isEqualTo("재미있는 영화였어요.");
+        assertThat(review.getRating()).isEqualTo(4.5);
+
+        then(reviewMapper).should().toDto(review);
+    }
+
+    @Test
+    @DisplayName("리뷰 작성자가 아니면 수정 시 예외가 발생한다.")
+    void updateReview_withoutPermission() {
+        // given
+        UUID reviewId = UUID.randomUUID();
+        UUID authorId = UUID.randomUUID();
+        UUID otherUserId = UUID.randomUUID();
+
+        User author = mock(User.class);
+        given(author.getId()).willReturn(authorId);
+
+        Review review = Review.builder()
+                .content(content)
+                .author(author)
+                .text("기존 리뷰입니다.")
+                .rating(3.0)
+                .build();
+
+        ReviewUpdateRequest request = new ReviewUpdateRequest(
+                "수정된 리뷰입니다.",
+                4.5
+        );
+
+        given(reviewRepository.findById(reviewId))
+                .willReturn(Optional.of(review));
+
+        // when & then
+        assertThatThrownBy(() -> reviewService.update(request, reviewId, otherUserId))
+                .isInstanceOf(AccessDeniedException.class);
+
+        assertThat(review.getText()).isEqualTo("기존 리뷰입니다.");
+        assertThat(review.getRating()).isEqualTo(3.0);
     }
 
 }

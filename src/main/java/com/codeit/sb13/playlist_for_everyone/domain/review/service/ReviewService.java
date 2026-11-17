@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.review.service;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewCreateRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.response.ReviewDto;
 import com.codeit.sb13.playlist_for_everyone.domain.review.entity.Review;
 import com.codeit.sb13.playlist_for_everyone.domain.review.mapper.ReviewMapper;
@@ -10,11 +11,13 @@ import com.codeit.sb13.playlist_for_everyone.domain.review.repository.ReviewRepo
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.review.ReviewNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.springframework.security.access.AccessDeniedException;
 import java.util.Map;
 import java.util.UUID;
 
@@ -49,6 +52,11 @@ public class ReviewService {
         Review savedReview = reviewRepository.save(review);
 
         return reviewMapper.toDto(savedReview);
+    }
+
+    @Transactional
+    public ReviewDto update(ReviewUpdateRequest request, UUID reviewId, UUID authorId) {
+        return null;
     }
 
 }
