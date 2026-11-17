@@ -1,11 +1,14 @@
 package com.codeit.sb13.playlist_for_everyone.domain.review.controller;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.response.ReviewDto;
 import com.codeit.sb13.playlist_for_everyone.domain.review.service.ReviewService;
-import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 @RestController
 @RequiredArgsConstructor
@@ -16,9 +19,12 @@ public class ReviewController {
 
     @PostMapping
     public ResponseEntity<ReviewDto> create(
-            ReviewCreateRequest request, User user
+            @Valid @RequestBody ReviewCreateRequest request,
+            @AuthenticationPrincipal SecurityUser user
     ) {
-        return null;
+        ReviewDto dto = reviewService.save(request, user.getUserId());
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(dto);
     }
 
 }
