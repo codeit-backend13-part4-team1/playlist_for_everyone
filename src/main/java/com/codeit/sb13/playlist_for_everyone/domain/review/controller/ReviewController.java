@@ -49,6 +49,7 @@ public class ReviewController implements ReviewApi {
         return ResponseEntity.ok(response);
     }
 
+    @Override
     @DeleteMapping("/{reviewId}")
     public ResponseEntity<Void> delete(
             @PathVariable UUID reviewId,

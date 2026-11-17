@@ -106,4 +106,26 @@ public interface ReviewApi {
             @Parameter(hidden = true) @AuthenticationPrincipal SecurityUser user
     );
 
+    @Operation()
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "204",
+                    description = "리뷰 삭제 성공",
+                    useReturnTypeSchema = true,
+                    content = @Content(mediaType = "application/json")
+            ),
+            @ApiResponse(
+                    responseCode = "404",
+                    description = "리뷰를 찾을 수 없음",
+                    content = @Content(
+                            mediaType = "application/json",
+                            schema = @Schema(implementation = ApiErrorResponse.class)
+                    )
+            )
+    })
+    ResponseEntity<Void> delete(
+            @PathVariable("reviewId") UUID reviewId,
+            @Parameter(hidden = true) @AuthenticationPrincipal SecurityUser author
+    );
+
 }
