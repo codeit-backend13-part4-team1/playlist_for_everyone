@@ -67,7 +67,8 @@ import static org.mockito.Mockito.*;
         ContentCollectionService.class,
         SportsDbBatchConfig.class,
         TmdbBatchConfig.class,
-        SportsDbCollectionJobTest.MetricsTestConfig.class
+        SportsDbCollectionJobTest.MetricsTestConfig.class,
+        CollectionStepMetricsListener.class
 })
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @Testcontainers

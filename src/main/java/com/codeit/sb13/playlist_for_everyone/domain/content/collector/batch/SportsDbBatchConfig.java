@@ -71,7 +71,8 @@ public class SportsDbBatchConfig {
             PlatformTransactionManager transactionManager,
             @Qualifier("sportsDbEventReader") SportsDbEventReader reader,
             ContentCollectionService collectionService,
-            @Qualifier("sportsDbSkipPolicy") SportsDbSkipPolicy skipPolicy
+            @Qualifier("sportsDbSkipPolicy") SportsDbSkipPolicy skipPolicy,
+            CollectionStepMetricsListener metricsListener
     ) {
         var mapper = new SportsDbContentMapper();
 
@@ -81,6 +82,7 @@ public class SportsDbBatchConfig {
                 .faultTolerant()
                 .skipPolicy(skipPolicy)
                 .stream(skipPolicy)
+                .listener(metricsListener)
                 .reader(reader)
                 .processor(mapper::fromEvent)
                 .writer(chunk -> {
