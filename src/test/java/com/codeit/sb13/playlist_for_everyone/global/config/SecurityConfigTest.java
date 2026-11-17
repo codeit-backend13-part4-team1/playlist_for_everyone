@@ -306,8 +306,7 @@ class SecurityConfigTest {
     @DisplayName("헬스 체크는 인증 없이 접근할 수 있다.")
     void 헬스_체크는_인증_없이_접근할_수_있다() throws Exception {
         mockMvc.perform(get("/actuator/health"))
-                .andExpect(result ->
-                        assertThat(result.getResponse().getStatus()).isNotEqualTo(401));
+                .andExpect(status().isOk());
     }
 
     @ParameterizedTest
@@ -345,6 +344,12 @@ class SecurityConfigTest {
         @GetMapping("/ws/info")
         public Map<String, Boolean> sockJsInfo() {
             return Map.of("websocket", true);
+        }
+
+        // @WebMvcTest에는 Actuator가 올라오지 않는다. 보안 규칙만 검증하기 위한 대역이다.
+        @GetMapping("/actuator/health")
+        public Map<String, String> health() {
+            return Map.of("status", "UP");
         }
 
         // 웹소켓을 쓸 수 없을 때 SockJS가 사용하는 폴백 전송. CSRF 헤더 없이 POST로 들어온다.
