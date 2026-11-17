@@ -13,6 +13,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
@@ -29,7 +30,9 @@ import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
 import org.springframework.boot.batch.jdbc.autoconfigure.BatchJdbcAutoConfiguration;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
@@ -63,7 +66,8 @@ import static org.mockito.Mockito.*;
         QueryDslConfig.class,
         ContentCollectionService.class,
         SportsDbBatchConfig.class,
-        TmdbBatchConfig.class
+        TmdbBatchConfig.class,
+        SportsDbCollectionJobTest.MetricsTestConfig.class
 })
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @Testcontainers
@@ -96,6 +100,18 @@ class SportsDbCollectionJobTest {
 
     @MockitoBean
     private TmdbClient tmdbClient;
+
+    @TestConfiguration(proxyBeanMethods = false)
+    static class MetricsTestConfig {
+
+        @Bean
+        SimpleMeterRegistry meterRegistry() {
+            return new SimpleMeterRegistry();
+        }
+    }
+
+    @Autowired
+    private SimpleMeterRegistry meterRegistry;
 
     @Test
     void 배치를_실행하면_경기와_태그가_저장된다() throws Exception {
@@ -305,7 +321,23 @@ class SportsDbCollectionJobTest {
     @Test
     void 잘못된_경기가_건너뛰기_제한을_초과하면_배치가_실패한다()
             throws Exception {
-        var events = new ArrayList<SportsDbEventResponse>();
+
+            var writeCounter = meterRegistry.counter(
+                    "content.collection.items.write",
+                    "job", "sportsDbCollectionJob",
+                    "step", "sportsDbCollectionStep"
+            );
+
+            var skipCounter = meterRegistry.counter(
+                    "content.collection.items.skip",
+                    "job", "sportsDbCollectionJob",
+                    "step", "sportsDbCollectionStep"
+            );
+
+            double writesBefore = writeCounter.count();
+            double skipsBefore = skipCounter.count();
+
+            var events = new ArrayList<SportsDbEventResponse>();
 
         events.add(new SportsDbEventResponse(
                 "443001", "첫 번째 정상 경기", "Soccer",
@@ -364,6 +396,10 @@ class SportsDbCollectionJobTest {
         var stepExecution = execution.getStepExecutions().iterator().next();
 
         assertThat(stepExecution.getWriteSkipCount()).isEqualTo(10);
+        assertThat(stepExecution.getWriteCount()).isEqualTo(2);
+
+        assertThat(writeCounter.count() - writesBefore).isEqualTo(2.0);
+        assertThat(skipCounter.count() - skipsBefore).isEqualTo(10.0);
 
         // 같은 목록으로 재시작해도 건너뛰기 한도 유지
         var restartedExecution = jobOperator.restart(execution);
