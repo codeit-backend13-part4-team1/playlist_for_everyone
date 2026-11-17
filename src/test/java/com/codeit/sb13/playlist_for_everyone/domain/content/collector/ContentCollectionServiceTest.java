@@ -32,6 +32,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CyclicBarrier;
@@ -527,6 +528,38 @@ class ContentCollectionServiceTest {
         service.save(data);
         em.flush();
 
+        assertThat(applicationEvents
+                .stream(ContentSearchCacheEvictEvent.class)
+                .count())
+                .isZero();
+    }
+
+    @Test
+    void INSERT가_중복으로_건너뛰어지면_캐시_이벤트를_발행하지_않는다() {
+        var data = new CollectedContentData(
+                ContentType.movie, "테스트 영화", "영화 설명",
+                "https://example.com/poster.jpg",
+                ContentSource.TMDB, "550",
+                List.of("액션")
+        );
+
+        Content existing = service.save(data);
+        em.flush();
+        applicationEvents.clear();
+
+        // 처음에는 없는 것으로 조회하고, 저장 후에는 기존 콘텐츠를 반환한다.
+        doReturn(Optional.empty(), Optional.of(existing))
+                .when(contentRepository)
+                .findByProviderAndTypeAndProviderItemId(
+                        ContentSource.TMDB,
+                        ContentType.movie,
+                        "550"
+                );
+
+        Content result = service.save(data);
+        em.flush();
+
+        assertThat(result.getId()).isEqualTo(existing.getId());
         assertThat(applicationEvents
                 .stream(ContentSearchCacheEvictEvent.class)
                 .count())
