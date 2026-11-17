@@ -29,9 +29,12 @@ import org.springframework.batch.infrastructure.item.ExecutionContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
+import org.springframework.boot.batch.autoconfigure.observation.BatchObservationAutoConfiguration;
 import org.springframework.boot.batch.jdbc.autoconfigure.BatchJdbcAutoConfiguration;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.boot.micrometer.metrics.autoconfigure.MetricsAutoConfiguration;
+import org.springframework.boot.micrometer.observation.autoconfigure.ObservationAutoConfiguration;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Bean;
@@ -63,7 +66,12 @@ import static org.mockito.Mockito.*;
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @ActiveProfiles("test")
-@ImportAutoConfiguration(BatchJdbcAutoConfiguration.class)
+@ImportAutoConfiguration({
+        BatchJdbcAutoConfiguration.class,
+        MetricsAutoConfiguration.class,
+        ObservationAutoConfiguration.class,
+        BatchObservationAutoConfiguration.class
+})
 @Import({
         JpaAuditingConfig.class,
         QueryDslConfig.class,
