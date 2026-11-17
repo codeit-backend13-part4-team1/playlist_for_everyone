@@ -8,6 +8,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -17,12 +18,12 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("콘텐츠 검색 서비스 테스트")
@@ -30,6 +31,9 @@ public class ContentSearchServiceTest {
 
     @Mock
     private ContentSearchCacheService cacheService;
+
+    @Mock
+    private WatchingSessionService watchingSessionService;
 
     @Mock
     private FileService fileService;
@@ -66,7 +70,10 @@ public class ContentSearchServiceTest {
                 ));
         given(fileService.getFileUrlByKey(fileKey))
                 .willReturn(presignedUrl);
-        given(contentMapper.toContentDto(dto, presignedUrl, null))
+        given(watchingSessionService.getCurrentViewerCountWithContents(
+                List.of(dto.id())
+        )).willReturn(Map.of(dto.id().toString(), 100L));
+        given(contentMapper.toContentDto(dto, presignedUrl, 100L))
                 .willReturn(expected);
 
         // when
@@ -77,7 +84,7 @@ public class ContentSearchServiceTest {
 
         verify(cacheService).search(condition);
         verify(fileService).getFileUrlByKey(fileKey);
-        verify(contentMapper).toContentDto(dto, presignedUrl, null);
+        verify(contentMapper).toContentDto(dto, presignedUrl, 100L);
     }
 
     @Test
@@ -92,7 +99,10 @@ public class ContentSearchServiceTest {
                 .willReturn(createResponse(
                         List.of(new ContentResult<>(dto, null))
                 ));
-        given(contentMapper.toContentDto(dto, externalUrl, null))
+        given(watchingSessionService.getCurrentViewerCountWithContents(
+                List.of(dto.id())
+        )).willReturn(Map.of(dto.id().toString(), 100L));
+        given(contentMapper.toContentDto(dto, externalUrl, 100L))
                 .willReturn(dto);
 
         // when
@@ -103,7 +113,7 @@ public class ContentSearchServiceTest {
         assertThat(result.data()).containsExactly(dto);
 
         verify(cacheService).search(condition);
-        verify(contentMapper).toContentDto(dto, externalUrl, null);
+        verify(contentMapper).toContentDto(dto, externalUrl, 100L);
         verifyNoInteractions(fileService);
     }
 
@@ -125,7 +135,10 @@ public class ContentSearchServiceTest {
         );
 
         given(cacheService.search(condition)).willReturn(cachedResponse);
-        given(contentMapper.toContentDto(dto, null, null)).willReturn(dto);
+        given(watchingSessionService.getCurrentViewerCountWithContents(
+                List.of(dto.id())
+        )).willReturn(Map.of(dto.id().toString(), 100L));
+        given(contentMapper.toContentDto(dto, null, 100L)).willReturn(dto);
 
         // when
         CursorResponse<ContentDto> result = contentSearchService.search(condition);
@@ -138,6 +151,82 @@ public class ContentSearchServiceTest {
         assertThat(result.totalCount()).isEqualTo(3L);
         assertThat(result.sortBy()).isEqualTo("createdAt");
         assertThat(result.sortDirection()).isEqualTo(SortDirection.DESCENDING);
+    }
+
+    @Test
+    @DisplayName("동일한 캐시 결과에서도 최신 시청자 수를 반영한다.")
+    void search_updatesWatcherCount() {
+        // given
+        ContentDto dto = createDto(null);
+
+        given(cacheService.search(condition))
+                .willReturn(createResponse(
+                        List.of(new ContentResult<>(dto, null))
+                ));
+
+        given(watchingSessionService.getCurrentViewerCountWithContents(
+                List.of(dto.id()))).willReturn(
+                Map.of(dto.id().toString(), 5L),
+                Map.of(dto.id().toString(), 10L)
+        );
+
+        ContentDto firstDto = new ContentDto(
+                dto.id(), dto.type(), dto.title(),
+                dto.description(), dto.thumbnailUrl(),
+                dto.tags(), dto.averageRating(),
+                dto.reviewCount(), 5L
+        );
+
+        ContentDto secondDto = new ContentDto(
+                dto.id(), dto.type(), dto.title(),
+                dto.description(), dto.thumbnailUrl(),
+                dto.tags(), dto.averageRating(),
+                dto.reviewCount(), 10L
+        );
+
+        given(contentMapper.toContentDto(dto, null, 5L))
+                .willReturn(firstDto);
+
+        given(contentMapper.toContentDto(dto, null, 10L))
+                .willReturn(secondDto);
+
+        // when
+        CursorResponse<ContentDto> first =
+                contentSearchService.search(condition);
+
+        CursorResponse<ContentDto> second =
+                contentSearchService.search(condition);
+
+        // then
+        assertThat(first.data().get(0).watcherCount()).isEqualTo(5L);
+        assertThat(second.data().get(0).watcherCount()).isEqualTo(10L);
+
+        verify(cacheService, times(2)).search(condition);
+        verify(watchingSessionService, times(2))
+                .getCurrentViewerCountWithContents(List.of(dto.id()));
+    }
+
+    @Test
+    @DisplayName("검색 결과가 없으면 시청자 수와 파일 URL을 조회하지 않는다.")
+    void search_emptyResult() {
+        // given
+        given(cacheService.search(condition))
+                .willReturn(createResponse(List.of()));
+
+        // when
+        CursorResponse<ContentDto> result =
+                contentSearchService.search(condition);
+
+        // then
+        assertThat(result.data()).isEmpty();
+        assertThat(result.hasNext()).isFalse();
+        assertThat(result.totalCount()).isZero();
+
+        verifyNoInteractions(
+                watchingSessionService,
+                fileService,
+                contentMapper
+        );
     }
 
     private ContentDto createDto(String thumbnailUrl) {

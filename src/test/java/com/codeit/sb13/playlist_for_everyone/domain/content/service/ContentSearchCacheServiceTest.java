@@ -107,6 +107,41 @@ public class ContentSearchCacheServiceTest {
         verify(queryService, times(1)).search(condition);
     }
 
+    @Test
+    @DisplayName("시청자 수 정렬은 캐시하지 않고 매번 조회한다")
+    void search_watcherCountNotCached() {
+        // given
+        ContentSearchCondition watcherCondition = new ContentSearchCondition(
+                null, null, null, null, null,
+                2, SortDirection.DESCENDING, "watcherCount"
+        );
+
+        CursorResponse<ContentResult<ContentDto>> firstResponse = createResponse();
+        CursorResponse<ContentResult<ContentDto>> secondResponse = createResponse();
+
+        given(queryService.search(watcherCondition))
+                .willReturn(firstResponse, secondResponse);
+
+        // when
+        CursorResponse<ContentResult<ContentDto>> first =
+                cacheService.search(watcherCondition);
+
+        CursorResponse<ContentResult<ContentDto>> second =
+                cacheService.search(watcherCondition);
+
+        // then
+        assertThat(first).isEqualTo(firstResponse);
+        assertThat(second).isEqualTo(secondResponse);
+
+        verify(queryService, times(2)).search(watcherCondition);
+
+        assertThat(
+                Objects.requireNonNull(
+                        cacheManager.getCache(CacheConfig.CONTENT_SEARCH)
+                ).get(watcherCondition)
+        ).isNull();
+    }
+
     private ContentResult<ContentDto> createResult() {
         ContentDto dto = new ContentDto(
                 UUID.randomUUID(),

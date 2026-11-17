@@ -28,7 +28,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-@DisplayName("Content 검색 서비스 테스트")
+@DisplayName("Content 검색 쿼리 서비스 테스트")
 class ContentSearchQueryServiceTest {
 
     @Mock
@@ -131,7 +131,7 @@ class ContentSearchQueryServiceTest {
     }
 
     @Test
-    @DisplayName("시청자 수 내림차순 정렬 시 상위 콘텐츠를 반환하고 다음 커서를 생성한다")
+    @DisplayName("시청자 수 내림차순으로 정렬하고 마지막 콘텐츠의 시청자 수를 커서로 반환한다")
     void searchContents_watcherCount() {
         // given
         ContentSearchCondition condition = conditionWithSortBy("watcherCount");
@@ -159,15 +159,15 @@ class ContentSearchQueryServiceTest {
         assertThat(result.nextCursor()).isEqualTo("15");
         assertThat(result.nextIdAfter()).isEqualTo(content3.getId());
 
-        // 시청자 수 내림차순으로 Mapper가 호출되는지 확인
+        // 시청자 수 내림차순으로 DTO를 변환하고, 시청자 수는 0L로 전달하는지 확인
         InOrder inOrder = inOrder(contentMapper);
 
         inOrder.verify(contentMapper).toDto(
-                eq(content2), any(), eq(4.5), eq(3), eq(30L)
+                eq(content2), any(), eq(4.5), eq(3), eq(0L)
         );
 
         inOrder.verify(contentMapper).toDto(
-                eq(content3), any(), eq(3.0), eq(1), eq(15L)
+                eq(content3), any(), eq(3.0), eq(1), eq(0L)
         );
 
         verify(contentRepository).searchForWatcherCount(condition);

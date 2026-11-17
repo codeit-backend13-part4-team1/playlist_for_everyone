@@ -17,7 +17,8 @@ public class ContentSearchCacheService {
 
     @Cacheable(
             cacheNames = CacheConfig.CONTENT_SEARCH,
-            key = "#condition"
+            key = "#condition",
+            condition = "#condition.sortBy() != 'watcherCount'"
     )
     public CursorResponse<ContentResult<ContentDto>> search(
             ContentSearchCondition condition

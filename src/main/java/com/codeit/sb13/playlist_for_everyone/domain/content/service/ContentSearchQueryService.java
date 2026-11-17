@@ -51,15 +51,6 @@ public class ContentSearchQueryService {
                 .limit(condition.limit())
                 .toList();
 
-        List<UUID> contentIds = page.stream()
-                .map(result -> result.content().getId())
-                .toList();
-
-        // Redis에서 시청자 수 일괄 조회
-        Map<String, Long> viewerCounts = contentIds.isEmpty()
-                ? Map.of()
-                : watchingSessionService.getCurrentViewerCountWithContents(contentIds);
-
         // 다음 페이지 커서 생성
         String nextCursor = null;
         UUID nextIdAfter = null;
@@ -78,31 +69,7 @@ public class ContentSearchQueryService {
             nextIdAfter = lastResult.content().getId();
         }
 
-        // ContentSearchResult -> ContentResult 변환
-        List<ContentResult<ContentDto>> contents = page.stream()
-                .map(result -> {
-                    Content content = result.content();
-
-                    long watcherCount = viewerCounts.getOrDefault(
-                            content.getId().toString(),
-                            0L
-                    );
-
-                    ContentDto dto = contentMapper.toDto(
-                            content,
-                            content.getThumbnailUrl(),
-                            result.averageRating(),
-                            result.reviewCount(),
-                            watcherCount
-                    );
-
-                    String fileKey = content.getFileInfo() != null
-                            ? content.getFileInfo().getKey()
-                            : null;
-
-                    return new ContentResult<>(dto, fileKey);
-                })
-                .toList();
+        List<ContentResult<ContentDto>> contents = toContentResults(page);
 
         // 전체 검색 결과 개수 조회
         long totalCount = contentRepository.countBySearchCondition(condition);
@@ -208,31 +175,7 @@ public class ContentSearchQueryService {
             nextIdAfter = lastResult.content().getId();
         }
 
-        // ContentSearchResult -> ContentResult 변환
-        List<ContentResult<ContentDto>> contents = page.stream()
-                .map(result -> {
-                    Content content = result.content();
-
-                    long watcherCount = viewerCounts.getOrDefault(
-                            content.getId().toString(),
-                            0L
-                    );
-
-                    ContentDto dto = contentMapper.toDto(
-                            content,
-                            content.getThumbnailUrl(),
-                            result.averageRating(),
-                            result.reviewCount(),
-                            watcherCount
-                    );
-
-                    String fileKey = content.getFileInfo() != null
-                            ? content.getFileInfo().getKey()
-                            : null;
-
-                    return new ContentResult<>(dto, fileKey);
-                })
-                .toList();
+        List<ContentResult<ContentDto>> contents = toContentResults(page);
 
         // 전체 검색 결과 개수 조회
         long totalCount = contentRepository.countBySearchCondition(condition);
@@ -246,6 +189,30 @@ public class ContentSearchQueryService {
                 condition.sortBy(),
                 condition.sortDirection()
         );
+    }
+
+    private List<ContentResult<ContentDto>> toContentResults(
+            List<ContentSearchResult> page
+    ) {
+        return page.stream()
+                .map(result -> {
+                    Content content = result.content();
+
+                    ContentDto dto = contentMapper.toDto(
+                            content,
+                            content.getThumbnailUrl(),
+                            result.averageRating(),
+                            result.reviewCount(),
+                            0L
+                    );
+
+                    String fileKey = content.getFileInfo() != null
+                            ? content.getFileInfo().getKey()
+                            : null;
+
+                    return new ContentResult<>(dto, fileKey);
+                })
+                .toList();
     }
 
 }
