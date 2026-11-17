@@ -3,8 +3,10 @@ package com.codeit.sb13.playlist_for_everyone.domain.content.collector;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.exception.CollectedContentValidationException;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.CollectedContentData;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
+import com.codeit.sb13.playlist_for_everyone.domain.content.event.ContentSearchCacheEvictEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -18,6 +20,8 @@ import java.util.UUID;
 public class ContentCollectionService {
 
     private final ContentRepository contentRepository;
+
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public Content save(CollectedContentData data) {
@@ -87,6 +91,7 @@ public class ContentCollectionService {
 
         if (inserted == 1) {
             tags.forEach(saved::addTag);
+            eventPublisher.publishEvent(new ContentSearchCacheEvictEvent());
         }
 
         return saved;
