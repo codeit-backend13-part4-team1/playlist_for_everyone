@@ -34,6 +34,7 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.springframework.test.context.web.WebAppConfiguration;
+import org.springframework.web.socket.messaging.StompSubProtocolErrorHandler;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -69,6 +70,10 @@ public class WebSocketInboundSecurityTest {
 
     @MockitoBean
     private WebSocketSessionRegistry webSocketSessionRegistry;
+
+    @MockitoBean(name = "directMessageStompErrorHandler")
+    private StompSubProtocolErrorHandler directMessagesStompErrorHandler;
+
     private final UUID conversationId = UUID.randomUUID();
     private final UUID requesterId = UUID.randomUUID();
 

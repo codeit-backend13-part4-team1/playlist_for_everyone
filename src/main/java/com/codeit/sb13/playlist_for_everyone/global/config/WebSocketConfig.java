@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.global.config;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.WebSocketInterceptor;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSession;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistry;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Configuration;
@@ -21,6 +22,7 @@ import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
 import org.springframework.web.socket.config.annotation.WebSocketTransportRegistration;
 import org.springframework.web.socket.handler.WebSocketHandlerDecorator;
+import org.springframework.web.socket.messaging.StompSubProtocolErrorHandler;
 
 @Configuration
 @EnableWebSocketMessageBroker
@@ -32,15 +34,19 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     /** 메시지 종류와 목적지별 접근 규칙을 가진 공통 인가 매니저를 빈 이름으로 지정해 주입한다. */
     private final AuthorizationManager<Message<?>> webSocketAuthorizationManager;
+    private final ObjectProvider<StompSubProtocolErrorHandler> directMessageErrorHandlerProvider;
 
     public WebSocketConfig(
             WebSocketInterceptor webSocketInterceptor,
             WebSocketSessionRegistry socketRegistry,
             @Qualifier("webSocketAuthorizationManager")
-            AuthorizationManager<Message<?>> webSocketAuthorizationManager) {
+            AuthorizationManager<Message<?>> webSocketAuthorizationManager,
+            @Qualifier("directMessageStompErrorHandler")
+            ObjectProvider<StompSubProtocolErrorHandler> directMessageErrorHandlerProvider) {
         this.webSocketInterceptor = webSocketInterceptor;
         this.socketRegistry = socketRegistry;
         this.webSocketAuthorizationManager = webSocketAuthorizationManager;
+        this.directMessageErrorHandlerProvider = directMessageErrorHandlerProvider;
     }
 
     @Autowired void setTaskScheduler(@Lazy TaskScheduler taskScheduler) {
@@ -49,6 +55,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
+        registry.setErrorHandler(directMessageErrorHandlerProvider.getObject());
         registry.addEndpoint("/ws");
         registry.addEndpoint("/ws").withSockJS();   // 레거시
     }
