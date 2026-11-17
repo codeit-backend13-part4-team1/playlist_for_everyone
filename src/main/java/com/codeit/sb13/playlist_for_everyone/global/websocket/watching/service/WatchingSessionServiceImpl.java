@@ -43,9 +43,7 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
 
     @Override
     public Map<String, Long> getCurrentViewerCountWithContents(List<UUID> contentIds){
-        List<String> idList = contentIds.stream().map(UUID::toString).toList();
-        return watchingSessionRepository
-                .getWatcherCountWithMultipleContents(idList);
+        return null;
     }
 
     @Override
@@ -91,6 +89,11 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
 
     @Override
     public void joinViewerSession(SessionInfo info) {
+
+        // 세션 정보 체크하고, 권한(퍼사드 클래스로 이전)체크 후,
+        // 경로 체크,
+        // 세션에 대한 룸 등록 후
+        // 메세지 정보를 구독 할 수 있도록 브로커 등록됨.
         String session = check(info.session());
         String subscribe = check(info.subscription());
         checkAuth(info);

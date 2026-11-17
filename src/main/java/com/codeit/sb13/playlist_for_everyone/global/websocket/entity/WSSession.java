@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Stream;
 
 
 /**
@@ -100,6 +101,10 @@ public class WSSession {
     public Optional<WSSubscription> getSubscription(String subscriptionId){
         Objects.requireNonNull(subscriptionId);
         return Optional.ofNullable(subscriptions.get(subscriptionId));
+    }
+
+    public Stream<WSSubscription> getAllSubscriptions(){
+        return subscriptions.values().stream();
     }
 
 

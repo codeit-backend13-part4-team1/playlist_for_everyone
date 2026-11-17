@@ -173,7 +173,7 @@ public class WatchingSessionRepository {
      * @param contents contentId 리스트
      * @return contentId 가 비어있을 경우, 빈 map 반환.
      */
-    public Map<String, Long> getWatcherCountWithMultipleContents(List<String> contents){
+    public Map<UUID, Long> getWatcherCountWithMultipleContents(List<String> contents){
         Objects.requireNonNull(contents);
 
         if(contents.isEmpty()) return Map.of();
@@ -189,7 +189,7 @@ public class WatchingSessionRepository {
 
         return query.stream().map(item -> (List<?>) item)
                 .collect(Collectors.toMap(
-                        item -> (String) item.get(0),
+                        item -> (UUID) item.get(0),
                         item -> (Long) item.get(1),
                         (existing, replacement) -> existing // 중복 제거용 세 번째 인자.
                 ));
