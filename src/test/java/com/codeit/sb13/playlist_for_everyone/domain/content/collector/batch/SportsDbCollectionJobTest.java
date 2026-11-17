@@ -49,6 +49,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
@@ -382,10 +383,37 @@ class SportsDbCollectionJobTest {
                 .addString("run.id", UUID.randomUUID().toString())
                 .toJobParameters();
 
+        // 실행 전 실패 횟수와 실행 시간
+        var timerBefore = meterRegistry.find("spring.batch.job")
+                .tags(
+                        "spring.batch.job.name", "sportsDbCollectionJob",
+                        "spring.batch.job.status", "FAILED"
+                )
+                .timer();
+
+        long failedBefore = timerBefore == null
+                ? 0L : timerBefore.count();
+        double secondsBefore = timerBefore == null
+                ? 0.0 : timerBefore.totalTime(TimeUnit.SECONDS);
+
         var execution = jobOperator.start(job, parameters);
 
         assertThat(execution.getStatus())
                 .isEqualTo(BatchStatus.FAILED);
+
+// 실패한 실행도 메트릭에 기록되는지 확인
+        var failedTimer = meterRegistry.find("spring.batch.job")
+                .tags(
+                        "spring.batch.job.name", "sportsDbCollectionJob",
+                        "spring.batch.job.status", "FAILED"
+                )
+                .timer();
+
+        assertThat(failedTimer).isNotNull();
+        assertThat(failedTimer.count() - failedBefore)
+                .isEqualTo(1L);
+        assertThat(failedTimer.totalTime(TimeUnit.SECONDS) - secondsBefore)
+                .isGreaterThan(0.0);
 
         assertThat(contentRepository.findByProviderAndTypeAndProviderItemId(
                 ContentSource.THE_SPORTS_DB,
