@@ -76,7 +76,8 @@ public class TmdbBatchConfig {
             JobRepository jobRepository,
             PlatformTransactionManager transactionManager,
             @Qualifier("tmdbMovieReader") TmdbMovieReader reader,
-            ContentCollectionService collectionService
+            ContentCollectionService collectionService,
+            CollectionStepMetricsListener metricsListener
     ) {
         var mapper = new TmdbContentMapper();
 
@@ -86,6 +87,7 @@ public class TmdbBatchConfig {
                 .faultTolerant()
                 .skip(CollectedContentValidationException.class)
                 .skipLimit(10)
+                .listener(metricsListener)
                 .reader(reader)
                 .processor(mapper::fromMovie)
                 .writer(chunk -> {
@@ -116,7 +118,8 @@ public class TmdbBatchConfig {
             JobRepository jobRepository,
             PlatformTransactionManager transactionManager,
             @Qualifier("tmdbTvReader") TmdbTvReader reader,
-            ContentCollectionService collectionService
+            ContentCollectionService collectionService,
+            CollectionStepMetricsListener metricsListener
     ) {
         var mapper = new TmdbContentMapper();
 
@@ -126,6 +129,7 @@ public class TmdbBatchConfig {
                 .faultTolerant()
                 .skip(CollectedContentValidationException.class)
                 .skipLimit(10)
+                .listener(metricsListener)
                 .reader(reader)
                 .processor(mapper::fromTv)
                 .writer(chunk -> {
