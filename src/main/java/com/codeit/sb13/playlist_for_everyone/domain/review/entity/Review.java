@@ -43,4 +43,17 @@ public class Review extends UpdatedAtEntity {
         this.rating = rating;
     }
 
+    public void update(String text, Double rating) {
+        if (text != null) {
+            if (text.isBlank()) {
+                throw new IllegalArgumentException("리뷰 내용은 공백일 수 없습니다.");
+            }
+            this.text = text;
+        }
+
+        if (rating != null) {
+            this.rating = rating;
+        }
+    }
+
 }
