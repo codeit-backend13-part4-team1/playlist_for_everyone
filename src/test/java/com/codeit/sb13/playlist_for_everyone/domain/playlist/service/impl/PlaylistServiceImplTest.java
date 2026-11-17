@@ -27,7 +27,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.Subscription
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistContentAddedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistCreatedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistSubscribedEvent;
-import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentQueryRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistSearchCondition;
@@ -94,10 +94,7 @@ public class PlaylistServiceImplTest {
   private UserSummaryMapper userSummaryMapper;
 
   @Mock
-  private PlaylistContentQueryRepository playlistContentQueryRepository;
-
-  @Mock
-  private PlaylistContentSummaryMapper playlistContentSummaryMapper;
+  private ContentService contentService;
 
   @BeforeEach
   void setUpService() {
@@ -106,8 +103,7 @@ public class PlaylistServiceImplTest {
     PlaylistReader playlistReader = new PlaylistReader(
         playlistRepository,
         subscriptionRepository,
-        playlistContentRepository,
-        playlistContentQueryRepository
+        playlistContentRepository
     );
 
     PlaylistWriter playlistWriter = new PlaylistWriter(
@@ -121,7 +117,7 @@ public class PlaylistServiceImplTest {
         subscriptionRepository, playlistContentRepository,
         contentRepository, eventPublisher,
         userSummaryMapper, playlistReader,
-        playlistContentSummaryMapper, playlistWriter
+        contentService, playlistWriter
     );
   }
 
