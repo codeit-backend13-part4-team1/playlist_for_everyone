@@ -1,0 +1,240 @@
+package com.codeit.sb13.playlist_for_everyone.domain.content.collector.config;
+
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.CollectionJobLauncher;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.batch.core.repository.JobRepository;
+import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.scheduling.annotation.ScheduledAnnotationBeanPostProcessor;
+import org.springframework.scheduling.config.CronTask;
+import org.springframework.batch.core.launch.JobOperator;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.batch.core.job.Job;
+import org.springframework.batch.core.job.JobExecution;
+
+import java.util.Set;
+
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.mock;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.doThrow;
+
+class CollectionScheduleConfigTest {
+
+    private final ApplicationContextRunner contextRunner =
+            new ApplicationContextRunner()
+                    .withBean(JobOperator.class, () -> mock(JobOperator.class))
+                    .withBean("tmdbCollectionJob", Job.class, () -> mock(Job.class))
+                    .withBean("sportsDbCollectionJob", Job.class, () -> mock(Job.class))
+                    .withBean(JobRepository.class, () -> mock(JobRepository.class))
+                    .withUserConfiguration(CollectionScheduleConfig.class,
+                            SchedulingTestConfig.class);
+
+    @Configuration(proxyBeanMethods = false)
+    @EnableScheduling
+    static class SchedulingTestConfig {
+    }
+
+    @Test
+    void 설정이_없으면_정기_수집_설정을_등록하지_않는다() {
+        contextRunner.run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context).doesNotHaveBean(CollectionScheduleConfig.class);
+            assertThat(context).doesNotHaveBean("contentCollectionTaskScheduler");
+            assertThat(context).doesNotHaveBean(CollectionJobLauncher.class);
+        });
+    }
+
+    @Test
+    void 비활성화하면_정기_수집_설정을_등록하지_않는다() {
+        contextRunner
+                .withPropertyValues("everyone.collection.schedule.enabled=false")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).doesNotHaveBean(CollectionScheduleConfig.class);
+                    assertThat(context).doesNotHaveBean("contentCollectionTaskScheduler");
+                    assertThat(context).doesNotHaveBean(CollectionJobLauncher.class);
+                });
+    }
+
+    @Test
+    void 활성화하면_정기_수집_설정을_등록한다() {
+        contextRunner
+                .withPropertyValues("everyone.collection.schedule.enabled=true")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).hasSingleBean(CollectionScheduleConfig.class);
+                    assertThat(context).hasBean("contentCollectionTaskScheduler");
+                    assertThat(context).hasSingleBean(CollectionJobLauncher.class);
+                });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"tmdb", "sportsdb"})
+    void cron을_설정한_수집_작업만_예약한다(String provider) {
+        String cron = "0 0 3 * * *";
+
+        contextRunner
+                .withPropertyValues(
+                        "everyone.collection.schedule.enabled=true",
+                        "everyone.collection.schedule." + provider + ".cron=" + cron,
+                        "everyone.collection.schedule.sportsdb.league-id=4328",
+                        "everyone.collection.schedule.sportsdb.season=2014-2015"
+                )
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+
+                    var processor = context.getBean(
+                            ScheduledAnnotationBeanPostProcessor.class
+                    );
+                    var tasks = processor.getScheduledTasks();
+
+                    assertThat(tasks).hasSize(1);
+
+                    var task = tasks.iterator().next().getTask();
+                    assertThat(task).isInstanceOf(CronTask.class);
+                    assertThat(((CronTask) task).getExpression())
+                            .isEqualTo(cron);
+                });
+    }
+
+    @Test
+    void cron이_비활성화_값이면_수집_작업을_예약하지_않는다() {
+        contextRunner
+                .withPropertyValues(
+                        "everyone.collection.schedule.enabled=true",
+                        "everyone.collection.schedule.tmdb.cron=-",
+                        "everyone.collection.schedule.sportsdb.cron=-"
+                )
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+
+                    var processor = context.getBean(
+                            ScheduledAnnotationBeanPostProcessor.class
+                    );
+
+                    assertThat(processor.getScheduledTasks()).isEmpty();
+                });
+        }
+
+        @Test
+        void YAML의_환경변수_설정으로_두_수집_작업을_예약한다() {
+            contextRunner
+                    .withInitializer(new ConfigDataApplicationContextInitializer())
+                    .withPropertyValues(
+                            "spring.config.location=classpath:/application.yaml",
+                            "spring.profiles.active=test",
+                            "EVERYONE_COLLECTION_SCHEDULE_ENABLED=true",
+                            "EVERYONE_COLLECTION_SCHEDULE_ZONE=UTC",
+                            "EVERYONE_COLLECTION_SCHEDULE_TMDB_CRON=0 0 3 * * *",
+                            "EVERYONE_COLLECTION_SCHEDULE_TMDB_MAX_PAGES=7",
+                            "EVERYONE_COLLECTION_SCHEDULE_SPORTSDB_CRON=0 0 4 * * *",
+                            "EVERYONE_COLLECTION_SCHEDULE_SPORTSDB_LEAGUE_ID=4328",
+                            "EVERYONE_COLLECTION_SCHEDULE_SPORTSDB_SEASON=2014-2015"
+                    )
+                    .run(context -> {
+                        assertThat(context).hasNotFailed();
+
+                        var properties =
+                                context.getBean(CollectionScheduleProperties.class);
+
+                        assertThat(properties.isEnabled()).isTrue();
+                        assertThat(properties.getZone()).isEqualTo("UTC");
+                        assertThat(properties.getTmdb().getMaxPages()).isEqualTo(7L);
+                        assertThat(properties.getSportsdb().getLeagueId())
+                                .isEqualTo("4328");
+                        assertThat(properties.getSportsdb().getSeason())
+                                .isEqualTo("2014-2015");
+
+                        var processor = context.getBean(
+                                ScheduledAnnotationBeanPostProcessor.class
+                        );
+
+                        assertThat(processor.getScheduledTasks())
+                                .extracting(task ->
+                                        ((CronTask) task.getTask()).getExpression()
+                                )
+                                .containsExactlyInAnyOrder(
+                                        "0 0 3 * * *",
+                                        "0 0 4 * * *"
+                                );
+                    });
+        }
+
+    @Test
+    void 정기_수집을_활성화하면_시작할_때_남은_실행을_복구한다() {
+        var jobOperator = mock(JobOperator.class);
+        var jobRepository = mock(JobRepository.class);
+        var tmdbJob = mock(Job.class);
+        var sportsDbJob = mock(Job.class);
+        var execution = mock(JobExecution.class);
+
+        when(tmdbJob.getName()).thenReturn("tmdbCollectionJob");
+        when(sportsDbJob.getName()).thenReturn("sportsDbCollectionJob");
+
+        when(jobRepository.findRunningJobExecutions("tmdbCollectionJob"))
+                .thenReturn(Set.of(execution));
+        when(jobRepository.findRunningJobExecutions("sportsDbCollectionJob"))
+                .thenReturn(Set.of());
+
+        new ApplicationContextRunner()
+                .withBean(JobOperator.class, () -> jobOperator)
+                .withBean(JobRepository.class, () -> jobRepository)
+                .withBean("tmdbCollectionJob", Job.class, () -> tmdbJob)
+                .withBean("sportsDbCollectionJob", Job.class, () -> sportsDbJob)
+                .withUserConfiguration(
+                        CollectionScheduleConfig.class,
+                        SchedulingTestConfig.class
+                )
+                .withPropertyValues(
+                        "everyone.collection.schedule.enabled=true"
+                )
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    verify(jobOperator).recover(execution);
+                });
+    }
+
+    @Test
+    void 실행_복구에_실패하면_애플리케이션_시작을_중단한다() {
+        var jobOperator = mock(JobOperator.class);
+        var jobRepository = mock(JobRepository.class);
+        var tmdbJob = mock(Job.class);
+        var sportsDbJob = mock(Job.class);
+        var execution = mock(JobExecution.class);
+
+        when(tmdbJob.getName()).thenReturn("tmdbCollectionJob");
+        when(sportsDbJob.getName()).thenReturn("sportsDbCollectionJob");
+
+        when(jobRepository.findRunningJobExecutions("tmdbCollectionJob"))
+                .thenReturn(Set.of(execution));
+
+        doThrow(new IllegalStateException("수집 실행 복구 실패"))
+                .when(jobOperator).recover(execution);
+
+        new ApplicationContextRunner()
+                .withBean(JobOperator.class, () -> jobOperator)
+                .withBean(JobRepository.class, () -> jobRepository)
+                .withBean("tmdbCollectionJob", Job.class, () -> tmdbJob)
+                .withBean("sportsDbCollectionJob", Job.class, () -> sportsDbJob)
+                .withUserConfiguration(
+                        CollectionScheduleConfig.class,
+                        SchedulingTestConfig.class
+                )
+                .withPropertyValues(
+                        "everyone.collection.schedule.enabled=true",
+                        "everyone.collection.schedule.tmdb.cron=0 0 3 * * *"
+                )
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .hasRootCauseMessage("수집 실행 복구 실패");
+
+                    verify(jobOperator).recover(execution);
+                });
+    }
+}
