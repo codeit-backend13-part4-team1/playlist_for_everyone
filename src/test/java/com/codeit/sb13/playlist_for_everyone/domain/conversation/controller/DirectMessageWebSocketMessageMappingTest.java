@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.conversation.controller;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.command.DirectMessageSendCommand;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.DirectMessageErrorSender;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.DirectMessageService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import org.junit.jupiter.api.BeforeEach;
@@ -54,6 +55,9 @@ public class DirectMessageWebSocketMessageMappingTest {
     @MockitoBean
     private DirectMessageService directMessageService;
 
+    @MockitoBean
+    private DirectMessageErrorSender errorSender;
+
     private RecordingMessageHandler messageHandler;
 
     private static class RecordingMessageHandler extends SimpAnnotationMethodMessageHandler{
@@ -102,6 +106,7 @@ public class DirectMessageWebSocketMessageMappingTest {
         assertThat(messageHandler.getLastException()).isNull();
         verify(directMessageService).send(new DirectMessageSendCommand(conversationId, requesterId, "안녕하세요."));
         verifyNoMoreInteractions(directMessageService);
+        verifyNoInteractions(errorSender);
     }
 
     @Test

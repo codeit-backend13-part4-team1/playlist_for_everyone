@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.conversation.controller;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.command.DirectMessageSendCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.request.DirectMessageSendRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.DirectMessageErrorSender;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.DirectMessageService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import org.junit.jupiter.api.DisplayName;
@@ -33,6 +34,9 @@ class DirectMessageWebSocketControllerTest {
 
     @MockitoBean
     private DirectMessageService directMessageService;
+
+    @MockitoBean
+    private DirectMessageErrorSender errorSender;
 
     @Test
     @DisplayName("대화방 ID와 인증된 사용자 ID, 본문을 서비스에 한 번 전달한다.")
