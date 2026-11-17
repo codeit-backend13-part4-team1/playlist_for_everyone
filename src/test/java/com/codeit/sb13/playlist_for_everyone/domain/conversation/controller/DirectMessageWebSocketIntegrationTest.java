@@ -14,12 +14,15 @@ import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.exception.ApiErrorCode;
 import com.codeit.sb13.playlist_for_everyone.global.exception.conversation.DirectMessagePublishException;
 import com.codeit.sb13.playlist_for_everyone.global.file.storage.FileStorage;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSession;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistry;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -33,6 +36,8 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.core.env.Environment;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.converter.ByteArrayMessageConverter;
@@ -52,9 +57,12 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.util.MimeTypeUtils;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.socket.WebSocketHttpHeaders;
 import org.springframework.web.socket.client.standard.StandardWebSocketClient;
 import org.springframework.web.socket.messaging.WebSocketStompClient;
+import org.springframework.web.socket.sockjs.client.RestClientXhrTransport;
 import org.springframework.web.socket.sockjs.client.SockJsClient;
 import org.springframework.web.socket.sockjs.client.WebSocketTransport;
 import org.testcontainers.containers.GenericContainer;
@@ -70,6 +78,8 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.WebSocket;
+import java.net.http.WebSocketHandshakeException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -234,10 +244,26 @@ public class DirectMessageWebSocketIntegrationTest {
     }
 
     @Test
-    @DisplayName("유효한 JWT를 CONNECT 헤더에 전달하면 SockJS 연결이 인증된다.")
-    void connect_authenticatesWithJwtInStompHeader() throws ExecutionException, InterruptedException, TimeoutException {
+    @DisplayName("동일 출처에서 유효한 JWT로 CONNECT하면 SockJS 연결이 인증된다.")
+    void connect_authenticatesWithJwtInStompHeader()
+            throws ExecutionException, InterruptedException, TimeoutException {
 
-        StompSession stompSession = connectWithToken(accessToken);
+        String origin = "http://localhost:" + port;
+
+        WebSocketHttpHeaders handshakeHeaders = new WebSocketHttpHeaders();
+        handshakeHeaders.setOrigin(origin);
+
+        StompHeaders connectHeaders = new StompHeaders();
+        connectHeaders.add(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken);
+
+        StompSession stompSession = awaitConnection(
+                stompClient.connectAsync(
+                        origin + "/ws",
+                        handshakeHeaders,
+                        connectHeaders,
+                        new StompSessionHandlerAdapter() {}
+                )
+        );
 
         assertThat(stompSession.isConnected()).isTrue();
 
@@ -245,9 +271,134 @@ public class DirectMessageWebSocketIntegrationTest {
                 .untilAsserted(() ->
                         assertThat(webSocketSessionRegistry.findByUserIdAndSessionId(userId, loginSessionId))
                                 .singleElement()
-                                .satisfies(session ->
-                                        assertThat(session.socket().isOpen()).isTrue()));
+                                .satisfies(session -> {
+                                    assertThat(session.socket().isOpen()).isTrue();
+                                    assertThat(session.socket().getHandshakeHeaders().getOrigin())
+                                            .isEqualTo(origin);
+                                }));
 
+    }
+
+    @Test
+    @DisplayName("다른 출처의 SockJS 연결은 HTTP 403으로 거절되고 인증된 연결이 등록되지 않는다.")
+    void connect_rejectsDifferentOriginBeforeStompConnect() {
+        WebSocketHttpHeaders handshakeHeaders = new WebSocketHttpHeaders();
+        handshakeHeaders.setOrigin("https://other.example");
+
+        StompHeaders connectHeaders = new StompHeaders();
+        connectHeaders.add(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken);
+
+        CompletableFuture<StompSession> connection = stompClient.connectAsync(
+                "http://localhost:" + port + "/ws",
+                handshakeHeaders,
+                connectHeaders,
+                new StompSessionHandlerAdapter() {}
+        );
+
+        assertThatThrownBy(() -> awaitConnection(connection))
+                .isInstanceOf(ExecutionException.class)
+                .cause()
+                .isInstanceOfSatisfying(
+                        RestClientResponseException.class,
+                        exception -> assertThat(exception.getStatusCode())
+                                .isEqualTo(HttpStatus.FORBIDDEN)
+                );
+
+        assertThat(webSocketSessionRegistry
+                .findByUserIdAndSessionId(userId, loginSessionId))
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("동일 출처의 XHR 폴백은 CSRF 토큰 없이 유효한 JWT로 연결된다.")
+    void connect_authenticatesOverXhrWithoutCsrfToken()
+            throws ExecutionException, InterruptedException, TimeoutException {
+        StompSession session = connectOverXhr();
+
+        assertThat(session.isConnected()).isTrue();
+        await().atMost(Duration.ofSeconds(5))
+                .untilAsserted(() ->
+                        assertThat(webSocketSessionRegistry
+                                .findByUserIdAndSessionId(userId, loginSessionId))
+                                .singleElement()
+                                .satisfies(serverSession -> {
+                                    assertThat(serverSession.socket().isOpen()).isTrue();
+                                    assertThat(serverSession.socket().getUri()).isNotNull();
+                                    assertThat(serverSession.socket().getUri().getPath()).endsWith("/xhr");
+                                }));
+    }
+
+    @Test
+    @DisplayName("다른 출처의 XHR 전송은 403으로 거절되고 기존 연결과 메시지 데이터는 유지된다.")
+    void xhrSend_rejectsDifferentOriginForExistingSession()
+            throws ExecutionException, InterruptedException, TimeoutException, IOException {
+        StompSession session = connectOverXhr();
+        List<WSSession> serverSessions = webSocketSessionRegistry
+                .findByUserIdAndSessionId(userId, loginSessionId);
+        assertThat(serverSessions).hasSize(1);
+        WSSession serverSession = serverSessions.get(0);
+        URI receiveUri = serverSession.socket().getUri();
+        assertThat(receiveUri).isNotNull();
+        assertThat(receiveUri.getPath()).endsWith("/xhr");
+        assertThat(getSavedMessageIds()).isEmpty();
+
+        StompHeaderAccessor sendHeaders = StompHeaderAccessor.create(StompCommand.SEND);
+        sendHeaders.setDestination("/pub/conversations/" + conversationId + "/direct-messages");
+        sendHeaders.setContentType(MimeTypeUtils.APPLICATION_JSON);
+        byte[] sendFrame = new StompEncoder().encode(
+                sendHeaders.getMessageHeaders(),
+                objectMapper.writeValueAsBytes(new DirectMessageSendRequest("다른 출처에서 보낸 메시지"))
+        );
+        String requestBody = objectMapper.writeValueAsString(
+                List.of(new String(sendFrame, StandardCharsets.UTF_8)));
+
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(5))
+                .build();
+        HttpRequest request = HttpRequest.newBuilder(receiveUri.resolve("xhr_send"))
+                .timeout(Duration.ofSeconds(10))
+                .header(HttpHeaders.ORIGIN, "https://other.example")
+                .header(HttpHeaders.CONTENT_TYPE, "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        assertThat(response.statusCode()).as("XHR 전송 응답: %s", response.body())
+                .isEqualTo(HttpStatus.FORBIDDEN.value());
+
+        await().during(Duration.ofSeconds(1)).atMost(Duration.ofSeconds(3))
+                .untilAsserted(() -> {
+                    assertThat(getSavedMessageIds()).isEmpty();
+                    assertThat(session.isConnected()).isTrue();
+                    assertThat(serverSession.socket().isOpen()).isTrue();
+                    assertThat(webSocketSessionRegistry.query(serverSession.id()))
+                            .contains(serverSession);
+                });
+    }
+
+    @ParameterizedTest(name = "다른 출처의 직접 연결 경로: {0}")
+    @ValueSource(strings = {"/ws", "/ws/000/{sessionId}/websocket"})
+    @DisplayName("WebSocket 전송 경로에 직접 접속해도 다른 출처의 연결은 403으로 거절된다.")
+    void handshake_rejectsDifferentOrigin(String path) {
+        String destination = path.replace("{sessionId}", UUID.randomUUID().toString());
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(5))
+                .build();
+        CompletableFuture<WebSocket> connection = client.newWebSocketBuilder()
+                .connectTimeout(Duration.ofSeconds(5))
+                .header(HttpHeaders.ORIGIN, "https://other.example")
+                .buildAsync(URI.create("ws://localhost:" + port + destination), new WebSocket.Listener() {});
+        // 예상과 달리 핸드셰이크가 성공해도 테스트용 소켓을 남기지 않는다.
+        connection.thenAccept(WebSocket::abort);
+
+        assertThatThrownBy(() -> connection.get(10, TimeUnit.SECONDS))
+                .isInstanceOf(ExecutionException.class)
+                .cause()
+                .isInstanceOfSatisfying(
+                        WebSocketHandshakeException.class,
+                        exception -> assertThat(exception.getResponse().statusCode())
+                                .isEqualTo(HttpStatus.FORBIDDEN.value())
+                );
     }
 
     @Test
@@ -979,6 +1130,36 @@ public class DirectMessageWebSocketIntegrationTest {
         };
     }
 
+
+    private StompSession connectOverXhr()
+            throws ExecutionException, InterruptedException, TimeoutException {
+        stompClient.stop();
+
+        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(
+                HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build());
+        requestFactory.setReadTimeout(Duration.ofSeconds(10));
+        RestClientXhrTransport xhrTransport = new RestClientXhrTransport(
+                RestClient.builder().requestFactory(requestFactory).build());
+        xhrTransport.setXhrStreamingDisabled(true);
+
+        SockJsClient sockJsClient = new SockJsClient(List.of(xhrTransport));
+        stompClient = new WebSocketStompClient(sockJsClient);
+        stompClient.setMessageConverter(new JacksonJsonMessageConverter());
+        stompClient.start();
+
+        String origin = "http://localhost:" + port;
+        WebSocketHttpHeaders handshakeHeaders = new WebSocketHttpHeaders();
+        handshakeHeaders.setOrigin(origin);
+        StompHeaders connectHeaders = new StompHeaders();
+        connectHeaders.add(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken);
+
+        return awaitConnection(stompClient.connectAsync(
+                origin + "/ws",
+                handshakeHeaders,
+                connectHeaders,
+                new StompSessionHandlerAdapter() {}
+        ));
+    }
 
     private StompSession connectWithToken(String token) throws ExecutionException, InterruptedException, TimeoutException {
         return connectWithToken(token, new StompSessionHandlerAdapter(){});
