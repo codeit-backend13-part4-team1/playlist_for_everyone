@@ -6,12 +6,14 @@ import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewUpd
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.response.ReviewDto;
 import com.codeit.sb13.playlist_for_everyone.domain.review.service.ReviewService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
+import com.codeit.sb13.playlist_for_everyone.global.exception.review.ReviewNotFoundException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -19,14 +21,13 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
 
+import java.util.Map;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.BDDMockito.given;
-import static org.mockito.BDDMockito.then;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.mockito.BDDMockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -213,6 +214,116 @@ public class ReviewControllerTest {
                 .andExpect(status().isBadRequest());
 
         then(reviewService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("리뷰 작성자가 삭제 요청 시 204를 반환한다.")
+    void deleteReview() throws Exception {
+        // given
+        UUID reviewId = UUID.randomUUID();
+        UUID authorId = UUID.randomUUID();
+
+        SecurityUser securityUser = new SecurityUser(
+                authorId,
+                "test@example.com",
+                "encodedPassword",
+                Role.USER,
+                false
+        );
+
+        Authentication authentication =
+                new UsernamePasswordAuthenticationToken(
+                        securityUser,
+                        null,
+                        securityUser.getAuthorities()
+                );
+
+        // when & then
+        try {
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+
+            mockMvc.perform(delete("/api/reviews/{reviewId}", reviewId))
+                    .andExpect(status().isNoContent());
+
+            then(reviewService).should().delete(reviewId, authorId);
+
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+    }
+
+    @Test
+    @DisplayName("리뷰 작성자가 아니면 삭제 시 403을 반환한다.")
+    void deleteReview_withoutPermission() throws Exception {
+        // given
+        UUID reviewId = UUID.randomUUID();
+        UUID otherUserId = UUID.randomUUID();
+
+        SecurityUser securityUser = new SecurityUser(
+                otherUserId,
+                "test@example.com",
+                "encodedPassword",
+                Role.USER,
+                false
+        );
+
+        Authentication authentication =
+                new UsernamePasswordAuthenticationToken(
+                        securityUser,
+                        null,
+                        securityUser.getAuthorities()
+                );
+
+        willThrow(new AccessDeniedException("리뷰 작성자만 삭제할 수 있습니다."))
+                .given(reviewService).delete(reviewId, otherUserId);
+
+        // when & then
+        try {
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+
+            mockMvc.perform(delete("/api/reviews/{reviewId}", reviewId))
+                    .andExpect(status().isForbidden());
+
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 리뷰 삭제 시 404를 반환한다.")
+    void deleteReview_invalidReviewId() throws Exception {
+        // given
+        UUID reviewId = UUID.randomUUID();
+        UUID authorId = UUID.randomUUID();
+
+        SecurityUser securityUser = new SecurityUser(
+                authorId,
+                "test@example.com",
+                "encodedPassword",
+                Role.USER,
+                false
+        );
+
+        Authentication authentication =
+                new UsernamePasswordAuthenticationToken(
+                        securityUser,
+                        null,
+                        securityUser.getAuthorities()
+                );
+
+        willThrow(new ReviewNotFoundException(Map.of("reviewId", reviewId)))
+                .given(reviewService).delete(reviewId, authorId);
+
+        // when & then
+        try {
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+
+            mockMvc.perform(delete("/api/reviews/{reviewId}", reviewId))
+                    .andExpect(status().isNotFound());
+
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
     }
 
 }

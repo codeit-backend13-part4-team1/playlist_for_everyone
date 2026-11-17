@@ -49,4 +49,14 @@ public class ReviewController implements ReviewApi {
         return ResponseEntity.ok(response);
     }
 
+    @DeleteMapping("/{reviewId}")
+    public ResponseEntity<Void> delete(
+            @PathVariable UUID reviewId,
+            @AuthenticationPrincipal SecurityUser author
+    ) {
+        reviewService.delete(reviewId, author.getUserId());
+
+        return ResponseEntity.noContent().build();
+    }
+
 }
