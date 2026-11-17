@@ -43,6 +43,7 @@ import org.springframework.batch.core.job.parameters.InvalidJobParametersExcepti
 import java.util.List;
 import java.util.UUID;
 import java.util.ArrayList;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -154,10 +155,37 @@ class TmdbCollectionJobTest {
                 .addString("run.id", UUID.randomUUID().toString())
                 .toJobParameters();
 
+        // 실행 전 성공 횟수와 실행 시간
+        var timerBefore = meterRegistry.find("spring.batch.job")
+                .tags(
+                        "spring.batch.job.name", "tmdbCollectionJob",
+                        "spring.batch.job.status", "COMPLETED"
+                )
+                .timer();
+
+        long completedBefore = timerBefore == null
+                ? 0L : timerBefore.count();
+        double secondsBefore = timerBefore == null
+                ? 0.0 : timerBefore.totalTime(TimeUnit.SECONDS);
+
         var execution = jobOperator.start(job, parameters);
 
         assertThat(execution.getStatus())
                 .isEqualTo(BatchStatus.COMPLETED);
+
+        // 실행 후 성공 횟수와 실행 시간 확인
+        var completedTimer = meterRegistry.find("spring.batch.job")
+                .tags(
+                        "spring.batch.job.name", "tmdbCollectionJob",
+                        "spring.batch.job.status", "COMPLETED"
+                )
+                .timer();
+
+        assertThat(completedTimer).isNotNull();
+        assertThat(completedTimer.count() - completedBefore)
+                .isEqualTo(1L);
+        assertThat(completedTimer.totalTime(TimeUnit.SECONDS) - secondsBefore)
+                .isGreaterThan(0.0);
 
         assertThat(movieCounter.count() - moviesBefore).isEqualTo(1.0);
         assertThat(tvCounter.count() - tvBefore).isEqualTo(1.0);
