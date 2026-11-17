@@ -7,7 +7,9 @@ import java.util.List;
 
 public interface ContentSearchRepository {
 
-    List<ContentSearchResult> search(ContentSearchCondition condition);
+    List<ContentSearchResult> searchByDatabase(ContentSearchCondition condition);
+
+    List<ContentSearchResult> searchForWatcherCount(ContentSearchCondition condition);
 
     long countBySearchCondition(ContentSearchCondition condition);
 

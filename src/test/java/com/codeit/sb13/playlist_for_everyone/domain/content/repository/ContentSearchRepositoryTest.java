@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.repository;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.condition.ContentSearchCondition;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentResult;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSearchResult;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
@@ -143,7 +144,7 @@ public class ContentSearchRepositoryTest {
         );
 
         // when
-        var result = contentRepository.search(condition);
+        var result = contentRepository.searchByDatabase(condition);
 
         // then
         assertThat(result).hasSize(1);
@@ -209,7 +210,7 @@ public class ContentSearchRepositoryTest {
         );
 
         // when
-        var result = contentRepository.search(condition);
+        var result = contentRepository.searchByDatabase(condition);
 
         // then
         assertThat(result)
@@ -237,7 +238,7 @@ public class ContentSearchRepositoryTest {
         );
 
         // when
-        var result = contentRepository.search(condition);
+        var result = contentRepository.searchByDatabase(condition);
 
         // then
         assertThat(result).hasSize(6);
@@ -269,7 +270,7 @@ public class ContentSearchRepositoryTest {
         );
 
         // when
-        var result = contentRepository.search(condition);
+        var result = contentRepository.searchByDatabase(condition);
 
         // then
         assertThat(result).hasSize(1);
@@ -293,7 +294,7 @@ public class ContentSearchRepositoryTest {
         );
 
         // when
-        var result = contentRepository.search(condition);
+        var result = contentRepository.searchByDatabase(condition);
 
         // then
         assertThat(result).hasSize(1);
@@ -310,7 +311,7 @@ public class ContentSearchRepositoryTest {
                 2, SortDirection.DESCENDING, "rate"
         );
 
-        var firstPage = contentRepository.search(firstCondition);
+        var firstPage = contentRepository.searchByDatabase(firstCondition);
 
         // limit + 1개 조회하므로 실제 페이지의 마지막 콘텐츠는 index 1
         ContentSearchResult lastContent = firstPage.get(1);
@@ -327,7 +328,7 @@ public class ContentSearchRepositoryTest {
         );
 
         // when
-        var result = contentRepository.search(nextCondition);
+        var result = contentRepository.searchByDatabase(nextCondition);
 
         // then
         assertThat(result)
@@ -359,6 +360,35 @@ public class ContentSearchRepositoryTest {
 
         // then
         assertThat(count).isEqualTo(2L);
+    }
+
+    @Test
+    @DisplayName("시청자 수 정렬을 위한 검색 조건에 맞는 콘텐츠를 조회한다")
+    void searchContents_ByWatcherCount() {
+        // given
+        ContentSearchCondition condition = new ContentSearchCondition(
+                ContentType.movie,
+                "시리즈",
+                null,
+                null,
+                null,
+                2,
+                SortDirection.DESCENDING,
+                "watcherCount"
+        );
+
+        // when
+        List<ContentSearchResult> results = contentRepository.searchForWatcherCount(condition);
+
+        // then
+        assertThat(results)
+                .hasSize(2)
+                .allSatisfy(result -> {
+                    assertThat(result.content().getType())
+                            .isEqualTo(ContentType.movie);
+                    assertThat(result.content().getTitle())
+                            .contains("시리즈");
+                });
     }
 
 }

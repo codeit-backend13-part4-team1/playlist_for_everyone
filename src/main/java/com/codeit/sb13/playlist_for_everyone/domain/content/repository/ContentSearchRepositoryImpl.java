@@ -50,7 +50,7 @@ public class ContentSearchRepositoryImpl implements ContentSearchRepository {
      * 다음 페이지 존재 여부를 확인하기 위해 limit + 1개를 조회한다.
      */
     @Override
-    public List<ContentSearchResult> search(
+    public List<ContentSearchResult> searchByDatabase(
             ContentSearchCondition condition
     ) {
         // 리뷰 수 및 평점
@@ -85,6 +85,30 @@ public class ContentSearchRepositoryImpl implements ContentSearchRepository {
                 .fetch();
 
         return results;
+    }
+
+    // 시청자 수를 서비스에서 별도로 Redis 값을 가져오기 위한 메서드
+    @Override
+    public List<ContentSearchResult> searchForWatcherCount(
+            ContentSearchCondition condition
+    ) {
+        NumberExpression<Double> rating = ratingExpression();
+        NumberExpression<Long> reviewCount = reviewCountExpression();
+
+        return queryFactory
+                .select(Projections.constructor(
+                        ContentSearchResult.class,
+                        content,
+                        rating,
+                        reviewCount
+                ))
+                .from(content)
+                .where(
+                        typeContains(condition.typeEqual()),
+                        keywordContains(condition.keywordLike()),
+                        tagsInContains(condition.tagsIn())
+                )
+                .fetch();
     }
 
     // 콘텐츠 타입 필터 (null이면 조건 제외)
