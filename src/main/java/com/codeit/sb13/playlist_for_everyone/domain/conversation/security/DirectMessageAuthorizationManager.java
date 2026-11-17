@@ -69,7 +69,10 @@ public class DirectMessageAuthorizationManager implements AuthorizationManager<M
         return Optional.of(user);
     }
 
-    /** UUID 파싱만으로 허용되는 축약 표현까지 받지 않도록 정규 문자열과 다시 비교한다. 대소문자는 허용한다. */
+    /**
+     * 소문자 정규 UUID만 허용하여 구독 경로와 실제 전달 목적지의 표기를 일치시킨다.
+     * UUID 파싱이 허용하는 축약 표현과 대문자·혼합 표기는 거절한다.
+     */
     private Optional<UUID> resolveConversationId(String rawConversationId){
         if (rawConversationId == null){
             return Optional.empty();
@@ -81,7 +84,7 @@ public class DirectMessageAuthorizationManager implements AuthorizationManager<M
             return Optional.empty();
         }
 
-        if (!conversationId.toString().equalsIgnoreCase(rawConversationId)){
+        if (!conversationId.toString().equals(rawConversationId)){
             return Optional.empty();
         }
 
