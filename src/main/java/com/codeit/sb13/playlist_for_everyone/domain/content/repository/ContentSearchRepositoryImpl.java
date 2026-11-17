@@ -6,7 +6,6 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.QContentTag;
 import com.codeit.sb13.playlist_for_everyone.domain.review.entity.QReview;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
-import com.querydsl.core.Tuple;
 import com.querydsl.core.types.Order;
 import com.querydsl.core.types.OrderSpecifier;
 import com.querydsl.core.types.Projections;

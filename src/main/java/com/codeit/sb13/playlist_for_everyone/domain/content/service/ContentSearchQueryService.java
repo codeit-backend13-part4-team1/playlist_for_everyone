@@ -69,7 +69,7 @@ public class ContentSearchQueryService {
             nextIdAfter = lastResult.content().getId();
         }
 
-        List<ContentResult<ContentDto>> contents = toContentResults(page);
+        List<ContentResult<ContentDto>> contents = toContentResults(page, Map.of());
 
         // 전체 검색 결과 개수 조회
         long totalCount = contentRepository.countBySearchCondition(condition);
@@ -175,7 +175,7 @@ public class ContentSearchQueryService {
             nextIdAfter = lastResult.content().getId();
         }
 
-        List<ContentResult<ContentDto>> contents = toContentResults(page);
+        List<ContentResult<ContentDto>> contents = toContentResults(page, viewerCounts);
 
         // 전체 검색 결과 개수 조회
         long totalCount = contentRepository.countBySearchCondition(condition);
@@ -192,18 +192,23 @@ public class ContentSearchQueryService {
     }
 
     private List<ContentResult<ContentDto>> toContentResults(
-            List<ContentSearchResult> page
+            List<ContentSearchResult> page,
+            Map<String, Long> viewerCounts
     ) {
         return page.stream()
                 .map(result -> {
                     Content content = result.content();
+
+                    long watcherCount = viewerCounts.getOrDefault(
+                            content.getId().toString(), 0L
+                    );
 
                     ContentDto dto = contentMapper.toDto(
                             content,
                             content.getThumbnailUrl(),
                             result.averageRating(),
                             result.reviewCount(),
-                            0L
+                            watcherCount
                     );
 
                     String fileKey = content.getFileInfo() != null

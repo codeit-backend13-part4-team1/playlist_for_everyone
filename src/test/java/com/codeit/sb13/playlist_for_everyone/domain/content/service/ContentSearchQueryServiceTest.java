@@ -101,16 +101,17 @@ class ContentSearchQueryServiceTest {
     }
 
     @Test
-    @DisplayName("댓글 수 정렬 시 전용 Repository 메서드를 호출한다")
-    void searchContents_byReviewCount() {
+    @DisplayName("평균 평점 정렬 시 DB Repository를 호출하고 시청자 수를 조회하지 않는다")
+    void searchContents_byRate() {
         // given
-        ContentSearchCondition condition = conditionWithSortBy("reviewCount");
+        ContentSearchCondition condition = conditionWithSortBy("rate");
 
         // when
         queryService.search(condition);
 
         // then
         verify(contentRepository).searchByDatabase(condition);
+        verifyNoInteractions(watchingSessionService);
     }
 
     @Test
@@ -126,8 +127,8 @@ class ContentSearchQueryServiceTest {
         verify(contentRepository)
                 .searchForWatcherCount(condition);
 
-        verify(contentRepository, never())
-                .searchByDatabase(any());
+        verify(contentRepository).searchForWatcherCount(condition);
+        verify(contentRepository, never()).searchByDatabase(any());
     }
 
     @Test
@@ -163,11 +164,11 @@ class ContentSearchQueryServiceTest {
         InOrder inOrder = inOrder(contentMapper);
 
         inOrder.verify(contentMapper).toDto(
-                eq(content2), any(), eq(4.5), eq(3), eq(0L)
+                eq(content2), any(), eq(4.5), eq(3), eq(30L)
         );
 
         inOrder.verify(contentMapper).toDto(
-                eq(content3), any(), eq(3.0), eq(1), eq(0L)
+                eq(content3), any(), eq(3.0), eq(1), eq(15L)
         );
 
         verify(contentRepository).searchForWatcherCount(condition);

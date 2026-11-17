@@ -229,6 +229,50 @@ public class ContentSearchServiceTest {
         );
     }
 
+    @Test
+    @DisplayName("시청자 수 정렬 시 Redis를 재조회하지 않고 기존 시청자 수를 유지한다.")
+    void search_watcherCountDoesNotReload() {
+        // given
+        ContentSearchCondition watcherCondition = new ContentSearchCondition(
+                null, null, null, null, null,
+                2, SortDirection.DESCENDING, "watcherCount"
+        );
+
+        ContentDto dto = createDto(null);
+
+        ContentDto sortedDto = new ContentDto(
+                dto.id(),
+                dto.type(),
+                dto.title(),
+                dto.description(),
+                dto.thumbnailUrl(),
+                dto.tags(),
+                dto.averageRating(),
+                dto.reviewCount(),
+                30L
+        );
+
+        given(cacheService.search(watcherCondition))
+                .willReturn(createResponse(
+                        List.of(new ContentResult<>(sortedDto, null))
+                ));
+
+        given(contentMapper.toContentDto(sortedDto, null, 30L))
+                .willReturn(sortedDto);
+
+        // when
+        CursorResponse<ContentDto> result =
+                contentSearchService.search(watcherCondition);
+
+        // then
+        assertThat(result.data()).containsExactly(sortedDto);
+        assertThat(result.data().get(0).watcherCount()).isEqualTo(30L);
+
+        verify(cacheService).search(watcherCondition);
+        verify(contentMapper).toContentDto(sortedDto, null, 30L);
+        verifyNoInteractions(watchingSessionService);
+    }
+
     private ContentDto createDto(String thumbnailUrl) {
         return new ContentDto(
                 UUID.randomUUID(),

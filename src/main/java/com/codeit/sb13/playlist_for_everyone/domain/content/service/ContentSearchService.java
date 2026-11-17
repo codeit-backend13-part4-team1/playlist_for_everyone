@@ -26,14 +26,16 @@ public class ContentSearchService {
     public CursorResponse<ContentDto> search(ContentSearchCondition condition) {
         CursorResponse<ContentResult<ContentDto>> response = cacheService.search(condition);
 
+        boolean sortByWatcherCount = "watcherCount".equals(condition.sortBy());
+
         List<UUID> contentIds = response.data().stream()
                 .map(result -> result.dto().id())
                 .toList();
 
-        Map<String, Long> viewerCounts = contentIds.isEmpty()
+        // 시청자 수 정렬은 기존 조회 값을 사용하고, 다른 정렬은 최신 값 조회
+        Map<String, Long> viewerCounts = sortByWatcherCount || contentIds.isEmpty()
                 ? Map.of()
                 : watchingSessionService.getCurrentViewerCountWithContents(contentIds);
-
 
         List<ContentDto> contents = response.data().stream()
                 .map(result -> {
@@ -43,10 +45,9 @@ public class ContentSearchService {
                             ? fileService.getFileUrlByKey(result.fileKey())
                             : result.dto().thumbnailUrl();
 
-                    long watcherCount = viewerCounts.getOrDefault(
-                            dto.id().toString(),
-                            0L
-                    );
+                    long watcherCount = sortByWatcherCount
+                            ? dto.watcherCount()
+                            : viewerCounts.getOrDefault(dto.id().toString(), 0L);
 
                     return contentMapper.toContentDto(
                             result.dto(),
