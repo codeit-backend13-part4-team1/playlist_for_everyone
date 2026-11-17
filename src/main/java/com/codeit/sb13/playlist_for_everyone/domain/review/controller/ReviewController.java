@@ -24,9 +24,9 @@ public class ReviewController {
     @PostMapping
     public ResponseEntity<ReviewDto> create(
             @Valid @RequestBody ReviewCreateRequest request,
-            @AuthenticationPrincipal SecurityUser user
+            @AuthenticationPrincipal SecurityUser author
     ) {
-        ReviewDto dto = reviewService.save(request, user.getUserId());
+        ReviewDto dto = reviewService.save(request, author.getUserId());
 
         return ResponseEntity.status(HttpStatus.CREATED).body(dto);
     }
@@ -35,9 +35,15 @@ public class ReviewController {
     public ResponseEntity<ReviewDto> update(
             @PathVariable UUID reviewId,
             @Valid @RequestBody ReviewUpdateRequest request,
-            @AuthenticationPrincipal SecurityUser user
+            @AuthenticationPrincipal SecurityUser author
     ) {
-        return null;
+        ReviewDto response = reviewService.update(
+                request,
+                reviewId,
+                author.getUserId()
+        );
+
+        return ResponseEntity.ok(response);
     }
 
 }

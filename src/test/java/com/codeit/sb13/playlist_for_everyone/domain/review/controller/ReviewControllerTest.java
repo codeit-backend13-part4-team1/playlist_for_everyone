@@ -195,4 +195,24 @@ public class ReviewControllerTest {
         }
     }
 
+    @Test
+    @DisplayName("리뷰 수정 시 평점이 범위를 벗어나면 400을 반환한다.")
+    void updateReview_invalidRating() throws Exception {
+        // given
+        UUID reviewId = UUID.randomUUID();
+
+        ReviewUpdateRequest request = new ReviewUpdateRequest(
+                "수정된 리뷰입니다.",
+                0.0
+        );
+
+        // when & then
+        mockMvc.perform(patch("/api/reviews/{reviewId}", reviewId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+
+        then(reviewService).shouldHaveNoInteractions();
+    }
+
 }
