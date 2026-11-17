@@ -24,6 +24,8 @@ import org.springframework.batch.core.job.parameters.InvalidJobParametersExcepti
 import org.springframework.batch.core.job.parameters.JobParametersBuilder;
 import org.springframework.batch.core.launch.JobOperator;
 import org.springframework.batch.core.step.StepExecution;
+import org.springframework.batch.core.repository.JobRepository;
+import org.springframework.batch.infrastructure.item.ExecutionContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
@@ -101,6 +103,9 @@ class SportsDbCollectionJobTest {
 
     @MockitoBean
     private TmdbClient tmdbClient;
+
+    @Autowired
+    private JobRepository jobRepository;
 
     @TestConfiguration(proxyBeanMethods = false)
     static class MetricsTestConfig {
@@ -746,5 +751,54 @@ class SportsDbCollectionJobTest {
 
         assertThat(stepExecution.getWriteSkipCount()).isEqualTo(10);
         assertThat(stepExecution.getWriteCount()).isEqualTo(2);
+    }
+
+    @Test
+    void 강제_종료로_남은_Job과_Step을_FAILED로_복구한다() {
+        var parameters = new JobParametersBuilder()
+                .addString("leagueId", "4328")
+                .addString("season", "2014-2015")
+                .addString("run.id", UUID.randomUUID().toString())
+                .toJobParameters();
+
+        var instance = jobRepository.createJobInstance(
+                job.getName(), parameters
+        );
+        var execution = jobRepository.createJobExecution(
+                instance, parameters, new ExecutionContext()
+        );
+        var step = jobRepository.createStepExecution(
+                "sportsDbCollectionStep", execution
+        );
+
+        // 강제 종료 후 실행 중으로 남은 기록
+        execution.setStatus(BatchStatus.STARTED);
+        jobRepository.update(execution);
+
+        step.setStatus(BatchStatus.STARTED);
+        jobRepository.update(step);
+
+        var launcher = new CollectionJobLauncher(
+                jobOperator, tmdbJob, job, jobRepository
+        );
+
+        launcher.recoverInterruptedExecutions();
+
+        // 메모리에 있는 객체가 아니라 DB에서 다시 조회
+        var recovered = jobRepository.getJobExecution(execution.getId());
+
+        assertThat(recovered).isNotNull();
+        assertThat(recovered.getStatus()).isEqualTo(BatchStatus.FAILED);
+        assertThat(recovered.getEndTime()).isNotNull();
+
+        assertThat(recovered.getStepExecutions()).hasSize(1);
+        var recoveredStep = recovered.getStepExecutions().iterator().next();
+
+        assertThat(recoveredStep.getStatus()).isEqualTo(BatchStatus.FAILED);
+        assertThat(recoveredStep.getEndTime()).isNotNull();
+
+        assertThat(jobRepository.findRunningJobExecutions(job.getName()))
+                .extracting(item -> item.getId())
+                .doesNotContain(execution.getId());
     }
 }

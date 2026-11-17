@@ -141,3 +141,15 @@ everyone:
     event:
       # 이벤트 리스너의 구현체를 선택. false 일 경우, 전역 호출 이벤트가 단일 인스턴스 내에만 호출 된다.
       multiple: ${EVERYONE_WEBSOCKET_EVENT_MULTIPLE:true}
+
+  collection:
+    schedule:
+      enabled: ${EVERYONE_COLLECTION_SCHEDULE_ENABLED:false}
+      zone: ${EVERYONE_COLLECTION_SCHEDULE_ZONE:Asia/Seoul}
+      tmdb:
+        cron: "${EVERYONE_COLLECTION_SCHEDULE_TMDB_CRON:-}"
+        max-pages: ${EVERYONE_COLLECTION_SCHEDULE_TMDB_MAX_PAGES:5}
+      sportsdb:
+        cron: "${EVERYONE_COLLECTION_SCHEDULE_SPORTSDB_CRON:-}"
+        league-id: "${EVERYONE_COLLECTION_SCHEDULE_SPORTSDB_LEAGUE_ID:}"
+        season: "${EVERYONE_COLLECTION_SCHEDULE_SPORTSDB_SEASON:}"

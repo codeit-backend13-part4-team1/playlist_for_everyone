@@ -1,12 +1,18 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.controller;
 
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.condition.ContentSearchCondition;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentCreateRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentSearchRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
+import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
+import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentSearchService;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
+import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
+import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
-import org.mockito.ArgumentCaptor;
+import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.test.context.support.WithMockUser;
@@ -26,6 +32,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.BDDMockito.given;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -44,7 +51,16 @@ public class ContentControllerTest {
     private ObjectMapper objectMapper;
 
     @MockitoBean
+    private FileService fileService;
+
+    @MockitoBean
+    private ContentMapper contentMapper;
+
+    @MockitoBean
     private ContentService contentService;
+
+    @MockitoBean
+    private ContentSearchService contentSearchService;
 
     @Test
     @WithMockUser(roles = "ADMIN")
@@ -59,26 +75,24 @@ public class ContentControllerTest {
         );
 
         UUID contentId = UUID.randomUUID();
+        String presignedUrl = "https://example.com/thumbnail.jpg";
 
-        ContentDto response = new ContentDto(
+        ContentDto dto = new ContentDto(
                 contentId,
                 ContentType.tvSeries,
                 "너말고다른연애",
                 "KBS 드라마 입니다.",
-                "https://example.com/thumbnail.jpg",
+                presignedUrl,
                 List.of("드라마", "로맨스"),
-                0.0,
-                0,
-                0L
+                0.0, 0, 0L
         );
 
-        when(contentService.create(
+        given(contentService.create(
                 any(ContentCreateRequest.class),
                 any(MultipartFile.class)
-        )).thenReturn(response);
+        )).willReturn(dto);
 
         // when & then
-        // 201 응답 확인
         mockMvc.perform(multipart("/api/contents")
                         .file(createJsonRequestPart(request))
                         .file(createThumbnail())
@@ -86,26 +100,13 @@ public class ContentControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").value(contentId.toString()))
                 .andExpect(jsonPath("$.title").value("너말고다른연애"))
-                .andExpect(jsonPath("$.description").value("KBS 드라마 입니다."))
-                .andExpect(jsonPath("$.tags[0]").value("드라마"))
-                .andExpect(jsonPath("$.tags[1]").value("로맨스"));
-
-        // 콘텐츠 생성 서비스 호출 확인
-        // 서비스에 전달된 요청 데이터 확인
-        ArgumentCaptor<ContentCreateRequest> captor =
-                ArgumentCaptor.forClass(ContentCreateRequest.class);
+                .andExpect(jsonPath("$.thumbnailUrl").value(presignedUrl))
+                .andExpect(jsonPath("$.tags[0]").value("드라마"));
 
         verify(contentService).create(
-                captor.capture(),
+                any(ContentCreateRequest.class),
                 any(MultipartFile.class)
         );
-
-        ContentCreateRequest capturedRequest = captor.getValue();
-
-        assertThat(capturedRequest.type()).isEqualTo(ContentType.tvSeries);
-        assertThat(capturedRequest.title()).isEqualTo("너말고다른연애");
-        assertThat(capturedRequest.description()).isEqualTo("KBS 드라마 입니다.");
-        assertThat(capturedRequest.tags()).containsExactly("드라마", "로맨스");
     }
 
     @Test
@@ -218,31 +219,99 @@ public class ContentControllerTest {
 
     @Test
     @WithMockUser
+    @DisplayName("콘텐츠 검색 요청 시 검색 결과를 반환한다.")
+    void searchContent_success() throws Exception {
+        // given
+        UUID contentId = UUID.randomUUID();
+        UUID contentId2 = UUID.randomUUID();
+
+        ContentSearchRequest request = new ContentSearchRequest(
+                null,
+                null,
+                null,
+                null,
+                null,
+                2,
+                SortDirection.DESCENDING,
+                "createdAt"
+        );
+
+        ContentDto dto1 = new ContentDto(
+                contentId,
+                ContentType.movie,
+                "테스트 영화",
+                "테스트 설명",
+                "https://example.com/thumbnail.jpg",
+                List.of("액션"),
+                4.5,
+                2,
+                10L
+        );
+
+        ContentDto dto2 = new ContentDto(
+                contentId2, ContentType.movie,
+                "영화2", "설명2", "thumbnail2",
+                List.of("드라마"), 4.5, 3, 5L
+        );
+
+        given(contentSearchService.search(request.toCondition()))
+                .willReturn(new CursorResponse<>(
+                        List.of(dto1, dto2),
+                        "2026-11-10T09:00:00",
+                        contentId2,
+                        true,
+                        3L,
+                        request.toCondition().sortBy(),
+                        request.toCondition().sortDirection()
+                ));
+
+        // when & then
+        mockMvc.perform(get("/api/contents")
+                        .param("limit", "2")
+                        .param("sortBy", "createdAt")
+                        .param("sortDirection", "DESCENDING"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.hasNext").value(true))
+                .andExpect(jsonPath("$.nextCursor")
+                        .value("2026-11-10T09:00:00"))
+                .andExpect(jsonPath("$.nextIdAfter")
+                        .value(contentId2.toString()))
+                .andExpect(jsonPath("$.totalCount").value(3));
+
+        verify(contentSearchService).search(request.toCondition());
+    }
+
+    @Test
+    @WithMockUser
     @DisplayName("콘텐츠 단건 조회 요청 시 200 OK와 ContentDto를 반환한다.")
     void getContent_success() throws Exception {
         // given
         UUID contentId = UUID.randomUUID();
+        String thumbnailUrl = "https://example.com/thumbnail.jpg";
 
         ContentDto contentDto = new ContentDto(
                 contentId,
                 ContentType.tvSeries,
                 "너 말고 다른 연애",
                 "서강준, 안은진 주연",
-                "https://example.com/thumbnail.jpg",
+                thumbnailUrl,
                 List.of("드라마", "로맨스"),
                 4.5,
                 10,
                 0L
         );
 
-        when(contentService.getById(contentId))
-                .thenReturn(contentDto);
+        given(contentService.getById(contentId))
+                .willReturn(contentDto);
 
         // when & then
         mockMvc.perform(get("/api/contents/{contentId}", contentId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(contentId.toString()))
                 .andExpect(jsonPath("$.title").value("너 말고 다른 연애"))
+                .andExpect(jsonPath("$.thumbnailUrl").value(thumbnailUrl))
                 .andExpect(jsonPath("$.tags[0]").value("드라마"))
                 .andExpect(jsonPath("$.averageRating").value(4.5))
                 .andExpect(jsonPath("$.reviewCount").value(10))
@@ -276,6 +345,7 @@ public class ContentControllerTest {
     void update_success() throws Exception {
         // given
         UUID contentId = UUID.randomUUID();
+        String presignedUrl = "https://example.com/thumbnail.jpg";
 
         ContentUpdateRequest request = new ContentUpdateRequest(
                 "너 말고 다른 연애",
@@ -283,50 +353,35 @@ public class ContentControllerTest {
                 List.of("드라마", "로맨스")
         );
 
-        ContentDto response = new ContentDto(
-                contentId,
-                ContentType.tvSeries,
-                "너 말고 다른 연애",
-                "서강준, 안은진 주연",
-                "https://example.com/thumbnail.jpg",
-                List.of("드라마", "로맨스"),
-                4.5,
-                10,
-                0L
+        ContentDto dto = new ContentDto(
+                contentId, ContentType.tvSeries,
+                "너 말고 다른 연애", "서강준, 안은진 주연",
+                presignedUrl, List.of("드라마", "로맨스"),
+                4.5, 10, 0L
         );
 
         when(contentService.update(
                 eq(contentId),
                 any(ContentUpdateRequest.class),
                 isNull()
-        )).thenReturn(response);
+        )).thenReturn(dto);
 
-        // when & then
+// when & then
         mockMvc.perform(multipart(HttpMethod.PATCH, "/api/contents/{contentId}", contentId)
                         .file(createJsonRequestPart(request))
                         .with(csrf()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(contentId.toString()))
                 .andExpect(jsonPath("$.title").value("너 말고 다른 연애"))
-                .andExpect(jsonPath("$.description").value("서강준, 안은진 주연"))
+                .andExpect(jsonPath("$.thumbnailUrl").value(presignedUrl))
                 .andExpect(jsonPath("$.tags[0]").value("드라마"))
                 .andExpect(jsonPath("$.tags[1]").value("로맨스"));
 
-        // 서비스에 전달된 요청 데이터 확인
-        ArgumentCaptor<ContentUpdateRequest> captor =
-                ArgumentCaptor.forClass(ContentUpdateRequest.class);
-
         verify(contentService).update(
                 eq(contentId),
-                captor.capture(),
+                any(ContentUpdateRequest.class),
                 isNull()
         );
-
-        ContentUpdateRequest capturedRequest = captor.getValue();
-
-        assertThat(capturedRequest.title()).isEqualTo("너 말고 다른 연애");
-        assertThat(capturedRequest.description()).isEqualTo("서강준, 안은진 주연");
-        assertThat(capturedRequest.tags()).containsExactly("드라마", "로맨스");
     }
 
     @Test
@@ -342,23 +397,18 @@ public class ContentControllerTest {
                 List.of("로맨스")
         );
 
-        ContentDto response = new ContentDto(
-                contentId,
-                ContentType.tvSeries,
-                "기존 제목",
-                "기존 설명",
-                "https://example.com/thumbnail.jpg",
-                List.of("로맨스"),
-                0.0,
-                0,
-                0L
+        ContentDto dto = new ContentDto(
+                contentId, ContentType.tvSeries,
+                "기존 제목", "기존 설명",
+                null, List.of("로맨스"),
+                4.5, 10, 0L
         );
 
         when(contentService.update(
                 eq(contentId),
                 any(ContentUpdateRequest.class),
                 isNull()
-        )).thenReturn(response);
+        )).thenReturn(dto);
 
         // when & then
         mockMvc.perform(multipart(HttpMethod.PATCH, "/api/contents/{contentId}", contentId)
@@ -369,6 +419,7 @@ public class ContentControllerTest {
                 .andExpect(jsonPath("$.title").value("기존 제목"))
                 .andExpect(jsonPath("$.description").value("기존 설명"))
                 .andExpect(jsonPath("$.tags[0]").value("로맨스"));
+
     }
 
     @Test

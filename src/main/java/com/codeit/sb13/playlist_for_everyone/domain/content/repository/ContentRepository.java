@@ -3,18 +3,22 @@ package com.codeit.sb13.playlist_for_everyone.domain.content.repository;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentSource;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.Modifying;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-public interface ContentRepository extends JpaRepository<Content, UUID> {
+public interface ContentRepository extends JpaRepository<Content, UUID>, ContentSearchRepository {
 
+    /** 콘텐츠 상세 조회 */
     @Query("""
         SELECT
             c AS content,
@@ -34,6 +38,13 @@ public interface ContentRepository extends JpaRepository<Content, UUID> {
         """)
     Optional<ContentDetailProjection> findDetailById(
             @Param("contentId") UUID contentId
+    );
+
+    /** 플레이리스트 콘텐츠 목록 일괄 조회 */
+    @EntityGraph(attributePaths = {"fileInfo", "tags"})
+    @Query("SELECT DISTINCT c FROM Content c WHERE c.id IN :contentIds")
+    List<Content> findAllByIds(
+            @Param("contentIds") Collection<UUID> contentIds
     );
 
 

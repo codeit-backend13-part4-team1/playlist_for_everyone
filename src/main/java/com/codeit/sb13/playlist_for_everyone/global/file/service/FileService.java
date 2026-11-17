@@ -72,6 +72,14 @@ public class FileService {
         return fileStorage.getFileUrl(fileInfo.getKey());
     }
 
+    /**
+     * S3 Key로 Presigned URL 생성
+     * DB 조회 없이 URL만 생성한다.
+     */
+    public String getFileUrlByKey(String key) {
+        return fileStorage.getFileUrl(key);
+    }
+
     @Transactional
     public void delete(UUID id) {
         FileInfo fileInfo = fileInfoRepository.findById(id)

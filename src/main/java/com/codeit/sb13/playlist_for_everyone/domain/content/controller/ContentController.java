@@ -2,9 +2,12 @@ package com.codeit.sb13.playlist_for_everyone.domain.content.controller;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.controller.swagger.ContentApi;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentCreateRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentSearchRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
+import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentSearchService;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
+import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -21,6 +24,7 @@ import java.util.UUID;
 public class ContentController implements ContentApi {
 
     private final ContentService contentService;
+    private final ContentSearchService contentSearchService;
 
     @Override
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -28,8 +32,16 @@ public class ContentController implements ContentApi {
             @Valid @RequestPart("request") ContentCreateRequest request,
             @RequestPart("thumbnail") MultipartFile file
     ) {
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(contentService.create(request, file));
+        ContentDto response = contentService.create(request, file);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @Override
+    @GetMapping
+    public ResponseEntity<CursorResponse<ContentDto>> search(
+            @Valid @ModelAttribute ContentSearchRequest request
+    ) {
+        return ResponseEntity.ok(contentSearchService.search(request.toCondition()));
     }
 
     @Override
@@ -48,9 +60,7 @@ public class ContentController implements ContentApi {
             @Valid @RequestPart("request") ContentUpdateRequest request,
             @RequestPart(value="thumbnail", required=false) MultipartFile file
     ) {
-        return ResponseEntity.ok(
-                contentService.update(contentId, request, file)
-        );
+        return ResponseEntity.ok(contentService.update(contentId, request, file));
     }
 
     @Override
