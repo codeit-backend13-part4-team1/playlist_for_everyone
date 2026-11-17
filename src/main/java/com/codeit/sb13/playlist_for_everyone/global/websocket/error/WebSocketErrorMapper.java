@@ -1,4 +1,4 @@
-package com.codeit.sb13.playlist_for_everyone.domain.conversation.mapper;
+package com.codeit.sb13.playlist_for_everyone.global.websocket.error;
 
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.ApiErrorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.exception.ApiErrorCode;
@@ -20,7 +20,7 @@ import java.util.List;
 import java.util.Map;
 
 @Component
-public class DirectMessageErrorMapper {
+public class WebSocketErrorMapper {
 
     public ApiErrorResponse toErrorResponse(Throwable exception) {
         Throwable current = exception;

@@ -2,7 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.conversation.controller;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.request.DirectMessageSendRequest;
-import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.DirectMessageErrorSender;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.error.WebSocketErrorSender;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.DirectMessageService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -20,7 +20,7 @@ import java.util.UUID;
 public class DirectMessageWebSocketController {
 
     private final DirectMessageService directMessageService;
-    private final DirectMessageErrorSender errorSender;
+    private final WebSocketErrorSender errorSender;
 
 
     @MessageMapping("/conversations/{conversationId}/direct-messages")

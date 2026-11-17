@@ -1,4 +1,4 @@
-package com.codeit.sb13.playlist_for_everyone.domain.conversation.mapper;
+package com.codeit.sb13.playlist_for_everyone.global.websocket.error;
 
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.controller.DirectMessageWebSocketController;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.request.DirectMessageSendRequest;
@@ -35,12 +35,12 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @ExtendWith(SpringExtension.class)
-@ContextConfiguration(classes = DirectMessageErrorMapper.class)
-@DisplayName("DM 오류 응답 변환")
-class DirectMessageErrorMapperTest {
+@ContextConfiguration(classes = WebSocketErrorMapper.class)
+@DisplayName("WebSocket 오류 응답 변환")
+class WebSocketErrorMapperTest {
 
     @Autowired
-    private DirectMessageErrorMapper errorMapper;
+    private WebSocketErrorMapper errorMapper;
     private final UUID directMessageId = UUID.randomUUID();
     private final UUID conversationId = UUID.randomUUID();
 

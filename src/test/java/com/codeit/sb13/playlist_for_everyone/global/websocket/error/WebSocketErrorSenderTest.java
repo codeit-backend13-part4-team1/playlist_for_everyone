@@ -1,7 +1,5 @@
-package com.codeit.sb13.playlist_for_everyone.domain.conversation.service;
+package com.codeit.sb13.playlist_for_everyone.global.websocket.error;
 
-import com.codeit.sb13.playlist_for_everyone.domain.conversation.mapper.DirectMessageErrorMapper;
-import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.impl.DirectMessageErrorSenderImpl;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.ApiErrorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.exception.ApiErrorCode;
 import com.codeit.sb13.playlist_for_everyone.global.exception.conversation.DirectMessagePublishException;
@@ -47,15 +45,15 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = {
-        DirectMessageErrorSenderImpl.class,
-        DirectMessageErrorMapper.class,
-        DirectMessageErrorSenderTest.TestConfig.class
+        WebSocketErrorSenderImpl.class,
+        WebSocketErrorMapper.class,
+        WebSocketErrorSenderTest.TestConfig.class
 })
-@DisplayName("DM WebSocket 오류 전송")
-class DirectMessageErrorSenderTest {
+@DisplayName("WebSocket 오류 전송")
+class WebSocketErrorSenderTest {
 
     @Autowired
-    private DirectMessageErrorSender errorSender;
+    private WebSocketErrorSender errorSender;
 
     @MockitoSpyBean
     private ObjectMapper objectMapper;

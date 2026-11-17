@@ -1,9 +1,9 @@
 package com.codeit.sb13.playlist_for_everyone.global.config;
 
-import com.codeit.sb13.playlist_for_everyone.domain.conversation.mapper.DirectMessageErrorMapper;
-import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.impl.DirectMessageErrorSenderImpl;
-import com.codeit.sb13.playlist_for_everyone.domain.conversation.websocket.DirectMessageStompErrorHandler;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.WebSocketInterceptor;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.error.WebSocketErrorMapper;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.error.WebSocketErrorSenderImpl;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.error.WebSocketStompErrorHandler;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -32,9 +32,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @WebAppConfiguration
 @ContextConfiguration(classes = {
         WebSocketConfig.class,
-        DirectMessageStompErrorHandler.class,
-        DirectMessageErrorSenderImpl.class,
-        DirectMessageErrorMapper.class,
+        WebSocketStompErrorHandler.class,
+        WebSocketErrorSenderImpl.class,
+        WebSocketErrorMapper.class,
         WebSocketStompErrorHandlerConfigTest.TestConfig.class
 })
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
@@ -58,8 +58,8 @@ public class WebSocketStompErrorHandlerConfigTest {
     private AuthorizationManager<Message<?>> authorizationManager;
 
     @Test
-    @DisplayName("Spring이 생성한 STOMP 처리기에 DM 오류 처리기 빈을 등록한다.")
-    void stompWebSocketHandler_registersDirectMessageErrorHandler(){
+    @DisplayName("Spring이 생성한 STOMP 처리기에 공통 오류 처리기 빈을 등록한다.")
+    void stompWebSocketHandler_registersWebSocketErrorHandler(){
         assertThat(webSocketHandler).isInstanceOf(SubProtocolWebSocketHandler.class);
 
         SubProtocolWebSocketHandler handler = (SubProtocolWebSocketHandler) webSocketHandler;

@@ -34,19 +34,19 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     /** 메시지 종류와 목적지별 접근 규칙을 가진 공통 인가 매니저를 빈 이름으로 지정해 주입한다. */
     private final AuthorizationManager<Message<?>> webSocketAuthorizationManager;
-    private final ObjectProvider<StompSubProtocolErrorHandler> directMessageErrorHandlerProvider;
+    private final ObjectProvider<StompSubProtocolErrorHandler> stompErrorHandlerProvider;
 
     public WebSocketConfig(
             WebSocketInterceptor webSocketInterceptor,
             WebSocketSessionRegistry socketRegistry,
             @Qualifier("webSocketAuthorizationManager")
             AuthorizationManager<Message<?>> webSocketAuthorizationManager,
-            @Qualifier("directMessageStompErrorHandler")
-            ObjectProvider<StompSubProtocolErrorHandler> directMessageErrorHandlerProvider) {
+            @Qualifier("webSocketStompErrorHandler")
+            ObjectProvider<StompSubProtocolErrorHandler> stompErrorHandlerProvider) {
         this.webSocketInterceptor = webSocketInterceptor;
         this.socketRegistry = socketRegistry;
         this.webSocketAuthorizationManager = webSocketAuthorizationManager;
-        this.directMessageErrorHandlerProvider = directMessageErrorHandlerProvider;
+        this.stompErrorHandlerProvider = stompErrorHandlerProvider;
     }
 
     @Autowired void setTaskScheduler(@Lazy TaskScheduler taskScheduler) {
@@ -55,7 +55,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
-        registry.setErrorHandler(directMessageErrorHandlerProvider.getObject());
+        registry.setErrorHandler(stompErrorHandlerProvider.getObject());
         registry.addEndpoint("/ws");
         registry.addEndpoint("/ws").withSockJS();   // 레거시
     }

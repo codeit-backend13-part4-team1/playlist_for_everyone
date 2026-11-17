@@ -1,6 +1,5 @@
-package com.codeit.sb13.playlist_for_everyone.domain.conversation.websocket;
+package com.codeit.sb13.playlist_for_everyone.global.websocket.error;
 
-import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.DirectMessageErrorSender;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,15 +27,15 @@ import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(SpringExtension.class)
-@ContextConfiguration(classes = DirectMessageStompErrorHandler.class)
-@DisplayName("DM STOMP 인바운드 오류 처리")
-class DirectMessageStompErrorHandlerTest {
+@ContextConfiguration(classes = WebSocketStompErrorHandler.class)
+@DisplayName("공통 STOMP 인바운드 오류 처리")
+class WebSocketStompErrorHandlerTest {
 
     @Autowired
     private SubProtocolErrorHandler<byte[]> errorHandler;
 
     @MockitoBean
-    private DirectMessageErrorSender errorSender;
+    private WebSocketErrorSender errorSender;
 
     @Test
     @DisplayName("DM SEND 오류를 요청한 세션의 전송기에 위임하고 기본 오류 응답을 중복 생성하지 않는다.")
@@ -119,7 +118,7 @@ class DirectMessageStompErrorHandlerTest {
             "SEND, /pub/contents/00000000-0000-0000-0000-000000000001/chat",
             "SUBSCRIBE, /sub/contents/00000000-0000-0000-0000-000000000001/watch"
     })
-    @DisplayName("콘텐츠 경로의 오류는 DM 전송기를 호출하지 않고 기본 오류 응답을 반환한다.")
+    @DisplayName("콘텐츠 경로의 오류는 공통 오류 전송기를 호출하지 않고 기본 오류 응답을 반환한다.")
     void handleClientMessageProcessingError_usesDefaultHandlingForContentFrames(
             StompCommand command, String destination
     ){
@@ -145,7 +144,7 @@ class DirectMessageStompErrorHandlerTest {
     }
 
     @Test
-    @DisplayName("CONNECT 인증 오류는 DM 전송기를 호출하지 않고 기본 오류 응답을 반환한다.")
+    @DisplayName("CONNECT 인증 오류는 공통 오류 전송기를 호출하지 않고 기본 오류 응답을 반환한다.")
     void handleClientMessageProcessingError_usesDefaultHandlingForConnect(){
         StompHeaderAccessor headers = StompHeaderAccessor.create(StompCommand.CONNECT);
         headers.setSessionId("common-connect-session");
@@ -163,7 +162,7 @@ class DirectMessageStompErrorHandlerTest {
     }
 
     @Test
-    @DisplayName("원본 메시지가 없으면 DM 전송기를 호출하지 않고 기본 오류 응답을 반환한다.")
+    @DisplayName("원본 메시지가 없으면 공통 오류 전송기를 호출하지 않고 기본 오류 응답을 반환한다.")
     void handleClientMessageProcessingError_usesDefaultHandlingWhenMessageIsMissing(){
         StompConversionException exception = new StompConversionException("테스트용 STOMP 프레임 해석 실패");
         Message<byte[]> result = errorHandler.handleClientMessageProcessingError(null, exception);
@@ -178,7 +177,7 @@ class DirectMessageStompErrorHandlerTest {
     }
 
     @Test
-    @DisplayName("DM 메시지에 세션 ID가 없으면 DM 전송기를 호출하지 않고 기본 오류 응답을 반환한다.")
+    @DisplayName("DM 메시지에 세션 ID가 없으면 공통 오류 전송기를 호출하지 않고 기본 오류 응답을 반환한다.")
     void  handleClientMessageProcessingError_usesDefaultHandlingWhenSessionIdIsMissing(){
         StompHeaderAccessor headers = StompHeaderAccessor.create(StompCommand.SEND);
         headers.setDestination("/pub/conversations/" + UUID.randomUUID() + "/direct-messages");

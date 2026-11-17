@@ -71,8 +71,8 @@ public class WebSocketInboundSecurityTest {
     @MockitoBean
     private WebSocketSessionRegistry webSocketSessionRegistry;
 
-    @MockitoBean(name = "directMessageStompErrorHandler")
-    private StompSubProtocolErrorHandler directMessagesStompErrorHandler;
+    @MockitoBean(name = "webSocketStompErrorHandler")
+    private StompSubProtocolErrorHandler stompErrorHandler;
 
     private final UUID conversationId = UUID.randomUUID();
     private final UUID requesterId = UUID.randomUUID();

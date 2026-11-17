@@ -1,7 +1,5 @@
-package com.codeit.sb13.playlist_for_everyone.domain.conversation.service.impl;
+package com.codeit.sb13.playlist_for_everyone.global.websocket.error;
 
-import com.codeit.sb13.playlist_for_everyone.domain.conversation.mapper.DirectMessageErrorMapper;
-import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.DirectMessageErrorSender;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.ApiErrorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSession;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistry;
@@ -22,15 +20,15 @@ import java.io.IOException;
 
 @Service
 @Slf4j
-public class DirectMessageErrorSenderImpl implements DirectMessageErrorSender {
+public class WebSocketErrorSenderImpl implements WebSocketErrorSender {
 
-    private final DirectMessageErrorMapper errorMapper;
+    private final WebSocketErrorMapper errorMapper;
     private final ObjectMapper objectMapper;
     private final MessageChannel clientOutboundChannel;
     private final WebSocketSessionRegistry webSocketSessionRegistry;
 
-    public DirectMessageErrorSenderImpl(
-            DirectMessageErrorMapper errorMapper,
+    public WebSocketErrorSenderImpl(
+            WebSocketErrorMapper errorMapper,
             ObjectMapper objectMapper,
             @Qualifier("clientOutboundChannel")
             MessageChannel clientOutboundChannel,
@@ -55,11 +53,11 @@ public class DirectMessageErrorSenderImpl implements DirectMessageErrorSender {
 
             Message<byte[]> message = MessageBuilder.createMessage(payload, headers.getMessageHeaders());
             if (!clientOutboundChannel.send(message)){
-                log.warn("DM 오류 프레임을 채널에 전달하지 못했습니다. sessionId={}", sessionId);
+                log.warn("WebSocket 오류 프레임을 채널에 전달하지 못했습니다. sessionId={}", sessionId);
                 closeSession(sessionId);
             }
         } catch (JacksonException | MessagingException e){
-            log.warn("DM 오류 응답 직렬화 또는 채널 전송에 실패했습니다. sessionId={}, exceptionType={}",
+            log.warn("WebSocket 오류 응답 직렬화 또는 채널 전송에 실패했습니다. sessionId={}, exceptionType={}",
                     sessionId, e.getClass().getSimpleName());
             closeSession(sessionId);
         }
@@ -74,7 +72,7 @@ public class DirectMessageErrorSenderImpl implements DirectMessageErrorSender {
         try {
             session.disconnect();
         } catch (IOException | RuntimeException e) {
-            log.warn("DM 오류 전송 후 WebSocket세션 종료에 실패했습니다. sessionId={}, exceptionType={}",
+            log.warn("WebSocket 오류 전송 후 세션 종료에 실패했습니다. sessionId={}, exceptionType={}",
                     sessionId, e.getClass().getSimpleName());
         }
     }
