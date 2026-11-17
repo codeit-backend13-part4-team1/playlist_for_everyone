@@ -68,6 +68,7 @@ docker build -t everyone:local .
 
 docker run --rm -p 8080:8080 \
   --env-file .env.prod \
+  --add-host=host.docker.internal:host-gateway \
   -e EVERYONE_DB_HOST=host.docker.internal \
   -e EVERYONE_REDIS_HOST=host.docker.internal \
   everyone:local
@@ -75,3 +76,4 @@ docker run --rm -p 8080:8080 \
 curl -i http://localhost:8080/actuator/health   # 200, {"status":"UP"}
 ```
 컨테이너 안에서 `localhost`는 컨테이너 자신이므로, 로컬에서 띄운 DB와 Redis는 `host.docker.internal`로 접근합니다.
+`--add-host`는 Linux Docker Engine에서도 이 주소를 쓸 수 있게 합니다. Docker Desktop(macOS, Windows)에서는 없어도 동작합니다.
