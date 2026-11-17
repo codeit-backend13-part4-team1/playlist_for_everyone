@@ -10,7 +10,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.Playlist
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.PlaylistRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.repository.SubscriptionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.PlaylistService;
-import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.impl.PlaylistContentSummaryMapper;
+import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.impl.PlaylistReader;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.impl.PlaylistServiceImpl;
 
@@ -64,7 +64,7 @@ class PlaylistMethodSecurityTest {
   private PlaylistReader playlistReader;
 
   @MockitoBean
-  private PlaylistContentSummaryMapper playlistContentSummaryMapper;
+  private ContentService contentService;
 
   @MockitoBean
   private PlaylistWriter playlistWriter;
