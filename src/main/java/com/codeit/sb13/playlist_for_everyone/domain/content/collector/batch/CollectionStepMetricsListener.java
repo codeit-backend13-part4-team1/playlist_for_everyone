@@ -27,6 +27,18 @@ public class CollectionStepMetricsListener implements StepExecutionListener {
                 "step", stepName
         ).increment(stepExecution.getReadCount());
 
+        meterRegistry.counter(
+                "content.collection.items.write",
+                "job", jobName,
+                "step", stepName
+        ).increment(stepExecution.getWriteCount());
+
+        meterRegistry.counter(
+                "content.collection.items.skip",
+                "job", jobName,
+                "step", stepName
+        ).increment(stepExecution.getSkipCount());
+
         return null;
     }
 }
