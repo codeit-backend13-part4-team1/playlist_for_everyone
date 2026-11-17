@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.review.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
+import com.codeit.sb13.playlist_for_everyone.domain.content.event.ContentSearchCacheEvictEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewUpdateRequest;
@@ -23,6 +24,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import org.springframework.security.access.AccessDeniedException;
@@ -55,6 +57,9 @@ public class ReviewServiceTest {
     @Mock
     private UserDtoMapper userMapper;
 
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     @InjectMocks
     private ReviewService reviewService;
 
@@ -73,7 +78,7 @@ public class ReviewServiceTest {
     }
 
     @Test
-    @DisplayName("리뷰 생성 시 콘텐츠, 작성자, 텍스트, 평점이 정상적으로 저장된다.")
+    @DisplayName("리뷰 생성 시 콘텐츠, 작성자, 텍스트, 평점이 저장되고 캐시 무효화 이벤트를 발행한다.")
     void saveReview() {
         // given
         UUID authorId = UUID.randomUUID();
@@ -119,6 +124,10 @@ public class ReviewServiceTest {
         assertThat(savedReview.getAuthor()).isEqualTo(author);
         assertThat(savedReview.getText()).isEqualTo("재미있는 드라마였어요.");
         assertThat(savedReview.getRating()).isEqualTo(4.5);
+
+        // 콘텐츠 검색 캐시 무효화
+        then(eventPublisher).should()
+                .publishEvent(any(ContentSearchCacheEvictEvent.class));
     }
 
     @Test
@@ -166,7 +175,7 @@ public class ReviewServiceTest {
     }
 
     @Test
-    @DisplayName("리뷰 수정 시 텍스트와 평점이 정상적으로 변경된다.")
+    @DisplayName("리뷰 수정 시 텍스트와 평점이 정상적으로 변경되고 캐시 무효화 이벤트를 발행한다.")
     void updateReview() {
         // given
         UUID reviewId = UUID.randomUUID();
@@ -198,6 +207,9 @@ public class ReviewServiceTest {
         assertThat(review.getRating()).isEqualTo(4.5);
 
         then(reviewMapper).should().toDto(review);
+
+        then(eventPublisher).should()
+                .publishEvent(any(ContentSearchCacheEvictEvent.class));
     }
 
     @Test
@@ -254,6 +266,41 @@ public class ReviewServiceTest {
                 .isInstanceOf(ReviewNotFoundException.class);
 
         then(reviewMapper).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("리뷰 수정 시 평점이 변경되지 않으면 캐시 무효화 이벤트를 발행하지 않는다.")
+    void updateReview_ratingUnchanged() {
+        // given
+        UUID reviewId = UUID.randomUUID();
+        UUID authorId = UUID.randomUUID();
+
+        User author = mock(User.class);
+        given(author.getId()).willReturn(authorId);
+
+        Review review = Review.builder()
+                .content(content)
+                .author(author)
+                .text("기존 리뷰입니다.")
+                .rating(3.0)
+                .build();
+
+        ReviewUpdateRequest request = new ReviewUpdateRequest(
+                "수정된 리뷰입니다.",
+                null
+        );
+
+        given(reviewRepository.findById(reviewId))
+                .willReturn(Optional.of(review));
+
+        // when
+        reviewService.update(request, reviewId, authorId);
+
+        // then
+        assertThat(review.getText()).isEqualTo("수정된 리뷰입니다.");
+        assertThat(review.getRating()).isEqualTo(3.0);
+
+        then(eventPublisher).shouldHaveNoInteractions();
     }
 
 }

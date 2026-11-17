@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.review.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
+import com.codeit.sb13.playlist_for_everyone.domain.content.event.ContentSearchCacheEvictEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewUpdateRequest;
@@ -14,6 +15,7 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNot
 import com.codeit.sb13.playlist_for_everyone.global.exception.review.ReviewNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +31,7 @@ public class ReviewService {
     private final ContentRepository contentRepository;
     private final UserRepository userRepository;
     private final ReviewMapper reviewMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public ReviewDto save(ReviewCreateRequest request, UUID authorId) {
@@ -51,6 +54,9 @@ public class ReviewService {
 
         Review savedReview = reviewRepository.save(review);
 
+        // 리뷰 생성 시 콘텐츠 검색 캐시 무효화
+        eventPublisher.publishEvent(new ContentSearchCacheEvictEvent());
+
         return reviewMapper.toDto(savedReview);
     }
 
@@ -65,7 +71,16 @@ public class ReviewService {
             throw new AccessDeniedException("리뷰 작성자만 수정할 수 있습니다.");
         }
 
+        // 기존 평점과 요청 평점 비교
+        boolean ratingChanged = request.rating() != null
+                && Double.compare(review.getRating(), request.rating()) != 0;
+
         review.update(request.text(), request.rating());
+
+        // 평점이 변경된 경우에만 콘텐츠 검색 캐시 무효화
+        if (ratingChanged) {
+            eventPublisher.publishEvent(new ContentSearchCacheEvictEvent());
+        }
 
         return reviewMapper.toDto(review);
     }
