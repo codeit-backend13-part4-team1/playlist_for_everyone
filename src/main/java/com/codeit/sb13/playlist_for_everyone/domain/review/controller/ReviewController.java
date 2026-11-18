@@ -3,9 +3,11 @@ package com.codeit.sb13.playlist_for_everyone.domain.review.controller;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.review.controller.swagger.ReviewApi;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewCreateRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewListRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.response.ReviewDto;
 import com.codeit.sb13.playlist_for_everyone.domain.review.service.ReviewService;
+import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -31,6 +33,17 @@ public class ReviewController implements ReviewApi {
         ReviewDto dto = reviewService.save(request, author.getUserId());
 
         return ResponseEntity.status(HttpStatus.CREATED).body(dto);
+    }
+
+    /**
+     * 콘텐츠별 리뷰 목록을 커서 기반 페이지네이션으로 조회한다.
+     */
+    @GetMapping
+    public ResponseEntity<CursorResponse<ReviewDto>> getAllByContentId(
+            @RequestParam UUID contentId,
+            @Valid @ModelAttribute ReviewListRequest request
+    ) {
+        return null;
     }
 
     @Override
