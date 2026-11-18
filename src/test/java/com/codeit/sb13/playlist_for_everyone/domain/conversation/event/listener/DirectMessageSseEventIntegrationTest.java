@@ -245,7 +245,7 @@ class DirectMessageSseEventIntegrationTest {
     }
 
     @Test
-    @DisplayName("커밋 전에는 DM 이벤트를 처리하지 않고 명시적으로 롤백하면 조회와 SSE 발행을 실행하지 않는다.")
+    @DisplayName("커밋 전과 롤백 후에는 DM 후속 조회·알림 저장·SSE 발행을 실행하지 않는다.")
     void doesNotProcessBeforeCommitOrAfterRollback(ApplicationEvents applicationEvents) {
         UUID directMessageId = UUID.randomUUID();
         TransactionTemplate transaction = new TransactionTemplate(transactionManager);
@@ -253,6 +253,10 @@ class DirectMessageSseEventIntegrationTest {
         transaction.executeWithoutResult(status -> {
             insertMessage(directMessageId, "롤백할 메시지");
             eventPublisher.publishEvent(event(directMessageId));
+
+            assertThat(countSavedNotifications()).isZero();
+            assertThat(applicationEvents.stream(NotificationCreatedEvent.class).toList())
+                    .isEmpty();
 
             // TransactionTemplate의 본문에서 실패한 검증은 호출한 테스트로 직접 전달된다.
             verify(directMessageRepository, never()).findDetailedById(any(UUID.class));
@@ -263,12 +267,15 @@ class DirectMessageSseEventIntegrationTest {
         assertThat(applicationEvents.stream(DirectMessageCreatedEvent.class).toList())
                 .containsExactly(event(directMessageId));
         assertThat(countSavedMessages()).isZero();
+        assertThat(countSavedNotifications()).isZero();
+        assertThat(applicationEvents.stream(NotificationCreatedEvent.class).toList())
+                .isEmpty();
         verify(directMessageRepository, never()).findDetailedById(any(UUID.class));
         verifyNoInteractions(fileStorage, sseEventPublisher);
     }
 
     @Test
-    @DisplayName("실제 DB 저장이 실패하면 생성 이벤트가 발행됐어도 메시지와 SSE 후속 처리를 남기지 않는다.")
+    @DisplayName("DB 저장이 실패하면 DM 이벤트가 발행됐어도 메시지·알림이 남지 않고 SSE를 발행하지 않는다.")
     void save_doesNotPublishWhenDatabaseCommitFails(ApplicationEvents applicationEvents) {
         String invalidContent = "DB 저장 실패 검증" + (char) 0;
 
@@ -277,12 +284,15 @@ class DirectMessageSseEventIntegrationTest {
 
         assertThat(applicationEvents.stream(DirectMessageCreatedEvent.class).toList()).hasSize(1);
         assertThat(countSavedMessages()).isZero();
+        assertThat(countSavedNotifications()).isZero();
+        assertThat(applicationEvents.stream(NotificationCreatedEvent.class).toList())
+                .isEmpty();
         verify(directMessageRepository, never()).findDetailedById(any(UUID.class));
         verifyNoInteractions(fileStorage, sseEventPublisher);
     }
 
     @Test
-    @DisplayName("트랜잭션 없이 DM 생성 이벤트를 발행하면 메시지가 존재해도 조회와 SSE 발행을 실행하지 않는다.")
+    @DisplayName("트랜잭션 없이 DM 이벤트를 발행하면 기존 메시지를 유지하고 알림 저장과 SSE 발행을 실행하지 않는다.")
     void doesNotProcessEventWithoutTransaction(ApplicationEvents applicationEvents) {
         UUID directMessageId = UUID.randomUUID();
         insertMessage(directMessageId, "이미 저장된 메시지");
@@ -293,12 +303,15 @@ class DirectMessageSseEventIntegrationTest {
         assertThat(applicationEvents.stream(DirectMessageCreatedEvent.class).toList())
                 .containsExactly(event(directMessageId));
         assertThat(findStoredMessage(directMessageId)).isEqualTo(before);
+        assertThat(countSavedNotifications()).isZero();
+        assertThat(applicationEvents.stream(NotificationCreatedEvent.class).toList())
+                .isEmpty();
         verify(directMessageRepository, never()).findDetailedById(any(UUID.class));
         verifyNoInteractions(fileStorage, sseEventPublisher);
     }
 
     @Test
-    @DisplayName("외부 트랜잭션이 롤백되어도 독립적으로 커밋한 DM과 수신자 SSE 발행은 유지한다.")
+    @DisplayName("외부 트랜잭션이 롤백되어도 독립적으로 커밋한 DM·알림과 각각의 SSE 발행을 유지한다.")
     void save_keepsMessageAndSseWhenOuterTransactionRollsBack(ApplicationEvents applicationEvents) {
         TransactionTemplate outerTransaction = new TransactionTemplate(transactionManager);
 
@@ -311,6 +324,8 @@ class DirectMessageSseEventIntegrationTest {
 
         assertThat(saved).isNotNull();
         assertThat(countSavedMessages()).isEqualTo(1L);
+        assertThat(countSavedNotifications()).isEqualTo(1L);
+        NotificationDto notification = findStoredNotification();
         assertThat(findStoredMessage(saved.getId()).content()).isEqualTo("외부 롤백 후에도 유지할 메시지");
         assertThat(jdbcTemplate.queryForObject("SELECT nickname FROM users WHERE id = ?", String.class, senderId))
                 .isEqualTo("발신자");
@@ -322,6 +337,15 @@ class DirectMessageSseEventIntegrationTest {
         assertThat(published.receiverId()).isEqualTo(receiverId);
         assertThat(published.data()).isInstanceOfSatisfying(MessageDto.class,
                 dto -> assertThat(dto.id()).isEqualTo(saved.getId()));
+
+        SseEvent<?> notificationPublished = onlyPublishedEvent("notifications");
+        assertThat(notificationPublished.receiverId()).isEqualTo(receiverId);
+        assertThat(notificationPublished.data())
+                .isInstanceOfSatisfying(NotificationDto.class, dto -> {
+                    assertThat(dto.id()).isEqualTo(notification.id());
+                    assertThat(dto.receiverId()).isEqualTo(receiverId);
+                });
+
         verifyNoInteractions(fileStorage);
     }
 
