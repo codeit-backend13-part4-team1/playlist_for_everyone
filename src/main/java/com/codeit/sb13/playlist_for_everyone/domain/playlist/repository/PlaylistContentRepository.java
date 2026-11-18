@@ -1,0 +1,35 @@
+package com.codeit.sb13.playlist_for_everyone.domain.playlist.repository;
+
+import com.codeit.sb13.playlist_for_everyone.domain.playlist.entity.PlaylistContent;
+import java.util.Collection;
+import java.util.List;
+import java.util.UUID;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+public interface PlaylistContentRepository extends JpaRepository<PlaylistContent, UUID> {
+
+  @Modifying(flushAutomatically = true, clearAutomatically = true)
+  @Query("delete from PlaylistContent pc where pc.playlistId = :playlistId")
+  int deleteAllByPlaylistId(@Param("playlistId") UUID playlistId);
+
+  boolean existsByPlaylistIdAndContentId(UUID playlistId, UUID contentId);
+
+  @Modifying(flushAutomatically = true, clearAutomatically = true)
+  @Query("delete from PlaylistContent pc where pc.playlistId = :playlistId and pc.contentId = :contentId")
+  int deleteByPlaylistIdAndContentId(@Param("playlistId") UUID playlistId, @Param("contentId") UUID contentId);
+
+  @Modifying(flushAutomatically = true)
+  @Query("delete from PlaylistContent pc where pc.contentId = :contentId")
+  int deleteAllByContentId(@Param("contentId") UUID contentId);
+
+  @Query("""
+      select pc from PlaylistContent pc
+      where pc.playlistId in :playlistIds
+      order by pc.createdAt asc, pc.id asc
+      """)
+  List<PlaylistContent> findAllByPlaylistIds(@Param("playlistIds") Collection<UUID> playlistIds);
+
+}

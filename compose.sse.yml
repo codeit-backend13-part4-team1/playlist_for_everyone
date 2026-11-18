@@ -1,0 +1,40 @@
+# 개발 검증용: compose.yaml과 함께 실행한다. 준비·실행 절차는 docs/sse/07-redis-multi-node.md 참고.
+services:
+  app-a: &sse-app
+    image: eclipse-temurin:17-jre
+    working_dir: /app
+    command: ["java", "-jar", "/app/app.jar"]
+    env_file:
+      - .env.dev
+    environment:
+      # 호스트의 .env.dev를 env_file로 전달하고, 컨테이너에서는 내부 서비스 주소를 사용한다.
+      SPRING_PROFILES_ACTIVE: dev
+      EVERYONE_DOCKER_COMPOSE_ENABLED: "false"
+      EVERYONE_DB_HOST: postgres
+      EVERYONE_DB_PORT: "5432"
+      EVERYONE_REDIS_HOST: redis
+      EVERYONE_REDIS_PORT: "6379"
+      EVERYONE_SERVER_PORT: "8080"
+      EVERYONE_SSE_TRANSPORT: redis
+      EVERYONE_SSE_SUBSCRIPTION_ENABLED: "true"
+    ports:
+      - "127.0.0.1:8081:8080"
+    # 실행 전에 bootJar를 빌드한다. JAR가 없으면 디렉터리를 만들지 않고 시작을 실패시킨다.
+    volumes:
+      - type: bind
+        source: ./build/libs/playlist_for_everyone-0.0.1-SNAPSHOT.jar
+        target: /app/app.jar
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  app-b:
+    <<: *sse-app
+    # app-a 설정을 재사용하고 호스트 포트만 구분한다.
+    ports:
+      - "127.0.0.1:8082:8080"

@@ -43,3 +43,10 @@ out/
 !.env.example
 /config/
 *.log
+.logs/
+
+# 부하테스트 결과물 (로컬 전용)
+report/
+report_*/
+*.jtl
+loadtest/data/

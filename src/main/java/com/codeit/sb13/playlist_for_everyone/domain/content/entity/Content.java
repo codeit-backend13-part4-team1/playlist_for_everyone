@@ -1,0 +1,167 @@
+package com.codeit.sb13.playlist_for_everyone.domain.content.entity;
+
+import com.codeit.sb13.playlist_for_everyone.global.domain.UpdatedAtEntity;
+import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
+import jakarta.persistence.*;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+
+import java.util.ArrayList;
+import java.util.List;
+
+@Entity
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@Table(
+        name = "contents",
+        uniqueConstraints = {
+                @UniqueConstraint(
+                        name = "uk_content_provider_type_item_id",
+                        columnNames = {"provider", "type", "provider_item_id"}
+                ),
+                @UniqueConstraint(
+                        name = "uk_contents_file_info",
+                        columnNames = {"file_info_id"}
+                )
+        }
+)
+public class Content extends UpdatedAtEntity {
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    private ContentType type;
+
+    @Column(nullable = false, length = 100)
+    private String title;
+
+    @Column(nullable = false, columnDefinition = "TEXT")
+    private String description;
+
+    @Column(name = "thumbnail_url", length = 2048)
+    private String thumbnailUrl;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "provider", nullable = false, length = 30)
+    private ContentSource provider;
+
+    @Column(name = "provider_item_id")
+    private String providerItemId;
+
+    @OneToMany(
+            mappedBy = "content",
+            cascade = CascadeType.ALL,
+            orphanRemoval = true
+    )
+    private List<ContentTag> tags = new ArrayList<>();
+
+    // S3 파일 삭제 이벤트 처리를 위해 cascade 대신 FileService.delete() 사용
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "file_info_id")
+    private FileInfo fileInfo;
+
+    // 기존 호출부에 영향을 주지 않도록 생성 메서드 시그니처 유지
+    // Presigned URL은 서비스 응답 생성 시 처리
+    public static Content createAdminContent(
+            ContentType type,
+            String title,
+            String description,
+            String thumbnailUrl,
+            FileInfo fileInfo
+    ) {
+        Content content = new Content();
+
+        content.type = type;
+        content.title = title;
+        content.description = description;
+        content.thumbnailUrl = thumbnailUrl;
+        content.fileInfo = fileInfo;
+        content.provider = ContentSource.ADMIN;
+        content.providerItemId = null;
+
+        return content;
+    }
+
+    // 기존 호출부와의 호환성을 위한 오버로딩 메서드
+    public static Content createAdminContent(
+            ContentType type,
+            String title,
+            String description,
+            String thumbnailUrl
+    ) {
+        return createAdminContent(
+                type,
+                title,
+                description,
+                thumbnailUrl,
+                null
+        );
+    }
+
+    /** 외부 API에서 수집한 콘텐츠 생성 */
+    public static Content createCollectedContent(
+            ContentType type,
+            String title,
+            String description,
+            String thumbnailUrl,
+            ContentSource provider,
+            String providerItemId
+    ) {
+        if (provider == null || provider == ContentSource.ADMIN) {
+            throw new IllegalArgumentException("수집한 콘텐츠에는 외부 API 출처가 필요합니다.");
+        }
+        if (providerItemId == null || providerItemId.isBlank()) {
+            throw new IllegalArgumentException("수집한 콘텐츠에는 외부 ID가 필요합니다.");
+        }
+
+        Content content = new Content();
+        content.type = type;
+        content.title = title;
+        content.description = description;
+        content.thumbnailUrl = thumbnailUrl;
+        content.provider = provider;
+        content.providerItemId = providerItemId;
+        return content;
+    }
+
+    public void update(
+            String title,
+            String description,
+            List<String> tags
+    ) {
+        if (title != null) {
+            this.title = title;
+        }
+
+        if (description != null) {
+            this.description = description;
+        }
+
+        if (tags != null) {
+            // 요청에 없는 기존 태그 삭제
+            this.tags.removeIf(
+                    contentTag -> !tags.contains(contentTag.getTag())
+            );
+
+            List<String> existingTags = this.tags.stream()
+                    .map(ContentTag::getTag)
+                    .toList();
+
+            // 기존에 없는 태그만 추가
+            tags.stream()
+                    .filter(tag -> !existingTags.contains(tag))
+                    .forEach(this::addTag);
+        }
+    }
+
+    public void addTag(String tag) {
+        ContentTag contentTag = new ContentTag(this, tag);
+        tags.add(contentTag);
+    }
+
+    public void updateThumbnail(String thumbnailUrl, FileInfo fileInfo) {
+        this.thumbnailUrl = thumbnailUrl;
+        this.fileInfo = fileInfo;
+    }
+
+}

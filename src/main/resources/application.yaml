@@ -4,6 +4,15 @@ spring:
 
   profiles:
     default: dev
+
+  batch:
+    job:
+      # 앱 시작 시 배치를 자동 실행하지 않는다.
+      enabled: false
+    jdbc:
+      # 배치 테이블은 Flyway로 생성한다.
+      initialize-schema: never
+
   jpa:
     open-in-view: false
     properties:
@@ -22,6 +31,31 @@ spring:
       max-file-size: ${EVERYONE_MULTIPART_MAX_FILE_SIZE:10MB}
       # 파일과 폼 데이터를 포함한 요청 전체의 최대 크기
       max-request-size: ${EVERYONE_MULTIPART_MAX_REQUEST_SIZE:12MB}
+  data:
+    redis:
+      # 공용 Redis 명령 응답 대기 시간. SSE 연결 유지 시간과는 별개다.
+      # 3초는 운영 지연을 측정하기 전 정한 초기값이다.
+      # 지연·타임아웃 발생 시 원인과 요청 응답 시간을 확인하고 환경별로 조정한다.
+      timeout: ${EVERYONE_REDIS_TIMEOUT:3s}
+
+  mail:
+    host: ${EVERYONE_MAIL_HOST:smtp.gmail.com}
+    port: ${EVERYONE_MAIL_PORT:587}
+    username: ${EVERYONE_MAIL_USERNAME:}
+    password: ${EVERYONE_MAIL_PASSWORD:}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 5000
+      mail.smtp.writetimeout: 5000
+
+management:
+  health:
+    mail:
+      # 외부 메일 서버 상태 때문에 애플리케이션 헬스가 DOWN이 되지 않게 한다.
+      # 메일 발송 실패는 비밀번호 초기화 요청에서만 오류로 처리한다.
+      enabled: false
 
 springdoc:
   api-docs:
@@ -33,13 +67,100 @@ springdoc:
     path: /swagger-ui.html
     operations-sorter: method
     tags-sorter: alpha
+    csrf:
+      enabled: true
 
 everyone:
   s3:
     bucket: ${EVERYONE_S3_BUCKET}
-    region: ${EVERYONE_AWS_REGION}
-    endpoint: ${EVERYONE_AWS_ENDPOINT}
+    region: ${EVERYONE_AWS_REGION:ap-northeast-2}
+    endpoint: ${EVERYONE_AWS_ENDPOINT:}
 
   openapi:
     server-url: http://localhost:${server.port:8080}
     server-description: 로컬 개발 서버
+
+  jwt:
+    secret-key: ${JWT_SECRET_KEY}
+    access-token-validity: ${JWT_ACCESS_TOKEN_VALIDITY:15m}
+    # 기본값은 7일이며 환경 변수로 변경할 수 있다.
+    refresh-token-validity: ${JWT_REFRESH_TOKEN_VALIDITY:7d}
+    refresh-cookie-secure: ${JWT_REFRESH_COOKIE_SECURE:true}
+
+  admin:
+    # 명시적으로 활성화한 환경에서만 관리자 초기화를 실행한다.
+    enabled: ${EVERYONE_ADMIN_ENABLED:false}
+    # 비활성화 상태에서는 계정 정보를 입력하지 않아도 된다.
+    # 활성화했는데 값이 비어 있으면 AdminInitializer가 시작을 중단한다.
+    email: ${EVERYONE_ADMIN_EMAIL:}
+    name: ${EVERYONE_ADMIN_NAME:}
+    password: ${EVERYONE_ADMIN_PASSWORD:}
+
+  tmdb:
+    base-url: https://api.themoviedb.org/3
+    access-token: ${EVERYONE_TMDB_ACCESS_TOKEN}
+    connect-timeout: 3s
+    read-timeout: 10s
+
+  sportsdb:
+    base-url: https://www.thesportsdb.com/api/v1/json
+    api-key: ${EVERYONE_SPORTSDB_API_KEY:123}
+    connect-timeout: 3s
+    read-timeout: 10s
+
+  sse:
+    # 환경변수 미지정 시 아래 기본값을 사용한다. 연결 설정은 SseProperties, 전송 설정은 SseTransportProperties가 검증한다.
+    # 하트비트 작업 완료 후 다음 실행까지 대기하는 시간. 0보다 커야 한다.
+    heartbeat-interval: ${EVERYONE_SSE_HEARTBEAT_INTERVAL:15s}
+    # 개별 SSE 비동기 요청의 제한 시간. 하트비트 주기와 별개이며, 종료 후 클라이언트가 재연결한다.
+    # 밀리초 변환 시 0으로 잘리지 않도록 1ms 이상이어야 한다.
+    connection-timeout: ${EVERYONE_SSE_CONNECTION_TIMEOUT:30m}
+    # SSE의 Redis 자동 구독 여부. false여도 발행자 빈과 다른 기능의 Redis 사용은 유지된다.
+    subscription-enabled: ${EVERYONE_SSE_SUBSCRIPTION_ENABLED:true}
+    # 현재 지원하는 구현체는 redis이다. Kafka 구현체는 후속 작업이다.
+    transport: ${EVERYONE_SSE_TRANSPORT:redis}
+    redis:
+      # 같은 환경의 서버는 같은 채널을 사용한다. 환경을 격리하려면 Redis 또는 채널을 구분한다.
+      channel: ${EVERYONE_SSE_REDIS_CHANNEL:everyone:sse:events}
+    history:
+      # 기본 프로필 밖에서 사용하는 공통 값. dev/prod/test는 프로필별 접두사로 덮어쓴다.
+      # 같은 환경의 서버는 같은 접두사를 사용한다. 변경 시 기존 이력은 자동 이전되지 않는다.
+      key-prefix: ${EVERYONE_SSE_HISTORY_KEY_PREFIX:everyone:sse:history}
+      # 사용자별 상한과 보관기간의 초기값. 활성 사용자·이벤트 크기·Redis 메모리/조회 지연을 측정해 조정한다.
+      max-events-per-user: ${EVERYONE_SSE_HISTORY_MAX_EVENTS_PER_USER:1000}
+      # 신규 저장은 키 TTL을 갱신하되, 기존 이벤트의 개별 보관기간까지 늘리지는 않는다.
+      retention: ${EVERYONE_SSE_HISTORY_RETENTION:10m}
+    retry:
+      # 연결 후 일시적 조회 실패의 재시도. Redis 발행 재시도나 브라우저 재연결 간격이 아니다.
+      initial-delay: ${EVERYONE_SSE_RETRY_INITIAL_DELAY:1s}
+      max-delay: ${EVERYONE_SSE_RETRY_MAX_DELAY:30s}
+      # 최초 시도 제외. 성공하면 횟수·간격을 초기화하고, 소진하면 해당 연결을 종료한다.
+      max-retries: ${EVERYONE_SSE_RETRY_MAX_RETRIES:3}
+
+  websocket:
+    event:
+      # 이벤트 리스너의 구현체를 선택. false 일 경우, 전역 호출 이벤트가 단일 인스턴스 내에만 호출 된다.
+      multiple: ${EVERYONE_WEBSOCKET_EVENT_MULTIPLE:true}
+
+  collection:
+    schedule:
+      enabled: ${EVERYONE_COLLECTION_SCHEDULE_ENABLED:false}
+      zone: ${EVERYONE_COLLECTION_SCHEDULE_ZONE:Asia/Seoul}
+      tmdb:
+        cron: "${EVERYONE_COLLECTION_SCHEDULE_TMDB_CRON:-}"
+        max-pages: ${EVERYONE_COLLECTION_SCHEDULE_TMDB_MAX_PAGES:5}
+      sportsdb:
+        cron: "${EVERYONE_COLLECTION_SCHEDULE_SPORTSDB_CRON:-}"
+        league-id: "${EVERYONE_COLLECTION_SCHEDULE_SPORTSDB_LEAGUE_ID:}"
+        season: "${EVERYONE_COLLECTION_SCHEDULE_SPORTSDB_SEASON:}"
+
+  dm:
+    websocket:
+      # 현재는 Redis 구현체만 지원한다. Kafka는 구현체와 전환 검증을 추가한 뒤 선택할 수 있다.
+      transport: ${EVERYONE_DM_WEBSOCKET_TRANSPORT:redis}
+      # 이 서버의 DM 자동 구독만 제어한다. false여도 메시지 저장·발행과 다른 Redis 사용은 유지된다.
+      subscription-enabled: ${EVERYONE_DM_WEBSOCKET_SUBSCRIPTION_ENABLED:true}
+      redis:
+        # 같은 환경의 서버끼리 공유한다. dev/prod 프로필에 따라 자동 분리되지 않는다.
+        # 공통 인증·콘텐츠 이벤트의 채널은 이 설정으로 바뀌지 않는다.
+        channel: ${EVERYONE_DM_WEBSOCKET_REDIS_CHANNEL:everyone:dm:events}
