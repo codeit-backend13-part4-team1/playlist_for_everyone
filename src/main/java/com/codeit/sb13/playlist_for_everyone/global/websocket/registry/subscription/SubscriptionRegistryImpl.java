@@ -15,6 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * Broker 에 대한 구독은 관리하지 않는다.
  * 즉, 현재 브로커 메세지에 대한 구독 상태와 상이할 수 있다.
  */
+@Deprecated
 @Slf4j
 @Component
 @RequiredArgsConstructor

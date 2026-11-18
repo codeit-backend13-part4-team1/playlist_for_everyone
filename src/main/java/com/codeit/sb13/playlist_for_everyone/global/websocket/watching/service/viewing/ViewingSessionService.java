@@ -1,5 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.viewing;
 
+import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSubscription;
+
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -13,33 +15,30 @@ public interface ViewingSessionService {
 
     /**
      * 세션 방에 참가하는 매서드.
-     * @param sessionId 세션 id
-     * @param subscribeId 구독 id
-     * @param contentId 대상이 되는 컨텐츠 id
+     * @param subscription 구독 정보
      */
-    void join(String sessionId, String subscribeId, UUID contentId);
+    void join(WSSubscription subscription, UUID contentId);
 
     /**
      * 참가된 세션 방에서 나가는 매서드.
-     * @param sessionId 세션 id
-     * @param subscribeId 구독 id
-     * @param contentId 대상이 되는 컨텐츠 id
+     * @param subscription 구독 정보
      */
-    void leave(String sessionId, String subscribeId, UUID contentId);
+    void leave(WSSubscription subscription, UUID contentId);
 
     /**
      * 해당 구독 리스트를 특정 세션 룸에서 등록 취소하는 매서드
-     * @param sessionId 세션 id
-     * @param subscriptionIds 구독 id 리스트
+     * @param subscriptions 구독 리스트
      * @param contentId 대상이 되는 컨텐츠 id
      */
-    void leaveAll(String sessionId, List<String> subscriptionIds, UUID contentId);
+    void leaveAll(List<WSSubscription> subscriptions, UUID contentId);
 
     /**
      * 특정 컨텐츠에 대한 세션 룸 및 리소스를 해지하는 매서드
+     *
      * @param contentId 대상이 되는 컨텐츠 id
+     * @return
      */
-    void destroy(UUID contentId);
+    List<WSSubscription> destroy(UUID contentId);
 
     /**
      * 세션 룸에 메세지를 전송하는 매서드.
