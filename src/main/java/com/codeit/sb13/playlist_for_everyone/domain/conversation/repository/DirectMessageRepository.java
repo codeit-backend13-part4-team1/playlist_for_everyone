@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.conversation.repository;
 
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.entity.DirectMessage;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -68,7 +69,10 @@ public interface DirectMessageRepository extends JpaRepository<DirectMessage, UU
             @Param("conversationId") UUID conversationId
     );
 
-
+    @EntityGraph(attributePaths = {
+            "sender", "sender.profileImage",
+            "receiver", "receiver.profileImage"
+    })
     @Query("""
         SELECT dm
         FROM DirectMessage dm
