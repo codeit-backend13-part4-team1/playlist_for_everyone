@@ -51,6 +51,15 @@ public record SseEvent<T>(
         );
     }
 
+    public static <T> SseEvent<T> createDirectMessageEvent(UUID eventId, UUID receiverId, T data){
+        return new SseEvent<>(
+                eventId,
+                receiverId,
+                Event.DIRECT_MESSAGES.getName(),
+                data
+        );
+    }
+
     /** 저장용 JSON 데이터로 바꾸되 이벤트 ID·수신자·이름은 그대로 유지한다. */
     public SseEvent<JsonNode> toHistoryData(JsonNode data){
         return new SseEvent<>(eventId, receiverId, eventName, data);
