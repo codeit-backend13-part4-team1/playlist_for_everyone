@@ -17,11 +17,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.InvalidDataAccessApiUsageException;
 
 import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DataJpaTest
 @Import({
@@ -179,6 +181,106 @@ public class ReviewListRepositoryTest {
 
         // then
         assertThat(reviews).hasSize(3);
+    }
+
+    @Test
+    @DisplayName("평점 커서 이후의 리뷰를 조회할 수 있다.")
+    void getReviewList_cursorByRating() {
+        // given
+        UUID contentId = content1.getId();
+
+        ReviewListCondition firstCondition = new ReviewListCondition(
+                null,
+                null,
+                2,
+                SortDirection.DESCENDING,
+                "rating"
+        );
+
+        List<Review> firstPage =
+                reviewRepository.getReviewsByContentId(contentId, firstCondition);
+
+        // 실제 페이지 크기인 2개 중 마지막 리뷰
+        Review lastReview = firstPage.get(1);
+
+        ReviewListCondition nextCondition = new ReviewListCondition(
+                String.valueOf(lastReview.getRating()),
+                lastReview.getId(),
+                2,
+                SortDirection.DESCENDING,
+                "rating"
+        );
+
+        // when
+        List<Review> nextPage =
+                reviewRepository.getReviewsByContentId(contentId, nextCondition);
+
+        // then
+        assertThat(nextPage)
+                .extracting(Review::getRating)
+                .containsExactly(3.0);
+    }
+
+    @Test
+    @DisplayName("생성일 커서 이후의 리뷰를 조회할 수 있다.")
+    void getReviewList_cursorByCreatedAt() {
+        // given
+        UUID contentId = content2.getId();
+
+        ReviewListCondition firstCondition = new ReviewListCondition(
+                null,
+                null,
+                2,
+                SortDirection.ASCENDING,
+                "createdAt"
+        );
+
+        List<Review> firstPage =
+                reviewRepository.getReviewsByContentId(contentId, firstCondition);
+
+        // 실제 페이지의 마지막 리뷰
+        Review lastReview = firstPage.get(1);
+
+        ReviewListCondition nextCondition = new ReviewListCondition(
+                lastReview.getCreatedAt().toString(),
+                lastReview.getId(),
+                2,
+                SortDirection.ASCENDING,
+                "createdAt"
+        );
+
+        // when
+        List<Review> nextPage =
+                reviewRepository.getReviewsByContentId(contentId, nextCondition);
+
+        // then
+        assertThat(nextPage).hasSize(1);
+
+        assertThat(nextPage.get(0).getId())
+                .isEqualTo(firstPage.get(2).getId());
+    }
+
+    @Test
+    @DisplayName("cursor와 idAfter가 함께 전달되지 않으면 예외가 발생한다.")
+    void getReviewList_invalidCursor() {
+        // given
+        ReviewListCondition condition = new ReviewListCondition(
+                "4.0",
+                null,
+                2,
+                SortDirection.DESCENDING,
+                "rating"
+        );
+
+        // when & then
+        assertThatThrownBy(() ->
+                reviewRepository.getReviewsByContentId(
+                        content1.getId(),
+                        condition
+                )
+        )
+                .isInstanceOf(InvalidDataAccessApiUsageException.class)
+                .hasMessageContaining("cursor와 idAfter는 함께 전달해야 합니다.");
     }
 
     private Content createContent(String title) {
