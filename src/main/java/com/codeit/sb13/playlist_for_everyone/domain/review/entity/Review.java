@@ -14,7 +14,7 @@ import lombok.NoArgsConstructor;
 @Table(
         name = "reviews",
         uniqueConstraints = @UniqueConstraint(
-                name = "uk_reviews_content_author",
+                name = "uk_review_content_author",
                 columnNames = {"content_id", "author_id"}
         )
 )
