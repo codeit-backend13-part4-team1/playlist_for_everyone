@@ -210,4 +210,62 @@ class DirectMessageRepositoryTest {
                                         cause -> assertThat(cause.getSQLState())
                                                 .isEqualTo("23502")));
     }
+
+    @ParameterizedTest(name = "프로필 이미지 존재:{0}")
+    @ValueSource(booleans = {true, false})
+    @DisplayName("메시지를 상세 조회하면 영속성 컨텍스트를 비운 뒤에도 사용자와 프로필 정보를 사용할 수 있다.")
+    void findDetailedById_loadsUsersAndProfiles(boolean hasProfileImage){
+        String senderProfileKey = "profiles/" + UUID.randomUUID() + ".png";
+        String receiverProfileKey = "profiles/" + UUID.randomUUID() + ".png";
+
+        if (hasProfileImage) {
+            attachProfileImage(LEGACY_USER_A_ID,senderProfileKey);
+            attachProfileImage(LEGACY_USER_B_ID,receiverProfileKey);
+            entityManager.clear();
+        }
+
+        DirectMessage found = directMessageRepository.findDetailedById(LEGACY_MESSAGE_ID).orElseThrow();
+        entityManager.clear();
+
+        assertThat(found.getId()).isEqualTo(LEGACY_MESSAGE_ID);
+        assertThat(found.getConversationId()).isEqualTo(LEGACY_CONVERSATION_ID);
+        assertThat(found.getSenderId()).isEqualTo(LEGACY_USER_A_ID);
+        assertThat(found.getSenderName()).isEqualTo("기존 사용자 A");
+        assertThat(found.getReceiverId()).isEqualTo(LEGACY_USER_B_ID);
+        assertThat(found.getReceiver().getName()).isEqualTo("기존 사용자 B");
+        if (hasProfileImage) {
+            assertThat(found.getSender().getProfileImage()).isNotNull();
+            assertThat(found.getSender().getProfileImage().getKey()).isEqualTo(senderProfileKey);
+            assertThat(found.getReceiver().getProfileImage()).isNotNull();
+            assertThat(found.getReceiver().getProfileImage().getKey()).isEqualTo(receiverProfileKey);
+
+            return;
+        }
+        assertThat(found.getSender().getProfileImage()).isNull();
+        assertThat(found.getReceiver().getProfileImage()).isNull();
+
+    }
+
+    @Test
+    @DisplayName("해당 ID의 메시지가 없으면 빈Optional을 반환한다.")
+    void findDetailedById_returnsEmptyWhenMessageNotFound(){
+        UUID missingMessageId = UUID.randomUUID();
+        assertThat(directMessageRepository.findDetailedById(missingMessageId)).isEmpty();
+    }
+
+    private void attachProfileImage(UUID userId, String fileKey) {
+        UUID profileImageId = UUID.randomUUID();
+
+        jdbcTemplate.update("""
+              INSERT INTO file_infos ( id, file_key, original_filename, content_type, size, created_at )
+              VALUES (?, ?, 'profile.png', 'image/png', 1024, ?)
+              """, profileImageId, fileKey, LEGACY_CREATED_AT);
+
+        jdbcTemplate.update("""
+              UPDATE users
+              SET profile_image_id = ?
+              WHERE id = ?
+              """, profileImageId, userId);
+    }
+
 }

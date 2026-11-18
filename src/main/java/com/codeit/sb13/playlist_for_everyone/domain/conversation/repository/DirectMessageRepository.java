@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
+import java.util.Optional;
 import java.util.UUID;
 
 /** DM 영속성·조회와 기준 메시지까지의 누적 읽음 갱신을 제공한다. 읽음 갱신에는 쓰기 트랜잭션이 필요하다. */
@@ -66,4 +67,12 @@ public interface DirectMessageRepository extends JpaRepository<DirectMessage, UU
             @Param("directMessageId") UUID directMessageId,
             @Param("conversationId") UUID conversationId
     );
+
+
+    @Query("""
+        SELECT dm
+        FROM DirectMessage dm
+        WHERE dm.id = :directMessageId
+    """)
+    Optional<DirectMessage> findDetailedById(@Param("directMessageId") UUID directMessageId);
 }
