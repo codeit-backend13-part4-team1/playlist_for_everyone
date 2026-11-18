@@ -247,6 +247,35 @@ public class ReviewControllerTest {
     }
 
     @Test
+    @DisplayName("limit이 20을 초과하면 400을 반환한다.")
+    void getReviewList_exceedMaxLimit() throws Exception {
+        // when & then
+        mockMvc.perform(get("/api/reviews")
+                        .param("contentId", UUID.randomUUID().toString())
+                        .param("limit", "21")
+                        .param("sortDirection", "DESCENDING")
+                        .param("sortBy", "createdAt"))
+                .andExpect(status().isBadRequest());
+
+        then(reviewService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("커서만 전달하면 400 Bad Request를 반환한다.")
+    void getReviewList_missingIdAfter() throws Exception {
+        // when & then
+        mockMvc.perform(get("/api/reviews")
+                        .param("contentId", UUID.randomUUID().toString())
+                        .param("cursor", "2026-11-18T10:00:00")
+                        .param("limit", "10")
+                        .param("sortDirection", "ASCENDING")
+                        .param("sortBy", "createdAt"))
+                .andExpect(status().isBadRequest());
+
+        then(reviewService).shouldHaveNoInteractions();
+    }
+
+    @Test
     @DisplayName("정렬 방향이 없으면 400을 반환한다.")
     void getReviewList_missingSortDirection() throws Exception {
         // when & then
