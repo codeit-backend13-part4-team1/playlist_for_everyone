@@ -8,6 +8,9 @@ import com.codeit.sb13.playlist_for_everyone.domain.conversation.event.DirectMes
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.repository.DirectMessageRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.DirectMessageService;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.impl.DirectMessageSaver;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.response.NotificationDto;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.NotificationLevel;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.event.NotificationCreatedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.global.exception.conversation.DirectMessagePublishException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.sse.SsePublishException;
@@ -43,6 +46,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -51,6 +55,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.assertj.core.api.Assertions.within;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.atLeastOnce;
@@ -166,7 +171,7 @@ class DirectMessageSseEventIntegrationTest {
     }
 
     @Test
-    @DisplayName("실제 DM 저장 커밋 후 저장된 정보로 수신자 SSE를 한 번 발행한다.")
+    @DisplayName("실제 DM 커밋 후 미접속 상태에서도 알림을 한 건 저장하고 DM·알림 SSE 발행을 요청한다.")
     void save_publishesSseAfterCommit(ApplicationEvents applicationEvents) {
         // OS 시계 정밀도와 무관하게 저장 전 나노초와 DB 저장 시각의 차이를 재현한다.
         LocalDateTime createdAt = LocalDateTime.of(2026, 1, 1, 12, 0, 0, 123456789);
@@ -194,6 +199,16 @@ class DirectMessageSseEventIntegrationTest {
         assertThat(saved.getCreatedAt()).isEqualTo(stored.createdAt());
         assertThat(stored.read()).isFalse();
         assertThat(countSavedMessages()).isEqualTo(1L);
+        assertThat(countSavedNotifications()).isEqualTo(1L);
+
+        NotificationDto notification = findStoredNotification();
+        assertThat(notification).isNotNull();
+        assertThat(notification.id()).isNotNull();
+        assertThat(notification.createdAt()).isNotNull();
+        assertThat(notification.receiverId()).isEqualTo(receiverId);
+        assertThat(notification.title()).isEqualTo("새로운 메시지");
+        assertThat(notification.content()).isEqualTo("발신자님이 메시지를 보냈습니다.");
+        assertThat(notification.level()).isEqualTo(NotificationLevel.INFO);
 
         SseEvent<?> published = onlyPublishedEvent("direct-messages");
         assertThat(published.eventId()).isEqualTo(stored.id());
@@ -204,6 +219,27 @@ class DirectMessageSseEventIntegrationTest {
                 new UserSummary(stored.senderId(), "발신자", null),
                 new UserSummary(stored.receiverId(), "수신자", null), stored.content()
         ));
+
+        List<NotificationCreatedEvent> notificationEvents = applicationEvents
+                .stream(NotificationCreatedEvent.class)
+                .toList();
+        assertThat(notificationEvents).hasSize(1);
+        NotificationCreatedEvent notificationCreated = notificationEvents.get(0);
+
+        SseEvent<?> notificationPublished = onlyPublishedEvent("notifications");
+        assertThat(notificationPublished.eventId()).isEqualTo(notificationCreated.eventId());
+        assertThat(notificationPublished.receiverId()).isEqualTo(receiverId);
+        assertThat(notificationPublished.eventName()).isEqualTo("notifications");
+        assertThat(notificationPublished.data()).isEqualTo(notificationCreated.notificationDto());
+
+        NotificationDto delivered = notificationCreated.notificationDto();
+        assertThat(delivered)
+                .usingRecursiveComparison()
+                .ignoringFields("createdAt")
+                .isEqualTo(notification);
+        assertThat(delivered.createdAt())
+                .isCloseTo(notification.createdAt(), within(1_000, ChronoUnit.NANOS));
+
         verify(directMessageRepository).findDetailedById(saved.getId());
         verifyNoInteractions(fileStorage);
     }
@@ -487,6 +523,37 @@ class DirectMessageSseEventIntegrationTest {
     private long countSavedMessages() {
         return jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM direct_messages WHERE conversation_id = ?", Long.class, conversationId);
+    }
+
+    private long countSavedNotifications() {
+        return jdbcTemplate.queryForObject(
+                """
+                SELECT COUNT(*)
+                FROM notifications
+                WHERE receiver_id IN (?, ?)
+                """,
+                Long.class,
+                senderId,
+                receiverId
+        );
+    }
+
+    private NotificationDto findStoredNotification() {
+        return jdbcTemplate.queryForObject("""
+                SELECT id, created_at, receiver_id, title, content, level
+                FROM notifications
+                WHERE receiver_id = ?
+                """,
+                (row, rowNum) -> new NotificationDto(
+                        row.getObject("id", UUID.class),
+                        row.getTimestamp("created_at").toLocalDateTime(),
+                        row.getObject("receiver_id", UUID.class),
+                        row.getString("title"),
+                        row.getString("content"),
+                        NotificationLevel.valueOf(row.getString("level"))
+                ),
+                receiverId
+        );
     }
 
     private StoredMessage findStoredMessage(UUID directMessageId) {
