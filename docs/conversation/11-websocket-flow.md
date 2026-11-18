@@ -1,6 +1,6 @@
 # 11. DM WebSocket 송수신 흐름
 
-이 문서는 #61의 메시지 송신과 서버 간 전달을 설명합니다. #62에서 추가한 DM 생성 이벤트·SSE와의 연결은 [DM 이벤트·SSE](15-direct-message-event-sse.md)를 참고합니다. REST 조회·읽음은 기존 API를 사용하고, 알림 생성·전송 및 알림 통합 검증은 #159에서 담당합니다.
+이 문서는 #61의 메시지 송신과 서버 간 전달을 설명합니다. #62의 생성 이벤트·SSE는 [DM 이벤트·SSE](15-direct-message-event-sse.md), #159의 알림 생성·전송은 [DM 알림 연동](../notification/11-direct-message-integration.md)을 참고합니다. REST 조회·읽음은 기존 API를 사용합니다.
 
 [DM 전체 흐름](00-overall-flow.md)에서 서버 A·B로 나뉘는 전달 그림을 먼저 확인할 수 있습니다. 이 페이지는 컴포넌트 역할과 트랜잭션·실패 결과를 자세히 설명합니다.
 
@@ -30,7 +30,7 @@ sequenceDiagram
     A->>C: SEND (채널 참여 인가 통과)
     C->>S: save(command)
     S->>S: 상세 조회·참여 검증·미읽음 저장
-    S->>S: 생성 이벤트 발행 → 커밋 → AFTER_COMMIT SSE 처리
+    S->>S: 생성 이벤트 발행 → 커밋 → DM SSE·알림 소비자 처리
     S-->>C: REQUIRES_NEW 커밋 후 반환
     C->>C: MessageDto·프로필 URL 변환
     C->>P: publish(dto)
@@ -49,6 +49,7 @@ sequenceDiagram
 | `DirectMessageService` | 저장 → DTO 변환 → 발행 순서 조정 |
 | `DirectMessageSaver` | 독립 쓰기 트랜잭션에서 참여 검증·한 건 저장·생성 이벤트 발행 |
 | `DirectMessageSseEventListener` | 커밋 후 저장 측 연결을 재사용한 상세 조회·DTO 변환·수신자 SSE 발행. 실패를 기록하여 WebSocket 경로와 격리 |
+| `NotificationDomainEventListener` | 같은 생성 이벤트를 수신자 알림 요청으로 변환. 공통 독립 저장·notifications SSE 경로 연결 |
 | `ConversationReader` | 검증용 일반 조회와 참여자·프로필을 함께 로딩하는 상세 조회 구분 |
 | `DirectMessagePublisher` | 서버 간 전송 계약. 현재 Redis 구현체 사용 |
 | `DirectMessageSubscription` | 서버 단위 브로커 구독의 시작·종료. 브라우저 STOMP 구독과 별개 |
@@ -63,7 +64,13 @@ Saver는 별도 빈의 `REQUIRES_NEW`를 사용합니다. 서비스가 저장 �
 
 현재 생성 이벤트의 SSE 리스너는 동기식 `AFTER_COMMIT` 콜백으로 실행됩니다. Reader는 `REQUIRED`로 아직 바인딩된 저장 측 연결을 재사용하여 상세 조회하고, 이후 SSE용 URL·DTO를 변환합니다. 저장 연결을 보유한 채 조회용 두 번째 연결을 기다리지 않도록 한 구조입니다. 이 처리가 끝나야 Saver 호출이 반환되며, SSE 처리 실패는 리스너에서 기록하여 뒤따르는 WebSocket 발행을 차단하지 않습니다.
 
-커밋 완료와 커넥션 반환은 같은 시점이 아닙니다. 현재 동기 콜백의 프로필 URL 생성·SSE 발행 중에도 저장 측 연결이 남을 수 있으며, 이 점유 시간을 줄이는 비동기 전환은 후속 작업입니다. 커밋 후 재사용 조회 경로에는 쓰기를 추가하지 않습니다.
+알림 소비자도 같은 이벤트를 동기로 처리하되, 공통 요청을 재발행하여 `REQUIRES_NEW`로 알림을 저장합니다. 조회용 연결 재사용 설명은 DM Reader의 경계이며, 독립 알림 저장에는 별도 트랜잭션·연결이 필요합니다. 두 소비자의 콜백 처리가 끝난 뒤 WebSocket 단계로 이어집니다.
+
+커밋 완료와 커넥션 반환은 같은 시점이 아닙니다. DM 저장 측 연결이 남아 있는 동안 알림 저장용 추가 연결을 기다릴 수 있습니다. 동시 요청으로 연결 풀이 부족해지면 알림 저장이 대기 시간 초과로 실패하고 WebSocket 발행도 지연될 수 있습니다. 이미 커밋한 DM은 유지되지만, 실패한 알림의 자동 재시도는 없습니다.
+
+DM 알림 생성 경로의 전용 실행기 분리와 연결 풀 검증은 [#168](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/168)에서 운영 반영 전에 진행합니다. 이 이슈에는 DM의 `direct-messages` SSE 처리와 WebSocket 발행 자체의 비동기 전환은 포함하지 않습니다.
+
+현재 동기 콜백의 프로필 URL 생성·SSE 발행 중에도 저장 측 연결이 남을 수 있습니다. 커밋 후 기존 연결을 재사용하는 조회 경로에는 쓰기를 추가하지 않습니다.
 
 저장용 상세 조회는 두 참여자와 프로필 엔티티를 함께 로딩합니다. URL 생성 자체는 저장 커밋 후 Mapper가 수행합니다. 상위 트랜잭션이 있는 호출에서는 복귀한 상위 트랜잭션의 영향을 구분해야 하지만, 이미 완료된 독립 저장 커밋은 외부 롤백으로 취소되지 않습니다.
 
@@ -76,6 +83,7 @@ Saver는 별도 빈의 `REQUIRES_NEW`를 사용합니다. 서비스가 저장 �
 | 입력·채널 인가·저장 시 참여 검증 | 생성하지 않음 | 요청 경로의 오류 처리 |
 | DB 저장·커밋 | 롤백 | DTO 변환·발행하지 않음 |
 | 커밋 후 SSE 조회·변환·발행 | 유지 | SSE 리스너가 기록하고 기존 WebSocket 처리는 계속 실행 |
+| 알림 요청·저장·SSE 발행 | 유지 | 각 알림 경계에서 처리한 실패는 DM SSE·WebSocket을 차단하지 않음. 상세 결과는 알림 가이드 참고 |
 | 커밋 후 프로필 URL 등 DTO 변환 | 유지 | `DirectMessagePublishException`, 발행하지 않음 |
 | JSON 직렬화·Redis 발행 | 유지 | 발행 예외 전달, 자동 재발행하지 않음 |
 | Redis 수신 JSON 변환 | 유지 | 변환 오류를 기록하고 해당 메시지를 건너뜀. JSON null도 전달하지 않음 |
@@ -83,7 +91,7 @@ Saver는 별도 빈의 `REQUIRES_NEW`를 사용합니다. 서비스가 저장 �
 
 발행 예외의 `details`에는 `directMessageId`, `conversationId`, `persisted=true`가 담깁니다. 이는 **DB 저장 완료**를 뜻하며 실시간 수신 성공 여부는 알리지 않습니다. 같은 본문을 새로 SEND하면 다른 메시지가 생성되므로 기존 ID로 REST 목록을 확인합니다.
 
-WebSocket용 변환·발행 실패가 앞서 수행된 SSE를 취소하거나 다시 수행하지 않습니다. SSE와 WebSocket의 브라우저 수신 순서는 별도로 보장하지 않습니다.
+WebSocket용 변환·발행 실패가 앞서 수행된 DM SSE·알림 저장·알림 SSE를 취소하거나 다시 수행하지 않습니다. 세 전송 경로의 브라우저 수신 순서는 보장하지 않습니다.
 
 Pub/Sub에는 이력 재생이나 클라이언트 수신 확인이 없습니다. 구독자가 없거나 실시간 전달이 누락되어도 저장된 메시지는 [DM 조회 API](07-direct-message-query.md)로 확인할 수 있습니다. 테스트에서 관찰한 중복 없는 전달을 모든 장애 상황의 exactly-once 보장으로 해석하지 않습니다.
 
