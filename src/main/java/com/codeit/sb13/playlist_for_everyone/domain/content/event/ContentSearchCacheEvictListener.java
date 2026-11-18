@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.global.config.CacheConfig;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -19,11 +20,24 @@ public class ContentSearchCacheEvictListener {
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void evict(ContentSearchCacheEvictEvent event) {
+        clearSearchCache();
+    }
+
+    /** 배치에서 커밋된 신규 콘텐츠가 있으면 캐시 삭제 */
+    @EventListener
+    public void evictAfterCollection(ContentCollectionFinishedEvent event) {
+        if (event.insertedCount() > 0) {
+            clearSearchCache();
+        }
+    }
+
+    private void clearSearchCache() {
         Cache cache = cacheManager.getCache(CacheConfig.CONTENT_SEARCH);
 
         if (cache != null) {
             cache.clear();
         }
     }
+
 
 }

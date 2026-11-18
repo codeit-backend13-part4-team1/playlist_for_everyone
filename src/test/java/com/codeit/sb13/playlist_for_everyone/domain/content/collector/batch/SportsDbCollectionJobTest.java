@@ -10,6 +10,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.TmdbPa
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.TmdbTvResponse;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentSource;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
+import com.codeit.sb13.playlist_for_everyone.domain.content.event.ContentCollectionFinishedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.content.event.ContentSearchCacheEvictEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
@@ -36,6 +38,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.event.ApplicationEvents;
+import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.ResourceAccessException;
@@ -69,6 +73,7 @@ import static org.mockito.Mockito.*;
 })
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @Testcontainers
+@RecordApplicationEvents
 class SportsDbCollectionJobTest {
 
     @Container
@@ -102,6 +107,9 @@ class SportsDbCollectionJobTest {
     @Autowired
     private JobRepository jobRepository;
 
+    @Autowired
+    private ApplicationEvents applicationEvents;
+
     @Test
     void 배치를_실행하면_경기와_태그가_저장된다() throws Exception {
         var event = new SportsDbEventResponse(
@@ -127,6 +135,13 @@ class SportsDbCollectionJobTest {
 
         assertThat(execution.getStatus())
                 .isEqualTo(BatchStatus.COMPLETED);
+
+        assertThat(applicationEvents.stream(ContentCollectionFinishedEvent.class).toList())
+                .extracting(ContentCollectionFinishedEvent::insertedCount)
+                .containsExactly(1L);
+
+        assertThat(applicationEvents.stream(ContentSearchCacheEvictEvent.class).count())
+                .isZero();
 
         var saved = contentRepository.findByProviderAndTypeAndProviderItemId(
                 ContentSource.THE_SPORTS_DB,
@@ -476,6 +491,13 @@ class SportsDbCollectionJobTest {
         assertThat(failedExecution.getStatus())
                 .isEqualTo(BatchStatus.FAILED);
 
+        // 배치는 실패했지만 첫 번째 경기는 이미 커밋됐으므로 이벤트를 발행한다.
+        assertThat(applicationEvents.stream(ContentCollectionFinishedEvent.class).toList())
+                .extracting(ContentCollectionFinishedEvent::insertedCount)
+                .containsExactly(1L);
+
+        applicationEvents.clear();
+
         var savedFirst = contentRepository.findByProviderAndTypeAndProviderItemId(
                 ContentSource.THE_SPORTS_DB,
                 ContentType.sport,
@@ -495,6 +517,11 @@ class SportsDbCollectionJobTest {
 
         assertThat(restartedExecution.getStatus())
                 .isEqualTo(BatchStatus.COMPLETED);
+
+        // 재시작해서 새로 저장한 두 번째 경기만 센다.
+        assertThat(applicationEvents.stream(ContentCollectionFinishedEvent.class).toList())
+                .extracting(ContentCollectionFinishedEvent::insertedCount)
+                .containsExactly(1L);
 
         var firstAfterRestart =
                 contentRepository.findByProviderAndTypeAndProviderItemId(
@@ -600,6 +627,10 @@ class SportsDbCollectionJobTest {
         assertThat(firstExecution.getStatus())
                 .isEqualTo(BatchStatus.COMPLETED);
 
+        assertThat(applicationEvents.stream(ContentCollectionFinishedEvent.class).toList())
+                .extracting(ContentCollectionFinishedEvent::insertedCount)
+                .containsExactly(1L);
+
         var firstSaved = contentRepository.findByProviderAndTypeAndProviderItemId(
                 ContentSource.THE_SPORTS_DB,
                 ContentType.sport,
@@ -615,10 +646,18 @@ class SportsDbCollectionJobTest {
                 .addString("run.id", UUID.randomUUID().toString())
                 .toJobParameters();
 
+        // 첫 실행에서 기록한 이벤트만 비움
+        applicationEvents.clear();
+
         var secondExecution = jobOperator.start(job, secondParameters);
 
         assertThat(secondExecution.getStatus())
                 .isEqualTo(BatchStatus.COMPLETED);
+
+        assertThat(applicationEvents.stream(ContentCollectionFinishedEvent.class).count())
+                .isZero();
+        assertThat(applicationEvents.stream(ContentSearchCacheEvictEvent.class).count())
+                .isZero();
 
         var secondSaved = contentRepository.findByProviderAndTypeAndProviderItemId(
                 ContentSource.THE_SPORTS_DB,

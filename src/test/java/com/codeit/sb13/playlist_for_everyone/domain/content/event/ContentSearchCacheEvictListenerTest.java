@@ -7,11 +7,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 @ExtendWith(MockitoExtension.class)
 class ContentSearchCacheEvictListenerTest {
@@ -37,6 +39,33 @@ class ContentSearchCacheEvictListenerTest {
 
         // then
         verify(cache).clear();
+    }
+
+    @Test
+    void 배치에서_신규_저장한_콘텐츠가_있으면_캐시를_삭제한다() {
+        given(cacheManager.getCache(CacheConfig.CONTENT_SEARCH))
+                .willReturn(cache);
+
+        new ApplicationContextRunner()
+                .withBean(CacheManager.class, () -> cacheManager)
+                .withUserConfiguration(ContentSearchCacheEvictListener.class)
+                .run(context -> {
+                    context.publishEvent(new ContentCollectionFinishedEvent(3L));
+
+                    verify(cache).clear();
+                });
+    }
+
+    @Test
+    void 배치에서_신규_저장한_콘텐츠가_없으면_캐시를_삭제하지_않는다() {
+        new ApplicationContextRunner()
+                .withBean(CacheManager.class, () -> cacheManager)
+                .withUserConfiguration(ContentSearchCacheEvictListener.class)
+                .run(context -> {
+                    context.publishEvent(new ContentCollectionFinishedEvent(0L));
+
+                    verifyNoInteractions(cacheManager, cache);
+                });
     }
 
 }
