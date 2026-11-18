@@ -11,4 +11,6 @@ public interface ChattingSessionService {
 
     void leaveAll(String sessionId, List<String> subscriptionIds, UUID contentId);
 
+    void destroy(UUID contentId);
+
 }

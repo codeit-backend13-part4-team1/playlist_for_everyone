@@ -299,6 +299,10 @@ public class tmpWatchingSessionService {
      * 리소스 정리 매서드
      */
 
+    /**
+     * 세션 id 를 기준으로, 세션과 관련된 모든 리소스를 정리한다.
+     * @param sessionId 세션 id
+     */
     public void disconnectSessionWithCleanUp(String sessionId) {
         WSSession session = getSessionOrExcept(sessionId);
 
@@ -365,6 +369,21 @@ public class tmpWatchingSessionService {
                 throw new WebSocketSessionRegisterException(e);
             }
         }
+    }
+
+    /**
+     * 컨텐츠 id 와 관련된 모든 비즈니스 리소스를 정리한다.
+     * todo - 실제 세션 닫기는 구독 관리가 필요하다. 지금은 구독 관리를 simpBroker 가 함으로
+     *  이 매서드에선 비즈니스 로직 리소스만 정리한다.
+     * @param contentId 컨텐츠 id
+     */
+    public void unregisterSubscribeWithContentId(UUID contentId){
+        // todo - 리소스 해제를 위한 destroy 에서 subscribe 의 등록 정보 반환(uuid), 세션에서 구독 정리.
+        // 1. 컨텐츠에 연결된 리소스 식별 및 정리
+        viewingSessionService.destroy(contentId);
+        chattingSessionService.destroy(contentId);
+        // 2. 세션 리소스 정리
+
     }
 
 

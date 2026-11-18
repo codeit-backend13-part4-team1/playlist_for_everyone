@@ -77,7 +77,18 @@ public class ViewingSessionServiceImpl implements ViewingSessionService{
         }
     }
 
-
+    // 여러 인스턴스에서 동일 로직 수행 시, 로직 사이에 동일 id 로 세션 등록이 들어오면, 생성한 등록을 삭제 해 버릴 가능성 있음.
+    // todo - 리소스 해제를 위해 대상 subscribe 의 등록 정보 반환
+    @Override
+    public void destroy(UUID contentId) {
+        ViewingSessionRoom room = viewingSessionRepository.find(contentId)
+                .orElseThrow(WebSocketSessionNotFoundException::new);
+        synchronized (room) {
+            // 저장소에서 세션 해지 및, 토픽 등록 해제.
+            viewingSessionPresence.deleteWithContentId(contentId);
+            redisTopicRegistry.disconnectWithContentId(contentId.toString());
+        }
+    }
 
     @Override
     public void send(UUID contentId, Object payload){

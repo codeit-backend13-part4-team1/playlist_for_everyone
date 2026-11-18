@@ -27,7 +27,19 @@ public interface ViewingSessionService {
      */
     void leave(String sessionId, String subscribeId, UUID contentId);
 
+    /**
+     * 해당 구독 리스트를 특정 세션 룸에서 등록 취소하는 매서드
+     * @param sessionId 세션 id
+     * @param subscriptionIds 구독 id 리스트
+     * @param contentId 대상이 되는 컨텐츠 id
+     */
     void leaveAll(String sessionId, List<String> subscriptionIds, UUID contentId);
+
+    /**
+     * 특정 컨텐츠에 대한 세션 룸 및 리소스를 해지하는 매서드
+     * @param contentId 대상이 되는 컨텐츠 id
+     */
+    void destroy(UUID contentId);
 
     /**
      * 세션 룸에 메세지를 전송하는 매서드.

@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocke
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisTopicRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.ChatSessionMessageListener;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.entity.ChattingSessionRoom;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.entity.ViewingSessionRoom;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.chatting.ChattingSessionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -57,6 +58,18 @@ public class ChattingSessionServiceImpl implements ChattingSessionService {
         synchronized (room) {
             // 해당 구독을 한번제 저장소에서 지울 수 있도록
             redisTopicRegistry.unregisterAll(sessionId, subscriptionIds);
+        }
+    }
+
+    // 여러 인스턴스에서 동일 로직 수행 시, 로직 사이에 동일 id 로 세션 등록이 들어오면, 생성한 등록을 삭제 해 버릴 가능성 있음.
+    // todo - 리소스 해제를 위해 대상 subscribe 의 등록 정보 반환
+    @Override
+    public void destroy(UUID contentId) {
+        ChattingSessionRoom room = chattingSessionRepository.find(contentId)
+                .orElseThrow(WebSocketSessionNotFoundException::new);
+        synchronized (room) {
+            // 저장소에서 세션 해지 및, 토픽 등록 해제.
+            redisTopicRegistry.disconnectWithContentId(contentId.toString());
         }
     }
 }
