@@ -110,6 +110,77 @@ public class ReviewListRepositoryTest {
                 );
     }
 
+    @Test
+    @DisplayName("리뷰 생성일 오름차순으로 조회할 수 있다.")
+    void getReviewList_orderByCreatedAt() {
+        // given
+        UUID contentId = content2.getId();
+
+        ReviewListCondition condition = new ReviewListCondition(
+                null,
+                null,
+                10,
+                SortDirection.ASCENDING,
+                "createdAt"
+        );
+
+        // when
+        List<Review> reviews = reviewRepository.getReviewsByContentId(contentId, condition);
+
+        // then
+        assertThat(reviews).hasSize(3);
+
+        assertThat(reviews)
+                .extracting(Review::getCreatedAt)
+                .isSorted();
+    }
+
+    @Test
+    @DisplayName("리뷰를 평점 높은 순으로 조회할 수 있다.")
+    void getReviewList_sortByRatingDesc() {
+        // given
+        UUID contentId = content3.getId();
+
+        ReviewListCondition condition = new ReviewListCondition(
+                null,
+                null,
+                10,
+                SortDirection.DESCENDING,
+                "rating"
+        );
+
+        // when
+        List<Review> reviews =
+                reviewRepository.getReviewsByContentId(contentId, condition);
+
+        // then
+        assertThat(reviews)
+                .extracting(Review::getRating)
+                .containsExactly(5.0, 4.0, 3.0);
+    }
+
+    @Test
+    @DisplayName("요청한 개수보다 한 개 더 조회하여 다음 페이지 존재 여부를 확인할 수 있다.")
+    void getReviewList_limit() {
+        // given
+        UUID contentId = content1.getId();
+
+        ReviewListCondition condition = new ReviewListCondition(
+                null,
+                null,
+                2,
+                SortDirection.DESCENDING,
+                "createdAt"
+        );
+
+        // when
+        List<Review> reviews =
+                reviewRepository.getReviewsByContentId(contentId, condition);
+
+        // then
+        assertThat(reviews).hasSize(3);
+    }
+
     private Content createContent(String title) {
         return em.persist(
                 Content.createAdminContent(
