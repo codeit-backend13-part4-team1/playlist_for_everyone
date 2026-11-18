@@ -9,7 +9,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.DpeWatchingSessionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,7 +24,7 @@ import java.util.UUID;
 public class ContentSearchQueryService {
 
     private final ContentRepository contentRepository;
-    private final WatchingSessionService watchingSessionService;
+    private final DpeWatchingSessionService dpeWatchingSessionService;
     private final ContentMapper contentMapper;
 
     @Transactional(readOnly = true)
@@ -99,7 +99,7 @@ public class ContentSearchQueryService {
         // Redis에서 전체 콘텐츠 시청자 수 조회
         Map<String, Long> viewerCounts = contentIds.isEmpty()
                 ? Map.of()
-                : watchingSessionService.getCurrentViewerCountWithContents(contentIds);
+                : dpeWatchingSessionService.getCurrentViewerCountWithContents(contentIds);
 
         Comparator<ContentSearchResult> comparator =
                 Comparator.comparingLong(

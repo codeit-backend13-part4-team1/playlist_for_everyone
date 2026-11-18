@@ -8,7 +8,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.DpeWatchingSessionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -33,7 +33,7 @@ public class ContentSearchServiceTest {
     private ContentSearchCacheService cacheService;
 
     @Mock
-    private WatchingSessionService watchingSessionService;
+    private DpeWatchingSessionService dpeWatchingSessionService;
 
     @Mock
     private FileService fileService;
@@ -70,7 +70,7 @@ public class ContentSearchServiceTest {
                 ));
         given(fileService.getFileUrlByKey(fileKey))
                 .willReturn(presignedUrl);
-        given(watchingSessionService.getCurrentViewerCountWithContents(
+        given(dpeWatchingSessionService.getCurrentViewerCountWithContents(
                 List.of(dto.id())
         )).willReturn(Map.of(dto.id().toString(), 100L));
         given(contentMapper.toContentDto(dto, presignedUrl, 100L))
@@ -99,7 +99,7 @@ public class ContentSearchServiceTest {
                 .willReturn(createResponse(
                         List.of(new ContentResult<>(dto, null))
                 ));
-        given(watchingSessionService.getCurrentViewerCountWithContents(
+        given(dpeWatchingSessionService.getCurrentViewerCountWithContents(
                 List.of(dto.id())
         )).willReturn(Map.of(dto.id().toString(), 100L));
         given(contentMapper.toContentDto(dto, externalUrl, 100L))
@@ -135,7 +135,7 @@ public class ContentSearchServiceTest {
         );
 
         given(cacheService.search(condition)).willReturn(cachedResponse);
-        given(watchingSessionService.getCurrentViewerCountWithContents(
+        given(dpeWatchingSessionService.getCurrentViewerCountWithContents(
                 List.of(dto.id())
         )).willReturn(Map.of(dto.id().toString(), 100L));
         given(contentMapper.toContentDto(dto, null, 100L)).willReturn(dto);
@@ -164,7 +164,7 @@ public class ContentSearchServiceTest {
                         List.of(new ContentResult<>(dto, null))
                 ));
 
-        given(watchingSessionService.getCurrentViewerCountWithContents(
+        given(dpeWatchingSessionService.getCurrentViewerCountWithContents(
                 List.of(dto.id()))).willReturn(
                 Map.of(dto.id().toString(), 5L),
                 Map.of(dto.id().toString(), 10L)
@@ -202,7 +202,7 @@ public class ContentSearchServiceTest {
         assertThat(second.data().get(0).watcherCount()).isEqualTo(10L);
 
         verify(cacheService, times(2)).search(condition);
-        verify(watchingSessionService, times(2))
+        verify(dpeWatchingSessionService, times(2))
                 .getCurrentViewerCountWithContents(List.of(dto.id()));
     }
 
@@ -223,7 +223,7 @@ public class ContentSearchServiceTest {
         assertThat(result.totalCount()).isZero();
 
         verifyNoInteractions(
-                watchingSessionService,
+                dpeWatchingSessionService,
                 fileService,
                 contentMapper
         );
@@ -270,7 +270,7 @@ public class ContentSearchServiceTest {
 
         verify(cacheService).search(watcherCondition);
         verify(contentMapper).toContentDto(sortedDto, null, 30L);
-        verifyNoInteractions(watchingSessionService);
+        verifyNoInteractions(dpeWatchingSessionService);
     }
 
     private ContentDto createDto(String thumbnailUrl) {

@@ -7,7 +7,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.Content
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.DpeWatchingSessionService;
 import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -35,7 +35,7 @@ public class ContentServiceTest {
     private ContentWriter writer;
 
     @Mock
-    private WatchingSessionService watchingSessionService;
+    private DpeWatchingSessionService dpeWatchingSessionService;
 
     @Mock
     private ContentMapper contentMapper;
@@ -104,7 +104,7 @@ public class ContentServiceTest {
         verify(writer).create(request, file);
         verify(fileService).getFileUrlByKey(key);
         verify(contentMapper).toContentDto(dto, presignedUrl, 0L);
-        verifyNoInteractions(watchingSessionService);
+        verifyNoInteractions(dpeWatchingSessionService);
     }
 
     @Test
@@ -121,7 +121,7 @@ public class ContentServiceTest {
         given(dto.thumbnailUrl()).willReturn(thumbnailUrl);
         given(reader.getById(contentId))
                 .willReturn(new ContentResult(dto, null));
-        given(watchingSessionService.getCurrentViewerCount(contentId))
+        given(dpeWatchingSessionService.getCurrentViewerCount(contentId))
                 .willReturn(watcherCount);
         given(contentMapper.toContentDto(dto, thumbnailUrl, watcherCount))
                 .willReturn(expected);
@@ -153,7 +153,7 @@ public class ContentServiceTest {
         given(fileService.getFileUrlByKey(fileKey))
                 .willReturn(presignedUrl);
 
-        given(watchingSessionService.getCurrentViewerCount(contentId))
+        given(dpeWatchingSessionService.getCurrentViewerCount(contentId))
                 .willReturn(watcherCount);
 
         given(contentMapper.toContentDto(dto, presignedUrl, watcherCount))
@@ -166,7 +166,7 @@ public class ContentServiceTest {
         assertThat(result).isSameAs(expected);
 
         verify(reader).getById(contentId);
-        verify(watchingSessionService).getCurrentViewerCount(contentId);
+        verify(dpeWatchingSessionService).getCurrentViewerCount(contentId);
         verify(fileService).getFileUrlByKey(fileKey);
         verify(contentMapper).toContentDto(dto, presignedUrl, watcherCount);
     }
@@ -287,7 +287,7 @@ public class ContentServiceTest {
         given(fileService.getFileUrlByKey(key))
                 .willReturn(presignedUrl);
 
-        given(watchingSessionService.getCurrentViewerCount(contentId))
+        given(dpeWatchingSessionService.getCurrentViewerCount(contentId))
                 .willReturn(watcherCount);
 
         given(contentMapper.toContentDto(dto, presignedUrl, watcherCount))
@@ -300,7 +300,7 @@ public class ContentServiceTest {
         assertThat(result).isSameAs(expected);
 
         verify(writer).update(contentId, request, null);
-        verify(watchingSessionService).getCurrentViewerCount(contentId);
+        verify(dpeWatchingSessionService).getCurrentViewerCount(contentId);
         verify(fileService).getFileUrlByKey(key);
         verify(contentMapper).toContentDto(dto, presignedUrl, watcherCount);
     }

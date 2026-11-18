@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.
 
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionRegisterException;
+import com.codeit.sb13.playlist_for_everyone.global.service.lock.Locks;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisTopicRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSubscription;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.ViewSessionMessageListener;
@@ -29,18 +30,19 @@ public class ViewingSessionServiceImpl implements ViewingSessionService{
     private final ViewSessionMessageListener viewSessionMessageListener;
     private final WatchingSessionRepository viewingSessionPresence;
     private final RedisTopicRegistry redisTopicRegistry;
-
     private final RedisTemplate<String, Object> redisTemplate;
+    private final Locks locks;
 
     @Override
     public void join(WSSubscription subscription, UUID contentId) {
         // 1. 인자 체크
         Objects.requireNonNull(subscription);
         Objects.requireNonNull(contentId);
-        ViewingSessionRoom room;
+
 
         // 2. 룸에 대한 락 획득
-        synchronized (room = viewingSessionRepository.findOrCreate(contentId)) {
+        synchronized (locks.lock(contentId)) {
+            ViewingSessionRoom room = viewingSessionRepository.findOrCreate(contentId);
             // 3. 세션 룸에 구독 등록
             // 로컬
             room.join(subscription);
@@ -64,11 +66,9 @@ public class ViewingSessionServiceImpl implements ViewingSessionService{
         Objects.requireNonNull(subscription);
         Objects.requireNonNull(contentId);
 
-        // 룸이 없다면 예외 발생.
-        ViewingSessionRoom room = viewingSessionRepository.find(contentId)
-                .orElseThrow(WebSocketSessionRegisterException::new);
+        synchronized (locks.lock(contentId)) {
+            ViewingSessionRoom room = getRoomOrException(contentId);
 
-        synchronized (room) {
             room.leave(subscription);
             viewingSessionPresence.unregister(subscription.sessionId(), subscription.id());
             redisTopicRegistry.unregister(subscription.sessionId(), subscription.id());
@@ -78,10 +78,8 @@ public class ViewingSessionServiceImpl implements ViewingSessionService{
     @Override
     public void leaveAll(List<WSSubscription> subscriptions, UUID contentId) {
         Objects.requireNonNull(contentId);
-        ViewingSessionRoom room = viewingSessionRepository.find(contentId)
-                .orElseThrow(WebSocketSessionNotFoundException::new);
-
-        synchronized (room) {
+        synchronized (locks.lock(contentId)) {
+            ViewingSessionRoom room = getRoomOrException(contentId);
             room.leaveAll(subscriptions);
 
             // tmp
@@ -94,13 +92,11 @@ public class ViewingSessionServiceImpl implements ViewingSessionService{
     }
 
     // 여러 인스턴스에서 동일 로직 수행 시, 로직 사이에 동일 id 로 세션 등록이 들어오면, 생성한 등록을 삭제 해 버릴 가능성 있음.
-    // todo - 리소스 해제를 위해 대상 subscribe 의 등록 정보 반환
     @Override
     public List<WSSubscription> destroy(UUID contentId) {
-        ViewingSessionRoom room = viewingSessionRepository.find(contentId)
-                .orElseThrow(WebSocketSessionNotFoundException::new);
         List<WSSubscription> res;
-        synchronized (room) {
+        synchronized (locks.lock(contentId)) {
+            ViewingSessionRoom room = getRoomOrException(contentId);
             // 저장소에서 세션 해지 및, 토픽 등록 해제.
             viewingSessionPresence.deleteWithContentId(contentId);
             redisTopicRegistry.disconnectWithContentId(contentId.toString());
@@ -116,8 +112,7 @@ public class ViewingSessionServiceImpl implements ViewingSessionService{
 
     @Override
     public void send(UUID contentId, Object payload){
-        ViewingSessionRoom room = viewingSessionRepository.find(contentId)
-                .orElseThrow(WebSocketSessionRegisterException::new);
+        ViewingSessionRoom room = getRoomOrException(contentId);
         redisTemplate.convertAndSend(room.topic(), payload);
     }
 
@@ -137,5 +132,10 @@ public class ViewingSessionServiceImpl implements ViewingSessionService{
                 contentIdList.stream()
                         .map(UUID::toString)
                         .toList());
+    }
+
+    private ViewingSessionRoom getRoomOrException(UUID contentId){
+        return viewingSessionRepository.find(contentId)
+                .orElseThrow(WebSocketSessionRegisterException::new);
     }
 }
