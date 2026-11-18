@@ -731,6 +731,19 @@ cron은 `초 분 시 일 월 요일` 순서입니다.
 제외되는지는 SportsDbCollectionJobTest에서 검증합니다.
 이 테스트에는 Docker가 필요합니다.
 
+### 콘텐츠 수집 배치 모니터링
+
+Actuator의 `/actuator/metrics`는 관리자만 조회할 수 있습니다.
+`/actuator/health`는 기존처럼 인증 없이 조회할 수 있습니다.
+
+TMDB·스포츠 수집 Step의 처리량은 `content.collection.items.read`,
+`content.collection.items.write`, `content.collection.items.skip`으로 확인합니다.
+각 수치에는 Job 이름과 Step 이름이 태그로 붙습니다.
+`write`는 배치가 처리한 건수이며, 중복을 제외한 신규 저장 건수는 아닙니다.
+
+Job의 실행 횟수와 소요 시간은 `spring.batch.job` 메트릭에서
+Job 이름과 실행 상태별로 확인할 수 있습니다.
+
 ## 협업과 후속 작업
 
 기능 작업에는 [이슈 템플릿](../.github/ISSUE_TEMPLATE/feature.md)을, 변경 공유에는 [PR 템플릿](../.github/PULL_REQUEST_TEMPLATE.md)을 사용합니다. PR에는 변경 이유, 실행한 테스트와 결과, 후속 작업을 기록합니다. 공통 응답이나 설정을 변경하면 관련 테스트와 이 문서도 함께 확인합니다.
