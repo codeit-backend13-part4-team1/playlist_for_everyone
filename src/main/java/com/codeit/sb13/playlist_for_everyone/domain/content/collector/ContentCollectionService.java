@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.collector;
 
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.ContentCollectionResult;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.exception.CollectedContentValidationException;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.CollectedContentData;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
@@ -22,6 +23,11 @@ public class ContentCollectionService {
     private final ContentRepository contentRepository;
 
     private final ApplicationEventPublisher eventPublisher;
+
+    @Transactional
+    public ContentCollectionResult saveForBatch(CollectedContentData data) {
+        throw new UnsupportedOperationException("배치용 저장 구현 전");
+    }
 
     @Transactional
     public Content save(CollectedContentData data) {

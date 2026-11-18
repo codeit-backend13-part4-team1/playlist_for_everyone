@@ -566,4 +566,48 @@ class ContentCollectionServiceTest {
                 .isZero();
     }
 
+    @Test
+    void 배치용_저장은_신규_저장_여부를_반환하고_이벤트는_발행하지_않는다() {
+        var data = new CollectedContentData(
+                ContentType.movie, "테스트 영화", "영화 설명",
+                "https://example.com/poster.jpg",
+                ContentSource.TMDB, "550",
+                List.of("액션")
+        );
+
+        var result = service.saveForBatch(data);
+        em.flush();
+
+        assertThat(result.inserted()).isTrue();
+        assertThat(result.content().getId()).isNotNull();
+        assertThat(applicationEvents
+                .stream(ContentSearchCacheEvictEvent.class)
+                .count())
+                .isZero();
+    }
+
+    @Test
+    void 배치용_저장은_중복이면_기존_콘텐츠와_false를_반환한다() {
+        var data = new CollectedContentData(
+                ContentType.movie, "테스트 영화", "영화 설명",
+                "https://example.com/poster.jpg",
+                ContentSource.TMDB, "550",
+                List.of("액션")
+        );
+
+        Content existing = service.save(data);
+        em.flush();
+        applicationEvents.clear();
+
+        var result = service.saveForBatch(data);
+        em.flush();
+
+        assertThat(result.inserted()).isFalse();
+        assertThat(result.content().getId()).isEqualTo(existing.getId());
+        assertThat(applicationEvents
+                .stream(ContentSearchCacheEvictEvent.class)
+                .count())
+                .isZero();
+    }
+
 }
