@@ -41,7 +41,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
@@ -295,6 +295,92 @@ public class ReviewServiceTest {
 
         then(eventPublisher).should()
                 .publishEvent(any(ContentSearchCacheEvictEvent.class));
+    }
+
+    @Test
+    @DisplayName("다음 페이지가 있으면 요청 개수만 반환하고 다음 커서를 생성한다.")
+    void getReviewList_hasNext() {
+        // given
+        UUID contentId = content.getId();
+
+        ReviewListCondition condition = new ReviewListCondition(
+                null,
+                null,
+                2,
+                SortDirection.DESCENDING,
+                "rating"
+        );
+
+        Review review1 = mock(Review.class);
+        Review review2 = mock(Review.class);
+        Review review3 = mock(Review.class);
+
+        UUID review2Id = UUID.randomUUID();
+
+        given(review2.getId()).willReturn(review2Id);
+        given(review2.getRating()).willReturn(4.0);
+
+        ReviewDto dto1 = mock(ReviewDto.class);
+        ReviewDto dto2 = mock(ReviewDto.class);
+
+        given(reviewRepository.getReviewsByContentId(contentId, condition))
+                .willReturn(List.of(review1, review2, review3));
+
+        given(reviewRepository.countByContentId(contentId))
+                .willReturn(3L);
+
+        given(reviewMapper.toDto(review1)).willReturn(dto1);
+        given(reviewMapper.toDto(review2)).willReturn(dto2);
+
+        // when
+        CursorResponse<ReviewDto> result =
+                reviewService.getReviews(contentId, condition);
+
+        // then
+        assertThat(result.data()).containsExactly(dto1, dto2);
+        assertThat(result.hasNext()).isTrue();
+        assertThat(result.nextCursor()).isEqualTo("4.0");
+        assertThat(result.nextIdAfter()).isEqualTo(review2Id);
+        assertThat(result.totalCount()).isEqualTo(3L);
+
+        then(reviewMapper).should(never()).toDto(review3);
+    }
+
+    @Test
+    @DisplayName("마지막 페이지에서는 다음 커서를 생성하지 않는다.")
+    void getReviewList_lastPage() {
+        // given
+        UUID contentId = content.getId();
+
+        ReviewListCondition condition = new ReviewListCondition(
+                null,
+                null,
+                2,
+                SortDirection.DESCENDING,
+                "rating"
+        );
+
+        Review review = mock(Review.class);
+        ReviewDto dto = mock(ReviewDto.class);
+
+        given(reviewRepository.getReviewsByContentId(contentId, condition))
+                .willReturn(List.of(review));
+
+        given(reviewRepository.countByContentId(contentId))
+                .willReturn(1L);
+
+        given(reviewMapper.toDto(review)).willReturn(dto);
+
+        // when
+        CursorResponse<ReviewDto> result =
+                reviewService.getReviews(contentId, condition);
+
+        // then
+        assertThat(result.data()).containsExactly(dto);
+        assertThat(result.hasNext()).isFalse();
+        assertThat(result.nextCursor()).isNull();
+        assertThat(result.nextIdAfter()).isNull();
+        assertThat(result.totalCount()).isEqualTo(1L);
     }
 
     @Test
