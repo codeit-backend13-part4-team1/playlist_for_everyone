@@ -8,9 +8,13 @@ import com.codeit.sb13.playlist_for_everyone.domain.conversation.event.DirectMes
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.repository.DirectMessageRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.DirectMessageService;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.impl.DirectMessageSaver;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationCreateRequestedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.response.NotificationDto;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.Notification;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.NotificationLevel;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.event.NotificationCreatedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener.NotificationEventListener;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.repository.NotificationRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.global.exception.conversation.DirectMessagePublishException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.sse.SsePublishException;
@@ -21,11 +25,14 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -71,7 +78,7 @@ import static org.mockito.Mockito.when;
 
 /**
  * 실제 저장 트랜잭션과 커밋 후 SSE 리스너를 연결하고, 외부 파일 조회·전송만 Mock으로 분리한다.
- * Repository Spy는 실제 조회를 수행하며, 상세 조회·프로필 URL 생성·발행 순서를 관찰한다.
+ * Repository와 알림 리스너 Spy는 실제 동작을 유지하고, 지정한 경계에서만 실패를 주입한다.
  * 커밋 후 콜백의 단언 실패가 Spring 내부에 흡수되지 않도록 관찰값은 저장 호출이 끝난 뒤 검증한다.
  *
  * <p>클래스 전체를 테스트 트랜잭션으로 감싸지 않고, 롤백·상위 트랜잭션 시나리오마다 TransactionTemplate을 사용한다.
@@ -125,6 +132,12 @@ class DirectMessageSseEventIntegrationTest {
 
     @MockitoSpyBean
     private DirectMessageRepository directMessageRepository;
+
+    @MockitoSpyBean
+    private NotificationEventListener notificationEventListener;
+
+    @MockitoSpyBean
+    private NotificationRepository notificationRepository;
 
     @MockitoBean
     private FileStorage fileStorage;
@@ -373,7 +386,140 @@ class DirectMessageSseEventIntegrationTest {
     }
 
     @Test
-    @DisplayName("SSE용 메시지 조회에 실패해도 저장된 DM을 유지하고 WebSocket 발행을 실행한다.")
+    @ExtendWith(OutputCaptureExtension.class)
+    @DisplayName("알림 요청 재발행에 실패해도 커밋된 DM을 유지하고 DM SSE와 WebSocket 발행을 실행한다.")
+    void send_keepsMessageAndOtherChannelsWhenNotificationRequestPublishingFails(
+            ApplicationEvents applicationEvents, CapturedOutput output) {
+        doThrow(new IllegalStateException("테스트용 알림 요청 재발행 실패"))
+                .when(notificationEventListener).handleNotification(any(NotificationCreateRequestedEvent.class));
+        String content = "알림 요청 실패 후에도 전달할 메시지";
+
+        MessageDto result = directMessageService.send(command(content));
+
+        assertThat(countSavedMessages()).isEqualTo(1L);
+        StoredMessage stored = findStoredMessage(result.id());
+        assertThat(stored.content()).isEqualTo(content);
+        assertThat(stored.read()).isFalse();
+        assertThat(result.content()).isEqualTo(content);
+        assertThat(applicationEvents.stream(DirectMessageCreatedEvent.class).toList())
+                .containsExactly(event(result.id()));
+        verify(notificationEventListener)
+                .handleNotification(argThat(event -> receiverId.equals(event.receiverId())));
+        verify(notificationRepository, never()).save(any(Notification.class));
+        assertThat(countSavedNotifications()).isZero();
+        assertThat(applicationEvents.stream(NotificationCreatedEvent.class).toList()).isEmpty();
+        verify(sseEventPublisher, never())
+                .publish(argThat(event -> "notifications".equals(event.eventName())));
+
+        SseEvent<?> published = onlyPublishedEvent("direct-messages");
+        assertThat(published.eventId()).isEqualTo(result.id());
+        assertThat(published.receiverId()).isEqualTo(receiverId);
+        assertThat(published.data()).isInstanceOfSatisfying(MessageDto.class, dto -> {
+            assertThat(dto.id()).isEqualTo(result.id());
+            assertThat(dto.content()).isEqualTo(content);
+        });
+        verify(directMessagePublisher).publish(result);
+        verifyNoMoreInteractions(directMessagePublisher);
+        verifyNoInteractions(fileStorage);
+        assertThat(output.getAll()).contains(
+                "DM 알림 변환·재발행 실패.",
+                "directMessageId=" + result.id(),
+                "conversationId=" + conversationId,
+                "receiverId=" + receiverId,
+                "exceptionType=IllegalStateException"
+        );
+    }
+
+    @Test
+    @ExtendWith(OutputCaptureExtension.class)
+    @DisplayName("알림 저장 호출에 실패해도 커밋된 DM을 유지하고 DM SSE와 WebSocket 발행을 실행한다.")
+    void send_keepsMessageAndOtherChannelsWhenNotificationSaveFails(
+            ApplicationEvents applicationEvents, CapturedOutput output) {
+        doThrow(new DataIntegrityViolationException("테스트용 알림 저장 실패"))
+                .when(notificationRepository).save(any(Notification.class));
+        String content = "알림 저장 실패 후에도 전달할 메시지";
+
+        MessageDto result = directMessageService.send(command(content));
+
+        assertThat(countSavedMessages()).isEqualTo(1L);
+        StoredMessage stored = findStoredMessage(result.id());
+        assertThat(stored.content()).isEqualTo(content);
+        assertThat(stored.read()).isFalse();
+        assertThat(result.content()).isEqualTo(content);
+        assertThat(applicationEvents.stream(DirectMessageCreatedEvent.class).toList())
+                .containsExactly(event(result.id()));
+        verify(notificationEventListener)
+                .handleNotification(argThat(event -> receiverId.equals(event.receiverId())));
+        verify(notificationRepository).save(any(Notification.class));
+        assertThat(countSavedNotifications()).isZero();
+        assertThat(applicationEvents.stream(NotificationCreatedEvent.class).toList()).isEmpty();
+        verify(sseEventPublisher, never())
+                .publish(argThat(event -> "notifications".equals(event.eventName())));
+
+        SseEvent<?> published = onlyPublishedEvent("direct-messages");
+        assertThat(published.eventId()).isEqualTo(result.id());
+        assertThat(published.receiverId()).isEqualTo(receiverId);
+        assertThat(published.data()).isInstanceOfSatisfying(MessageDto.class, dto -> {
+            assertThat(dto.id()).isEqualTo(result.id());
+            assertThat(dto.content()).isEqualTo(content);
+        });
+        verify(directMessagePublisher).publish(result);
+        verifyNoMoreInteractions(directMessagePublisher);
+        verifyNoInteractions(fileStorage);
+        assertThat(output.getAll()).contains(
+                "알림 저장 실패. receiverId=" + receiverId,
+                DataIntegrityViolationException.class.getSimpleName()
+        );
+    }
+
+    @Test
+    @ExtendWith(OutputCaptureExtension.class)
+    @DisplayName("알림 SSE 발행에 실패해도 DM·알림 저장을 유지하고 재시도 없이 DM SSE와 WebSocket을 발행한다.")
+    void send_keepsMessageAndOtherChannelsWhenNotificationSsePublishingFails(
+            ApplicationEvents applicationEvents, CapturedOutput output) {
+        SsePublishException cause = new SsePublishException(new IllegalStateException("테스트용 알림 SSE 발행 실패"));
+        doThrow(cause).when(sseEventPublisher)
+                .publish(argThat(event -> "notifications".equals(event.eventName())));
+        String content = "알림 SSE 실패 후에도 전달할 메시지";
+
+        MessageDto result = directMessageService.send(command(content));
+
+        assertThat(countSavedMessages()).isEqualTo(1L);
+        StoredMessage stored = findStoredMessage(result.id());
+        assertThat(stored.content()).isEqualTo(content);
+        assertThat(stored.read()).isFalse();
+        assertThat(result.content()).isEqualTo(content);
+        assertThat(applicationEvents.stream(DirectMessageCreatedEvent.class).toList())
+                .containsExactly(event(result.id()));
+        SseEvent<?> notificationAttempted = assertStoredNotificationAndSseRequested();
+        List<NotificationCreatedEvent> notificationEvents = applicationEvents
+                .stream(NotificationCreatedEvent.class).toList();
+        assertThat(notificationEvents).hasSize(1);
+        NotificationCreatedEvent notificationCreated = notificationEvents.get(0);
+        assertThat(notificationAttempted.eventId()).isEqualTo(notificationCreated.eventId());
+        assertThat(notificationAttempted.data()).isEqualTo(notificationCreated.notificationDto());
+
+        SseEvent<?> published = onlyPublishedEvent("direct-messages");
+        assertThat(published.eventId()).isEqualTo(result.id());
+        assertThat(published.receiverId()).isEqualTo(receiverId);
+        assertThat(published.data()).isInstanceOfSatisfying(MessageDto.class, dto -> {
+            assertThat(dto.id()).isEqualTo(result.id());
+            assertThat(dto.content()).isEqualTo(content);
+        });
+        verify(directMessagePublisher).publish(result);
+        verifyNoMoreInteractions(directMessagePublisher);
+        verifyNoInteractions(fileStorage);
+        assertThat(output.getAll()).contains(
+                "알림 SSE 발행 실패.",
+                "notificationId=" + notificationCreated.notificationDto().id(),
+                "eventId=" + notificationAttempted.eventId(),
+                "receiverId=" + receiverId,
+                "exceptionType=IllegalStateException"
+        );
+    }
+
+    @Test
+    @DisplayName("DM SSE용 메시지 조회에 실패해도 DM·알림 저장과 알림 SSE·WebSocket 발행을 유지한다.")
     void send_publishesWebSocketWhenSseMessageLookupFails() {
         doThrow(new DataAccessResourceFailureException("SSE용 메시지 조회 실패"))
                 .when(directMessageRepository).findDetailedById(any(UUID.class));
@@ -392,10 +538,11 @@ class DirectMessageSseEventIntegrationTest {
                 .publish(argThat(event -> "direct-messages".equals(event.eventName())));
         verify(directMessagePublisher).publish(result);
         verifyNoMoreInteractions(directMessagePublisher);
+        assertStoredNotificationAndSseRequested();
     }
 
     @Test
-    @DisplayName("SSE용 프로필 URL 생성에 실패해도 저장된 DM을 유지하고 WebSocket 발행을 실행한다.")
+    @DisplayName("DM SSE용 프로필 URL 생성에 실패해도 DM·알림 저장과 알림 SSE·WebSocket 발행을 유지한다.")
     void send_publishesWebSocketWhenSseProfileUrlGenerationFails() {
         insertReceiverProfileImage();
         String profileImageUrl = "https://example.com/profile.png";
@@ -421,10 +568,11 @@ class DirectMessageSseEventIntegrationTest {
                 .publish(argThat(event -> "direct-messages".equals(event.eventName())));
         verify(directMessagePublisher).publish(result);
         verifyNoMoreInteractions(directMessagePublisher);
+        assertStoredNotificationAndSseRequested();
     }
 
     @Test
-    @DisplayName("DM SSE 발행에 실패해도 저장된 DM을 유지하고 재시도 없이 WebSocket 발행을 실행한다.")
+    @DisplayName("DM SSE 발행에 실패해도 DM·알림 저장과 알림 SSE·WebSocket 발행을 재시도 없이 유지한다.")
     void send_publishesWebSocketWhenSsePublishingFails() {
         SsePublishException cause = new SsePublishException(new IllegalStateException("SSE 발행 실패"));
         doThrow(cause).when(sseEventPublisher)
@@ -446,10 +594,11 @@ class DirectMessageSseEventIntegrationTest {
         verify(directMessagePublisher).publish(result);
         verifyNoMoreInteractions(directMessagePublisher);
         verifyNoInteractions(fileStorage);
+        assertStoredNotificationAndSseRequested();
     }
 
     @Test
-    @DisplayName("WebSocket용 프로필 URL 생성에 실패하면 오류를 반환하고 저장된 DM과 앞선 SSE 발행을 유지한다.")
+    @DisplayName("WebSocket용 프로필 URL 생성에 실패하면 오류를 반환하고 DM·알림 저장과 각각의 SSE 발행을 유지한다.")
     void send_keepsSsePublicationWhenWebSocketProfileUrlGenerationFails() {
         insertReceiverProfileImage();
         String profileImageUrl = "https://example.com/profile.png";
@@ -483,10 +632,11 @@ class DirectMessageSseEventIntegrationTest {
         verify(fileStorage, times(2)).getFileUrl(profileImageKey);
         verifyNoMoreInteractions(fileStorage);
         verifyNoInteractions(directMessagePublisher);
+        assertStoredNotificationAndSseRequested();
     }
 
     @Test
-    @DisplayName("WebSocket 발행에 실패하면 오류를 반환하고 저장된 DM과 앞선 SSE 발행을 재시도 없이 유지한다.")
+    @DisplayName("WebSocket 발행에 실패하면 오류를 반환하고 DM·알림 저장과 각각의 SSE 발행을 재시도 없이 유지한다.")
     void send_keepsSsePublicationWhenWebSocketPublishingFails() {
         IllegalStateException cause = new IllegalStateException("WebSocket 발행 실패");
         doAnswer(invocation -> {
@@ -520,6 +670,7 @@ class DirectMessageSseEventIntegrationTest {
         assertThat(attempted.content()).isEqualTo(content);
         verifyNoMoreInteractions(directMessagePublisher);
         verifyNoInteractions(fileStorage);
+        assertStoredNotificationAndSseRequested();
     }
 
     private DirectMessageSendCommand command(String content) {
@@ -535,13 +686,31 @@ class DirectMessageSseEventIntegrationTest {
         verify(sseEventPublisher, atLeastOnce()).publish(captor.capture());
         verifyNoMoreInteractions(sseEventPublisher);
         assertThat(captor.getAllValues()).extracting(SseEvent::eventName)
-                .containsOnly("direct-messages", "notifications");
+                .isSubsetOf("direct-messages", "notifications");
 
         List<SseEvent<?>> matchingEvents = captor.getAllValues().stream()
                 .filter(event -> eventName.equals(event.eventName()))
                 .toList();
         assertThat(matchingEvents).as("%s 이벤트 단건 발행", eventName).hasSize(1);
         return matchingEvents.get(0);
+    }
+
+    private SseEvent<?> assertStoredNotificationAndSseRequested() {
+        assertThat(countSavedNotifications()).isEqualTo(1L);
+        verify(notificationRepository).save(any(Notification.class));
+        NotificationDto stored = findStoredNotification();
+
+        SseEvent<?> published = onlyPublishedEvent("notifications");
+        assertThat(published.receiverId()).isEqualTo(receiverId);
+        assertThat(published.data()).isInstanceOfSatisfying(NotificationDto.class, dto -> {
+            assertThat(dto)
+                    .usingRecursiveComparison()
+                    .ignoringFields("createdAt")
+                    .isEqualTo(stored);
+            assertThat(dto.createdAt())
+                    .isCloseTo(stored.createdAt(), within(1_000, ChronoUnit.NANOS));
+        });
+        return published;
     }
 
     private long countSavedMessages() {
