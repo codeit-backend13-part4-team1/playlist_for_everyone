@@ -26,11 +26,22 @@ public class ContentCollectionService {
 
     @Transactional
     public ContentCollectionResult saveForBatch(CollectedContentData data) {
-        throw new UnsupportedOperationException("배치용 저장 구현 전");
+        return saveContent(data);
     }
 
     @Transactional
     public Content save(CollectedContentData data) {
+        ContentCollectionResult result = saveContent(data);
+
+        if (result.inserted()) {
+            eventPublisher.publishEvent(new ContentSearchCacheEvictEvent());
+        }
+
+        return result.content();
+    }
+
+    private ContentCollectionResult saveContent(CollectedContentData data) {
+
         if (!StringUtils.hasText(data.title())) {
             throw new CollectedContentValidationException("수집한 콘텐츠에는 제목이 필요합니다.");
         }
@@ -71,7 +82,7 @@ public class ContentCollectionService {
                 .orElse(null);
 
         if (existing != null) {
-            return existing;
+            return new ContentCollectionResult(existing, false);
         }
 
         int inserted = contentRepository.insertIfAbsent(
@@ -97,9 +108,8 @@ public class ContentCollectionService {
 
         if (inserted == 1) {
             tags.forEach(saved::addTag);
-            eventPublisher.publishEvent(new ContentSearchCacheEvictEvent());
         }
 
-        return saved;
+        return new ContentCollectionResult(saved, inserted == 1);
     }
 }
