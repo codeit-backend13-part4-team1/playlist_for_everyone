@@ -168,7 +168,7 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
         sendViewingSessionMessage(subscription, ChangeType.LEAVE, auth, content);
     }
 
-    // viewing 세션 초기 정보 전송 메세지.
+    // viewing 세션 초기 정보 전송 메세지 조립용 매서드
     private void sendViewingSessionMessage(
             WSSubscription subscription,
             ChangeType type,

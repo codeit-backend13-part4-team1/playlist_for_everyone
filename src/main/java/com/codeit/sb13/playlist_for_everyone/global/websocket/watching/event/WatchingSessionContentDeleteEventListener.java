@@ -1,7 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event;
 
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageListener;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSession;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.serializer.GenericJacksonJsonRedisSerializer;
@@ -13,22 +13,22 @@ import java.util.UUID;
 @Component
 public class WatchingSessionContentDeleteEventListener extends RedisMessageListener {
 
-    private final WatchingSession watchingSession;
+    private final WatchingSessionService watchingSessionService;
     private final String topic = "websocket:event:watching:delete";
 
     public WatchingSessionContentDeleteEventListener(
             RedisTemplate<String, Object> template,
             @Qualifier("redisSerializer") GenericJacksonJsonRedisSerializer serializer,
-            WatchingSession watchingSession
+            WatchingSessionService watchingSessionService
     ){
         super(template, serializer);
-        this.watchingSession = watchingSession;
+        this.watchingSessionService = watchingSessionService;
     }
 
     @Override
     public void run(Object data){
         UUID contentId = UUID.fromString(Objects.requireNonNull((String) data));
-        watchingSession.disconnectWithContentId(contentId);
+        watchingSessionService.cleanUpWithContentId(contentId);
     }
 
     public String topic(){ return topic; }

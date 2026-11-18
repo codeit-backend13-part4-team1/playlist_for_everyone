@@ -8,6 +8,7 @@ import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.ChatSessi
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.entity.ChattingSessionRoom;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.chatting.ChattingSessionRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -22,6 +23,7 @@ public class ChattingSessionServiceImpl implements ChattingSessionService {
     private final ChattingSessionRepository chattingSessionRepository;
     private final RedisTopicRegistry redisTopicRegistry;
     private final ChatSessionMessageListener chatSessionMessageListener;
+    private final RedisTemplate<String, Object> redisTemplate;
     private final Locks locks;
 
 
@@ -48,8 +50,7 @@ public class ChattingSessionServiceImpl implements ChattingSessionService {
 
 
         synchronized (locks.lock(contentId)) {
-            ChattingSessionRoom room = chattingSessionRepository.find(contentId)
-                    .orElseThrow(WebSocketSessionNotFoundException::new);
+            ChattingSessionRoom room = getRoomOrException(contentId);
             room.leave(subscription);
             redisTopicRegistry.unregister(
                     subscription.sessionId(),
@@ -63,8 +64,7 @@ public class ChattingSessionServiceImpl implements ChattingSessionService {
 
 
         synchronized (locks.lock(contentId)) {
-            ChattingSessionRoom room = chattingSessionRepository.find(contentId)
-                    .orElseThrow(WebSocketSessionNotFoundException::new);
+            ChattingSessionRoom room = getRoomOrException(contentId);
             // 해당 구독을 한번제 저장소에서 지울 수 있도록
             room.leaveAll(subscriptions);
 
@@ -81,8 +81,7 @@ public class ChattingSessionServiceImpl implements ChattingSessionService {
         List<WSSubscription> res;
 
         synchronized (locks.lock(contentId)) {
-            ChattingSessionRoom room = chattingSessionRepository.find(contentId)
-                    .orElseThrow(WebSocketSessionNotFoundException::new);
+            ChattingSessionRoom room = getRoomOrException(contentId);
             // 저장소에서 세션 해지 및, 토픽 등록 해제.
             redisTopicRegistry.disconnectWithContentId(contentId.toString());
 
@@ -91,4 +90,16 @@ public class ChattingSessionServiceImpl implements ChattingSessionService {
             return res;
         }
     }
+    // todo - 메세지의 전송기를 별도로 분리하고, 인스턴스에 따라 redis 구현체와 로컬 구현체를 작성할 것.
+    @Override
+    public void send(UUID contentId, Object payload) {
+        ChattingSessionRoom room = getRoomOrException(contentId);
+        redisTemplate.convertAndSend(room.topic(), payload);
+    }
+
+    private ChattingSessionRoom getRoomOrException(UUID contentId) {
+        return chattingSessionRepository.find(contentId)
+                .orElseThrow(WebSocketSessionNotFoundException::new);
+    }
+
 }

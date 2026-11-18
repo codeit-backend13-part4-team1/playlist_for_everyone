@@ -15,7 +15,7 @@ public class ChattingSessionRepositoryImpl implements ChattingSessionRepository 
 
     @Override
     public void remove(ChattingSessionRoom chattingSessionRoom) {
-        rooms.remove(chattingSessionRoom.getContentId(), chattingSessionRoom);
+        rooms.remove(chattingSessionRoom.contentId(), chattingSessionRoom);
     }
 
     @Override

@@ -13,12 +13,15 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocke
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistryImpl;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSession;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSessionMapper;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.ChangeType;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.WatchingSessionChange;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.DpeWatchingSessionService;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionServiceImpl;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.chatting.ChattingSessionService;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.viewing.ViewingSessionService;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -56,23 +59,37 @@ import static org.mockito.Mockito.*;
 @DisplayName("WatchingSession 테스트")
 public class WatchingSessionTest {
 
-    @Mock
-    UserService userService;
-    @Mock
-    ContentService contentService;
-    @Mock
-    UserSummaryMapper userSummaryMapper;
-    @Mock
-    WebSocketSessionRegistry socketRegistry;
-    @Mock
-    SubscriptionRegistry subscriptionRegistry;
-    @Mock
-    WebSocketSessionRegistry webSocketSessionRegistry;
+    @Mock WebSocketSessionRegistry sessionRegistry;
+
+    @Mock UserService userService;
+    @Mock ContentService contentService;
+    @Mock ViewingSessionService viewingSessionService;
+    @Mock ChattingSessionService chattingSessionService;
+
+
+    @Mock UserSummaryMapper userSummaryMapper;
+
     // interface 단은 setup 에서 설정.
-    DpeWatchingSessionService dpeWatchingSessionService;
-    WatchingSessionMapper mapper;
-    // 테스트 할 객체
-    WatchingSession watchingSession;
+
+    // mapper 은 pojo 이므로 직접 주입.
+    WatchingSessionMapper mapper = new WatchingSessionMapper();
+    WatchingSessionService watchingSessionService;
+
+    /**
+     * 의존성 주입 매서드.
+     */
+    void setUpParam(){
+        watchingSessionService = new WatchingSessionServiceImpl(
+                sessionRegistry,
+                viewingSessionService,
+                chattingSessionService,
+                userService,
+                contentService,
+                mapper
+        );
+    }
+
+
 
     /**
      * 테스트용 SessionInfo 생성 편의 매서드
@@ -201,20 +218,8 @@ public class WatchingSessionTest {
 
     @BeforeEach
     void setUp(){
-        socketRegistry = new WebSocketSessionRegistryImpl();
-        // 별도 모듈 테스트가 있으므로, mock 으로 주입.
-        dpeWatchingSessionService = mock(DpeWatchingSessionService.class);
-        webSocketSessionRegistry = mock(WebSocketSessionRegistryImpl.class);
-        mapper = new WatchingSessionMapper();
-        watchingSession = new WatchingSession(
-                mapper,
-                userService,
-                contentService,
-                dpeWatchingSessionService,
-                subscriptionRegistry,
-                userSummaryMapper,
-                webSocketSessionRegistry
-        );
+        // 필드 주입
+        setUpParam();
     }
 
     @Nested
