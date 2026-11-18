@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -419,7 +420,11 @@ class DirectMessageSseIntegrationTest {
                 .containsExactly(cursor, saved.id());
         assertThat(readState(saved.id())).isEqualTo(before);
         // 재연결은 이력을 읽을 뿐, 실패한 Redis 신호를 자동으로 재발행하지 않는다.
-        verify(transportPublisher, times(1)).publish(storedEvent);
+        // 데이터가 달라도 같은 메시지 ID를 다시 발행하면 실패하도록 전체 호출을 검증한다.
+        ArgumentCaptor<SseEvent<?>> publishedEvents = ArgumentCaptor.captor();
+        verify(transportPublisher, times(2)).publish(publishedEvents.capture());
+        assertThat(publishedEvents.getAllValues()).extracting(SseEvent::eventId)
+                .containsExactly(cursor, saved.id());
     }
 
     private MessageDto send(String content) {
