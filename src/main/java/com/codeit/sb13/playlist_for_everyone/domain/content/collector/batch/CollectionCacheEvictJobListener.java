@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch;
 
+import com.codeit.sb13.playlist_for_everyone.domain.content.event.ContentCollectionFinishedEvent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.batch.core.job.JobExecution;
 import org.springframework.batch.core.listener.JobExecutionListener;
@@ -13,6 +14,12 @@ public class CollectionCacheEvictJobListener implements JobExecutionListener {
 
     @Override
     public void afterJob(JobExecution jobExecution) {
-        throw new UnsupportedOperationException("배치 종료 이벤트 구현 전");
+        long insertedCount = counter.getCount();
+
+        if (insertedCount > 0) {
+            eventPublisher.publishEvent(
+                    new ContentCollectionFinishedEvent(insertedCount)
+            );
+        }
     }
 }
