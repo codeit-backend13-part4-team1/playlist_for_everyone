@@ -1,7 +1,8 @@
 # DM 테스트와 Swagger 검증
 
-DM 테스트는 7개 클래스입니다. 도메인 규칙, DB·쿼리, 서비스 처리, HTTP 요청의 경계를 나누어 확인합니다.
+이 문서는 #60의 DM 도메인·조회·읽음 테스트 7개 클래스를 설명합니다. 도메인 규칙, DB·쿼리, 서비스 처리, HTTP 요청의 경계를 나누어 확인합니다.
 Docker·프로필과 대화방 테스트 전체 실행 방법은 [공통 테스트 가이드](04-testing.md)를 참고합니다.
+송신·Redis·실제 연결과 관련 공통 보안 테스트는 [WebSocket 테스트 가이드](13-websocket-testing.md)에서 다룹니다.
 
 ## 테스트별 역할
 
@@ -15,7 +16,7 @@ Docker·프로필과 대화방 테스트 전체 실행 방법은 [공통 테스�
 | [DirectMessageControllerTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/controller/DirectMessageControllerTest.java) | 입력 검증, 인증 객체 ID 전달, 목록 JSON·읽음 빈 응답, 오류 계약 | Service는 Mock, 보안 필터 비활성화 |
 | [DirectMessageSecurityIntegrationTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/controller/DirectMessageSecurityIntegrationTest.java) | JWT·CSRF, 참여·기준 메시지 검증과 DB 상태, 조회 중 프로필 URL 변환 | PostgreSQL·실제 필터·서비스. UserSessionRepository·FileStorage는 Mock |
 
-현재 대화방 11개와 DM 7개를 합쳐 18개 클래스가 있습니다. 이 숫자는 **작성된 클래스 구성**이며 최신 전체 실행의 통과 건수를 의미하지 않습니다.
+#58~#60의 범위는 대화방 11개와 DM 조회·읽음 7개를 합친 18개 클래스입니다. 현재 #61까지 포함한 도메인 35개·관련 공통 6개와 구분하며, 최신 전체 실행의 통과 건수를 의미하지 않습니다.
 그중 DM Repository 2개·읽음 서비스·보안 통합의 4개 클래스가 PostgreSQL을 사용합니다.
 
 ## 쿼리와 읽음 테스트에서 확인할 것
@@ -70,10 +71,17 @@ JWT 필터·CSRF·서비스·DB는 실제 구성이지만 Redis 세션 저장·�
 ./gradlew test --tests '*DirectMessageRepositoryTest' --tests '*DirectMessageQueryRepositoryTest' --tests '*DirectMessageReadServiceIntegrationTest' --tests '*DirectMessageSecurityIntegrationTest'
 ```
 
-DM 7개 클래스 전체:
+이 문서에서 다루는 DM 도메인·조회·읽음 7개 클래스:
 
 ```bash
-./gradlew test --tests 'com.codeit.sb13.playlist_for_everyone.domain.conversation.*.DirectMessage*Test'
+./gradlew test \
+  --tests '*DirectMessageTest' \
+  --tests '*DirectMessageRepositoryTest' \
+  --tests '*DirectMessageQueryRepositoryTest' \
+  --tests '*DirectMessageQueryServiceTest' \
+  --tests '*DirectMessageReadServiceIntegrationTest' \
+  --tests '*DirectMessageControllerTest' \
+  --tests '*DirectMessageSecurityIntegrationTest'
 ```
 
 보고서는 `build/reports/tests/test/index.html`과 `build/test-results/test/`에 생성됩니다.

@@ -6,7 +6,7 @@
 ## 메시지 도메인의 기본 규칙
 
 `DirectMessageCommand`가 생성 입력을 검증하고, `DirectMessage`는 그 값을 받아 미읽음 상태로 생성됩니다.
-이 생성 규칙이 메시지 송신 API나 WebSocket 송수신 구현까지 의미하지는 않습니다.
+이 페이지는 생성 규칙과 REST 조회를 설명합니다. 저장·발행을 연결하는 #61의 송신 흐름은 [WebSocket 송수신](11-websocket-flow.md)에서 다룹니다.
 
 | 항목 | 규칙 |
 | --- | --- |

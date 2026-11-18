@@ -22,6 +22,7 @@ public enum ApiErrorCode {
     CONVERSATION_CREATION_FAILED("CS_003", HttpStatus.INTERNAL_SERVER_ERROR, "대화방 생성 처리에 실패했습니다."),
     CONVERSATION_TARGET_NOT_FOUND("CS_004", HttpStatus.BAD_REQUEST, "대화 상대 사용자를 찾을 수 없습니다."),
     DIRECT_MESSAGE_NOT_FOUND("CS_005", HttpStatus.NOT_FOUND, "메시지를 찾을 수 없습니다."),
+    DIRECT_MESSAGE_PUBLISH_FAILED("CS_006", HttpStatus.INTERNAL_SERVER_ERROR, "메시지 저장은 완료되었으나 실시간 전송에 실패했습니다."),
 
     // FILE FL
     FILE_NOT_FOUND("FL_001", HttpStatus.NOT_FOUND, "파일을 찾을 수 없습니다."),

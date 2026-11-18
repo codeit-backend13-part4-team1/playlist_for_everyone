@@ -4,8 +4,10 @@ import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.repository.
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.response.MessageDto;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.entity.DirectMessage;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.entity.DirectMessageSortBy;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.event.DirectMessagePublisher;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.mapper.DirectMessageMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.impl.DirectMessageReader;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.impl.DirectMessageSaver;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.impl.DirectMessageServiceImpl;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.impl.DirectMessageUpdater;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserSummary;
@@ -46,6 +48,12 @@ public class DirectMessageQueryServiceTest {
     @Mock
     private ConversationService conversationService;
 
+    @Mock
+    private DirectMessageSaver directMessageSaver;
+
+    @Mock
+    private DirectMessagePublisher directMessagePublisher;
+
     private DirectMessageService directMessageService;
 
     private final UUID requesterId = UUID.fromString("00000000-0000-0000-0000-000000000001");
@@ -58,7 +66,9 @@ public class DirectMessageQueryServiceTest {
                 directMessageReader,
                 directMessageMapper,
                 directMessageUpdater,
-                conversationService);
+                conversationService,
+                directMessageSaver,
+                directMessagePublisher);
     }
 
     @Test
