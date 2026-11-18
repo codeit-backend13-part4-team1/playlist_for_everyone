@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.conversation.service.impl;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.entity.DirectMessage;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.repository.DirectMessageRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.conversation.DirectMessageNotFoundException;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -26,6 +27,9 @@ class DirectMessageReaderTest {
 
     @Mock
     private DirectMessageRepository directMessageRepository;
+
+    @Mock
+    private EntityManager entityManager;
 
     @InjectMocks
     private DirectMessageReader directMessageReader;

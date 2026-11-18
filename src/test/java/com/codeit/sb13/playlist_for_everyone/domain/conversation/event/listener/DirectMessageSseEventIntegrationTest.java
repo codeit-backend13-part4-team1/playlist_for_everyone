@@ -21,10 +21,12 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.auditing.AuditingHandler;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -41,6 +43,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.time.LocalDateTime;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -107,6 +110,10 @@ class DirectMessageSseEventIntegrationTest {
     @Autowired
     private PlatformTransactionManager transactionManager;
 
+    @Autowired
+    @Qualifier("jpaAuditingHandler")
+    private AuditingHandler auditingHandler;
+
     @MockitoSpyBean
     private DirectMessageRepository directMessageRepository;
 
@@ -142,6 +149,7 @@ class DirectMessageSseEventIntegrationTest {
 
     @AfterEach
     void cleanUp() {
+        auditingHandler.setDateTimeProvider(null);
         jdbcTemplate.update("DELETE FROM direct_messages WHERE conversation_id = ?", conversationId);
         jdbcTemplate.update("DELETE FROM conversations WHERE id = ?", conversationId);
         jdbcTemplate.update("DELETE FROM users WHERE id IN (?, ?)", senderId, receiverId);
@@ -151,6 +159,9 @@ class DirectMessageSseEventIntegrationTest {
     @Test
     @DisplayName("실제 DM 저장 커밋 후 저장된 정보로 수신자 SSE를 한 번 발행한다.")
     void save_publishesSseAfterCommit(ApplicationEvents applicationEvents) {
+        // OS 시계 정밀도와 무관하게 저장 전 나노초와 DB 저장 시각의 차이를 재현한다.
+        LocalDateTime createdAt = LocalDateTime.of(2026, 1, 1, 12, 0, 0, 123456789);
+        auditingHandler.setDateTimeProvider(() -> Optional.of(createdAt));
         AtomicReference<StoredMessage> visibleAtPublish = new AtomicReference<>();
         TransactionTemplate separateRead = new TransactionTemplate(transactionManager);
         separateRead.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -170,6 +181,8 @@ class DirectMessageSseEventIntegrationTest {
         assertThat(stored).isNotNull();
         assertThat(stored.id()).isEqualTo(saved.getId());
         assertThat(stored.createdAt()).isNotNull();
+        assertThat(stored.createdAt()).isNotEqualTo(createdAt);
+        assertThat(saved.getCreatedAt()).isEqualTo(stored.createdAt());
         assertThat(stored.read()).isFalse();
         assertThat(countSavedMessages()).isEqualTo(1L);
 

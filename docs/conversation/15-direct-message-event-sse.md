@@ -31,7 +31,7 @@ flowchart TD
 | [`DirectMessageSaver`](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/service/impl/DirectMessageSaver.java) | `save` | 참여 여부를 확인하고 실제 송수신자를 결정해 DM 저장 및 생성 이벤트 발행 |
 | [`DirectMessageCreatedEvent`](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/event/DirectMessageCreatedEvent.java) | record | 저장한 메시지·대화방·송수신자 ID와 발신자 이름 스냅샷 전달 |
 | [`DirectMessageSseEventListener`](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/event/listener/DirectMessageSseEventListener.java) | `handleDirectMessageCreated` | 커밋 후 조회 → DTO 변환 → 공통 SSE 발행, 단계별 런타임 실패 처리 |
-| [`DirectMessageReader`](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/service/impl/DirectMessageReader.java) | `getById` | REQUIRED로 저장 측 자원을 재사용한 조회와 메시지 미존재 예외 처리 |
+| [`DirectMessageReader`](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/service/impl/DirectMessageReader.java) | `getById` | REQUIRED로 저장 측 자원을 재사용한 상세 조회·refresh와 메시지 미존재 예외 처리 |
 | [`DirectMessageRepository`](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/repository/DirectMessageRepository.java) | `findDetailedById` | EntityGraph로 송수신자·프로필을 함께 로딩 |
 | [`DirectMessageMapper`](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/mapper/DirectMessageMapper.java) | `toMessageDto` | 조회 결과로 사용자 요약·프로필 URL·메시지 응답 구성 |
 | [`SseEvent`](../../src/main/java/com/codeit/sb13/playlist_for_everyone/global/sse/event/SseEvent.java) | `createDirectMessageEvent` | 기존 메시지 ID와 DTO를 `direct-messages` 내부 전달 형식으로 감쌈 |
@@ -62,11 +62,13 @@ flowchart TD
 
 1. Saver가 `REQUIRES_NEW` 저장 트랜잭션을 시작하고 참여 검증·저장·업무 이벤트 발행을 수행합니다. 이때 이벤트가 발행됐다는 사실만으로 DB 커밋을 확정할 수는 없습니다.
 2. Saver 본문이 반환된 뒤 트랜잭션 프록시가 커밋합니다. 리스너의 `AFTER_COMMIT, fallbackExecution = false`에 따라 커밋에 성공했을 때만 후속 처리를 시작합니다.
-3. 리스너가 Reader를 호출하면 `REQUIRED`로 아직 바인딩된 저장 측 EntityManager·커넥션을 재사용해 메시지·송수신자·프로필을 조회합니다. 조회용 두 번째 커넥션을 기다리지 않으며, 미존재 시 `DirectMessageNotFoundException`이 발생합니다.
+3. 리스너가 Reader를 호출하면 `REQUIRED`로 아직 바인딩된 저장 측 EntityManager·커넥션을 재사용해 메시지·송수신자·프로필을 조회합니다. 메시지를 `refresh`하여 DB에 저장된 생성 시각을 반영합니다. 조회용 두 번째 커넥션을 기다리지 않으며, 미존재 시 `DirectMessageNotFoundException`이 발생합니다.
 4. 상세 조회 후 Mapper가 프로필 URL과 DTO를 만듭니다. **Reader 반환이 저장 커넥션 반환을 뜻하지는 않습니다.** 동기 콜백의 외부 파일 저장소 호출·SSE 발행 동안에도 저장 측 연결이 남을 수 있습니다.
 5. 공통 SSE 발행 호출이 끝나거나 리스너가 런타임 실패를 처리하면 Saver 호출이 서비스로 반환됩니다. 이후 서비스가 WebSocket용 DTO를 별도로 만들고 발행합니다.
 
 `getById`의 `readOnly = true`는 새 트랜잭션이 필요할 때 적용됩니다. 커밋 후 기존 자원을 재사용하는 호출에서 독립적인 읽기 전용 트랜잭션을 보장하지 않습니다. 이 경로는 조회만 수행하며, 후속 커밋이 필요한 쓰기를 추가하면 별도의 경계를 설계해야 합니다.
+
+상세 쿼리를 실행해도 이미 관리 중인 메시지의 필드는 DB 값으로 덮어써지지 않습니다. Java에서 만든 나노초 생성 시각과 PostgreSQL에 저장된 마이크로초 시각이 다르면 SSE·이력과 REST 조회 값도 달라집니다. 이를 막기 위해 같은 연결에서 해당 메시지를 `EntityManager.refresh()`로 갱신한 뒤 DTO로 변환합니다. 추가 SELECT가 발생하며, 영속성 컨텍스트 전체를 초기화하지 않습니다. 메시지의 메모리 상태를 덮어쓰므로 아직 커밋하지 않은 변경이 있는 메시지의 조회에는 이 메서드를 사용하지 않습니다.
 
 현재 수정은 **저장 연결을 보유한 채 추가 조회 연결을 기다리는 구조**를 제거합니다. 외부 호출 동안의 연결 점유 시간 단축과 Executor·큐·작업 거절 정책은 후속 비동기 전환에서 다룹니다.
 
@@ -98,7 +100,7 @@ Redis WebSocket 수신자는 로컬 전달만 담당합니다. 메시지를 재�
 | `DirectMessageReaderTest` | 상세 조회·미존재 예외·실패 전달 | 3 |
 | `DirectMessageRepositoryTest` | 영속성·상세 조회의 사용자·프로필 로딩 | 15 |
 | `DirectMessageSseEventListenerTest` | 조회→변환→발행 순서와 각 단계 실패 처리 | 4 |
-| `DirectMessageSseEventIntegrationTest` | 실제 저장·트랜잭션·SSE/WebSocket 양방향 실패 격리 | 11 |
+| `DirectMessageSseEventIntegrationTest` | 실제 저장·생성 시각 정밀도·트랜잭션·SSE/WebSocket 양방향 실패 격리 | 11 |
 | `DirectMessageSseIntegrationTest` | Redis·실제 HTTP SSE·다중 연결·서버 간 전달·전송 실패 후 이력 복구 | 8 |
 | `DirectMessageSendServiceIntegrationTest` | 기존 저장·WebSocket 송신 계약 | 10 |
 | **합계** | **7개 클래스** | **55** |
@@ -133,6 +135,8 @@ Docker가 실행 중이어야 PostgreSQL·Redis를 사용하는 통합 테스트
 | `DirectMessageSseIntegrationTest` | PostgreSQL·Redis와 인증된 실제 HTTP SSE, STOMP 동시 구독·재연결 | 프로필 없는 사용자 사용, 두 서버는 같은 JVM의 독립 Spring 컨텍스트. 전송 실패 사례만 Redis 전송 Spy에 실패 주입 |
 
 HTTP SSE 테스트는 연결마다 별도 읽기 스레드를 사용합니다. 프레임뿐 아니라 EOF·파싱 실패도 테스트 스레드에 전달하며, 추가 수신 검사는 정해진 관찰 시간 안에서만 중복 여부를 확인합니다. Redis 구독자 수는 전송 준비 조건이고, 성공 여부는 실제 받은 프레임·저장 메시지·이력으로 판단합니다.
+
+커밋 후 발행 테스트는 감사 시각에 나노초 값을 지정하여 OS 시계 정밀도와 관계없이 DB 저장 시각과의 차이를 재현합니다. 별도 DB 조회 결과와 SSE DTO·저장 반환값의 생성 시각이 정확히 일치하는지 검증하며, 종료 시 감사 시각 공급자를 기본값으로 복원합니다.
 
 일반 시나리오의 연결은 `@AfterEach`에서 서버 A/B의 SSE를 먼저 종료한 뒤 HTTP 클라이언트·수신 스레드를 정리합니다. 재연결 준비에서도 서버 종료를 먼저 수행합니다. 소켓 읽기 제한 시간과 스레드 종료 확인은 유지합니다.
 
