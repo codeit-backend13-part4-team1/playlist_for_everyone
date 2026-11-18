@@ -40,6 +40,7 @@ public class ReviewController implements ReviewApi {
     /**
      * 콘텐츠별 리뷰 목록을 커서 기반 페이지네이션으로 조회한다.
      */
+    @Override
     @GetMapping
     public ResponseEntity<CursorResponse<ReviewDto>> getAllByContentId(
             @RequestParam UUID contentId,
