@@ -7,6 +7,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.TmdbPa
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.TmdbTvResponse;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentSource;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
+import com.codeit.sb13.playlist_for_everyone.domain.content.event.ContentCollectionFinishedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.content.event.ContentSearchCacheEvictEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
@@ -26,6 +28,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.event.ApplicationEvents;
+import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.ResourceAccessException;
@@ -65,6 +69,7 @@ import static org.mockito.Mockito.when;
 })
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @Testcontainers
+@RecordApplicationEvents
 class TmdbCollectionJobTest {
 
     @Container
@@ -87,6 +92,9 @@ class TmdbCollectionJobTest {
 
     @MockitoBean
     private TmdbClient tmdbClient;
+
+    @Autowired
+    private ApplicationEvents applicationEvents;
 
     @Test
     void 영화와_TV와_태그를_저장하고_재수집해도_중복되지_않는다() throws Exception {
@@ -125,6 +133,19 @@ class TmdbCollectionJobTest {
 
         assertThat(execution.getStatus())
                 .isEqualTo(BatchStatus.COMPLETED);
+
+        // 영화와 TV를 합쳐 신규 2건을 담은 이벤트 한 번 발행
+        assertThat(applicationEvents
+                .stream(ContentCollectionFinishedEvent.class)
+                .toList())
+                .extracting(ContentCollectionFinishedEvent::insertedCount)
+                .containsExactly(2L);
+
+        // 건별 캐시 무효화 이벤트는 발행하지 않는다.
+        assertThat(applicationEvents
+                .stream(ContentSearchCacheEvictEvent.class)
+                .count())
+                .isZero();
 
         var saved = contentRepository.findByProviderAndTypeAndProviderItemId(
                 ContentSource.TMDB,
@@ -191,10 +212,24 @@ class TmdbCollectionJobTest {
                 .addString("run.id", UUID.randomUUID().toString())
                 .toJobParameters();
 
+        // 첫 실행에서 기록한 이벤트를 비운다.
+        applicationEvents.clear();
+
         var secondExecution = jobOperator.start(job, secondParameters);
 
         assertThat(secondExecution.getStatus())
                 .isEqualTo(BatchStatus.COMPLETED);
+
+        // 재수집은 모두 중복이므로 캐시 이벤트를 발행하지 않는다.
+        assertThat(applicationEvents
+                .stream(ContentCollectionFinishedEvent.class)
+                .count())
+                .isZero();
+
+        assertThat(applicationEvents
+                .stream(ContentSearchCacheEvictEvent.class)
+                .count())
+                .isZero();
 
         // 기존 영화와 TV의 ID가 유지되고, 콘텐츠가 추가되지 않았는지 확인
         var contentIds = jdbcTemplate.queryForList(
