@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.config;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.env.YamlPropertySourceLoader;
@@ -55,15 +56,36 @@ class WebSocketOriginPropertiesTest {
                 .run(context -> assertThat(context).hasFailed());
     }
 
-    @Test
-    @DisplayName("쉼표로 구분한 여러 Origin을 목록으로 바인딩한다.")
-    void bindsMultipleOrigins() {
-        contextRunner.withPropertyValues(
-                        "everyone.websocket.allowed-origins=http://localhost:8080,https://frontend.example")
+    @ParameterizedTest(name = "설정={0}, 저장={1}")
+    @CsvSource({
+            "http://frontend.example:80, http://frontend.example",
+            "https://frontend.example:443, https://frontend.example",
+            "http://frontend.example:8080, http://frontend.example:8080",
+            "https://frontend.example:8443, https://frontend.example:8443",
+            "http://[::1]:80, http://[::1]",
+            "https://[::1]:443, https://[::1]"
+    })
+    @DisplayName("Origin의 기본 포트만 제거하고 비기본 포트와 IPv6 주소 형식은 유지한다.")
+    void normalizesDefaultPortsAndPreservesOtherPorts(String origin, String expectedOrigin) {
+        contextRunner.withPropertyValues("everyone.websocket.allowed-origins=" + origin)
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     assertThat(context.getBean(WebSocketOriginProperties.class).allowedOrigins())
-                            .containsExactly("http://localhost:8080", "https://frontend.example");
+                            .containsExactly(expectedOrigin);
+                });
+    }
+
+    @Test
+    @DisplayName("여러 Origin의 기본 포트를 정규화하고 비기본 포트와 목록 순서는 유지한다.")
+    void bindsMultipleOrigins() {
+        contextRunner.withPropertyValues(
+                        "everyone.websocket.allowed-origins=http://localhost:8080,https://frontend.example:443,"
+                                + "http://second.example:80,https://plain.example")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context.getBean(WebSocketOriginProperties.class).allowedOrigins())
+                            .containsExactly("http://localhost:8080", "https://frontend.example",
+                                    "http://second.example", "https://plain.example");
                 });
     }
 

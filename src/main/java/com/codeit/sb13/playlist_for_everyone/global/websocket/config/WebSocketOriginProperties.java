@@ -11,6 +11,8 @@ import java.util.List;
  *
  * <p>기본값은 dev 프로필에서만 제공한다. prod는 외부 설정이 필수이며,
  * 누락되거나 Origin 형식이 잘못되면 기동을 중단한다. 이 목록은 STOMP JWT 인증을 대체하지 않는다.
+ * <p>브라우저는 Origin에서 HTTP 80·HTTPS 443 포트를 생략하므로, 검증 후 기본 포트를 제거해
+ * Spring의 허용 목록 비교와 일치시킨다. 비기본 포트와 IPv6 주소 형식은 유지한다.
  */
 @ConfigurationProperties(prefix = "everyone.websocket")
 public record WebSocketOriginProperties(List<String> allowedOrigins) {
@@ -19,13 +21,12 @@ public record WebSocketOriginProperties(List<String> allowedOrigins) {
         if (allowedOrigins == null || allowedOrigins.isEmpty()) {
             throw new IllegalArgumentException("WebSocket 허용 Origin은 한 개 이상 설정해야 합니다.");
         }
-        for (String origin : allowedOrigins) {
-            validateOrigin(origin);
-        }
-        allowedOrigins = List.copyOf(allowedOrigins);
+        allowedOrigins = allowedOrigins.stream()
+                .map(WebSocketOriginProperties::validateAndNormalizeOrigin)
+                .toList();
     }
 
-    private static void validateOrigin(String origin) {
+    private static String validateAndNormalizeOrigin(String origin) {
         if (!StringUtils.hasText(origin)) {
             throw new IllegalArgumentException("WebSocket 허용 Origin은 null, 빈 문자열 또는 공백일 수 없습니다.");
         }
@@ -48,5 +49,11 @@ public record WebSocketOriginProperties(List<String> allowedOrigins) {
             throw new IllegalArgumentException(
                     "WebSocket 허용 Origin은 경로·쿼리·사용자 정보·와일드카드 없이 http 또는 https 주소와 유효한 포트로 설정해야 합니다.");
         }
+
+        if (("http".equals(uri.getScheme()) && uri.getPort() == 80)
+                || ("https".equals(uri.getScheme()) && uri.getPort() == 443)) {
+            return uri.getScheme() + "://" + uri.getHost();
+        }
+        return origin;
     }
 }

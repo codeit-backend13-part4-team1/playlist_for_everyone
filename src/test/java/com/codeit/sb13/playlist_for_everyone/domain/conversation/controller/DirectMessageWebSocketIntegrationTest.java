@@ -112,7 +112,7 @@ import static org.mockito.Mockito.mock;
                 "spring.jpa.hibernate.ddl-auto=validate",
                 "spring.jpa.open-in-view=false",
                 "spring.docker.compose.enabled=false",
-                "everyone.websocket.allowed-origins=https://frontend.example,https://second.example",
+                "everyone.websocket.allowed-origins=https://frontend.example:443,http://second.example:80",
                 "everyone.dm.websocket.transport=redis",
                 "everyone.dm.websocket.subscription-enabled=true",
                 "everyone.dm.websocket.redis.channel=test:dm:websocket:integration"
@@ -290,7 +290,7 @@ public class DirectMessageWebSocketIntegrationTest {
 
     @ParameterizedTest(name = "전송 방식={0}")
     @ValueSource(strings = {"websocket", "xhr"})
-    @DisplayName("허용 목록의 다른 출처에서도 SockJS와 XHR 폴백은 JWT로 인증된다.")
+    @DisplayName("허용 Origin에 기본 포트를 명시해도 포트 없는 SockJS·XHR 요청은 JWT로 인증된다.")
     void connect_authenticatesAllowedOrigin(String transport)
             throws ExecutionException, InterruptedException, TimeoutException {
         String origin = "https://frontend.example";
@@ -323,11 +323,11 @@ public class DirectMessageWebSocketIntegrationTest {
     @ParameterizedTest(name = "Origin={0}, 경로={1}")
     @CsvSource({
             "https://frontend.example, /ws",
-            "https://second.example, /ws",
+            "http://second.example, /ws",
             "https://frontend.example, /ws/000/{sessionId}/websocket",
-            "https://second.example, /ws/000/{sessionId}/websocket"
+            "http://second.example, /ws/000/{sessionId}/websocket"
     })
-    @DisplayName("기본 WebSocket과 SockJS 직접 연결은 목록에 지정한 각 Origin을 허용한다.")
+    @DisplayName("기본 WebSocket과 SockJS는 허용 Origin의 기본 포트를 생략한 연결도 허용한다.")
     void handshake_allowsConfiguredOrigins(String origin, String path) throws Exception {
         String destination = path.replace("{sessionId}", UUID.randomUUID().toString());
         HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();

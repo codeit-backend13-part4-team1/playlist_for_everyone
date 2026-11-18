@@ -23,6 +23,8 @@ EVERYONE_WEBSOCKET_ALLOWED_ORIGINS=https://d3vqh3u26il5vi.cloudfront.net
 
 여러 주소는 `https://frontend.example,http://localhost:8080`처럼 쉼표로 구분합니다. `http://` 또는 `https://`와 호스트·필요한 포트만 사용하며, 경로·마지막 `/`·쿼리·사용자 정보·와일드카드는 넣지 않습니다. `.env.example`의 예시는 주석 상태이므로 운영에서는 배포 환경변수에 실제 값을 주입하고 재배포해야 합니다.
 
+브라우저가 보내는 Origin과 일치하도록 HTTP의 `80`, HTTPS의 `443` 포트는 검증 후 생략합니다. 예를 들어 `https://frontend.example:443`은 `https://frontend.example`로 정규화합니다. `8080`·`8443` 등 비기본 포트와 IPv6 주소의 대괄호는 유지합니다.
+
 서버가 동일 출처로 판단하는 연결은 계속 허용됩니다. 허용 목록은 프록시 뒤에서 다른 출처로 인식되는 프론트의 연결을 추가로 허용하며, STOMP CONNECT의 JWT 인증과 목적지별 인가를 생략하지 않습니다. 배포 후에는 `/ws/info`의 Origin 포함 요청, WebSocket 업그레이드, STOMP CONNECT 순서로 확인합니다.
 
 ## DM 전용 설정
