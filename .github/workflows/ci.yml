@@ -138,6 +138,17 @@ jobs:
       CONTAINER_NAME: app
 
     steps:
+      - name: Check commit is latest main
+        # 예전 실행을 재실행해서 운영이 이전 커밋으로 돌아가는 것을 막는다.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          latest_sha=$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)
+          if [ "$latest_sha" != "$GITHUB_SHA" ]; then
+            echo "::error::배포 대상($GITHUB_SHA)이 main 최신 커밋($latest_sha)이 아니라서 배포를 중단합니다."
+            exit 1
+          fi
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
