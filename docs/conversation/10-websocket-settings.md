@@ -1,7 +1,29 @@
 # 10. DM WebSocket 환경 설정
 
 DM 메시지는 DB 저장·커밋 후 Redis Pub/Sub으로 발행하고, 각 서버가 수신하여 자신의 WebSocket 구독자에게 전달합니다.
-이 문서는 전송·구독 설정을 설명합니다. 환경변수 예시는 [.env.example](../../.env.example), 기본값은 [application.yaml](../../src/main/resources/application.yaml)을 기준으로 합니다.
+이 문서는 전송·구독 설정과 공통 연결 Origin 설정을 설명합니다. 환경변수 예시는 [.env.example](../../.env.example), 전송·구독 기본값은 [application.yaml](../../src/main/resources/application.yaml)을 기준으로 합니다. 허용 Origin은 아래와 같이 프로필별로 설정합니다.
+
+## 공통 WebSocket 허용 Origin
+
+`EVERYONE_WEBSOCKET_ALLOWED_ORIGINS`는 `everyone.websocket.allowed-origins`에 바인딩됩니다. **콘텐츠 시청·채팅과 DM이 공유하는 기본 WebSocket 및 SockJS 연결에 모두 적용됩니다.**
+
+| 프로필 | Origin 설정 |
+| --- | --- |
+| `dev` | 환경변수 미지정 시 `http://localhost:${server.port:8080}` |
+| `prod` | 환경변수 필수. 기본값 없음 |
+| `test` | `application-test.yaml`의 `http://localhost:8080` 사용 |
+
+공통 `application.yaml`에는 Origin 기본값을 두지 않습니다. `WebSocketOriginProperties` record가 목록과 주소 형식을 검증하므로 설정 누락·빈 값·잘못된 주소는 기동 실패로 확인할 수 있습니다. dev에서도 환경변수를 빈 값으로 지정하면 기본값으로 대체하지 않습니다.
+
+배포 환경에는 프론트 페이지의 Origin을 지정합니다.
+
+```dotenv
+EVERYONE_WEBSOCKET_ALLOWED_ORIGINS=https://d3vqh3u26il5vi.cloudfront.net
+```
+
+여러 주소는 `https://frontend.example,http://localhost:8080`처럼 쉼표로 구분합니다. `http://` 또는 `https://`와 호스트·필요한 포트만 사용하며, 경로·마지막 `/`·쿼리·사용자 정보·와일드카드는 넣지 않습니다. `.env.example`의 예시는 주석 상태이므로 운영에서는 배포 환경변수에 실제 값을 주입하고 재배포해야 합니다.
+
+서버가 동일 출처로 판단하는 연결은 계속 허용됩니다. 허용 목록은 프록시 뒤에서 다른 출처로 인식되는 프론트의 연결을 추가로 허용하며, STOMP CONNECT의 JWT 인증과 목적지별 인가를 생략하지 않습니다. 배포 후에는 `/ws/info`의 Origin 포함 요청, WebSocket 업그레이드, STOMP CONNECT 순서로 확인합니다.
 
 ## DM 전용 설정
 
