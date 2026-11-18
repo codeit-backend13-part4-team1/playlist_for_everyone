@@ -38,6 +38,10 @@ logging:
     org.hibernate.orm.jdbc.bind: off
 
 everyone:
+  websocket:
+    # 미지정 시 로컬 서버의 Origin을 사용한다. 복수 주소는 쉼표로 구분하며 빈 값은 허용하지 않는다.
+    allowed-origins: ${EVERYONE_WEBSOCKET_ALLOWED_ORIGINS:http://localhost:${server.port:8080}}
+
   openapi:
     server-url: http://localhost:${server.port:8080}
     server-description: 로컬 개발 서버
