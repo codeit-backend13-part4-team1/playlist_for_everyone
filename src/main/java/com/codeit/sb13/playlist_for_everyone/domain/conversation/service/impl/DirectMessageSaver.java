@@ -4,8 +4,10 @@ import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.command.Dir
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.command.DirectMessageSendCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.entity.Conversation;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.entity.DirectMessage;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.event.DirectMessageCreatedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.repository.DirectMessageRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,17 +26,18 @@ public class DirectMessageSaver {
 
     private final DirectMessageRepository directMessageRepository;
     private final ConversationReader conversationReader;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * 채널 인가와 별개로 저장 시점에도 참여 여부를 확인한다. 서비스의 직접 호출에도 같은 저장 규칙을 적용한다.
-     * 명시적 flush 없이 트랜잭션 종료 시 저장을 확정하며, 커밋 실패는 호출자에게 전달되어 발행을 막는다.
+     * 저장 트랜잭션 안에서 메시지 생성 이벤트를 발행하고, 명시적 flush 없이 트랜잭션 종료 시 저장을 확정한다.
+     * 커밋 실패는 호출자에게 전달되며, AFTER_COMMIT 후속 처리는 실행되지 않는다.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public DirectMessage save(DirectMessageSendCommand command){
         UUID requesterId = command.requesterId();
         Conversation conversation = conversationReader.getForParticipant(command.conversationId(), requesterId);
-
-        return directMessageRepository.save(
+        DirectMessage saved = directMessageRepository.save(
                 new DirectMessage(
                         new DirectMessageCommand(
                                 conversation,
@@ -43,5 +46,14 @@ public class DirectMessageSaver {
                                 command.content())
                 ));
 
+        eventPublisher.publishEvent(new DirectMessageCreatedEvent(
+                saved.getId(),
+                saved.getConversationId(),
+                saved.getSenderId(),
+                saved.getSenderName(),
+                saved.getReceiverId()
+        ));
+
+        return saved;
     }
 }

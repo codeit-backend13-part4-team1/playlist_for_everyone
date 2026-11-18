@@ -65,4 +65,33 @@ public class DirectMessage extends UpdatedAtEntity {
         }
         return sender.getId().equals(userId) || receiver.getId().equals(userId);
     }
+
+    public UUID getConversationId(){
+        if (conversation == null) {
+            return null;
+        }
+        return conversation.getId();
+    }
+
+    public UUID getSenderId(){
+        if (sender == null) {
+            return null;
+        }
+        return sender.getId();
+    }
+
+    public String getSenderName(){
+        if (sender == null){
+            return null;
+        }
+
+        return sender.getName();
+    }
+
+    public UUID getReceiverId(){
+        if (receiver == null) {
+            return null;
+        }
+        return receiver.getId();
+    }
 }
