@@ -1,4 +1,4 @@
-package com.codeit.sb13.playlist_for_everyone.global.websocket.watch.service;
+package com.codeit.sb13.playlist_for_everyone.global.websocket.watch;
 
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
@@ -6,7 +6,6 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.global.exception.EveryOneException;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSession;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.ChangeType;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.WatchingSessionChange;
@@ -16,6 +15,9 @@ import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.cha
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.chat.WatchingChatSendEvent;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.view.WatchingSessionJoinEvent;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.view.WatchingSessionLeaveEvent;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.chatting.ChattingSessionService;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.viewing.ViewingSessionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -24,7 +26,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
@@ -53,13 +54,11 @@ import static org.mockito.BDDMockito.*;
 public class WatchingSessionEventListenerTest {
 
     @Mock
-    WatchingSession watchingSession;
-
+    WatchingSessionService watchingSessionService;
     @Mock
-    RedisTemplate<String, Object> template;
-
+    ViewingSessionService viewingSessionService;
     @Mock
-    SubscriptionRegistry subscriptionRegistry;
+    ChattingSessionService chattingSessionService;
 
     @InjectMocks
     WatchingSessionEventListener eventListener;

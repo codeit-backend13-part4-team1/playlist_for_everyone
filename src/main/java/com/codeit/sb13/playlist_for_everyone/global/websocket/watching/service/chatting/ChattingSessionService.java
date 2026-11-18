@@ -15,4 +15,6 @@ public interface ChattingSessionService {
 
     List<WSSubscription> destroy(UUID contentId);
 
+    void send(UUID contentId, Object payload);
+
 }

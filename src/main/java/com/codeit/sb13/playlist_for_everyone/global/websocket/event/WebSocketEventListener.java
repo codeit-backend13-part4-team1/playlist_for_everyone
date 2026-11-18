@@ -3,8 +3,11 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.event;
 
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSession;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSubscription;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.DestinationMatcher;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.SessionMatcher;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.role.*;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -22,8 +25,7 @@ import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.co
 @Component
 @RequiredArgsConstructor
 public class WebSocketEventListener {
-
-    private final SubscriptionRegistry subscriptionRegistry;
+    private final WebSocketSessionRegistry sessionRegistry;
     private final DestinationMatcher subscribe;
     private final DestinationMatcher unsubscribe;
     private final SessionMatcher disconnect;
@@ -65,7 +67,6 @@ public class WebSocketEventListener {
     public void onSubscribe(SessionSubscribeEvent event){
         SessionInfo info = new SessionInfo(event.getMessage(), event.getUser());
         subscribe.run(info);
-//        subscriptionRegistry.register(info); // todo - 비즈니스 로직 마지막에 등록하는 식으로 변동
     }
 
     /**
@@ -76,12 +77,14 @@ public class WebSocketEventListener {
      */
     @EventListener
     public void onUnsubscribe(SessionUnsubscribeEvent event){
+        SessionInfo info = new SessionInfo(event.getMessage(), event.getUser());
+
         // 미리 등록된 저장소에서 경로 정보 복원.
-        SessionInfo info = subscriptionRegistry.get(new SessionInfo(event.getMessage(), event.getUser()))
-                .orElseThrow(WebSocketSessionNotFoundException::new);
+        sessionRegistry.query(info.session()).
+                flatMap(session -> session.getSubscription(info.subscription()))
+                .ifPresent(subscription -> info.destination(subscription.destination()));
 
         unsubscribe.run(info);
-//        subscriptionRegistry.unregister(info); // todo - 비즈니스 로직 마지막에 해제하는 식으로 변동.
     }
 
     /**

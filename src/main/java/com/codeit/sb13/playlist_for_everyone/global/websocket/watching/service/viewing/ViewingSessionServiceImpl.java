@@ -1,6 +1,5 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.viewing;
 
-import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionRegisterException;
 import com.codeit.sb13.playlist_for_everyone.global.service.lock.Locks;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisTopicRegistry;
@@ -52,7 +51,7 @@ public class ViewingSessionServiceImpl implements ViewingSessionService{
                     subscription.id(),
                     contentId.toString());
             // 4. 메세지 수신을 위한 브로커 등록 -> 단일이라면 redis 등록이 없어진다.
-            // todo - UUID 등록으로 간편하게 되도록 변경?
+            // todo - UUID 등록으로 간편하게 되도록 변경
             redisTopicRegistry.register(
                     room.topic(),
                     subscription.sessionId(),
@@ -92,6 +91,8 @@ public class ViewingSessionServiceImpl implements ViewingSessionService{
     }
 
     // 여러 인스턴스에서 동일 로직 수행 시, 로직 사이에 동일 id 로 세션 등록이 들어오면, 생성한 등록을 삭제 해 버릴 가능성 있음.
+    // todo - 추후 로컬에 등록된 세션만 삭제 하도록 변경 예정. 해당 저장소 및 메세징 채널 등록을
+    //  repository 레이어에 합친다. 이후, lock 도 레파지토리 레이어로 넘겨서 spread 가 아닌 각 room 별로 할 수 있도록 변경.
     @Override
     public List<WSSubscription> destroy(UUID contentId) {
         List<WSSubscription> res;
