@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener;
 
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.event.DirectMessageCreatedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.event.UserFollowedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationCreateRequestedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.NotificationLevel;
@@ -184,6 +185,11 @@ public class NotificationDomainEventListener {
                 .distinct()
                 .filter(receiverId -> !event.actorId().equals(receiverId))
                 .forEach(receiverId -> publishPlaylistContentAddedNotification(event, receiverId));
+    }
+
+    @TransactionalEventListener
+    public void handleDirectMessageCreated(DirectMessageCreatedEvent event){
+
     }
 
     /**
