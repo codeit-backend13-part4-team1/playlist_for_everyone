@@ -743,6 +743,24 @@ TMDB·스포츠 수집 Step의 처리량은 `content.collection.items.read`,
 
 Job의 실행 횟수와 소요 시간은 `spring.batch.job` 메트릭에서
 Job 이름과 실행 상태별로 확인할 수 있습니다.
+`spring.batch.job`의 실패 횟수는 실행이 끝나 타이머에 기록된 횟수입니다.
+프로세스가 강제 종료되면 타이머가 기록되지 않을 수 있습니다.
+다음 시작에서 해당 실행을 `FAILED`로 복구하더라도 타이머 횟수는 늘지 않으므로,
+전체 실패 이력은 배치 메타데이터 DB에서 확인합니다.
+
+관리자 권한으로 Job·Step별 메트릭을 조회할 수 있습니다.
+
+```text
+GET /actuator/metrics/spring.batch.job?tag=spring.batch.job.name:sportsDbCollectionJob&tag=spring.batch.job.status:FAILED
+GET /actuator/metrics/content.collection.items.write?tag=job:sportsDbCollectionJob&tag=step:sportsDbCollectionStep
+```
+
+첫 번째 응답의 `COUNT`는 해당 Job의 실패 실행 횟수,
+`TOTAL_TIME`은 누적 실행 시간입니다.
+두 번째 응답의 `COUNT`는 해당 Step에서 처리한 쓰기 건수입니다.
+읽기·건너뛰기 건수는 메트릭 이름을 각각
+`content.collection.items.read`, `content.collection.items.skip`으로 바꿔 조회합니다.
+태그 없이 조회하면 여러 Job·Step의 값이 합산됩니다.
 
 ## 협업과 후속 작업
 
