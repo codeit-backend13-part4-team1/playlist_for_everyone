@@ -217,6 +217,11 @@ public class SecurityConfig {
                                     "/actuator/metrics",
                                     "/actuator/metrics/**"
                             ).hasRole("ADMIN")
+                            .requestMatchers(
+                                    HttpMethod.HEAD,
+                                    "/actuator/metrics",
+                                    "/actuator/metrics/**"
+                            ).hasRole("ADMIN")
                             .anyRequest().authenticated();
                 })
                 .formLogin(formLogin -> formLogin
