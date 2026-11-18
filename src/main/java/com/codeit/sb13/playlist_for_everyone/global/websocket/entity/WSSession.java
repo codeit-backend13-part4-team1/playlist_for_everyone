@@ -133,7 +133,7 @@ public class WSSession {
         Objects.requireNonNull(destination);
         if (state != State.REGISTER) throw new IllegalStateException("세션에서 구독을 시행할 수 없습니다.");
 
-        return subscriptions.add(new WSSubscription(subscriptionId, destination));
+        return subscriptions.add(new WSSubscription(id ,subscriptionId, destination));
     }
 
     /**

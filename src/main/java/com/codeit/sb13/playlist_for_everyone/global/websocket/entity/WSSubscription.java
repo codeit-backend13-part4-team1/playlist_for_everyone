@@ -10,6 +10,7 @@ import java.util.UUID;
  * 연결 해제를 할 시, 사용할 수 있는 콜백 함수를 저장한다.
  */
 public class WSSubscription {
+    private final String sessionId;
     private final String id;
     private final String destination;
 
@@ -22,7 +23,8 @@ public class WSSubscription {
      * @param id Spring 에서 생성하는 구독 id.
      * @param destination Spring 에서 생성하는 구독 destination.
      */
-    public WSSubscription(String id, String destination) {
+    public WSSubscription(String sessionId, String id, String destination) {
+        this.sessionId = Objects.requireNonNull(sessionId);
         this.id = Objects.requireNonNull(id);
         this.destination = Objects.requireNonNull(destination);
         this.uuid = UUID.randomUUID();
@@ -32,6 +34,8 @@ public class WSSubscription {
     public String id(){
         return this.id;
     }
+
+    public String sessionId(){ return this.sessionId; }
 
     public UUID uuid(){
         return this.uuid;

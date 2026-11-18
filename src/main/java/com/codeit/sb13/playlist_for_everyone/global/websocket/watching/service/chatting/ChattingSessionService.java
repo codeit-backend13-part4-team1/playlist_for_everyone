@@ -1,16 +1,18 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.chatting;
 
+import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSubscription;
+
 import java.util.List;
 import java.util.UUID;
 
 public interface ChattingSessionService {
 
-    void join(String sessionId, String subscribeId, UUID contentId);
+    void join(WSSubscription subscription, UUID contentId);
 
-    void leave(String sessionId, String subscribeId, UUID contentId);
+    void leave(WSSubscription subscription, UUID contentId);
 
-    void leaveAll(String sessionId, List<String> subscriptionIds, UUID contentId);
+    void leaveAll(List<WSSubscription> subscriptions, UUID contentId);
 
-    void destroy(UUID contentId);
+    List<WSSubscription> destroy(UUID contentId);
 
 }

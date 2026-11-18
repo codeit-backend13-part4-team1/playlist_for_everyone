@@ -9,12 +9,12 @@ import java.util.UUID;
  * 룸이 가지고 있는 정보를 담는다.
  */
 @Getter
-public class ChattingSessionRoom {
-    private final UUID contentId;
+public class ChattingSessionRoom extends SessionRoom{
+
     private final String messagingPrefix = "websocket:room:watching:chat:";
 
     public ChattingSessionRoom(UUID contentId) {
-        this.contentId = contentId;
+        super(contentId);
     }
 
     public String topic(){ return messagingPrefix + contentId; }

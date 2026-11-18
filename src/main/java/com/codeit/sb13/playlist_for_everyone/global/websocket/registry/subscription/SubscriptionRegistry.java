@@ -8,6 +8,7 @@ import java.util.Optional;
 /**
  * 세션 구독 정보를 반환하는 레지스트리 매서드 계약.
  */
+@Deprecated
 public interface SubscriptionRegistry {
 
     /**

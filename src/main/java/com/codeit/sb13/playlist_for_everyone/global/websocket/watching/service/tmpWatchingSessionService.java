@@ -91,7 +91,7 @@ public class tmpWatchingSessionService {
             subscription = session.subscribe(subscriptionId, destination);
             try {
                 // 2. 비즈니스 로직 등록
-                viewingSessionService.join(sessionId, subscriptionId, contentId);
+                viewingSessionService.join(subscription, contentId);
             } catch (RuntimeException e) {
                 log.error("[{}] 구독 등록 실패 - contentId : {}, sessionId : {}, subscriptionId : {}",
                         this.getClass().getSimpleName(),
@@ -146,7 +146,7 @@ public class tmpWatchingSessionService {
             // todo - 재시도 로직 작성이 필요하다.
             try {
                 // 1. 구독 등록 취소
-                viewingSessionService.leave(sessionId, subscriptionId, contentId);
+                viewingSessionService.leave(subscription, contentId);
             } catch (RuntimeException e) {
                 log.error("[{}] 구독 취소 실패 - contentId : {}, sessionId : {}, subscriptionId : {}",
                         this.getClass().getSimpleName(),
@@ -236,7 +236,7 @@ public class tmpWatchingSessionService {
         synchronized (session) {
             WSSubscription subscription = session.subscribe(subscriptionId, destination);
             try {
-                chattingSessionService.join(sessionId, subscriptionId, contentId);
+                chattingSessionService.join(sessionId, subscriptionId, subscription.uuid(), contentId);
             } catch (RuntimeException e) {
                 log.error("[{}] 구독 등록 실패 - contentId : {}, sessionId : {}, subscriptionId : {}",
                         this.getClass().getSimpleName(),
@@ -278,7 +278,7 @@ public class tmpWatchingSessionService {
              */
             // todo - 재시도 로직 작성이 필요하다.
             try {
-                chattingSessionService.leave(sessionId, subscriptionId, contentId);
+                chattingSessionService.leave(subscription, contentId);
             } catch (RuntimeException e) {
                 log.error("[{}] 구독 등록 실패 - contentId : {}, sessionId : {}, subscriptionId : {}",
                         this.getClass().getSimpleName(),
@@ -308,8 +308,8 @@ public class tmpWatchingSessionService {
 
         synchronized (session) {
             // 병렬개 동시 처리를 위한 파라매터 리스트. session, subscription, content 순으로 가정한다.
-            Map<UUID, List<String>> viewingTargets = new HashMap<>();
-            Map<UUID, List<String>> chattingTargets = new HashMap<>();
+            Map<UUID, List<WSSubscription>> viewingTargets = new HashMap<>();
+            Map<UUID, List<WSSubscription>> chattingTargets = new HashMap<>();
 
             for (WSSubscription subscription : session.getAllSubscriptions()) {
                 String destination = subscription.destination();
@@ -324,13 +324,13 @@ public class tmpWatchingSessionService {
                 try {
                     UUID contentId = getContentId(destination);
 
-                    Map<UUID, List<String>> target =
+                    Map<UUID, List<WSSubscription>> target =
                             viewing ? viewingTargets : chattingTargets;
 
                     target.computeIfAbsent(
                             contentId,
                             id -> new ArrayList<>()
-                    ).add(subscription.id());
+                    ).add(subscription);
                 } catch (RuntimeException e) {
                     log.error("[{}] 구독 해지 리소스 작성 에러 - dst : {}",
                             this.getClass().getSimpleName(),
@@ -340,21 +340,21 @@ public class tmpWatchingSessionService {
             }
 
             // content별 관련된 구독 해지
-            for (Map.Entry<UUID, List<String>> entry : chattingTargets.entrySet()){
+            for (Map.Entry<UUID, List<WSSubscription>> entry : chattingTargets.entrySet()){
                 UUID contentId = entry.getKey();
-                List<String> subscribeIds = entry.getValue();
+                List<WSSubscription> subscriptions = entry.getValue();
                 try {
-                    chattingSessionService.leaveAll(sessionId, subscribeIds, contentId);
+                    chattingSessionService.leaveAll(subscriptions, contentId);
                 } catch (RuntimeException e){
                     // 실패시 기록과 함께 다음 작업
                 }
             }
 
-            for (Map.Entry<UUID, List<String>> entry : viewingTargets.entrySet()){
+            for (Map.Entry<UUID, List<WSSubscription>> entry : viewingTargets.entrySet()){
                 UUID contentId = entry.getKey();
-                List<String> subscribeIds = entry.getValue();
+                List<WSSubscription> subscriptions = entry.getValue();
                 try {
-                    viewingSessionService.leaveAll(sessionId, subscribeIds, contentId);
+                    viewingSessionService.leaveAll(subscriptions, contentId);
                 } catch (RuntimeException e){
                     // 실패시 기록과 함께 다음 작업
                 }
@@ -373,17 +373,35 @@ public class tmpWatchingSessionService {
 
     /**
      * 컨텐츠 id 와 관련된 모든 비즈니스 리소스를 정리한다.
-     * todo - 실제 세션 닫기는 구독 관리가 필요하다. 지금은 구독 관리를 simpBroker 가 함으로
-     *  이 매서드에선 비즈니스 로직 리소스만 정리한다.
      * @param contentId 컨텐츠 id
      */
     public void unregisterSubscribeWithContentId(UUID contentId){
-        // todo - 리소스 해제를 위한 destroy 에서 subscribe 의 등록 정보 반환(uuid), 세션에서 구독 정리.
-        // 1. 컨텐츠에 연결된 리소스 식별 및 정리
-        viewingSessionService.destroy(contentId);
-        chattingSessionService.destroy(contentId);
-        // 2. 세션 리소스 정리
+        Objects.requireNonNull(contentId);
 
+        List<WSSubscription> unregisteredSubscriptionList = new ArrayList<>();
+
+        // todo - 실제 세션 닫기는 구독 관리가 필요하다. 지금은 구독 관리를 simpBroker 가 함으로
+        //  이 매서드에선 산순 구독 등록만 정리하고, 실제 구독 저일는 추후 다른 매서드에서 하도록 한다.
+        // 1. 컨텐츠에 연결된 리소스 식별 및 정리
+        unregisteredSubscriptionList.addAll(viewingSessionService.destroy(contentId));
+        unregisteredSubscriptionList.addAll(chattingSessionService.destroy(contentId));
+
+        // 2. 세션 리소스 정리
+        for (WSSubscription subscription : unregisteredSubscriptionList) {
+            try {
+                WSSession session = getSessionOrExcept(subscription.sessionId());
+                synchronized (session) {
+                    session.unsubscribe(subscription);
+                }
+            } catch (RuntimeException e) {
+                log.error("[{}] 구독 해제 실패 - sessionId : {}, sessionId : {}",
+                        this.getClass().getSimpleName(),
+                        subscription.sessionId(),
+                        subscription.id(),
+                        e);
+                // 구독 해제 실패 시, 재시도 로직 추후 추가
+            }
+        }
     }
 
 
