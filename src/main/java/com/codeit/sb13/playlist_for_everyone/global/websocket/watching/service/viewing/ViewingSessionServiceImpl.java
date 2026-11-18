@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.viewing;
 
+import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionRegisterException;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisTopicRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.ViewSessionMessageListener;
@@ -61,6 +62,22 @@ public class ViewingSessionServiceImpl implements ViewingSessionService{
             redisTopicRegistry.unregister(sessionId, subscribeId);
         }
     }
+
+    @Override
+    public void leaveAll(String sessionId, List<String> subscriptionIds, UUID contentId) {
+        Objects.requireNonNull(sessionId);
+        Objects.requireNonNull(contentId);
+        ViewingSessionRoom room = viewingSessionRepository.find(contentId)
+                .orElseThrow(WebSocketSessionNotFoundException::new);
+
+        synchronized (room) {
+            // 해당 구독을 한번제 저장소에서 지울 수 있도록
+            viewingSessionPresence.unregisterAll(sessionId,subscriptionIds, contentId);
+            redisTopicRegistry.unregisterAll(sessionId, subscriptionIds);
+        }
+    }
+
+
 
     @Override
     public void send(UUID contentId, Object payload){

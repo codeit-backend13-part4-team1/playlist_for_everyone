@@ -21,10 +21,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.UUID;
+import java.io.IOException;
+import java.util.*;
 
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
 
@@ -301,46 +299,72 @@ public class tmpWatchingSessionService {
      * 리소스 정리 매서드
      */
 
-    private record SubscriptionDto(
-            String sessionId,
-            String subscriptionId,
-            UUID contentId
-    ){
-        SubscriptionDto {
-            Objects.requireNonNull(sessionId);
-            Objects.requireNonNull(subscriptionId);
-            Objects.requireNonNull(contentId);
-        }
-    }
-
     public void disconnectSessionWithCleanUp(String sessionId) {
         WSSession session = getSessionOrExcept(sessionId);
 
         synchronized (session) {
-            List<SubscriptionDto> viewingSessionList = new ArrayList<>();
-            List<SubscriptionDto> chattingSessionList = new ArrayList<>();
+            // 병렬개 동시 처리를 위한 파라매터 리스트. session, subscription, content 순으로 가정한다.
+            Map<UUID, List<String>> viewingTargets = new HashMap<>();
+            Map<UUID, List<String>> chattingTargets = new HashMap<>();
 
-            // 대상 정보 확인.
-            session.getAllSubscriptions().forEach(
-                    subscription -> {
-                        String subscriptionId = subscription.id();
-                        String destination = subscription.destination();
-                        UUID contentId = getContentId(destination);
-                        if (VIEW_DESTINATION_PATTERN.check(destination)) {
-                            // 뷰잉 세션 서비스 관련
-                            viewingSessionList.add(new SubscriptionDto(sessionId, subscriptionId, contentId));
-                        }
+            for (WSSubscription subscription : session.getAllSubscriptions().toList()) {
+                String destination = subscription.destination();
 
-                        if (CHAT_DESTINATION_PATTERN.check(destination)) {
-                            // 채팅 세션 서비스 관련
-                            chattingSessionList.add(new SubscriptionDto(sessionId, subscriptionId, contentId));
-                        }
+                boolean viewing = VIEW_DESTINATION_PATTERN.check(destination);
+                boolean chatting = CHAT_DESTINATION_PATTERN.check(destination);
 
-                    }
-            );
+                if (!viewing && !chatting) {
+                    continue;
+                }
 
+                try {
+                    UUID contentId = getContentId(destination);
+
+                    Map<UUID, List<String>> target =
+                            viewing ? viewingTargets : chattingTargets;
+
+                    target.computeIfAbsent(
+                            contentId,
+                            id -> new ArrayList<>()
+                    ).add(subscription.id());
+                } catch (RuntimeException e) {
+                    log.error("[{}] 구독 해지 리소스 작성 에러 - dst : {}",
+                            this.getClass().getSimpleName(),
+                            destination,
+                            e);
+                }
+            }
+
+            // content별 관련된 구독 해지
+            for (Map.Entry<UUID, List<String>> entry : chattingTargets.entrySet()){
+                UUID contentId = entry.getKey();
+                List<String> subscribeIds = entry.getValue();
+                try {
+                    chattingSessionService.leaveAll(sessionId, subscribeIds, contentId);
+                } catch (RuntimeException e){
+                    // 실패시 기록과 함께 다음 작업
+                }
+            }
+
+            for (Map.Entry<UUID, List<String>> entry : viewingTargets.entrySet()){
+                UUID contentId = entry.getKey();
+                List<String> subscribeIds = entry.getValue();
+                try {
+                    viewingSessionService.leaveAll(sessionId, subscribeIds, contentId);
+                } catch (RuntimeException e){
+                    // 실패시 기록과 함께 다음 작업
+                }
+            }
+
+
+            // 실제 세션 닫기
+            try {
+                session.disconnect();
+            } catch (IOException e) {
+                log.error("[{}] ({}) 세션 닫기 실패", this.getClass().getSimpleName(), sessionId, e);
+                throw new WebSocketSessionRegisterException(e);
+            }
         }
-
     }
 
 
