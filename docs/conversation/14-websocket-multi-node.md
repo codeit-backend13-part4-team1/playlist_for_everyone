@@ -84,7 +84,9 @@
 
 두 브라우저 연결을 닫고 [앱 종료 절차](../sse/07-redis-multi-node.md#검증과-종료)의 `stop app-a app-b`를 실행합니다. 공유 DB·Redis와 검증 계정·메시지는 유지하며 볼륨 삭제는 필요하지 않습니다.
 
-## 실제 수행 기록 — 2026-11-18
+## 실제 수행 기록 — 2026-11-18 (rebase 이전)
+
+아래는 dev의 Origin 설정 변경을 반영하기 전에 수행한 브라우저 검증입니다. 이후 rebase한 코드의 전체 자동 테스트 결과는 [DM 이벤트·SSE 가이드](15-direct-message-event-sse.md)에 기록합니다. 브라우저 검증을 rebase 후 다시 수행한 것으로 기록하지 않습니다.
 
 - 코드 기준: `52dfb42fce63e4cd9c004b56a52d55dc2b9520d4`의 JAR. `bootJar` 빌드 성공 후 기존 Compose로 앱 두 개를 실행했습니다.
 - 환경: PostgreSQL 16·Redis 7.4, A `localhost:8081`, B `localhost:8082`. 두 앱의 OpenAPI 응답 200과 기동 완료를 확인했습니다.
