@@ -100,7 +100,7 @@ public class ReviewServiceTest {
         given(contentRepository.findById(content.getId())).willReturn(Optional.of(content));
         given(userRepository.findById(authorId)).willReturn(Optional.of(author));
 
-        given(reviewRepository.save(any(Review.class)))
+        given(reviewRepository.saveAndFlush(any(Review.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
 
         given(reviewMapper.toDto(any(Review.class)))
@@ -122,7 +122,7 @@ public class ReviewServiceTest {
         // then
         ArgumentCaptor<Review> captor = ArgumentCaptor.forClass(Review.class);
 
-        then(reviewRepository).should().save(captor.capture());
+        then(reviewRepository).should().saveAndFlush(captor.capture());
 
         Review savedReview = captor.getValue();
 
@@ -161,7 +161,7 @@ public class ReviewServiceTest {
 
         given(contentRepository.findById(content.getId())).willReturn(Optional.of(content));
         given(userRepository.findById(authorId)).willReturn(Optional.of(author));
-        given(reviewRepository.save(any(Review.class))).willThrow(exception);
+        given(reviewRepository.saveAndFlush(any(Review.class))).willThrow(exception);
 
         // when & then
         assertThatThrownBy(() -> reviewService.save(request, authorId))

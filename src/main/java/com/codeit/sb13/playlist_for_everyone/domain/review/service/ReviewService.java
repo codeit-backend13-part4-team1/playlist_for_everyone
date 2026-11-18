@@ -12,10 +12,13 @@ import com.codeit.sb13.playlist_for_everyone.domain.review.repository.ReviewRepo
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.review.ReviewAlreadyExistsException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.review.ReviewNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -52,7 +55,21 @@ public class ReviewService {
                 .rating(request.rating())
                 .build();
 
-        Review savedReview = reviewRepository.save(review);
+        Review savedReview;
+
+        try {
+            savedReview = reviewRepository.saveAndFlush(review);
+        } catch (DataIntegrityViolationException e) {
+            if (isReviewUniqueViolation(e)) {
+                throw new ReviewAlreadyExistsException(
+                        Map.of(
+                                "contentId", request.contentId(),
+                                "authorId", authorId
+                        )
+                );
+            }
+            throw e;
+        }
 
         // 리뷰 생성 시 콘텐츠 검색 캐시 무효화
         eventPublisher.publishEvent(new ContentSearchCacheEvictEvent());
@@ -101,6 +118,20 @@ public class ReviewService {
 
         // 리뷰 삭제 시 콘텐츠 검색 캐시 무효화
         eventPublisher.publishEvent(new ContentSearchCacheEvictEvent());
+    }
+
+    private boolean isReviewUniqueViolation(DataIntegrityViolationException e) {
+        Throwable cause = e;
+
+        while (cause != null) {
+            if (cause instanceof ConstraintViolationException cve) {
+                return "uk_review_content_author"
+                        .equalsIgnoreCase(cve.getConstraintName());
+            }
+            cause = cause.getCause();
+        }
+
+        return false;
     }
 
 }
