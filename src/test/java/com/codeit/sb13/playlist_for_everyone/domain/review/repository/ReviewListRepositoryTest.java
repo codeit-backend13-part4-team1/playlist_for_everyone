@@ -3,11 +3,13 @@ package com.codeit.sb13.playlist_for_everyone.domain.review.repository;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
+import com.codeit.sb13.playlist_for_everyone.domain.review.dto.condition.ReviewListCondition;
 import com.codeit.sb13.playlist_for_everyone.domain.review.entity.Review;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
+import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -31,7 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class ReviewListRepositoryTest {
 
     @Autowired
-    private ReviewListRepository reviewListRepository;
+    private ReviewRepository reviewRepository;
 
     @Autowired
     private TestEntityManager em;
@@ -81,15 +83,31 @@ public class ReviewListRepositoryTest {
         // given
         UUID contentId = content1.getId();
 
+        ReviewListCondition condition = new ReviewListCondition(
+                null,
+                null,
+                10,
+                SortDirection.DESCENDING,
+                "createdAt"
+        );
+
         // when
-        List<Review> reviews = reviewListRepository.getReviewsByContentId(contentId);
+        List<Review> reviews = reviewRepository.getReviewsByContentId(contentId, condition);
 
         // then
         assertThat(reviews).hasSize(3);
+
         assertThat(reviews)
-                .extracting(Review::getContent)
-                .extracting(Content::getId)
+                .extracting(r -> r.getContent().getId())
                 .containsOnly(contentId);
+
+        assertThat(reviews)
+                .extracting(Review::getText)
+                .containsExactlyInAnyOrder(
+                        "정말 재미있어요",
+                        "재미있게 봤어요",
+                        "보통이에요"
+                );
     }
 
     private Content createContent(String title) {
