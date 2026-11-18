@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.command.Dir
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.response.MessageDto;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.event.DirectMessagePublisher;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.event.listener.DirectMessageSseEventListener;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener.NotificationDomainEventListener;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.global.exception.conversation.ConversationNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.conversation.DirectMessagePublishException;
@@ -40,7 +41,7 @@ import static org.mockito.Mockito.*;
 /**
  * 실제 PostgreSQL과 서비스 프록시로 저장 커밋·실패·외부 트랜잭션 롤백의 경계를 검증한다.
  * FileStorage와 DirectMessagePublisher는 Mock이다. 실제 S3·Redis·WebSocket 수신은 이 테스트의 범위가 아니다.
- * 저장 이후 SSE 변환·발행이 송신 서비스 검증에 섞이지 않도록 DirectMessageSseEventListener도 Mock으로 분리한다.
+ * 저장 이후 DM SSE·알림 처리가 송신 서비스 검증에 섞이지 않도록 두 업무 이벤트 소비자를 Mock으로 분리한다.
  * 클래스 전체를 롤백 트랜잭션으로 감싸지 않고 독립 커밋한 준비 데이터와 메시지를 직접 정리한다.
  */
 @SpringBootTest(
@@ -84,6 +85,9 @@ public class DirectMessageSendServiceIntegrationTest {
 
     @MockitoBean
     private DirectMessageSseEventListener directMessageSseEventListener;
+
+    @MockitoBean
+    private NotificationDomainEventListener notificationDomainEventListener;
 
     private final UUID requesterId = UUID.randomUUID();
     private final UUID counterpartId = UUID.randomUUID();

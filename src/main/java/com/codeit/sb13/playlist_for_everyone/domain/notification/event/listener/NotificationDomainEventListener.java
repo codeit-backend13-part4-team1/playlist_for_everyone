@@ -189,7 +189,23 @@ public class NotificationDomainEventListener {
 
     @TransactionalEventListener
     public void handleDirectMessageCreated(DirectMessageCreatedEvent event){
+        try {
+            if (event.senderId().equals(event.receiverId())){
+                return;
+            }
+            String senderName = resolveUserName(event.senderName());
+            NotificationCreateRequestedEvent requestedEvent = new NotificationCreateRequestedEvent(
+                    event.receiverId(),
+                    "새로운 메시지",
+                    "%s님이 메시지를 보냈습니다.".formatted(senderName),
+                    NotificationLevel.INFO
+            );
 
+            eventPublisher.publishEvent(requestedEvent);
+        } catch (RuntimeException e){
+            log.warn("DM 알림 변환·재발행 실패. directMessageId={}, conversationId={}, receiverId={}, exceptionType={}",
+                    event.directMessageId(), event.conversationId(), event.receiverId(), e.getClass().getSimpleName());
+        }
     }
 
     /**

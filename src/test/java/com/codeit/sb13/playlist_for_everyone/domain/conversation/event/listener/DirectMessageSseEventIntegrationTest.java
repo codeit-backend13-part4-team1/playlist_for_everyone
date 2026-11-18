@@ -43,6 +43,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
@@ -51,6 +52,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
@@ -69,6 +72,7 @@ import static org.mockito.Mockito.when;
  * <p>클래스 전체를 테스트 트랜잭션으로 감싸지 않고, 롤백·상위 트랜잭션 시나리오마다 TransactionTemplate을 사용한다.
  * 따라서 실제 커밋 여부와 AFTER_COMMIT 실행 시점을 구분할 수 있다. Reader가 반환되어도 콜백의 저장 측
  * 자원이 해제됐다고 가정하지 않는다.
+ * 알림 소비자도 실제로 실행하므로 관찰·실패 주입·발행 횟수는 SSE 이벤트 이름으로 구분한다.
  * Redis 전송·HTTP 수신은 별도의 DirectMessageSseIntegrationTest에서 검증한다.
  */
 @RecordApplicationEvents
@@ -150,6 +154,11 @@ class DirectMessageSseEventIntegrationTest {
     @AfterEach
     void cleanUp() {
         auditingHandler.setDateTimeProvider(null);
+        jdbcTemplate.update(
+                "DELETE FROM notifications WHERE receiver_id IN (?, ?)",
+                senderId,
+                receiverId
+        );
         jdbcTemplate.update("DELETE FROM direct_messages WHERE conversation_id = ?", conversationId);
         jdbcTemplate.update("DELETE FROM conversations WHERE id = ?", conversationId);
         jdbcTemplate.update("DELETE FROM users WHERE id IN (?, ?)", senderId, receiverId);
@@ -171,7 +180,7 @@ class DirectMessageSseEventIntegrationTest {
             SseEvent<?> event = invocation.getArgument(0);
             visibleAtPublish.set(separateRead.execute(status -> findStoredMessage(event.eventId())));
             return null;
-        }).when(sseEventPublisher).publish(any());
+        }).when(sseEventPublisher).publish(argThat(event -> "direct-messages".equals(event.eventName())));
 
         DirectMessage saved = directMessageSaver.save(command("커밋된 메시지"));
 
@@ -186,7 +195,7 @@ class DirectMessageSseEventIntegrationTest {
         assertThat(stored.read()).isFalse();
         assertThat(countSavedMessages()).isEqualTo(1L);
 
-        SseEvent<?> published = onlyPublishedEvent();
+        SseEvent<?> published = onlyPublishedEvent("direct-messages");
         assertThat(published.eventId()).isEqualTo(stored.id());
         assertThat(published.receiverId()).isEqualTo(receiverId);
         assertThat(published.eventName()).isEqualTo("direct-messages");
@@ -272,7 +281,7 @@ class DirectMessageSseEventIntegrationTest {
         assertThat(applicationEvents.stream(DirectMessageCreatedEvent.class).toList())
                 .containsExactly(event(saved.getId()));
 
-        SseEvent<?> published = onlyPublishedEvent();
+        SseEvent<?> published = onlyPublishedEvent("direct-messages");
         assertThat(published.eventId()).isEqualTo(saved.getId());
         assertThat(published.receiverId()).isEqualTo(receiverId);
         assertThat(published.data()).isInstanceOfSatisfying(MessageDto.class,
@@ -292,10 +301,10 @@ class DirectMessageSseEventIntegrationTest {
         InOrder order = inOrder(directMessageRepository, fileStorage, sseEventPublisher);
         order.verify(directMessageRepository).findDetailedById(saved.getId());
         order.verify(fileStorage).getFileUrl(profileImageKey);
-        order.verify(sseEventPublisher).publish(any());
+        order.verify(sseEventPublisher).publish(argThat(event -> "direct-messages".equals(event.eventName())));
         verifyNoMoreInteractions(fileStorage);
 
-        SseEvent<?> published = onlyPublishedEvent();
+        SseEvent<?> published = onlyPublishedEvent("direct-messages");
         assertThat(published.eventId()).isEqualTo(saved.getId());
         assertThat(published.data()).isInstanceOfSatisfying(MessageDto.class, dto -> {
             assertThat(dto.sender()).isEqualTo(new UserSummary(senderId, "발신자", null));
@@ -318,7 +327,9 @@ class DirectMessageSseEventIntegrationTest {
         assertThat(stored.read()).isFalse();
         assertThat(result.content()).isEqualTo(content);
         verify(directMessageRepository).findDetailedById(result.id());
-        verifyNoInteractions(fileStorage, sseEventPublisher);
+        verifyNoInteractions(fileStorage);
+        verify(sseEventPublisher, never())
+                .publish(argThat(event -> "direct-messages".equals(event.eventName())));
         verify(directMessagePublisher).publish(result);
         verifyNoMoreInteractions(directMessagePublisher);
     }
@@ -346,16 +357,18 @@ class DirectMessageSseEventIntegrationTest {
         verify(directMessageRepository).findDetailedById(result.id());
         verify(fileStorage, times(2)).getFileUrl(profileImageKey);
         verifyNoMoreInteractions(fileStorage);
-        verifyNoInteractions(sseEventPublisher);
+        verify(sseEventPublisher, never())
+                .publish(argThat(event -> "direct-messages".equals(event.eventName())));
         verify(directMessagePublisher).publish(result);
         verifyNoMoreInteractions(directMessagePublisher);
     }
 
     @Test
-    @DisplayName("SSE 발행에 실패해도 저장된 DM을 유지하고 재시도 없이 WebSocket 발행을 실행한다.")
+    @DisplayName("DM SSE 발행에 실패해도 저장된 DM을 유지하고 재시도 없이 WebSocket 발행을 실행한다.")
     void send_publishesWebSocketWhenSsePublishingFails() {
         SsePublishException cause = new SsePublishException(new IllegalStateException("SSE 발행 실패"));
-        doThrow(cause).when(sseEventPublisher).publish(any());
+        doThrow(cause).when(sseEventPublisher)
+                .publish(argThat(event -> "direct-messages".equals(event.eventName())));
         String content = "SSE 발행 실패 후에도 전달할 메시지";
 
         MessageDto result = directMessageService.send(command(content));
@@ -365,7 +378,7 @@ class DirectMessageSseEventIntegrationTest {
         assertThat(stored.content()).isEqualTo(content);
         assertThat(stored.read()).isFalse();
         assertThat(result.content()).isEqualTo(content);
-        SseEvent<?> attempted = onlyPublishedEvent();
+        SseEvent<?> attempted = onlyPublishedEvent("direct-messages");
         assertThat(attempted.eventId()).isEqualTo(result.id());
         assertThat(attempted.receiverId()).isEqualTo(receiverId);
         assertThat(attempted.data()).isInstanceOfSatisfying(MessageDto.class,
@@ -389,7 +402,7 @@ class DirectMessageSseEventIntegrationTest {
 
         Throwable thrown = catchThrowable(() -> directMessageService.send(command(content)));
 
-        SseEvent<?> published = onlyPublishedEvent();
+        SseEvent<?> published = onlyPublishedEvent("direct-messages");
         assertThat(thrown).isInstanceOfSatisfying(DirectMessagePublishException.class, exception -> {
             assertThat(exception.getCause()).isSameAs(cause);
             assertThat(exception.getDetails())
@@ -424,7 +437,7 @@ class DirectMessageSseEventIntegrationTest {
 
         Throwable thrown = catchThrowable(() -> directMessageService.send(command(content)));
 
-        SseEvent<?> published = onlyPublishedEvent();
+        SseEvent<?> published = onlyPublishedEvent("direct-messages");
         assertThat(thrown).isInstanceOfSatisfying(DirectMessagePublishException.class, exception -> {
             assertThat(exception.getCause()).isSameAs(cause);
             assertThat(exception.getDetails())
@@ -457,11 +470,18 @@ class DirectMessageSseEventIntegrationTest {
         return new DirectMessageCreatedEvent(directMessageId, conversationId, senderId, "발신자", receiverId);
     }
 
-    private SseEvent<?> onlyPublishedEvent() {
+    private SseEvent<?> onlyPublishedEvent(String eventName) {
         ArgumentCaptor<SseEvent<?>> captor = ArgumentCaptor.captor();
-        verify(sseEventPublisher).publish(captor.capture());
+        verify(sseEventPublisher, atLeastOnce()).publish(captor.capture());
         verifyNoMoreInteractions(sseEventPublisher);
-        return captor.getValue();
+        assertThat(captor.getAllValues()).extracting(SseEvent::eventName)
+                .containsOnly("direct-messages", "notifications");
+
+        List<SseEvent<?>> matchingEvents = captor.getAllValues().stream()
+                .filter(event -> eventName.equals(event.eventName()))
+                .toList();
+        assertThat(matchingEvents).as("%s 이벤트 단건 발행", eventName).hasSize(1);
+        return matchingEvents.get(0);
     }
 
     private long countSavedMessages() {
