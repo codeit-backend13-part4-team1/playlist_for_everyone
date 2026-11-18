@@ -148,17 +148,22 @@ public class ReviewControllerTest {
     }
 
     @Test
-    @DisplayName("리뷰 목록 조회 시 200 OK와 페이지네이션 응답을 반환한다.")
+    @DisplayName("리뷰 목록 조회 시 커서 조건과 다음 페이지 정보를 반환한다.")
     void getReviewList() throws Exception {
         // given
         UUID contentId = UUID.randomUUID();
+        UUID idAfter = UUID.randomUUID();
+        UUID nextIdAfter = UUID.randomUUID();
+
+        String cursor = "4.0";
+        String nextCursor = "3.0";
 
         ReviewListRequest request = new ReviewListRequest(
-                null,
-                null,
+                cursor,
+                idAfter,
                 10,
                 SortDirection.DESCENDING,
-                "createdAt"
+                "rating"
         );
 
         ReviewListCondition condition = request.toCondition();
@@ -191,12 +196,12 @@ public class ReviewControllerTest {
 
         CursorResponse<ReviewDto> response = new CursorResponse<>(
                 List.of(review1, review2, review3),
-                null,
-                null,
-                false,
-                3L,
-                null,
-                null
+                nextCursor,
+                nextIdAfter,
+                true,
+                10L,
+                "rating",
+                SortDirection.DESCENDING
         );
 
         given(reviewService.getReviews(eq(contentId), eq(condition)))
@@ -205,17 +210,23 @@ public class ReviewControllerTest {
         // when & then
         mockMvc.perform(get("/api/reviews")
                         .param("contentId", contentId.toString())
+                        .param("cursor", cursor)
+                        .param("idAfter", idAfter.toString())
                         .param("limit", "10")
                         .param("sortDirection", "DESCENDING")
-                        .param("sortBy", "createdAt"))
+                        .param("sortBy", "rating"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data.length()").value(3))
                 .andExpect(jsonPath("$.data[0].id").value(review1.id().toString()))
                 .andExpect(jsonPath("$.data[1].text").value("볼만한 드라마였어요."))
                 .andExpect(jsonPath("$.data[2].rating").value(3.0))
-                .andExpect(jsonPath("$.hasNext").value(false))
-                .andExpect(jsonPath("$.totalCount").value(3));
+                .andExpect(jsonPath("$.hasNext").value(true))
+                .andExpect(jsonPath("$.totalCount").value(10))
+                .andExpect(jsonPath("$.nextCursor").value(nextCursor))
+                .andExpect(jsonPath("$.nextIdAfter").value(nextIdAfter.toString()))
+                .andExpect(jsonPath("$.sortBy").value("rating"))
+                .andExpect(jsonPath("$.sortDirection").value("DESCENDING"));
 
         then(reviewService).should().getReviews(contentId, condition);
     }
