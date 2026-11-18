@@ -9,6 +9,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.global.exception.review.ReviewNotFoundException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -103,7 +105,7 @@ public class ReviewControllerTest {
     }
 
     @Test
-    @DisplayName("리뷰 내용이 비어 있으면 400 Bad Request를 반환한다.")
+    @DisplayName("리뷰 내용이 비어 있으면 400을 반환한다.")
     void createReview_invalidText() throws Exception {
         // given
         ReviewCreateRequest request = new ReviewCreateRequest(
@@ -120,7 +122,7 @@ public class ReviewControllerTest {
     }
 
     @Test
-    @DisplayName("평점이 0.0이면 400 Bad Request를 반환한다.")
+    @DisplayName("평점이 0.0이면 400을 반환한다.")
     void createReview_invalidRating() throws Exception {
         // given
         ReviewCreateRequest request = new ReviewCreateRequest(
@@ -197,6 +199,61 @@ public class ReviewControllerTest {
     }
 
     @Test
+    @DisplayName("리뷰 수정 시 텍스트가 null이면 요청 검증을 통과한다.")
+    void updateReview_nullText() throws Exception {
+        // given
+        UUID reviewId = UUID.randomUUID();
+        UUID authorId = UUID.randomUUID();
+
+        ReviewUpdateRequest request = new ReviewUpdateRequest(
+                null,
+                4.0
+        );
+
+        SecurityUser securityUser = new SecurityUser(
+                authorId,
+                "test@example.com",
+                "encodedPassword",
+                Role.USER,
+                false
+        );
+
+        Authentication authentication =
+                new UsernamePasswordAuthenticationToken(
+                        securityUser,
+                        null,
+                        securityUser.getAuthorities()
+                );
+
+        ReviewDto response = mock(ReviewDto.class);
+
+        given(reviewService.update(
+                any(ReviewUpdateRequest.class),
+                eq(reviewId),
+                eq(authorId)
+        )).willReturn(response);
+
+        // when & then
+        try {
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+
+            mockMvc.perform(patch("/api/reviews/{reviewId}", reviewId)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isOk());
+
+            then(reviewService).should()
+                    .update(
+                            argThat(req -> req.text() == null),
+                            eq(reviewId),
+                            eq(authorId)
+                    );
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+    }
+
+    @Test
     @DisplayName("리뷰 수정 시 평점이 범위를 벗어나면 400을 반환한다.")
     void updateReview_invalidRating() throws Exception {
         // given
@@ -205,6 +262,35 @@ public class ReviewControllerTest {
         ReviewUpdateRequest request = new ReviewUpdateRequest(
                 "수정된 리뷰입니다.",
                 0.0
+        );
+
+        // when & then
+        mockMvc.perform(patch("/api/reviews/{reviewId}", reviewId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+
+        then(reviewService).shouldHaveNoInteractions();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "",
+            " ",
+            "   ",
+            "\t",
+            "\n",
+            "\u00A0",
+            "\u3000"
+    })
+    @DisplayName("텍스트에 공백이 입력되면 400을 반환한다.")
+    void updateReview_invalidText(String text) throws Exception {
+        // given
+        UUID reviewId = UUID.randomUUID();
+
+        ReviewUpdateRequest request = new ReviewUpdateRequest(
+                text,
+                4.0
         );
 
         // when & then
