@@ -1,6 +1,6 @@
 # 11. DM WebSocket 송수신 흐름
 
-이 문서는 #61의 메시지 송신과 서버 간 전달을 설명합니다. REST 조회·읽음은 기존 API를 사용하며, 메시지 생성 이벤트를 통한 알림·SSE 연동은 #62의 범위입니다.
+이 문서는 #61의 메시지 송신과 서버 간 전달을 설명합니다. #62에서 추가한 DM 생성 이벤트·SSE와의 연결은 [DM 이벤트·SSE](15-direct-message-event-sse.md)를 참고합니다. REST 조회·읽음은 기존 API를 사용하고, 알림 생성·전송 및 알림 통합 검증은 #159에서 담당합니다.
 
 [DM 전체 흐름](00-overall-flow.md)에서 서버 A·B로 나뉘는 전달 그림을 먼저 확인할 수 있습니다. 이 페이지는 컴포넌트 역할과 트랜잭션·실패 결과를 자세히 설명합니다.
 
@@ -30,6 +30,7 @@ sequenceDiagram
     A->>C: SEND (채널 참여 인가 통과)
     C->>S: save(command)
     S->>S: 상세 조회·참여 검증·미읽음 저장
+    S->>S: 생성 이벤트 발행 → 커밋 → AFTER_COMMIT SSE 처리
     S-->>C: REQUIRES_NEW 커밋 후 반환
     C->>C: MessageDto·프로필 URL 변환
     C->>P: publish(dto)
@@ -38,7 +39,7 @@ sequenceDiagram
     L->>B: 해당 서버의 대화방 구독자에게 전달
 ```
 
-송신 서비스는 같은 호출 흐름에서 저장 결과를 변환하고 Publisher를 호출합니다. 현재 발행을 애플리케이션 이벤트 리스너에 위임하는 구조는 아닙니다. Redis 이후 수신은 별도의 리스너 흐름입니다.
+송신 서비스는 같은 호출 흐름에서 저장 결과를 변환하고 WebSocket Publisher를 호출합니다. WebSocket 발행은 서비스가 담당하고, DM SSE 발행은 커밋 후 애플리케이션 이벤트 리스너가 담당합니다. 각 Redis 채널 이후 수신은 별도의 리스너 흐름입니다.
 
 ## 컴포넌트의 책임
 
@@ -46,7 +47,8 @@ sequenceDiagram
 | --- | --- |
 | `DirectMessageWebSocketController` | 입력 검증, 인증된 요청자로 Command 생성, 내부 예외의 요청 세션 전달 |
 | `DirectMessageService` | 저장 → DTO 변환 → 발행 순서 조정 |
-| `DirectMessageSaver` | 독립 쓰기 트랜잭션에서 참여 검증과 한 건 저장 |
+| `DirectMessageSaver` | 독립 쓰기 트랜잭션에서 참여 검증·한 건 저장·생성 이벤트 발행 |
+| `DirectMessageSseEventListener` | 커밋 후 독립 상세 조회·DTO 변환·수신자 SSE 발행. 실패를 기록하여 WebSocket 경로와 격리 |
 | `ConversationReader` | 검증용 일반 조회와 참여자·프로필을 함께 로딩하는 상세 조회 구분 |
 | `DirectMessagePublisher` | 서버 간 전송 계약. 현재 Redis 구현체 사용 |
 | `DirectMessageSubscription` | 서버 단위 브로커 구독의 시작·종료. 브라우저 STOMP 구독과 별개 |
@@ -59,6 +61,8 @@ sequenceDiagram
 
 Saver는 별도 빈의 `REQUIRES_NEW`를 사용합니다. 서비스가 저장 결과를 받는 시점에는 해당 저장 트랜잭션의 커밋이 완료됩니다. 커밋 중 실패하면 DTO 변환·발행으로 진행하지 않습니다. 명시적 flush로 발행 순서를 보장하는 구조가 아닙니다.
 
+현재 생성 이벤트의 SSE 리스너는 동기식 `AFTER_COMMIT` 콜백으로 실행됩니다. 별도 읽기 전용 트랜잭션에서 상세 조회하고 반환 후 SSE용 URL·DTO를 변환합니다. 이 처리가 끝나야 Saver 호출이 반환되며, SSE 처리 실패는 리스너에서 기록하여 뒤따르는 WebSocket 발행을 차단하지 않습니다.
+
 저장용 상세 조회는 두 참여자와 프로필 엔티티를 함께 로딩합니다. URL 생성 자체는 저장 커밋 후 Mapper가 수행합니다. 상위 트랜잭션이 있는 호출에서는 복귀한 상위 트랜잭션의 영향을 구분해야 하지만, 이미 완료된 독립 저장 커밋은 외부 롤백으로 취소되지 않습니다.
 
 채널 인가와 Saver의 참여 검증은 진입 경계가 다릅니다. 채널 인가는 SEND·SUBSCRIBE를 제한하고, Saver는 서비스가 직접 호출되더라도 저장 시점의 참여 규칙을 적용합니다.
@@ -69,12 +73,15 @@ Saver는 별도 빈의 `REQUIRES_NEW`를 사용합니다. 서비스가 저장 �
 | --- | --- | --- |
 | 입력·채널 인가·저장 시 참여 검증 | 생성하지 않음 | 요청 경로의 오류 처리 |
 | DB 저장·커밋 | 롤백 | DTO 변환·발행하지 않음 |
+| 커밋 후 SSE 조회·변환·발행 | 유지 | SSE 리스너가 기록하고 기존 WebSocket 처리는 계속 실행 |
 | 커밋 후 프로필 URL 등 DTO 변환 | 유지 | `DirectMessagePublishException`, 발행하지 않음 |
 | JSON 직렬화·Redis 발행 | 유지 | 발행 예외 전달, 자동 재발행하지 않음 |
 | Redis 수신 JSON 변환 | 유지 | 변환 오류를 기록하고 해당 메시지를 건너뜀. JSON null도 전달하지 않음 |
 | 로컬 전달의 `MessagingException` | 유지 | ID 중심으로 기록, 재전송하지 않음 |
 
 발행 예외의 `details`에는 `directMessageId`, `conversationId`, `persisted=true`가 담깁니다. 이는 **DB 저장 완료**를 뜻하며 실시간 수신 성공 여부는 알리지 않습니다. 같은 본문을 새로 SEND하면 다른 메시지가 생성되므로 기존 ID로 REST 목록을 확인합니다.
+
+WebSocket용 변환·발행 실패가 앞서 수행된 SSE를 취소하거나 다시 수행하지 않습니다. SSE와 WebSocket의 브라우저 수신 순서는 별도로 보장하지 않습니다.
 
 Pub/Sub에는 이력 재생이나 클라이언트 수신 확인이 없습니다. 구독자가 없거나 실시간 전달이 누락되어도 저장된 메시지는 [DM 조회 API](07-direct-message-query.md)로 확인할 수 있습니다. 테스트에서 관찰한 중복 없는 전달을 모든 장애 상황의 exactly-once 보장으로 해석하지 않습니다.
 
