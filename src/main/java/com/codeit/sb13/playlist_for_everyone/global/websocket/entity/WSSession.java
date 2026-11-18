@@ -1,12 +1,12 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.entity;
 
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.WebSocketSubscriptionRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.WebSocketSubscriptionRegistryImpl;
 import jakarta.annotation.Nullable;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.io.IOException;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
@@ -19,8 +19,8 @@ public class WSSession {
     private final String id;
     private final WebSocketSession socket;
 
-    // 세션에 대한 구독 정보를 저장하는 Map
-    private final Map<String, WSSubscription> subscriptions = new ConcurrentHashMap<>();
+    // 세션에 대한 구독 정보를 저장하는 저장소
+    private final WebSocketSubscriptionRegistry subscriptions = new WebSocketSubscriptionRegistryImpl();
     private State state;
 
 
@@ -100,11 +100,27 @@ public class WSSession {
      */
     public Optional<WSSubscription> getSubscription(String subscriptionId){
         Objects.requireNonNull(subscriptionId);
-        return Optional.ofNullable(subscriptions.get(subscriptionId));
+        return subscriptions.get(subscriptionId);
     }
 
-    public Stream<WSSubscription> getAllSubscriptions(){
-        return subscriptions.values().stream();
+    /**
+     * 세션에 등록된 구독을 반환한다.
+     * 인자가 없거나, 등록되지 않았으면, 빈 Optional 을 반환한다.
+     * @param subscriptionUUID 구독 uuid
+     * @return 옵셔넝 구독
+     */
+    public Optional<WSSubscription> getSubscription(UUID subscriptionUUID){
+        Objects.requireNonNull(subscriptionUUID);
+        return subscriptions.get(subscriptionUUID);
+    }
+
+    /**
+     * 세션에 등록된 구독을 반환한다.
+     * 인자가 없거나, 등록되지 않았으면, 빈 리스트 을 반환한다.
+     * @return 세션에 해당된 모든 구독 리스트
+     */
+    public List<WSSubscription> getAllSubscriptions(){
+        return subscriptions.getAll();
     }
 
 
@@ -117,10 +133,7 @@ public class WSSession {
         Objects.requireNonNull(destination);
         if (state != State.REGISTER) throw new IllegalStateException("세션에서 구독을 시행할 수 없습니다.");
 
-        return subscriptions.compute(subscriptionId, (k, v) -> {
-            if (v == null) return new WSSubscription(subscriptionId, destination);
-            throw new IllegalStateException("이미 같은 구독 ID 혹은 경로가 존재합니다.");
-        });
+        return subscriptions.add(new WSSubscription(subscriptionId, destination));
     }
 
     /**
@@ -130,10 +143,7 @@ public class WSSession {
         Objects.requireNonNull(subscription);
         if (state != State.REGISTER) throw new IllegalStateException("세션에서 구독을 취소할 수 없습니다.");
 
-        subscriptions.computeIfPresent(subscription.id(), (k, v) -> {
-            if (v == subscription) return null;
-            return v;
-        });
+        subscriptions.remove(subscription);
     }
 
     /**

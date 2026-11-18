@@ -2,8 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.entity;
 
 import lombok.Getter;
 
-import java.util.List;
-import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -18,7 +17,8 @@ public class ViewingSessionRoom {
     private final UUID id;
     private final UUID contentId;
     private final String messagingPrefix = "websocket:room:watching:view:";
-    private final Map<String, List<String>> listeners = Map.of();
+    // todo - 구독 고유 번호 (uuid) 로 구독을 개별로 관리 하도록 변경.
+    private final Set<UUID> subscriptions = Set.of();
 
     public ViewingSessionRoom(UUID contentId) {
         this.id = UUID.randomUUID();
