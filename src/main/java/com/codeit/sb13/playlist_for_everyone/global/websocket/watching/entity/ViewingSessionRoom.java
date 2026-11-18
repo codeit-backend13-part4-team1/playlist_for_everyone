@@ -2,6 +2,8 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.entity;
 
 import lombok.Getter;
 
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -16,6 +18,7 @@ public class ViewingSessionRoom {
     private final UUID id;
     private final UUID contentId;
     private final String messagingPrefix = "websocket:room:watching:view:";
+    private final Map<String, List<String>> listeners = Map.of();
 
     public ViewingSessionRoom(UUID contentId) {
         this.id = UUID.randomUUID();

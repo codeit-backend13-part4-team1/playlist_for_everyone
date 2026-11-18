@@ -86,7 +86,7 @@ public class WatchingSessionRepository {
     분산 인스턴스 간의 충돌 역시 고려하지 않고 구현한다.
      */
 
-
+    // 세션 등록 매서드
     public void register(
             String session,
             String subscription,
@@ -107,6 +107,7 @@ public class WatchingSessionRepository {
             throw new IllegalStateException("Failed to register watcher.");
     }
 
+    // 세션 등록 취소 매서드
     public void unregister(
             String session,
             String subscription
@@ -124,6 +125,7 @@ public class WatchingSessionRepository {
         if (res == null) throw new IllegalStateException("Failed to unregister watcher.");
     }
 
+    // 세션들 등록 취소 매서드
     public void unregisterAll(
             String sessionId,
             List<String> subscriptionIds,
@@ -149,7 +151,7 @@ public class WatchingSessionRepository {
             throw new IllegalStateException("Failed to register watcher.");
     }
 
-
+    // ttl 리프레시 매서드
     public void refresh(String session){
         validate(session);
 
@@ -164,6 +166,7 @@ public class WatchingSessionRepository {
         if (res == null) throw new IllegalStateException("Failed to refresh watcher.");
     }
 
+    @Deprecated
     public void delete(String session){
         validate(session);
 
