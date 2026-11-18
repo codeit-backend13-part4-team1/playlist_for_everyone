@@ -27,6 +27,8 @@ public interface ViewingSessionService {
      */
     void leave(String sessionId, String subscribeId, UUID contentId);
 
+    void leaveAll(String sessionId, List<String> subscriptionIds, UUID contentId);
+
     /**
      * 세션 룸에 메세지를 전송하는 매서드.
      * @param payload 전송 할 내용

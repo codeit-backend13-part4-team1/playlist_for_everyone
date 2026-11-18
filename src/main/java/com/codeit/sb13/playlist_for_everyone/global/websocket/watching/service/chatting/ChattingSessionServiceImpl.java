@@ -8,6 +8,8 @@ import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repositor
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -42,6 +44,19 @@ public class ChattingSessionServiceImpl implements ChattingSessionService {
 
         synchronized (room) {
             redisTopicRegistry.unregister(sessionId, subscribeId);
+        }
+    }
+
+    @Override
+    public void leaveAll(String sessionId, List<String> subscriptionIds, UUID contentId) {
+        Objects.requireNonNull(sessionId);
+        Objects.requireNonNull(contentId);
+        ChattingSessionRoom room = chattingSessionRepository.find(contentId)
+                .orElseThrow(WebSocketSessionNotFoundException::new);
+
+        synchronized (room) {
+            // 해당 구독을 한번제 저장소에서 지울 수 있도록
+            redisTopicRegistry.unregisterAll(sessionId, subscriptionIds);
         }
     }
 }

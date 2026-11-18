@@ -18,5 +18,4 @@ public interface ViewingSessionRepository {
 
     Optional<ViewingSessionRoom> find(UUID contentId);
 
-    boolean exists(UUID contentId);
 }

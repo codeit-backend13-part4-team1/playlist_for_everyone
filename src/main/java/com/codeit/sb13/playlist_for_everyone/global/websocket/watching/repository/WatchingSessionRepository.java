@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatcherScriptConfig.*;
@@ -36,6 +37,7 @@ public class WatchingSessionRepository {
     private final RedisScript<Long> countScript;
     private final RedisScript<Long> deleteFromContentScript;
     private final RedisScript<List> countMultipleContentsScript;
+    private final RedisScript<Long> unregisterAllScript;
 
     @RequiredArgsConstructor
     static public class SetKey{
@@ -63,7 +65,9 @@ public class WatchingSessionRepository {
             @Qualifier("lua-script-delete-with-contentId")
             RedisScript<Long> deleteFromContentScript,
             @Qualifier("lua-count-multiple-contents")
-            RedisScript<List> countMultipleContents
+            RedisScript<List> countMultipleContents,
+            @Qualifier("lua-script-unregister-all")
+            RedisScript<Long> unregisterAllScript
     ){
         this.redis = redis;
         this.registerScript = registerScript;
@@ -73,6 +77,7 @@ public class WatchingSessionRepository {
         this.countScript = countScript;
         this.deleteFromContentScript = deleteFromContentScript;
         this.countMultipleContentsScript = countMultipleContents;
+        this.unregisterAllScript = unregisterAllScript;
     }
 
     /*
@@ -118,6 +123,32 @@ public class WatchingSessionRepository {
 
         if (res == null) throw new IllegalStateException("Failed to unregister watcher.");
     }
+
+    public void unregisterAll(
+            String sessionId,
+            List<String> subscriptionIds,
+            UUID contentId
+    ){
+        String sessionKey = sessionKey(sessionId);
+        String contentKey = contentKey(contentId.toString());
+
+        // ARGV[1] = contentId
+        // ARGV[2] = sessionId
+        // ARGV[3...] = subscriptionIds
+        Object[] args = Stream.concat(
+                Stream.of(contentId.toString(), sessionId),
+                subscriptionIds.stream()
+        ).toArray();
+
+        Long res = redis.execute(unregisterAllScript,
+                List.of(sessionKey, contentKey, DELIMITER),
+                args
+        );
+
+        if (res == null || Long.valueOf(-1).equals(res))
+            throw new IllegalStateException("Failed to register watcher.");
+    }
+
 
     public void refresh(String session){
         validate(session);

@@ -32,9 +32,4 @@ public class ViewingSessionRepositoryImpl implements ViewingSessionRepository{
         return Optional.ofNullable(rooms.get(contentId));
     }
 
-    @Override
-    public boolean exists(UUID contentId) {
-        return rooms.containsKey(contentId);
-    }
-
 }
