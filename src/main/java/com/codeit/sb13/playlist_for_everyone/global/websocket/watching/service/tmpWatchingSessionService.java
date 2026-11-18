@@ -311,7 +311,7 @@ public class tmpWatchingSessionService {
             Map<UUID, List<String>> viewingTargets = new HashMap<>();
             Map<UUID, List<String>> chattingTargets = new HashMap<>();
 
-            for (WSSubscription subscription : session.getAllSubscriptions().toList()) {
+            for (WSSubscription subscription : session.getAllSubscriptions()) {
                 String destination = subscription.destination();
 
                 boolean viewing = VIEW_DESTINATION_PATTERN.check(destination);
