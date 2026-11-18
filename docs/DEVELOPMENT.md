@@ -6,7 +6,7 @@
 > 도메인 구현 현황과 개발용 보안 전환 설명은 최신 코드와 다를 수 있습니다.
 > 현재 SSE 연결·공유 이력·Redis 분산 전송·복구·인증·테스트는 [SSE 구현 가이드](sse/README.md), 알림 생성·전송·조회·읽음 처리와 JWT 인증은 [알림 구현 가이드](notification/README.md)를 기준으로 확인합니다.
 > 팔로우 등록·취소·조회와 인증·이벤트의 구현 및 검증 범위는 [팔로우 구현 가이드](follow/README.md)를 참고합니다.
-> 대화방 생성·조회와 DM 메시지 조회·누적 읽음 처리, JWT·CSRF 검증은 [대화방·DM 구현 가이드](conversation/README.md)를 참고합니다.
+> 대화방 생성·조회, DM 조회·읽음·WebSocket 송수신·보안·검증은 [대화방·DM 구현 가이드](conversation/README.md)를 참고합니다.
 
 ## 현재 개발 상태
 
@@ -17,7 +17,8 @@
 | 공통 기반 | 예외 처리, 응답 DTO, 엔티티 기반 클래스, JPA Auditing, Querydsl 설정, MDC 로그, 비밀번호 인코더, OpenAPI 설정 구현 |
 | 도메인 예외 | 공통 예외 기반 위에 도메인 오류 정의. 팔로우는 자기 팔로우·대상 미존재·관계 미존재·생성 실패 예외 사용 |
 | 팔로우 | 등록·취소·조회, 중복 복구와 생성 이벤트 구현. #76의 실제 JWT HTTP 통합 검증 및 Swagger 정리 완료 |
-| 대화방·DM | #58 대화방 생성·중복 복구, #59 대화방 검색·커서 조회, #60 DM 도메인·메시지 조회·누적 읽음 처리 구현. [전체 흐름](conversation/README.md), [DM 조회](conversation/07-direct-message-query.md), [DM 읽음](conversation/08-direct-message-read.md) 참고 |
+| 대화방·DM | #58 대화방 생성·중복 복구, #59 대화방 검색·커서 조회, #60 DM 조회·누적 읽음, #61 WebSocket 송수신·Redis 분산 전송 구현. [전체 흐름](conversation/README.md), [WebSocket 환경 설정](conversation/10-websocket-settings.md) 참고 |
+| DM WebSocket 협업 | [송수신·트랜잭션](conversation/11-websocket-flow.md), [보안·공통 오류와 콘텐츠 확장](conversation/12-websocket-security-errors.md), [테스트](conversation/13-websocket-testing.md), [다중 서버 수동 검증](conversation/14-websocket-multi-node.md) 참고 |
 | 로컬 인프라 | Docker Compose에 PostgreSQL과 Redis 서비스 정의 |
 | 공통 보안 | JWT 필터와 경로별 인증·인가 적용. 팔로우·알림 API는 인증 필요, 쿠키 기반 CSRF 보호 활성화 |
 | SSE | 다중 연결·하트비트·종료 정리, 공유 이력 저장·재연결 복구, 연결별 후속 조회·제한된 재시도. [SSE 구현 가이드](sse/README.md) 참고 |
@@ -180,6 +181,10 @@ Swagger UI와 OpenAPI 문서의 GET 조회는 `dev`가 활성화되고 `prod`는
 | `EVERYONE_SSE_RETRY_INITIAL_DELAY` | `1s` | 후속 조회의 첫 재시도 대기 간격 |
 | `EVERYONE_SSE_RETRY_MAX_DELAY` | `30s` | 재시도 간격의 상한 |
 | `EVERYONE_SSE_RETRY_MAX_RETRIES` | `3` | 최초 시도 제외. 성공하면 횟수·간격 초기화 |
+| `EVERYONE_WEBSOCKET_EVENT_MULTIPLE` | `true` | 세션 무효화 등 공통 WebSocket 이벤트를 서버 간 전달. DM 전송 설정과 별개 |
+| `EVERYONE_DM_WEBSOCKET_TRANSPORT` | `redis` | DM 전송 방식. 현재 Redis만 지원 |
+| `EVERYONE_DM_WEBSOCKET_SUBSCRIPTION_ENABLED` | `true` | 이 서버의 DM 자동 구독 여부. 저장·발행과 다른 Redis 사용은 유지 |
+| `EVERYONE_DM_WEBSOCKET_REDIS_CHANNEL` | `everyone:dm:events` | 같은 환경 서버가 공유하는 DM 채널. 프로필별 자동 분리 없음 |
 | `EVERYONE_JPA_DDL_AUTO` | `validate` | 엔티티와 DB 스키마 일치 여부 검증 |
 | `EVERYONE_JPA_FORMAT_SQL` | `true` | 개발 환경 SQL 포맷 설정 |
 | `EVERYONE_JPA_SHOW_SQL` | `false` | 개발 환경 JPA SQL 출력 설정 |
@@ -197,6 +202,9 @@ SSE 환경변수를 생략하면 위 기본값을 사용합니다. 개발에서�
 이력 접두사와 Pub/Sub 채널은 별도 설정입니다. 접두사 변경은 기존 키를 자동 이전하지 않으며,
 보관 초기값은 사용자 수·이벤트 크기·Redis 메모리와 지연을 측정해 조정합니다.
 두 서버를 함께 실행하려면 [다중 서버 실행](sse/07-redis-multi-node.md), 같은 사용자의 두 연결로 이벤트를 보내려면 [실제 수신 검증](sse/08-redis-verification.md)을 따라 진행합니다.
+
+DM 채널의 환경별 지정 예시, 공통 WebSocket 이벤트와의 차이, 테스트 프로필의 구독 비활성화는 [DM WebSocket 환경 설정](conversation/10-websocket-settings.md)을 참고합니다.
+기존 `.env.dev`에는 `.env.example`의 추가 항목이 자동 반영되지 않습니다. 필요한 값을 직접 추가합니다.
 
 S3 관련 값은 현재 공통 설정에 선언되어 있지만 실제 S3 연동 기능은 구현 전입니다.
 
@@ -383,7 +391,8 @@ SSE Redis 통합 테스트는 별도의 Redis 7.4 컨테이너로 실제 Pub/Sub
 수신자 미존재 처리·삭제 후 사용자 보존·DTO 변환 중 추가 SQL 검증은 [수신자 연관관계 가이드](notification/06-receiver-association.md)를 참고합니다.
 최초 실행 시 테스트용 컨테이너 이미지 다운로드가 필요할 수 있습니다. 테스트 프로필은 SSE 자동 구독을 끄고, Redis SSE 통합 테스트에서만 명시적으로 활성화합니다.
 
-대화방·DM 테스트는 현재 18개 클래스이며, 이 중 9개 클래스가 PostgreSQL·Flyway를 사용합니다. [전체 실행과 기존 검증 기록](conversation/04-testing.md)을 참고합니다.
+대화방·DM 도메인은 현재 35개 클래스이며, 관련 공통 WebSocket 6개를 포함하면 41개입니다. 도메인 중 PostgreSQL·Flyway 사용은 12개이며, 실제 Redis·STOMP 검증과 Mock의 범위는 [WebSocket 테스트 가이드](conversation/13-websocket-testing.md)를 참고합니다.
+기존 #58~#60의 18개 범위와 날짜별 결과는 [공통 테스트 기록](conversation/04-testing.md)에 보존합니다. 클래스 수를 최신 전체 테스트 통과 건수로 해석하지 않습니다.
 메시지 조회·누적 읽음의 테스트 역할, 실제 JWT·CSRF 요청과 Swagger 통합 표시 범위는 [DM 테스트 가이드](conversation/09-direct-message-testing.md)에 정리했습니다.
 
 제목 말줄임 단위 테스트만 확인하려면 Docker 없이 다음 명령을 사용할 수 있습니다.
@@ -683,6 +692,9 @@ cron은 `초 분 시 일 월 요일` 순서입니다.
 - 새 실행마다 새로운 `run.id`를 부여합니다. 실패한 실행을 이어서 재시작하는 방식은 아닙니다.
 - 실패한 작업의 자동 재시도·재시작은 이번 작업에 포함하지 않습니다.
 - 재수집하더라도 기존 콘텐츠와 태그는 중복 저장하거나 덮어쓰지 않습니다.
+- 수집 배치는 실제 커밋된 신규 콘텐츠가 있을 때 Job 종료 후 검색 목록 캐시를 한 번 비웁니다. 중간에 실패해도 이미 커밋한 신규 콘텐츠가 있으면 비웁니다.
+- 신규 저장이 없는 재수집에서는 캐시를 비우지 않습니다.
+- 프로세스가 강제 종료되어 Job 종료 처리가 실행되지 않으면 즉시 캐시를 비우지 못할 수 있습니다. 검색 캐시는 현재 5분 후 만료됩니다.
 
 현재는 단일 서버에서 사용하는 것을 기준으로 구현했습니다.
 정기 수집을 활성화한 서버는 예약 등록 전에 TMDB·스포츠 Job의
@@ -731,7 +743,7 @@ cron은 `초 분 시 일 월 요일` 순서입니다.
 - 활성화된 공통 CSRF 기반을 사용하는 팔로우 연동·검증(#114), 알림 연동·검증(#124)
 - 목록 API의 커서 규칙 확정과 직렬화·페이징 테스트
 - Redis 기반 캐시·세션 기능 구현과 데이터 보관 정책 결정
-- 배치, S3, WebSocket 등 기능별 구현과 필요한 인프라 추가
+- 배치, S3 등 기능별 구현과 필요한 인프라 추가. DM WebSocket 구현·검증 범위는 [대화방 가이드](conversation/README.md), 연결 유지 중 인증 자연 만료는 #208 참고
 - 팔로우(#155)·권한 변경·구독(#156)·플레이리스트 생성·콘텐츠 추가(#157) 외 업무 이벤트의 알림 연동(#45), DM 본문 전송 연동, SSE Kafka 구현체, 이력 보관 초기값의 운영 부하 검증, [동시 연결 수 제한·모니터링 #107](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/107)
 - README 배지 자동 게시 방식 확정 및 연결
 - 배포 파이프라인 구성

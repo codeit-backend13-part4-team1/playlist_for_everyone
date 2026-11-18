@@ -1,10 +1,13 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.collector;
 
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.ContentCollectionResult;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.exception.CollectedContentValidationException;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.CollectedContentData;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
+import com.codeit.sb13.playlist_for_everyone.domain.content.event.ContentSearchCacheEvictEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -19,8 +22,26 @@ public class ContentCollectionService {
 
     private final ContentRepository contentRepository;
 
+    private final ApplicationEventPublisher eventPublisher;
+
+    @Transactional
+    public ContentCollectionResult saveForBatch(CollectedContentData data) {
+        return saveContent(data);
+    }
+
     @Transactional
     public Content save(CollectedContentData data) {
+        ContentCollectionResult result = saveContent(data);
+
+        if (result.inserted()) {
+            eventPublisher.publishEvent(new ContentSearchCacheEvictEvent());
+        }
+
+        return result.content();
+    }
+
+    private ContentCollectionResult saveContent(CollectedContentData data) {
+
         if (!StringUtils.hasText(data.title())) {
             throw new CollectedContentValidationException("수집한 콘텐츠에는 제목이 필요합니다.");
         }
@@ -61,7 +82,7 @@ public class ContentCollectionService {
                 .orElse(null);
 
         if (existing != null) {
-            return existing;
+            return new ContentCollectionResult(existing, false);
         }
 
         int inserted = contentRepository.insertIfAbsent(
@@ -89,6 +110,6 @@ public class ContentCollectionService {
             tags.forEach(saved::addTag);
         }
 
-        return saved;
+        return new ContentCollectionResult(saved, inserted == 1);
     }
 }

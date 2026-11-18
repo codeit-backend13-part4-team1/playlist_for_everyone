@@ -18,16 +18,19 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.util.StringUtils;
 
 @Configuration(proxyBeanMethods = false)
+@Import(CollectionCacheEvictConfig.class)
 public class SportsDbBatchConfig {
 
     @Bean
     public Job sportsDbCollectionJob(
             JobRepository jobRepository,
-            @Qualifier("sportsDbCollectionStep") Step step
+            @Qualifier("sportsDbCollectionStep") Step step,
+            CollectionCacheEvictJobListener cacheEvictJobListener
     ) {
         return new JobBuilder("sportsDbCollectionJob", jobRepository)
                 .validator(parameters -> {
@@ -51,6 +54,7 @@ public class SportsDbBatchConfig {
                         );
                     }
                 })
+                .listener(cacheEvictJobListener)
                 .start(step)
                 .build();
     }
@@ -72,7 +76,8 @@ public class SportsDbBatchConfig {
             @Qualifier("sportsDbEventReader") SportsDbEventReader reader,
             ContentCollectionService collectionService,
             @Qualifier("sportsDbSkipPolicy") SportsDbSkipPolicy skipPolicy,
-            CollectionStepMetricsListener metricsListener
+            CollectionStepMetricsListener metricsListener,
+            CollectionInsertCounter counter
     ) {
         var mapper = new SportsDbContentMapper();
 
@@ -87,7 +92,11 @@ public class SportsDbBatchConfig {
                 .processor(mapper::fromEvent)
                 .writer(chunk -> {
                     for (var data : chunk.getItems()) {
-                        collectionService.save(data);
+                        var result = collectionService.saveForBatch(data);
+
+                        if (result.inserted()) {
+                            counter.recordInserted();
+                        }
                     }
                 })
                 .build();

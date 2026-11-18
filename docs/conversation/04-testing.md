@@ -3,7 +3,7 @@
 정책을 확인하는 단위 테스트, 실제 DB 제약·트랜잭션 테스트, HTTP 보안 테스트를 구분합니다.
 같은 정상 응답을 확인하더라도 실행하는 경계가 다릅니다.
 이 페이지는 공통 환경과 생성 테스트를 설명합니다.
-대화방 조회는 [조회 테스트와 Swagger 검증](06-query-testing.md), 메시지 조회·읽음은 [DM 테스트와 Swagger 검증](09-direct-message-testing.md)에서 다룹니다.
+대화방 조회는 [조회 테스트와 Swagger 검증](06-query-testing.md), 메시지 조회·읽음은 [DM 테스트와 Swagger 검증](09-direct-message-testing.md), 송수신·공통 보안은 [WebSocket 테스트](13-websocket-testing.md)에서 다룹니다.
 
 ## 테스트별 역할
 
@@ -20,8 +20,9 @@
 | [ConversationSecurityIntegrationTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/controller/ConversationSecurityIntegrationTest.java) | 생성 JWT·CSRF와 생성·조회 4종의 JWT 누락 거절 | UserSessionRepository는 Mock. 실제 Redis 세션·로그인 API 제외 |
 
 대화방 조회 전용 테스트는 QueryService·QueryController·QueryRepository·QuerySecurityIntegration의 4개 클래스입니다.
-현재 구성은 **대화방 11개 + DM 7개 = 18개 클래스**입니다. 클래스 수와 특정 날짜의 테스트 실행 건수는 구분합니다.
-전체 실행 명령은 생성·대화방 조회·DM 조회·읽음 처리를 함께 대상으로 합니다.
+#58~#60의 범위는 **대화방 11개 + DM 조회·읽음 7개 = 18개 클래스**입니다.
+#61의 도메인 17개가 추가되어 현재 도메인 디렉터리에는 35개 클래스가 있습니다. 관련 공통 WebSocket 6개까지 포함한 41개 구성과 명령은 [WebSocket 테스트](13-websocket-testing.md)에 정리했습니다.
+클래스 수와 특정 날짜의 테스트 실행 건수는 구분합니다.
 
 ## 단위 테스트와 통합 테스트의 차이
 
@@ -66,10 +67,11 @@ JWT 서명·요청 필터와 CSRF 처리는 실제 구성으로 실행하지만,
 Repository·ServiceIntegration·SecurityIntegration 테스트는 Testcontainers의 PostgreSQL 접속 정보로 덮어씁니다.
 
 - Docker 엔진이 실행되어 있어야 하며 `postgres:16` 컨테이너를 테스트가 생성합니다.
-- 대화방의 Repository 2개·생성 ServiceIntegration·SecurityIntegration 2개와 DM의 Repository 2개·읽음 ServiceIntegration·SecurityIntegration, 총 **9개 클래스**가 PostgreSQL을 사용합니다.
+- #58~#60에서는 대화방의 Repository 2개·생성 ServiceIntegration·SecurityIntegration 2개와 DM의 Repository 2개·읽음 ServiceIntegration·SecurityIntegration, 총 **9개 클래스**가 PostgreSQL을 사용합니다.
+- #61의 송신 서비스·실제 WebSocket·분산 세션 무효화 통합 테스트 3개도 PostgreSQL을 사용합니다. 실제 Redis를 사용하는 범위는 [WebSocket 테스트](13-websocket-testing.md)에서 구분합니다.
 - 이 클래스들은 Flyway를 활성화하고 `ddl-auto=validate`로 실제 스키마와 매핑을 확인합니다.
 - 개발용 Compose DB를 테스트 대상으로 지정하지 않습니다.
-- 기본 테스트 프로필은 SSE 자동 구독과 관리자 초기화를 비활성화합니다.
+- 기본 테스트 프로필은 SSE·DM 자동 구독, 공통 WebSocket 이벤트의 분산 처리와 관리자 초기화를 비활성화합니다. 필요한 통합 테스트에서 명시적으로 활성화합니다.
 
 서비스·보안 통합 테스트는 클래스 전체를 롤백용 트랜잭션으로 감싸지 않습니다.
 독립 저장·동시 호출에서 접근할 준비 데이터를 저장하고, 각 테스트 뒤 대화방과 사용자 등 해당 데이터를 정리합니다.
@@ -94,7 +96,7 @@ Repository·ServiceIntegration·SecurityIntegration 테스트는 Testcontainers�
 ./gradlew test --tests '*ConversationRepositoryTest' --tests '*ConversationServiceIntegrationTest'
 ```
 
-대화방·DM 테스트 전체(현재 18개 클래스):
+대화방·DM 도메인 테스트 전체(현재 35개 클래스, 공통 WebSocket 6개는 제외):
 
 ```bash
 ./gradlew test --tests 'com.codeit.sb13.playlist_for_everyone.domain.conversation.*'
@@ -102,12 +104,13 @@ Repository·ServiceIntegration·SecurityIntegration 테스트는 Testcontainers�
 
 결과는 `build/reports/tests/test/index.html`과 `build/test-results/test/`에서 확인합니다.
 기능별 실행 명령은 [대화방 조회](06-query-testing.md#실행-명령)와 [DM 조회·읽음](09-direct-message-testing.md#실행-명령)에 있습니다.
+공통 WebSocket까지 포함하려면 [관련 41개 클래스 실행 명령](13-websocket-testing.md#실행-명령)을 사용합니다.
 일부 테스트로 생성한 JaCoCo 보고서를 프로젝트 전체 커버리지로 해석하지 않습니다.
 
 ## 기존 검증 기록
 
 다음은 **2026-11-13, #58·#59 대화방 11개 클래스**를 실행·확인한 기록입니다. 테스트 수는 파라미터화 테스트의 각 실행을 포함합니다.
-현재 DM까지 포함한 18개 클래스의 실행 결과나 이번 MD 갱신 중 새로 실행한 결과가 아닙니다.
+이후 추가한 DM·WebSocket을 포함한 현재 전체 실행 결과나 이번 MD 갱신 중 새로 실행한 결과가 아닙니다.
 
 | 검증 시점·대상 | 결과 |
 | --- | --- |
