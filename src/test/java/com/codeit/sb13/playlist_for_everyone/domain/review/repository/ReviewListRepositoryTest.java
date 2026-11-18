@@ -188,7 +188,7 @@ public class ReviewListRepositoryTest {
     }
 
     @Test
-    @DisplayName("평점 커서 이후의 리뷰를 조회할 수 있다.")
+    @DisplayName("평점이 같은 리뷰도 커서 페이지네이션에서 누락 없이 조회할 수 있다.")
     void getReviewList_cursorByRating() {
         // given
         UUID contentId = content1.getId();
@@ -220,20 +220,21 @@ public class ReviewListRepositoryTest {
                 reviewRepository.getReviewsByContentId(contentId, nextCondition);
 
         // then
-        assertThat(firstPage)
-                .extracting(Review::getRating)
-                .startsWith(5.0, 4.0);
-
-        assertThat(nextPage)
-                .extracting(Review::getRating)
-                .containsExactly(4.0, 3.0);
-
         assertThat(nextPage)
                 .extracting(Review::getId)
-                .doesNotContain(lastReview.getId());
+                .doesNotContain(
+                        firstPage.get(0).getId(),
+                        firstPage.get(1).getId()
+                );
 
-        assertThat(nextPage.get(0).getId())
-                .isNotEqualTo(lastReview.getId());
+        assertThat(nextPage.get(0).getAuthor().getId())
+                .isIn(author2.getId(), author3.getId());
+
+        assertThat(nextPage.get(0).getAuthor().getId())
+                .isNotEqualTo(lastReview.getAuthor().getId());
+
+        assertThat(nextPage.get(1).getAuthor().getId())
+                .isEqualTo(author4.getId());
     }
 
     @Test
