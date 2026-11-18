@@ -14,7 +14,7 @@ import lombok.NoArgsConstructor;
 @Table(
         name = "reviews",
         uniqueConstraints = @UniqueConstraint(
-                name = "uk_reviews_content_author",
+                name = "uk_review_content_author",
                 columnNames = {"content_id", "author_id"}
         )
 )
@@ -41,6 +41,19 @@ public class Review extends UpdatedAtEntity {
         this.author = author;
         this.text = text;
         this.rating = rating;
+    }
+
+    public void update(String text, Double rating) {
+        if (text != null) {
+            if (text.isBlank()) {
+                throw new IllegalArgumentException("리뷰 내용은 공백일 수 없습니다.");
+            }
+            this.text = text;
+        }
+
+        if (rating != null) {
+            this.rating = rating;
+        }
     }
 
 }
