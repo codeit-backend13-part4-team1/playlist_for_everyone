@@ -220,6 +220,45 @@ public class ReviewControllerTest {
         then(reviewService).should().getReviews(contentId, condition);
     }
 
+    @Test
+    @DisplayName("콘텐츠 ID가 없으면 400 Bad Request를 반환한다.")
+    void getReviewList_notFoundContentId() throws Exception {
+        // when & then
+        mockMvc.perform(get("/api/reviews")
+                        .param("limit", "10")
+                        .param("sortDirection", "DESCENDING")
+                        .param("sortBy", "createdAt"))
+                .andExpect(status().isBadRequest());
+
+        then(reviewService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("limit이 없으면 400을 반환한다.")
+    void getReviewList_missingLimit() throws Exception {
+        // when & then
+        mockMvc.perform(get("/api/reviews")
+                        .param("contentId", UUID.randomUUID().toString())
+                        .param("sortDirection", "DESCENDING")
+                        .param("sortBy", "createdAt"))
+                .andExpect(status().isBadRequest());
+
+        then(reviewService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("정렬 방향이 없으면 400을 반환한다.")
+    void getReviewList_missingSortDirection() throws Exception {
+        // when & then
+        mockMvc.perform(get("/api/reviews")
+                        .param("contentId", UUID.randomUUID().toString())
+                        .param("limit", "10")
+                        .param("sortBy", "createdAt"))
+                .andExpect(status().isBadRequest());
+
+        then(reviewService).shouldHaveNoInteractions();
+    }
+
     /** 리뷰 수정 테스트 */
     @Test
     @DisplayName("리뷰 수정 시 변경된 리뷰 정보를 반환한다.")
