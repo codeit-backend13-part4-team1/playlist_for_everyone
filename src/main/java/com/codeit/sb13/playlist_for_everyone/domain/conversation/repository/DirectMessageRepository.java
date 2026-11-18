@@ -69,6 +69,13 @@ public interface DirectMessageRepository extends JpaRepository<DirectMessage, UU
             @Param("conversationId") UUID conversationId
     );
 
+    /**
+     * 조회 트랜잭션이 끝난 뒤 MessageDto를 만들 수 있도록 송수신자와 선택적인 프로필 정보를 함께 로딩한다.
+     * 프로필 URL 생성은 Mapper가 맡으며, 이 조회에서 파일 저장소를 호출하지 않는다.
+     * 대화방은 응답의 ID 참조만 필요하므로 EntityGraph의 로딩 대상에 추가하지 않는다.
+     *
+     * <p>메시지 ID만 조회 조건으로 사용한다. 대화방 참여 인가나 읽음 상태 변경은 수행하지 않는다.
+     */
     @EntityGraph(attributePaths = {
             "sender", "sender.profileImage",
             "receiver", "receiver.profileImage"

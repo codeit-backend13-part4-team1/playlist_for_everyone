@@ -66,6 +66,11 @@ import static org.mockito.Mockito.when;
  * 실제 저장 트랜잭션과 커밋 후 SSE 리스너를 연결하고, 외부 파일 조회·전송만 Mock으로 분리한다.
  * Repository Spy는 실제 조회를 수행하며 조회 여부와 읽기 트랜잭션의 완료 시점을 관찰한다.
  * 커밋 후 콜백의 단언 실패가 Spring 내부에 흡수되지 않도록 관찰값은 저장 호출이 끝난 뒤 검증한다.
+ *
+ * <p>클래스 전체를 테스트 트랜잭션으로 감싸지 않고, 롤백·상위 트랜잭션 시나리오마다 TransactionTemplate을 사용한다.
+ * 따라서 실제 커밋 여부와 AFTER_COMMIT 실행 시점을 구분할 수 있다. URL 생성 시에는 Reader 트랜잭션의
+ * afterCompletion 상태를 확인하며, 이 시점에 스레드의 모든 트랜잭션 자원이 해제됐다고 가정하지 않는다.
+ * Redis 전송·HTTP 수신은 별도의 DirectMessageSseIntegrationTest에서 검증한다.
  */
 @RecordApplicationEvents
 @SpringBootTest(properties = {

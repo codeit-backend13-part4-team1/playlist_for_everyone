@@ -42,6 +42,14 @@ public class DirectMessageReader {
        return directMessageRepository.searchCount(condition);
     }
 
+    /**
+     * 커밋 후 이벤트 처리에 필요한 메시지·송수신자·프로필을 독립 읽기 트랜잭션에서 조회한다.
+     * 저장 측 트랜잭션에 참여하지 않으며, 반환 이후의 DTO·프로필 URL 변환은 호출자가 수행한다.
+     *
+     * <p>메시지 ID로 조회하는 내부 처리용 메서드이며 요청자의 대화방 참여 여부를 검증하지 않는다.
+     * 사용자 요청에서 호출한다면 호출자가 접근 권한을 먼저 확인해야 한다.
+     * 미존재 시 DirectMessageNotFoundException을 던지고, 조회 실패의 처리 여부는 호출자가 결정한다.
+     */
     @Transactional(
             propagation = Propagation.REQUIRES_NEW,
             readOnly = true

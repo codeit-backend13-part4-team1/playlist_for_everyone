@@ -70,7 +70,7 @@ DM은 `/ws` 연결 후 `/pub/conversations/{conversationId}/direct-messages`로 
 | 12 | [WebSocket 보안과 오류 처리](12-websocket-security-errors.md) | 인증·DM 인가 범위, 출처 제한, 공통 오류 처리와 콘텐츠 확장 위치 |
 | 13 | [WebSocket 테스트 읽기와 실행](13-websocket-testing.md) | Mock·실제 인프라 경계, 전체 실행 명령과 #61·#62 검증 범위 구분 |
 | 14 | [다중 서버 DM 수동 검증](14-websocket-multi-node.md) | Compose·분리된 브라우저, 양방향 전달·SSE 다중 탭·REST 재조회와 실제 결과 |
-| 15 | [DM 생성 이벤트·SSE](15-direct-message-event-sse.md) | 커밋 후 수신자 전달, 트랜잭션·실패 격리, 이력 복구·7개 클래스 검증 |
+| 15 | [DM 생성 이벤트·SSE](15-direct-message-event-sse.md) | 컴포넌트별 책임·코드 위치, 커밋 후 전달·실패별 결과, 이력 복구와 테스트 실행 방법 |
 
 ## 현재 구현과 후속 범위
 

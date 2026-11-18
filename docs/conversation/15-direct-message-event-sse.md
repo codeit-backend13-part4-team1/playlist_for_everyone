@@ -22,9 +22,29 @@ flowchart TD
 
 리스너는 현재 동기식 커밋 후 콜백입니다. SSE 발행 요청을 마친 뒤 기존 송신 서비스가 WebSocket 발행을 진행하지만, Redis·네트워크 이후 **브라우저의 두 채널 도착 순서는 보장하지 않습니다.** 공통 SSE 이력 저장과 브로커 발행은 DB 저장과 하나의 원자적 트랜잭션이 아닙니다.
 
+## 컴포넌트별 책임과 읽기 순서
+
+아래 순서로 코드를 읽으면 저장·커밋·조회·전송의 경계를 확인할 수 있습니다. 공통 SSE 발행기와 기존 WebSocket 송신 흐름을 재사용합니다.
+
+| 컴포넌트 | 주요 메서드 | 책임 |
+| --- | --- | --- |
+| [`DirectMessageSaver`](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/service/impl/DirectMessageSaver.java) | `save` | 참여 여부를 확인하고 실제 송수신자를 결정해 DM 저장 및 생성 이벤트 발행 |
+| [`DirectMessageCreatedEvent`](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/event/DirectMessageCreatedEvent.java) | record | 저장한 메시지·대화방·송수신자 ID와 발신자 이름 스냅샷 전달 |
+| [`DirectMessageSseEventListener`](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/event/listener/DirectMessageSseEventListener.java) | `handleDirectMessageCreated` | 커밋 후 조회 → DTO 변환 → 공통 SSE 발행, 단계별 런타임 실패 처리 |
+| [`DirectMessageReader`](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/service/impl/DirectMessageReader.java) | `getById` | 독립 읽기 전용 트랜잭션과 메시지 미존재 예외 처리 |
+| [`DirectMessageRepository`](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/repository/DirectMessageRepository.java) | `findDetailedById` | EntityGraph로 송수신자·프로필을 함께 로딩 |
+| [`DirectMessageMapper`](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/mapper/DirectMessageMapper.java) | `toMessageDto` | 조회 결과로 사용자 요약·프로필 URL·메시지 응답 구성 |
+| [`SseEvent`](../../src/main/java/com/codeit/sb13/playlist_for_everyone/global/sse/event/SseEvent.java) | `createDirectMessageEvent` | 기존 메시지 ID와 DTO를 `direct-messages` 내부 전달 형식으로 감쌈 |
+| [`HistorySavingSseEventPublisher`](../../src/main/java/com/codeit/sb13/playlist_for_everyone/global/sse/event/impl/HistorySavingSseEventPublisher.java) | `publish` | JSON 스냅샷을 공유 이력에 저장한 뒤 브로커 발행 |
+| [`DirectMessageServiceImpl`](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/service/impl/DirectMessageServiceImpl.java) | `send` | Saver 호출이 반환된 뒤 WebSocket용 DTO 변환·기존 DM 발행기 호출 |
+
+`getById`와 `findDetailedById`는 요청자 ID를 받지 않는 내부 조회입니다. 이 메서드 자체에 대화방 참여 인가가 있는 것은 아니므로 사용자 요청 경로에서 재사용할 때는 호출부가 접근 권한을 확인해야 합니다.
+
 ## 이벤트와 수신 계약
 
 `DirectMessageCreatedEvent(directMessageId, conversationId, senderId, senderName, receiverId)`는 저장한 메시지 ID·대화방 ID, 인증된 발신자와 상대 수신자, 생성 당시 발신자 이름을 담습니다. 메시지 본문·JPA 엔티티·완성된 알림 문구는 넣지 않습니다.
+
+이벤트의 `senderName`은 생성 시점에 읽은 값이고, SSE의 `MessageDto`는 커밋 후 상세 조회 결과로 만듭니다. 이 둘을 같은 스냅샷으로 취급하지 않습니다. 재연결에 사용하는 스냅샷은 공통 SSE 계층이 DTO를 JSON으로 변환해 이력에 저장한 값입니다.
 
 | 구분 | 계약 |
 | --- | --- |
@@ -40,12 +60,25 @@ flowchart TD
 
 ## 트랜잭션·조회·실패 경계
 
-- Saver의 독립 저장 트랜잭션 안에서 업무 이벤트를 발행합니다. `AFTER_COMMIT, fallbackExecution = false`이므로 커밋 전·롤백·저장 실패·트랜잭션 없는 이벤트에서는 SSE 처리를 실행하지 않습니다.
-- Reader는 새 읽기 전용 트랜잭션에서 송수신자·프로필을 함께 조회합니다. Reader 반환 후 Mapper가 프로필 URL과 DTO를 구성하므로 이 조회 트랜잭션 안에서 외부 파일 저장소를 호출하지 않습니다.
-- 독립 저장이 커밋된 뒤 상위 트랜잭션이 롤백해도 DM과 이미 수행된 SSE 처리는 유지됩니다.
-- 조회·DTO 변환·공통 발행의 `RuntimeException`은 리스너에서 처리합니다. 메시지·대화방·수신자 ID와 예외 종류를 기록하며 본문·예외 메시지는 기록하지 않습니다. 저장된 DM을 취소하거나 새 자동 재시도를 추가하지 않습니다.
-- SSE 처리가 실패해도 기존 WebSocket 발행은 진행합니다. WebSocket 변환·발행이 실패하면 기존 오류 응답 계약을 따르며, 앞선 DM 저장·SSE 처리를 취소하거나 다시 실행하지 않습니다.
-- Redis WebSocket 수신자는 로컬 전달만 담당합니다. 메시지를 재저장하거나 업무 이벤트를 다시 발행하지 않습니다.
+1. Saver가 `REQUIRES_NEW` 저장 트랜잭션을 시작하고 참여 검증·저장·업무 이벤트 발행을 수행합니다. 이때 이벤트가 발행됐다는 사실만으로 DB 커밋을 확정할 수는 없습니다.
+2. Saver 본문이 반환된 뒤 트랜잭션 프록시가 커밋합니다. 리스너의 `AFTER_COMMIT, fallbackExecution = false`에 따라 커밋에 성공했을 때만 후속 처리를 시작합니다.
+3. 리스너가 Reader를 호출하면 새 읽기 전용 트랜잭션에서 메시지·송수신자·프로필을 조회합니다. 미존재 시 `DirectMessageNotFoundException`이 발생합니다.
+4. Reader 호출이 반환된 뒤 Mapper가 프로필 URL과 DTO를 만듭니다. 외부 파일 저장소 호출을 **Reader의 조회 트랜잭션 이후**로 분리한 것이며, 저장 측 커밋 콜백의 자원까지 모두 해제됐다는 뜻은 아닙니다.
+5. 공통 SSE 발행 호출이 끝나거나 리스너가 런타임 실패를 처리하면 Saver 호출이 서비스로 반환됩니다. 이후 서비스가 WebSocket용 DTO를 별도로 만들고 발행합니다.
+
+| 실패·상황 | DB와 SSE 결과 | 이후 처리 |
+| --- | --- | --- |
+| 저장 커밋 실패·롤백 | 해당 저장은 확정되지 않고 SSE 리스너도 실행하지 않음 | 저장 예외가 발생하면 서비스의 WebSocket 단계에 도달하지 않음 |
+| 트랜잭션 없는 이벤트 발행 | 이미 저장된 DM이 있어도 리스너는 처리하지 않음 | 자동 SSE 발행 없음 |
+| 독립 저장 후 상위 트랜잭션 롤백 | 이미 커밋한 DM과 수행된 SSE 처리는 유지 | 상위 롤백으로 되돌리지 않음 |
+| 상세 조회·DTO 변환 실패 | DM은 유지되며 SSE 이력 저장에 도달하지 못함 | 리스너가 `RuntimeException`을 기록하고 WebSocket 단계는 진행 |
+| SSE 이력 저장 실패 | DM은 유지되며 브로커 발행에는 도달하지 못함 | 동일하게 실패를 기록하고 WebSocket 단계는 진행 |
+| 이력 저장 후 SSE 브로커 발행 실패 | DM·저장된 이력은 유지, 실시간 수신은 보장하지 않음 | 보관 정책 내 재연결 복구 가능, 자동 재발행 없음 |
+| WebSocket용 변환·발행 실패 | 이미 저장된 DM과 앞선 SSE 처리 결과는 유지 | 기존 발행 오류 계약으로 전달, 저장·SSE를 다시 실행하지 않음 |
+
+리스너 로그에는 메시지·대화방·수신자 ID와 예외 종류만 남깁니다. 직접 감싼 원인이 있으면 그 예외 종류를 사용하며, 메시지 본문·예외 메시지·스택 트레이스는 남기지 않습니다. 처리 대상은 `RuntimeException`이며 모든 `Throwable`을 포괄하지 않습니다.
+
+Redis WebSocket 수신자는 로컬 전달만 담당합니다. 메시지를 재저장하거나 업무 이벤트를 다시 발행하지 않습니다. 실패 응답의 `persisted=true`와 재전송 판단은 [WebSocket 오류 처리](12-websocket-security-errors.md)를 참고합니다.
 
 ## 이력과 재연결
 
@@ -53,29 +86,9 @@ flowchart TD
 
 이미 읽은 DM도 이력 복구 대상이며, 복구가 DM의 읽음 상태·수정 시각을 바꾸지 않습니다. 이력 저장 전에 실패했거나 보관 범위를 벗어난 메시지는 SSE 복구를 보장하지 않으므로 REST 목록으로 확인합니다. 상세 정책은 [공유 이력](../sse/09-shared-history.md)과 [복구·재시도](../sse/10-recovery-and-retry.md)를 참고합니다.
 
-## dev rebase 후 전체 검증 — 2026-11-18
-
-`dev`의 `888021c4`를 반영한 `dfa9bcf5bd2a3ef73bc62ab76ce887317d88161e`에서 다음 명령을 실행했습니다. #62의 12개 커밋은 충돌 없이 rebase했고, `range-diff`로 내용과 순서가 유지됨을 확인했습니다.
-
-```bash
-./gradlew clean build --no-daemon --no-build-cache
-```
-
-| 항목 | 결과 |
-| --- | --- |
-| 전체 테스트 | 2,350건 중 2,342건 통과, 실패·오류 0건, 건너뜀 8건 |
-| DM 이벤트·SSE 회귀 | 아래 7개 클래스·53건 모두 통과 |
-| Origin·WebSocket 회귀 | Origin 설정·실제 연결·인가·오류 처리 설정 4개 클래스·77건 모두 통과 |
-| 라인 커버리지 | 5,435줄 중 5,125줄, **94.30%** — 기준 80% 통과 |
-| 빌드 | `BUILD SUCCESSFUL in 21m 36s` |
-
-건너뛴 항목은 기존 `@Disabled` 시청 세션 테스트 6건과 환경변수로 활성화하는 외부 API 실호출 테스트 2건입니다. 이번 검증을 위해 테스트를 제외하거나 커버리지 기준을 변경하지 않았습니다. 이 결과는 로컬 전체 빌드의 결과이며, 원격 CI 결과와 구분합니다.
-
-이 전체 실행 이후 PR 준비에서는 문서만 갱신했습니다. 아래 리팩터링·브라우저 검증은 rebase 이전 기록이며, 이번 전체 자동 테스트를 실제 브라우저 재검증으로 해석하지 않습니다.
-
 ## 검증 구성과 실행
 
-| 테스트 클래스 | 검증 범위 | 기존 실행 건수 |
+| 테스트 클래스 | 검증 범위 | 테스트 건수 |
 | --- | --- | ---: |
 | `DirectMessageSaverTest` | 저장 결과로 이벤트 한 번 발행·송수신 방향 | 4 |
 | `DirectMessageReaderTest` | 상세 조회·미존재 예외·실패 전달 | 3 |
@@ -98,28 +111,28 @@ flowchart TD
   --rerun-tasks --no-build-cache
 ```
 
-2026-11-18의 리팩터링 전 기준 `0f75edd9`에서 위 53건 통과를 확인했습니다. 생성 보고서는 `build/reports/tests/test/index.html`, `build/test-results/test/`에 있으며 다음 실행으로 변경될 수 있습니다.
+Docker가 실행 중이어야 PostgreSQL·Redis를 사용하는 통합 테스트가 동작합니다. 위 필터 실행은 #62와 기존 송신 계약의 회귀 범위를 확인하며, 전체 프로젝트 검증은 다음 명령으로 실행합니다.
 
-위 7개 클래스의 자동 테스트는 Testcontainers의 PostgreSQL·Redis를 사용합니다. 서버 간 SSE 검증은 같은 JVM의 독립 Spring 컨텍스트 두 개와 실제 HTTP 수신이며, 별도 컨테이너·브라우저 검증과 구분합니다. 트랜잭션·실패 주입 테스트의 외부 파일 저장소와 발행기는 Mock이며, 실제 SSE 통합 테스트는 프로필 없는 사용자를 사용합니다. 이 필터 실행 자체는 전체 프로젝트 검증이 아니며 전체 실행 결과는 앞 절의 별도 기록을 따릅니다. #159 알림 연동의 통과를 뜻하지 않습니다.
+```bash
+./gradlew clean build --no-daemon --no-build-cache
+```
 
-실제 두 앱·브라우저의 말풍선 중복과 다른 탭 목록 갱신은 [수동 검증 절차와 결과](14-websocket-multi-node.md)에서 별도로 기록합니다.
+테스트 보고서는 `build/reports/tests/test/index.html`·`build/test-results/test/`, 커버리지 보고서는 `build/reports/jacoco/test/`에 생성됩니다. 다음 실행으로 덮어써질 수 있으므로 PR에는 실행한 커밋과 명령, 실제 결과를 함께 남깁니다.
 
-## 리팩터링 후 검증 — 2026-11-18 (rebase 이전)
+### 자동 테스트의 경계
 
-`52dfb42fce63e4cd9c004b56a52d55dc2b9520d4`에서 리스너의 조회·변환·발행을 별도 문장으로 나누고, 기존 기본값인 `AFTER_COMMIT, fallbackExecution = false`와 트랜잭션·실패 경계를 명시했습니다. 이벤트·SSE·REST·WebSocket의 공개 계약은 변경하지 않았습니다.
-
-변경된 코드로 위 필터 명령을 실행해 **7개 클래스·53건 통과, 실패 0·오류 0·건너뜀 0**을 확인했습니다. 17:46 KST에 보고서가 생성됐고 `BUILD SUCCESSFUL in 3m 23s`로 종료됐습니다. 이 절의 커밋 해시는 rebase 이전 실행 당시의 기준이며, 최신 기준은 위 전체 검증 기록입니다.
-
-한글 `@DisplayName`을 확인했으며, 기존 단계별 커밋과 이번 Refactor 커밋을 다음과 같이 추적합니다.
-
-| 기능 | 기존 Red 커밋 | 기존 Green 커밋 |
+| 테스트 계층 | 실제 실행하는 부분 | 구분해서 볼 부분 |
 | --- | --- | --- |
-| 저장 후 생성 이벤트 | `7f31d665` | `7ed49f7c` |
-| 상세 조회의 연관 정보 로딩 | `41f8aef9` | `8f4afb03` |
-| 단건 조회와 예외 전달 | `f2126a35` | `9fd351f6` |
-| SSE 리스너 발행·실패 처리 | `51ef7a0e` | `2453dfac` |
+| Saver·Reader·리스너 단위 테스트 | 메서드 호출 순서·이벤트 값·실패 처리 | 의존성을 Mock으로 대체하므로 실제 DB 커밋·네트워크 전달을 증명하지 않음 |
+| Repository 테스트 | PostgreSQL에서 조회·연관 정보 로딩 | SSE 수신 검증과 별개 |
+| `DirectMessageSseEventIntegrationTest` | PostgreSQL 저장·커밋, 독립 조회, 롤백 및 실패 격리 | 파일 저장소·SSE/WebSocket 발행기는 Mock, Repository는 실제 쿼리를 실행하는 Spy |
+| `DirectMessageSseIntegrationTest` | PostgreSQL·Redis와 인증된 실제 HTTP SSE, STOMP 동시 구독·재연결 | 프로필 없는 사용자 사용, 두 서버는 같은 JVM의 독립 Spring 컨텍스트 |
 
-Refactor는 `52dfb42f`로 별도 커밋했습니다. 위 Red·Green은 기존 이력 확인이며 과거 커밋의 테스트를 이번에 다시 실행했다는 뜻은 아닙니다. 리팩터링 이후의 53건 재실행과 실제 두 앱·브라우저의 양방향 다중 탭 검증은 각각 새로 수행했습니다.
+트랜잭션 테스트는 Reader의 `afterCompletion` 상태를 URL 생성 시점에 기록해 독립 조회가 완료됐는지 확인합니다. 커밋 콜백 안에서는 관찰값을 수집하고 Saver 호출 이후 단언하여 콜백 내부 오류가 테스트 성공으로 오인되지 않게 합니다.
+
+HTTP SSE 테스트는 연결마다 별도 읽기 스레드를 사용합니다. 프레임뿐 아니라 EOF·파싱 실패도 테스트 스레드에 전달하며, 추가 수신 검사는 정해진 관찰 시간 안에서만 중복 여부를 확인합니다. Redis 구독자 수는 전송 준비 조건이고, 성공 여부는 실제 받은 프레임·저장 메시지·이력으로 판단합니다.
+
+브라우저의 말풍선과 다른 탭 목록 갱신은 [수동 검증 절차와 결과](14-websocket-multi-node.md)에서 별도로 확인합니다. 이 자동 테스트 범위에는 #159 알림 저장·전송이 포함되지 않습니다.
 
 ## 후속 알림 연동
 

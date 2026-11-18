@@ -86,6 +86,11 @@ import static org.junit.jupiter.api.Assertions.assertAll;
  * 실제 DM 저장부터 Redis 이력·전송과 HTTP SSE 수신까지 연결한다.
  * 프로필 없는 사용자를 사용하며 서비스·발행기·저장소를 Mock으로 교체하지 않는다.
  * 두 서버는 같은 JVM의 독립 Spring 컨텍스트이며, 업무 이벤트 기록기는 다른 스레드의 발행도 관찰한다.
+ *
+ * <p>JWT와 Redis 로그인 세션을 준비해 실제 인증된 HTTP 스트림을 읽는다. WebSocket 동시 구독 검증은
+ * STOMP 구독 등록을 확인한 뒤 전송하여 연결 준비와 메시지 전달 사이의 경쟁을 피한다.
+ * 재연결은 실제 저장한 DM의 ID를 커서로 사용하며, 복구 DTO와 DB의 읽음 상태를 각각 비교한다.
+ * 브라우저 화면·별도 JVM 배포와 모든 장애 상황의 중복 없는 전달을 검증하는 테스트는 아니다.
  */
 @SpringBootTest(
         classes = {PlaylistForEveryoneApplication.class, DirectMessageSseIntegrationTest.EventProbeConfig.class},
@@ -482,6 +487,7 @@ class DirectMessageSseIntegrationTest {
         }
     }
 
+    /** 구독 준비 완료를 기다리는 용도다. 실제 수신 성공은 이후 HTTP·STOMP 프레임으로 따로 확인한다. */
     private void awaitRedisSubscribers(int expectedCount) {
         String sseChannel = environment.getRequiredProperty("everyone.sse.redis.channel");
         String dmChannel = environment.getRequiredProperty("everyone.dm.websocket.redis.channel");
@@ -532,6 +538,10 @@ class DirectMessageSseIntegrationTest {
         return messages;
     }
 
+    /**
+     * 같은 DB·Redis·JWT 설정을 공유하되 HTTP 포트와 로컬 연결 저장소가 독립적인 두 번째 서버를 만든다.
+     * 서버 B에만 연결된 사용자가 A의 DM을 받는지 확인하며, 별도 프로세스나 Compose 앱을 띄우지는 않는다.
+     */
     private ConfigurableApplicationContext startAdditionalNode() {
         ConfigurableApplicationContext node = new SpringApplicationBuilder(
                 PlaylistForEveryoneApplication.class, EventProbeConfig.class)
@@ -580,6 +590,11 @@ class DirectMessageSseIntegrationTest {
 
     private record SseReadResult(SseFrame frame, Throwable failure) {}
 
+    /**
+     * 연결별 읽기 스레드가 SSE 프레임과 수신 오류를 모두 큐에 전달하는 테스트 클라이언트다.
+     * 읽기 실패를 이벤트 미수신으로 오인하지 않도록 테스트 스레드에서 오류도 검증한다.
+     * 초기 연결 주석과 현재 서버의 id/event/data 프레임 형식을 읽으며 범용 SSE 파서는 아니다.
+     */
     private class SseClient implements AutoCloseable {
         private final HttpURLConnection connection;
         private final BufferedReader reader;
@@ -636,6 +651,7 @@ class DirectMessageSseIntegrationTest {
         private void assertNoMoreEvents() throws IOException {
             // 연결마다 독립적으로 읽어, 여러 연결의 미전달 검증이 소켓 제한 시간만큼 누적되지 않게 한다.
             // EOF·파싱 실패도 큐로 전달되므로 연결 종료를 정상적인 미전달로 취급하지 않는다.
+            // 1초 관찰 구간의 추가 전달 여부만 검증하며 이후의 모든 중복 가능성을 배제하지는 않는다.
             assertThat(poll(1)).as("추가 SSE 프레임 또는 연결 오류가 없어야 한다").isNull();
         }
 
@@ -678,6 +694,7 @@ class DirectMessageSseIntegrationTest {
         }
     }
 
+    /** 요청 스레드와 Redis 수신 스레드의 이벤트를 함께 모아 서버 B의 업무 이벤트 재발행 여부를 확인한다. */
     static class EventProbe {
         private final ConcurrentLinkedQueue<DirectMessageCreatedEvent> events = new ConcurrentLinkedQueue<>();
 
