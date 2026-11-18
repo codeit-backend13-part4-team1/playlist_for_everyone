@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.event.ContentSearchCacheEvictEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.review.dto.condition.ReviewListCondition;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.response.ReviewDto;
@@ -13,6 +14,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.review.repository.ReviewRepo
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.mapper.UserDtoMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
+import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
+import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.review.ReviewAlreadyExistsException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.review.ReviewNotFoundException;
@@ -33,6 +36,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.security.access.AccessDeniedException;
 
 import java.sql.SQLException;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -41,8 +45,7 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("리뷰 서비스 테스트")
@@ -83,6 +86,7 @@ public class ReviewServiceTest {
         ReflectionTestUtils.setField(content, "id", UUID.randomUUID());
     }
 
+    /** 리뷰 생성 테스트 */
     @Test
     @DisplayName("리뷰 생성 시 콘텐츠, 작성자, 텍스트, 평점이 저장되고 캐시 무효화 이벤트를 발행한다.")
     void saveReview() {
@@ -214,6 +218,48 @@ public class ReviewServiceTest {
         then(reviewRepository).shouldHaveNoInteractions();
     }
 
+    /** 리뷰 목록 조회 테스트 */
+    @Test
+    @DisplayName("리뷰 목록을 조회할 수 있다.")
+    void getReviewList() {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        ReviewListCondition condition = new ReviewListCondition(
+                null,
+                null,
+                10,
+                SortDirection.DESCENDING,
+                "createdAt"
+        );
+
+        Review review1 = mock(Review.class);
+        Review review2 = mock(Review.class);
+
+        ReviewDto dto1 = mock(ReviewDto.class);
+        ReviewDto dto2 = mock(ReviewDto.class);
+
+        when(reviewRepository.getReviewsByContentId(contentId, condition))
+                .thenReturn(List.of(review1, review2));
+
+        when(reviewMapper.toDto(review1)).thenReturn(dto1);
+        when(reviewMapper.toDto(review2)).thenReturn(dto2);
+
+        // when
+        CursorResponse<ReviewDto> result =
+                reviewService.getReviews(contentId, condition);
+
+        // then
+        assertThat(result).isNotNull();
+
+        verify(reviewRepository)
+                .getReviewsByContentId(contentId, condition);
+
+        verify(reviewMapper).toDto(review1);
+        verify(reviewMapper).toDto(review2);
+    }
+
+    /** 리뷰 수정 테스트 */
     @Test
     @DisplayName("리뷰 수정 시 텍스트와 평점이 정상적으로 변경되고 캐시 무효화 이벤트를 발행한다.")
     void updateReview() {
@@ -339,6 +385,7 @@ public class ReviewServiceTest {
         then(eventPublisher).shouldHaveNoInteractions();
     }
 
+    /** 리뷰 삭제 테스트 */
     @Test
     @DisplayName("리뷰 작성자가 삭제 요청 시 정상적으로 삭제된다.")
     void deleteReview() {

@@ -1,8 +1,12 @@
 package com.codeit.sb13.playlist_for_everyone.domain.review.service;
 
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentResult;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSearchResult;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.event.ContentSearchCacheEvictEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.review.dto.condition.ReviewListCondition;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.response.ReviewDto;
@@ -11,6 +15,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.review.mapper.ReviewMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.review.repository.ReviewRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
+import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.review.ReviewAlreadyExistsException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.review.ReviewNotFoundException;
@@ -23,6 +28,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import org.springframework.security.access.AccessDeniedException;
+
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -75,6 +82,14 @@ public class ReviewService {
         eventPublisher.publishEvent(new ContentSearchCacheEvictEvent());
 
         return reviewMapper.toDto(savedReview);
+    }
+
+    @Transactional(readOnly = true)
+    public CursorResponse<ReviewDto> getReviews(
+            UUID contentId,
+            ReviewListCondition condition
+    ) {
+        return null;
     }
 
     @Transactional
