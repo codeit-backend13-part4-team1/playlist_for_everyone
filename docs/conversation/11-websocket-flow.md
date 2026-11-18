@@ -48,7 +48,7 @@ sequenceDiagram
 | `DirectMessageWebSocketController` | 입력 검증, 인증된 요청자로 Command 생성, 내부 예외의 요청 세션 전달 |
 | `DirectMessageService` | 저장 → DTO 변환 → 발행 순서 조정 |
 | `DirectMessageSaver` | 독립 쓰기 트랜잭션에서 참여 검증·한 건 저장·생성 이벤트 발행 |
-| `DirectMessageSseEventListener` | 커밋 후 독립 상세 조회·DTO 변환·수신자 SSE 발행. 실패를 기록하여 WebSocket 경로와 격리 |
+| `DirectMessageSseEventListener` | 커밋 후 저장 측 연결을 재사용한 상세 조회·DTO 변환·수신자 SSE 발행. 실패를 기록하여 WebSocket 경로와 격리 |
 | `ConversationReader` | 검증용 일반 조회와 참여자·프로필을 함께 로딩하는 상세 조회 구분 |
 | `DirectMessagePublisher` | 서버 간 전송 계약. 현재 Redis 구현체 사용 |
 | `DirectMessageSubscription` | 서버 단위 브로커 구독의 시작·종료. 브라우저 STOMP 구독과 별개 |
@@ -61,7 +61,9 @@ sequenceDiagram
 
 Saver는 별도 빈의 `REQUIRES_NEW`를 사용합니다. 서비스가 저장 결과를 받는 시점에는 해당 저장 트랜잭션의 커밋이 완료됩니다. 커밋 중 실패하면 DTO 변환·발행으로 진행하지 않습니다. 명시적 flush로 발행 순서를 보장하는 구조가 아닙니다.
 
-현재 생성 이벤트의 SSE 리스너는 동기식 `AFTER_COMMIT` 콜백으로 실행됩니다. 별도 읽기 전용 트랜잭션에서 상세 조회하고 반환 후 SSE용 URL·DTO를 변환합니다. 이 처리가 끝나야 Saver 호출이 반환되며, SSE 처리 실패는 리스너에서 기록하여 뒤따르는 WebSocket 발행을 차단하지 않습니다.
+현재 생성 이벤트의 SSE 리스너는 동기식 `AFTER_COMMIT` 콜백으로 실행됩니다. Reader는 `REQUIRED`로 아직 바인딩된 저장 측 연결을 재사용하여 상세 조회하고, 이후 SSE용 URL·DTO를 변환합니다. 저장 연결을 보유한 채 조회용 두 번째 연결을 기다리지 않도록 한 구조입니다. 이 처리가 끝나야 Saver 호출이 반환되며, SSE 처리 실패는 리스너에서 기록하여 뒤따르는 WebSocket 발행을 차단하지 않습니다.
+
+커밋 완료와 커넥션 반환은 같은 시점이 아닙니다. 현재 동기 콜백의 프로필 URL 생성·SSE 발행 중에도 저장 측 연결이 남을 수 있으며, 이 점유 시간을 줄이는 비동기 전환은 후속 작업입니다. 커밋 후 재사용 조회 경로에는 쓰기를 추가하지 않습니다.
 
 저장용 상세 조회는 두 참여자와 프로필 엔티티를 함께 로딩합니다. URL 생성 자체는 저장 커밋 후 Mapper가 수행합니다. 상위 트랜잭션이 있는 호출에서는 복귀한 상위 트랜잭션의 영향을 구분해야 하지만, 이미 완료된 독립 저장 커밋은 외부 롤백으로 취소되지 않습니다.
 

@@ -29,7 +29,7 @@ flowchart TD
     CHECK --> SAVE["Saver: 참여 확인·DB 저장"]
     SAVE --> EVENT["트랜잭션 안에서 DM 생성 이벤트 발행"]
     EVENT --> COMMIT["독립 트랜잭션 커밋 완료"]
-    COMMIT --> SSE["AFTER_COMMIT: 독립 조회·DTO 변환·SSE 발행 요청"]
+    COMMIT --> SSE["AFTER_COMMIT: 저장 연결 재사용·상세 조회·DTO 변환·SSE 발행 요청"]
     SSE --> RECEIVER["공유 이력·Redis → 수신자 B의 모든 SSE 연결"]
     SSE --> DTO["콜백 종료 후 Service: WebSocket용 DTO·프로필 URL 변환"]
     DTO --> PUB["Publisher: Redis에 JSON 발행"]

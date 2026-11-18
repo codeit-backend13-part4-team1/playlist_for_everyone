@@ -9,6 +9,9 @@ import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.response.Me
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.event.DirectMessageCreatedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.DirectMessageService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserSummary;
+import com.codeit.sb13.playlist_for_everyone.global.exception.sse.SsePublishException;
+import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
+import com.codeit.sb13.playlist_for_everyone.global.sse.event.impl.RedisSseEventPublisher;
 import com.codeit.sb13.playlist_for_everyone.global.sse.history.SseHistoryEntry;
 import com.codeit.sb13.playlist_for_everyone.global.sse.history.SseHistoryStore;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
@@ -18,6 +21,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -45,6 +50,7 @@ import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.web.socket.WebSocketHttpHeaders;
 import org.springframework.web.socket.client.standard.StandardWebSocketClient;
 import org.springframework.web.socket.messaging.WebSocketStompClient;
@@ -81,10 +87,16 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 /**
  * 실제 DM 저장부터 Redis 이력·전송과 HTTP SSE 수신까지 연결한다.
- * 프로필 없는 사용자를 사용하며 서비스·발행기·저장소를 Mock으로 교체하지 않는다.
+ * 프로필 없는 사용자를 사용하며 서비스·이력 저장소와 기본 전송은 실제 구현을 실행한다.
+ * Redis 전송기는 Spy로 감싸고, 전송 실패 복구 사례에서만 해당 발행을 실패시킨다.
  * 두 서버는 같은 JVM의 독립 Spring 컨텍스트이며, 업무 이벤트 기록기는 다른 스레드의 발행도 관찰한다.
  *
  * <p>JWT와 Redis 로그인 세션을 준비해 실제 인증된 HTTP 스트림을 읽는다. WebSocket 동시 구독 검증은
@@ -157,6 +169,8 @@ class DirectMessageSseIntegrationTest {
     private Environment environment;
     @Autowired
     private EventProbe eventProbe;
+    @MockitoSpyBean
+    private RedisSseEventPublisher transportPublisher;
     @LocalServerPort
     private int port;
 
@@ -191,6 +205,7 @@ class DirectMessageSseIntegrationTest {
 
     @AfterEach
     void cleanUp() {
+        // 일반 시나리오는 여기서 닫는다. try-with-resources로 먼저 닫으면 읽기 중인 스트림의 잠금을 기다릴 수 있다.
         // 한 정리가 실패해도 나머지 연결·컨텍스트·데이터 정리를 모두 시도한다.
         List<Executable> cleanups = new ArrayList<>();
         cleanups.add(sseConnectionService::closeAllLocalConnections);
@@ -220,74 +235,71 @@ class DirectMessageSseIntegrationTest {
     @Test
     @DisplayName("실제 저장한 DM을 Redis를 거쳐 이벤트 ID와 DTO가 보존된 SSE로 수신하고 미읽음 상태를 유지한다.")
     void deliversSavedDirectMessageThroughRedisToSse() throws IOException {
-        try (SseClient receiver = openSse(receiverToken)) {
-            MessageDto saved = send("실제 SSE로 전달할 메시지");
-            ReadState before = readState(saved.id());
+        SseClient receiver = openSse(receiverToken);
+        MessageDto saved = send("실제 SSE로 전달할 메시지");
+        ReadState before = readState(saved.id());
 
-            assertFrame(receiver.readFrame(), saved.id(), messageJson(saved.id()));
+        assertFrame(receiver.readFrame(), saved.id(), messageJson(saved.id()));
 
-            assertThat(before.read()).isFalse();
-            assertThat(readState(saved.id())).isEqualTo(before);
-            assertMessageIds(saved.id());
-            assertHistoryIds(receiverId, saved.id());
-            assertCreatedEventOnce(eventProbe, saved.id());
-            receiver.assertNoMoreEvents();
-        }
+        assertThat(before.read()).isFalse();
+        assertThat(readState(saved.id())).isEqualTo(before);
+        assertMessageIds(saved.id());
+        assertHistoryIds(receiverId, saved.id());
+        assertCreatedEventOnce(eventProbe, saved.id());
+        receiver.assertNoMoreEvents();
     }
 
     @Test
     @DisplayName("DM은 수신자의 모든 SSE 연결에 한 번씩 전달되고 발신자와 다른 사용자에게는 전달되지 않는다.")
     void deliversOnlyToAllReceiverConnections() throws IOException {
-        try (SseClient receiverOne = openSse(receiverToken);
-             SseClient receiverTwo = openSse(receiverToken);
-             SseClient sender = openSse(senderToken);
-             SseClient other = openSse(otherToken)) {
-            assertThat(emitterRepository.findAllByUserId(receiverId)).hasSize(2);
-            MessageDto saved = send("수신자의 여러 탭에 전달할 메시지");
-            JsonNode expected = messageJson(saved.id());
-            ReadState before = readState(saved.id());
+        SseClient receiverOne = openSse(receiverToken);
+        SseClient receiverTwo = openSse(receiverToken);
+        SseClient sender = openSse(senderToken);
+        SseClient other = openSse(otherToken);
+        assertThat(emitterRepository.findAllByUserId(receiverId)).hasSize(2);
+        MessageDto saved = send("수신자의 여러 탭에 전달할 메시지");
+        JsonNode expected = messageJson(saved.id());
+        ReadState before = readState(saved.id());
 
-            assertFrame(receiverOne.readFrame(), saved.id(), expected);
-            assertFrame(receiverTwo.readFrame(), saved.id(), expected);
-            receiverOne.assertNoMoreEvents();
-            receiverTwo.assertNoMoreEvents();
-            sender.assertNoMoreEvents();
-            other.assertNoMoreEvents();
+        assertFrame(receiverOne.readFrame(), saved.id(), expected);
+        assertFrame(receiverTwo.readFrame(), saved.id(), expected);
+        receiverOne.assertNoMoreEvents();
+        receiverTwo.assertNoMoreEvents();
+        sender.assertNoMoreEvents();
+        other.assertNoMoreEvents();
 
-            assertMessageIds(saved.id());
-            assertHistoryIds(receiverId, saved.id());
-            assertHistoryIds(senderId);
-            assertHistoryIds(otherUserId);
-            assertThat(before.read()).isFalse();
-            assertThat(readState(saved.id())).isEqualTo(before);
-        }
+        assertMessageIds(saved.id());
+        assertHistoryIds(receiverId, saved.id());
+        assertHistoryIds(senderId);
+        assertHistoryIds(otherUserId);
+        assertThat(before.read()).isFalse();
+        assertThat(readState(saved.id())).isEqualTo(before);
     }
 
     @Test
     @DisplayName("수신자가 WebSocket으로 대화를 구독해도 SSE를 수신하며 DM 저장과 업무 이벤트 및 이력은 중복되지 않는다.")
     void deliversSseWhileReceiverSubscribesToWebSocket() throws Exception {
         BlockingQueue<MessageDto> webSocketMessages = subscribeReceiverToConversation();
-        try (SseClient receiver = openSse(receiverToken)) {
-            MessageDto saved = send("WebSocket과 SSE로 전달할 메시지");
-            ReadState before = readState(saved.id());
+        SseClient receiver = openSse(receiverToken);
+        MessageDto saved = send("WebSocket과 SSE로 전달할 메시지");
+        ReadState before = readState(saved.id());
 
-            assertFrame(receiver.readFrame(), saved.id(), messageJson(saved.id()));
-            MessageDto webSocketMessage = webSocketMessages.poll(10, TimeUnit.SECONDS);
-            assertThat(webSocketMessage).isNotNull();
-            assertThat(webSocketMessage.id()).isEqualTo(saved.id());
-            assertThat(webSocketMessage.conversationId()).isEqualTo(conversationId);
-            assertThat(webSocketMessage.sender().userId()).isEqualTo(senderId);
-            assertThat(webSocketMessage.receiver().userId()).isEqualTo(receiverId);
-            assertThat(webSocketMessage.content()).isEqualTo(saved.content());
-            receiver.assertNoMoreEvents();
-            assertThat(webSocketMessages.poll(1, TimeUnit.SECONDS)).isNull();
+        assertFrame(receiver.readFrame(), saved.id(), messageJson(saved.id()));
+        MessageDto webSocketMessage = webSocketMessages.poll(10, TimeUnit.SECONDS);
+        assertThat(webSocketMessage).isNotNull();
+        assertThat(webSocketMessage.id()).isEqualTo(saved.id());
+        assertThat(webSocketMessage.conversationId()).isEqualTo(conversationId);
+        assertThat(webSocketMessage.sender().userId()).isEqualTo(senderId);
+        assertThat(webSocketMessage.receiver().userId()).isEqualTo(receiverId);
+        assertThat(webSocketMessage.content()).isEqualTo(saved.content());
+        receiver.assertNoMoreEvents();
+        assertThat(webSocketMessages.poll(1, TimeUnit.SECONDS)).isNull();
 
-            assertMessageIds(saved.id());
-            assertHistoryIds(receiverId, saved.id());
-            assertCreatedEventOnce(eventProbe, saved.id());
-            assertThat(before.read()).isFalse();
-            assertThat(readState(saved.id())).isEqualTo(before);
-        }
+        assertMessageIds(saved.id());
+        assertHistoryIds(receiverId, saved.id());
+        assertCreatedEventOnce(eventProbe, saved.id());
+        assertThat(before.read()).isFalse();
+        assertThat(readState(saved.id())).isEqualTo(before);
     }
 
     @Test
@@ -307,11 +319,10 @@ class DirectMessageSseIntegrationTest {
         jdbcTemplate.update("UPDATE users SET nickname = ? WHERE id = ?", "변경된 발신자", senderId);
         assertThat(persistedMessage(first.id()).sender().name()).isEqualTo("변경된 발신자");
 
-        try (SseClient receiver = openSse(receiverToken, port, lastEventId)) {
-            assertFrame(receiver.readFrame(), first.id(), snapshots.get(0).event().data());
-            assertFrame(receiver.readFrame(), second.id(), snapshots.get(1).event().data());
-            receiver.assertNoMoreEvents();
-        }
+        SseClient receiver = openSse(receiverToken, port, lastEventId);
+        assertFrame(receiver.readFrame(), first.id(), snapshots.get(0).event().data());
+        assertFrame(receiver.readFrame(), second.id(), snapshots.get(1).event().data());
+        receiver.assertNoMoreEvents();
 
         assertMessageIds(lastEventId, first.id(), second.id());
         assertHistoryIds(receiverId, lastEventId, first.id(), second.id());
@@ -333,10 +344,9 @@ class DirectMessageSseIntegrationTest {
         assertThat(before.read()).isTrue();
         assertThat(before.updatedAt()).isNotNull();
 
-        try (SseClient receiver = openSse(receiverToken, port, lastEventId)) {
-            assertFrame(receiver.readFrame(), saved.id(), originalSnapshot);
-            receiver.assertNoMoreEvents();
-        }
+        SseClient receiver = openSse(receiverToken, port, lastEventId);
+        assertFrame(receiver.readFrame(), saved.id(), originalSnapshot);
+        receiver.assertNoMoreEvents();
 
         assertThat(readState(saved.id())).isEqualTo(before);
         assertMessageIds(lastEventId, saved.id());
@@ -354,22 +364,62 @@ class DirectMessageSseIntegrationTest {
         assertThat(emittersB).isNotSameAs(emitterRepository);
         awaitRedisSubscribers(2);
 
-        try (SseClient receiver = openSse(receiverToken, portB, null)) {
-            assertThat(emitterRepository.findAllByUserId(receiverId)).isEmpty();
-            assertThat(emittersB.findAllByUserId(receiverId)).hasSize(1);
-            MessageDto saved = send("A에서 B로 전달할 DM");
-            ReadState before = readState(saved.id());
+        SseClient receiver = openSse(receiverToken, portB, null);
+        assertThat(emitterRepository.findAllByUserId(receiverId)).isEmpty();
+        assertThat(emittersB.findAllByUserId(receiverId)).hasSize(1);
+        MessageDto saved = send("A에서 B로 전달할 DM");
+        ReadState before = readState(saved.id());
 
-            assertFrame(receiver.readFrame(), saved.id(), messageJson(saved.id()));
-            receiver.assertNoMoreEvents();
+        assertFrame(receiver.readFrame(), saved.id(), messageJson(saved.id()));
+        receiver.assertNoMoreEvents();
 
-            assertMessageIds(saved.id());
-            assertHistoryIds(receiverId, saved.id());
-            assertCreatedEventOnce(eventProbe, saved.id());
-            assertThat(nodeB.getBean(EventProbe.class).eventsFor(conversationId)).isEmpty();
-            assertThat(before.read()).isFalse();
-            assertThat(readState(saved.id())).isEqualTo(before);
+        assertMessageIds(saved.id());
+        assertHistoryIds(receiverId, saved.id());
+        assertCreatedEventOnce(eventProbe, saved.id());
+        assertThat(nodeB.getBean(EventProbe.class).eventsFor(conversationId)).isEmpty();
+        assertThat(before.read()).isFalse();
+        assertThat(readState(saved.id())).isEqualTo(before);
+    }
+
+    @ParameterizedTest(name = "재연결 전 읽음 상태: {0}")
+    @ValueSource(booleans = {false, true})
+    @DisplayName("이력 저장 후 Redis 발행이 실패해도 같은 DM을 한 번 복구하고 읽음 상태와 수정 시각을 유지한다.")
+    void replaysStoredHistoryAfterTransportFailure(boolean readBeforeReconnect) throws IOException {
+        UUID cursor = receiveCursorAndDisconnect();
+        SsePublishException failure = new SsePublishException(new IllegalStateException("테스트용 Redis 전송 실패"));
+        MessageDto saved;
+        doThrow(failure).when(transportPublisher).publish(any(SseEvent.class));
+        try {
+            // 공통 HistorySavingSseEventPublisher와 Redis 이력 저장은 실제로 실행한다.
+            saved = send("이력은 저장됐지만 실시간 전송은 실패한 메시지");
+        } finally {
+            doCallRealMethod().when(transportPublisher).publish(any(SseEvent.class));
         }
+
+        List<SseHistoryEntry> snapshots = historyStore.snapshot(receiverId, cursor).entries();
+        assertThat(snapshots).hasSize(1);
+        SseEvent<?> storedEvent = snapshots.get(0).event();
+        assertThat(storedEvent.eventId()).isEqualTo(saved.id());
+        assertThat(storedEvent.data()).isEqualTo(messageJson(saved.id()));
+        verify(transportPublisher, times(1)).publish(storedEvent);
+        assertThat(emitterRepository.findAllByUserId(receiverId)).isEmpty();
+
+        if (readBeforeReconnect) {
+            directMessageService.read(new DirectMessageReadCommand(conversationId, saved.id(), receiverId));
+        }
+        ReadState before = readState(saved.id());
+        assertThat(before.read()).isEqualTo(readBeforeReconnect);
+        SseClient receiver = openSse(receiverToken, port, cursor);
+        assertFrame(receiver.readFrame(), saved.id(), snapshots.get(0).event().data());
+        receiver.assertNoMoreEvents();
+
+        assertMessageIds(cursor, saved.id());
+        assertHistoryIds(receiverId, cursor, saved.id());
+        assertThat(eventProbe.eventsFor(conversationId)).extracting(DirectMessageCreatedEvent::directMessageId)
+                .containsExactly(cursor, saved.id());
+        assertThat(readState(saved.id())).isEqualTo(before);
+        // 재연결은 이력을 읽을 뿐, 실패한 Redis 신호를 자동으로 재발행하지 않는다.
+        verify(transportPublisher, times(1)).publish(storedEvent);
     }
 
     private MessageDto send(String content) {

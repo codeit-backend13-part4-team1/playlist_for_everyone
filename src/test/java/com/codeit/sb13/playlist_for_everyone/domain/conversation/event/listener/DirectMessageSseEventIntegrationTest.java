@@ -19,7 +19,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.mockito.stubbing.Answer;
+import org.mockito.InOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationEventPublisher;
@@ -35,8 +35,6 @@ import org.springframework.test.context.event.ApplicationEvents;
 import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -44,8 +42,6 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -54,7 +50,7 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.mockingDetails;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -64,12 +60,12 @@ import static org.mockito.Mockito.when;
 
 /**
  * 실제 저장 트랜잭션과 커밋 후 SSE 리스너를 연결하고, 외부 파일 조회·전송만 Mock으로 분리한다.
- * Repository Spy는 실제 조회를 수행하며 조회 여부와 읽기 트랜잭션의 완료 시점을 관찰한다.
+ * Repository Spy는 실제 조회를 수행하며, 상세 조회·프로필 URL 생성·발행 순서를 관찰한다.
  * 커밋 후 콜백의 단언 실패가 Spring 내부에 흡수되지 않도록 관찰값은 저장 호출이 끝난 뒤 검증한다.
  *
  * <p>클래스 전체를 테스트 트랜잭션으로 감싸지 않고, 롤백·상위 트랜잭션 시나리오마다 TransactionTemplate을 사용한다.
- * 따라서 실제 커밋 여부와 AFTER_COMMIT 실행 시점을 구분할 수 있다. URL 생성 시에는 Reader 트랜잭션의
- * afterCompletion 상태를 확인하며, 이 시점에 스레드의 모든 트랜잭션 자원이 해제됐다고 가정하지 않는다.
+ * 따라서 실제 커밋 여부와 AFTER_COMMIT 실행 시점을 구분할 수 있다. Reader가 반환되어도 콜백의 저장 측
+ * 자원이 해제됐다고 가정하지 않는다.
  * Redis 전송·HTTP 수신은 별도의 DirectMessageSseIntegrationTest에서 검증한다.
  */
 @RecordApplicationEvents
@@ -272,51 +268,18 @@ class DirectMessageSseEventIntegrationTest {
     }
 
     @Test
-    @DisplayName("새 읽기 전용 트랜잭션에서 상세 조회하고 조회 트랜잭션 종료 후 프로필 URL과 SSE DTO를 구성한다.")
-    void save_convertsProfileAfterReadTransactionCompletes() {
+    @DisplayName("커밋 후 메시지를 상세 조회한 뒤 프로필 URL과 SSE DTO를 구성해 발행한다.")
+    void save_convertsDetailedMessageToSseAfterCommit() {
         insertReceiverProfileImage();
         String profileImageUrl = "https://example.com/profile.png";
-        AtomicBoolean readTransactionActive = new AtomicBoolean();
-        AtomicBoolean readOnly = new AtomicBoolean();
-        AtomicInteger completionStatus = new AtomicInteger(TransactionSynchronization.STATUS_UNKNOWN);
-        AtomicReference<Integer> completionAtUrlCreation = new AtomicReference<>();
-        AtomicReference<Integer> completionAtPublish = new AtomicReference<>();
-        Answer<?> actualRepositoryQuery = mockingDetails(directMessageRepository)
-                .getMockCreationSettings().getDefaultAnswer();
-
-        doAnswer(invocation -> {
-            readTransactionActive.set(TransactionSynchronizationManager.isActualTransactionActive());
-            readOnly.set(TransactionSynchronizationManager.isCurrentTransactionReadOnly());
-            if (TransactionSynchronizationManager.isSynchronizationActive()) {
-                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                    @Override
-                    public void afterCompletion(int status) {
-                        completionStatus.set(status);
-                    }
-                });
-            }
-            // Spring Data의 인터페이스 메서드는 기본 Answer를 통해 원본 Repository 프록시로 위임한다.
-            return actualRepositoryQuery.answer(invocation);
-        }).when(directMessageRepository).findDetailedById(any(UUID.class));
-
-        when(fileStorage.getFileUrl(profileImageKey)).thenAnswer(invocation -> {
-            // 이후 값이 바뀌어도 변환 시점의 완료 상태를 검증할 수 있도록 복사한다.
-            completionAtUrlCreation.set(completionStatus.get());
-            return profileImageUrl;
-        });
-        doAnswer(invocation -> {
-            completionAtPublish.set(completionStatus.get());
-            return null;
-        }).when(sseEventPublisher).publish(any());
+        when(fileStorage.getFileUrl(profileImageKey)).thenReturn(profileImageUrl);
 
         DirectMessage saved = directMessageSaver.save(command("프로필이 포함된 메시지"));
 
-        assertThat(readTransactionActive.get()).isTrue();
-        assertThat(readOnly.get()).isTrue();
-        assertThat(completionAtUrlCreation.get()).isEqualTo(TransactionSynchronization.STATUS_COMMITTED);
-        assertThat(completionAtPublish.get()).isEqualTo(TransactionSynchronization.STATUS_COMMITTED);
-        verify(directMessageRepository).findDetailedById(saved.getId());
-        verify(fileStorage).getFileUrl(profileImageKey);
+        InOrder order = inOrder(directMessageRepository, fileStorage, sseEventPublisher);
+        order.verify(directMessageRepository).findDetailedById(saved.getId());
+        order.verify(fileStorage).getFileUrl(profileImageKey);
+        order.verify(sseEventPublisher).publish(any());
         verifyNoMoreInteractions(fileStorage);
 
         SseEvent<?> published = onlyPublishedEvent();

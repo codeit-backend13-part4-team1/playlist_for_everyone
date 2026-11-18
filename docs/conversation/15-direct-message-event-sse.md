@@ -10,7 +10,7 @@ flowchart TD
     SAVE --> EVENT["트랜잭션 안에서 DirectMessageCreatedEvent 발행"]
     EVENT --> COMMIT["DB 커밋"]
     COMMIT --> LISTENER["AFTER_COMMIT 리스너"]
-    LISTENER --> READ["Reader: REQUIRES_NEW 읽기 전용 상세 조회"]
+    LISTENER --> READ["Reader: REQUIRED로 저장 측 연결 재사용·상세 조회"]
     READ --> MAP["조회 반환 후 MessageDto·프로필 URL 변환"]
     MAP --> SSE["공통 SSE 발행: 수신자 이력 저장 → Redis 신호"]
     SSE --> RECEIVE["수신자의 모든 SSE 연결: direct-messages"]
@@ -31,7 +31,7 @@ flowchart TD
 | [`DirectMessageSaver`](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/service/impl/DirectMessageSaver.java) | `save` | 참여 여부를 확인하고 실제 송수신자를 결정해 DM 저장 및 생성 이벤트 발행 |
 | [`DirectMessageCreatedEvent`](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/event/DirectMessageCreatedEvent.java) | record | 저장한 메시지·대화방·송수신자 ID와 발신자 이름 스냅샷 전달 |
 | [`DirectMessageSseEventListener`](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/event/listener/DirectMessageSseEventListener.java) | `handleDirectMessageCreated` | 커밋 후 조회 → DTO 변환 → 공통 SSE 발행, 단계별 런타임 실패 처리 |
-| [`DirectMessageReader`](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/service/impl/DirectMessageReader.java) | `getById` | 독립 읽기 전용 트랜잭션과 메시지 미존재 예외 처리 |
+| [`DirectMessageReader`](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/service/impl/DirectMessageReader.java) | `getById` | REQUIRED로 저장 측 자원을 재사용한 조회와 메시지 미존재 예외 처리 |
 | [`DirectMessageRepository`](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/repository/DirectMessageRepository.java) | `findDetailedById` | EntityGraph로 송수신자·프로필을 함께 로딩 |
 | [`DirectMessageMapper`](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/conversation/mapper/DirectMessageMapper.java) | `toMessageDto` | 조회 결과로 사용자 요약·프로필 URL·메시지 응답 구성 |
 | [`SseEvent`](../../src/main/java/com/codeit/sb13/playlist_for_everyone/global/sse/event/SseEvent.java) | `createDirectMessageEvent` | 기존 메시지 ID와 DTO를 `direct-messages` 내부 전달 형식으로 감쌈 |
@@ -62,9 +62,13 @@ flowchart TD
 
 1. Saver가 `REQUIRES_NEW` 저장 트랜잭션을 시작하고 참여 검증·저장·업무 이벤트 발행을 수행합니다. 이때 이벤트가 발행됐다는 사실만으로 DB 커밋을 확정할 수는 없습니다.
 2. Saver 본문이 반환된 뒤 트랜잭션 프록시가 커밋합니다. 리스너의 `AFTER_COMMIT, fallbackExecution = false`에 따라 커밋에 성공했을 때만 후속 처리를 시작합니다.
-3. 리스너가 Reader를 호출하면 새 읽기 전용 트랜잭션에서 메시지·송수신자·프로필을 조회합니다. 미존재 시 `DirectMessageNotFoundException`이 발생합니다.
-4. Reader 호출이 반환된 뒤 Mapper가 프로필 URL과 DTO를 만듭니다. 외부 파일 저장소 호출을 **Reader의 조회 트랜잭션 이후**로 분리한 것이며, 저장 측 커밋 콜백의 자원까지 모두 해제됐다는 뜻은 아닙니다.
+3. 리스너가 Reader를 호출하면 `REQUIRED`로 아직 바인딩된 저장 측 EntityManager·커넥션을 재사용해 메시지·송수신자·프로필을 조회합니다. 조회용 두 번째 커넥션을 기다리지 않으며, 미존재 시 `DirectMessageNotFoundException`이 발생합니다.
+4. 상세 조회 후 Mapper가 프로필 URL과 DTO를 만듭니다. **Reader 반환이 저장 커넥션 반환을 뜻하지는 않습니다.** 동기 콜백의 외부 파일 저장소 호출·SSE 발행 동안에도 저장 측 연결이 남을 수 있습니다.
 5. 공통 SSE 발행 호출이 끝나거나 리스너가 런타임 실패를 처리하면 Saver 호출이 서비스로 반환됩니다. 이후 서비스가 WebSocket용 DTO를 별도로 만들고 발행합니다.
+
+`getById`의 `readOnly = true`는 새 트랜잭션이 필요할 때 적용됩니다. 커밋 후 기존 자원을 재사용하는 호출에서 독립적인 읽기 전용 트랜잭션을 보장하지 않습니다. 이 경로는 조회만 수행하며, 후속 커밋이 필요한 쓰기를 추가하면 별도의 경계를 설계해야 합니다.
+
+현재 수정은 **저장 연결을 보유한 채 추가 조회 연결을 기다리는 구조**를 제거합니다. 외부 호출 동안의 연결 점유 시간 단축과 Executor·큐·작업 거절 정책은 후속 비동기 전환에서 다룹니다.
 
 | 실패·상황 | DB와 SSE 결과 | 이후 처리 |
 | --- | --- | --- |
@@ -90,14 +94,14 @@ Redis WebSocket 수신자는 로컬 전달만 담당합니다. 메시지를 재�
 
 | 테스트 클래스 | 검증 범위 | 테스트 건수 |
 | --- | --- | ---: |
-| `DirectMessageSaverTest` | 저장 결과로 이벤트 한 번 발행·송수신 방향 | 4 |
+| `DirectMessageSaverTest` | 실제 저장 인자의 송수신 방향·본문, 저장 이후 이벤트 한 번 발행 | 4 |
 | `DirectMessageReaderTest` | 상세 조회·미존재 예외·실패 전달 | 3 |
 | `DirectMessageRepositoryTest` | 영속성·상세 조회의 사용자·프로필 로딩 | 15 |
 | `DirectMessageSseEventListenerTest` | 조회→변환→발행 순서와 각 단계 실패 처리 | 4 |
 | `DirectMessageSseEventIntegrationTest` | 실제 저장·트랜잭션·SSE/WebSocket 양방향 실패 격리 | 11 |
-| `DirectMessageSseIntegrationTest` | Redis·실제 HTTP SSE·수신자 다중 연결·재연결·서버 간 전달 | 6 |
+| `DirectMessageSseIntegrationTest` | Redis·실제 HTTP SSE·다중 연결·서버 간 전달·전송 실패 후 이력 복구 | 8 |
 | `DirectMessageSendServiceIntegrationTest` | 기존 저장·WebSocket 송신 계약 | 10 |
-| **합계** | **7개 클래스** | **53** |
+| **합계** | **7개 클래스** | **55** |
 
 ```bash
 ./gradlew test \
@@ -125,12 +129,14 @@ Docker가 실행 중이어야 PostgreSQL·Redis를 사용하는 통합 테스트
 | --- | --- | --- |
 | Saver·Reader·리스너 단위 테스트 | 메서드 호출 순서·이벤트 값·실패 처리 | 의존성을 Mock으로 대체하므로 실제 DB 커밋·네트워크 전달을 증명하지 않음 |
 | Repository 테스트 | PostgreSQL에서 조회·연관 정보 로딩 | SSE 수신 검증과 별개 |
-| `DirectMessageSseEventIntegrationTest` | PostgreSQL 저장·커밋, 독립 조회, 롤백 및 실패 격리 | 파일 저장소·SSE/WebSocket 발행기는 Mock, Repository는 실제 쿼리를 실행하는 Spy |
-| `DirectMessageSseIntegrationTest` | PostgreSQL·Redis와 인증된 실제 HTTP SSE, STOMP 동시 구독·재연결 | 프로필 없는 사용자 사용, 두 서버는 같은 JVM의 독립 Spring 컨텍스트 |
-
-트랜잭션 테스트는 Reader의 `afterCompletion` 상태를 URL 생성 시점에 기록해 독립 조회가 완료됐는지 확인합니다. 커밋 콜백 안에서는 관찰값을 수집하고 Saver 호출 이후 단언하여 콜백 내부 오류가 테스트 성공으로 오인되지 않게 합니다.
+| `DirectMessageSseEventIntegrationTest` | PostgreSQL 저장·커밋, 상세 조회·변환 순서, 롤백 및 실패 격리 | 파일 저장소·SSE/WebSocket 발행기는 Mock, Repository는 실제 쿼리를 실행하는 Spy |
+| `DirectMessageSseIntegrationTest` | PostgreSQL·Redis와 인증된 실제 HTTP SSE, STOMP 동시 구독·재연결 | 프로필 없는 사용자 사용, 두 서버는 같은 JVM의 독립 Spring 컨텍스트. 전송 실패 사례만 Redis 전송 Spy에 실패 주입 |
 
 HTTP SSE 테스트는 연결마다 별도 읽기 스레드를 사용합니다. 프레임뿐 아니라 EOF·파싱 실패도 테스트 스레드에 전달하며, 추가 수신 검사는 정해진 관찰 시간 안에서만 중복 여부를 확인합니다. Redis 구독자 수는 전송 준비 조건이고, 성공 여부는 실제 받은 프레임·저장 메시지·이력으로 판단합니다.
+
+일반 시나리오의 연결은 `@AfterEach`에서 서버 A/B의 SSE를 먼저 종료한 뒤 HTTP 클라이언트·수신 스레드를 정리합니다. 재연결 준비에서도 서버 종료를 먼저 수행합니다. 소켓 읽기 제한 시간과 스레드 종료 확인은 유지합니다.
+
+전송 실패 복구 테스트는 공통 이력 저장기를 그대로 실행하고 Redis 전송 단계만 실패시킵니다. 실제 DM을 커서로 사용해 재연결했을 때 실패한 메시지가 원래 ID·DTO로 한 번 복구되는지, 미읽음·읽음 각각의 상태와 수정 시각이 유지되는지 확인합니다. 기존 발행기 진입 실패 테스트와 구분합니다.
 
 브라우저의 말풍선과 다른 탭 목록 갱신은 [수동 검증 절차와 결과](14-websocket-multi-node.md)에서 별도로 확인합니다. 이 자동 테스트 범위에는 #159 알림 저장·전송이 포함되지 않습니다.
 

@@ -70,7 +70,7 @@
 
 실행한 클래스·테스트 이름, 실패·오류·건너뜀은 `build/reports/tests/test/index.html`과 `build/test-results/test/`에서 확인합니다. 클래스 수만으로 테스트 실행 완료를 판단하지 않습니다.
 
-[기존 공통 테스트 기록](04-testing.md#기존-검증-기록)과 [조회·읽음 기록](09-direct-message-testing.md)은 당시 범위를 유지합니다. #62의 7개 클래스 실행 결과는 [DM 이벤트·SSE 가이드](15-direct-message-event-sse.md)에 기록하며, 전체 WebSocket·프로젝트 테스트 통과 수치와 구분합니다. 일부 테스트의 JaCoCo 결과를 프로젝트 전체 커버리지로 해석하지 않습니다.
+[기존 공통 테스트 기록](04-testing.md#기존-검증-기록)과 [조회·읽음 기록](09-direct-message-testing.md)은 당시 범위를 유지합니다. #62의 회귀 테스트 구성과 실행 방법은 [DM 이벤트·SSE 가이드](15-direct-message-event-sse.md#검증-구성과-실행)를 참고하며, 전체 WebSocket·프로젝트 테스트 통과 수치와 구분합니다. 일부 테스트의 JaCoCo 결과를 프로젝트 전체 커버리지로 해석하지 않습니다.
 
 ---
 

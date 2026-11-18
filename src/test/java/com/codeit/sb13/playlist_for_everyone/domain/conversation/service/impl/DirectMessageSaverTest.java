@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -80,8 +81,15 @@ class DirectMessageSaverTest {
 
         DirectMessageCreatedEvent expectedEvent = new DirectMessageCreatedEvent(directMessageId, conversationId, sender.getId(), sender.getName(), receiver.getId());
         InOrder order = inOrder(directMessageRepository, eventPublisher);
-        order.verify(directMessageRepository).save(any(DirectMessage.class));
+        ArgumentCaptor<DirectMessage> savedArgument = ArgumentCaptor.forClass(DirectMessage.class);
+        order.verify(directMessageRepository).save(savedArgument.capture());
         order.verify(eventPublisher).publishEvent(expectedEvent);
+
+        DirectMessage submitted = savedArgument.getValue();
+        assertThat(submitted.getConversationId()).isEqualTo(conversationId);
+        assertThat(submitted.getSenderId()).isEqualTo(sender.getId());
+        assertThat(submitted.getReceiverId()).isEqualTo(receiver.getId());
+        assertThat(submitted.getContent()).isEqualTo(command.content());
 
         verifyNoMoreInteractions(directMessageRepository, eventPublisher);
     }

@@ -6,7 +6,6 @@ import com.codeit.sb13.playlist_for_everyone.domain.conversation.repository.Dire
 import com.codeit.sb13.playlist_for_everyone.global.exception.conversation.DirectMessageNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -20,9 +19,9 @@ import java.util.UUID;
  * 목록과 개수는 별도 메서드 호출이며, 두 조회가 항상 같은 시점의 데이터를 본다고 보장하지 않는다.
  * 대화방 참여 검증과 다음 커서·응답 구성은 호출한 서비스가 담당한다.
  *
- * <p>단건 조회는 REQUIRES_NEW를 사용하여 별도의 읽기 전용 트랜잭션으로 실행한다.
- * 저장 커밋 이후 이벤트 처리에서도 새 트랜잭션으로 메시지와 사용자·프로필을 조회할 수 있다.
- * 조회 결과의 DTO 변환과 SSE 발행은 이 메서드가 반환된 뒤 호출한 쪽에서 수행한다.
+ * <p>단건 조회도 REQUIRED를 사용한다. 동기식 AFTER_COMMIT 콜백에서는 아직 바인딩된 저장 측 자원을
+ * 재사용하여, 저장 연결을 보유한 채 두 번째 연결을 기다리는 상황을 피한다.
+ * 조회 결과의 DTO 변환과 SSE 발행은 호출자가 수행하며, 콜백이 끝나기 전 저장 연결이 반환된다고 보장하지 않는다.
  */
 @Component
 @RequiredArgsConstructor
@@ -43,17 +42,17 @@ public class DirectMessageReader {
     }
 
     /**
-     * 커밋 후 이벤트 처리에 필요한 메시지·송수신자·프로필을 독립 읽기 트랜잭션에서 조회한다.
-     * 저장 측 트랜잭션에 참여하지 않으며, 반환 이후의 DTO·프로필 URL 변환은 호출자가 수행한다.
+     * 커밋 후 이벤트 처리에 필요한 메시지·송수신자·프로필을 함께 조회한다.
+     * REQUIRED이므로 상위 트랜잭션이 없으면 읽기 전용 트랜잭션을 시작하고, 있으면 참여한다.
+     * 동기식 커밋 후 콜백에서는 정리 전 저장 측 자원을 재사용한다.
+     * 커밋 후 콜백에서는 새 물리 트랜잭션이나 readOnly 속성 변경을 보장하지 않으며 조회만 수행한다.
+     * 이 경로에 쓰기를 추가하면 후속 커밋이 없으므로 별도의 트랜잭션 경계를 설계해야 한다.
      *
      * <p>메시지 ID로 조회하는 내부 처리용 메서드이며 요청자의 대화방 참여 여부를 검증하지 않는다.
      * 사용자 요청에서 호출한다면 호출자가 접근 권한을 먼저 확인해야 한다.
      * 미존재 시 DirectMessageNotFoundException을 던지고, 조회 실패의 처리 여부는 호출자가 결정한다.
      */
-    @Transactional(
-            propagation = Propagation.REQUIRES_NEW,
-            readOnly = true
-    )
+    @Transactional(readOnly = true)
     public DirectMessage getById(UUID directMessageId){
         return directMessageRepository.findDetailedById(directMessageId)
                 .orElseThrow(() -> new DirectMessageNotFoundException(
