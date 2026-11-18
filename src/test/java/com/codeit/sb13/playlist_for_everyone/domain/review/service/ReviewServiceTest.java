@@ -14,8 +14,10 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.mapper.UserDtoMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.review.ReviewAlreadyExistsException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.review.ReviewNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -25,9 +27,12 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import org.springframework.security.access.AccessDeniedException;
+
+import java.sql.SQLException;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -132,8 +137,42 @@ public class ReviewServiceTest {
     }
 
     @Test
+    @DisplayName("작성자가 해당 콘텐츠에 이미 작성한 리뷰가 존재하면 409를 반환한다.")
+    void saveReview_alreadyExists() {
+        // given
+        UUID authorId = UUID.randomUUID();
+
+        ReviewCreateRequest request = new ReviewCreateRequest(
+                content.getId(),
+                "재미있는 영화였어요.",
+                4.5
+        );
+
+        User author = mock(User.class);
+
+        DataIntegrityViolationException exception = new DataIntegrityViolationException(
+                        "중복 리뷰",
+                        new ConstraintViolationException(
+                                "Unique constraint violation",
+                                new SQLException("Duplicate key"),
+                                "uk_review_content_author"
+                        )
+                );
+
+        given(contentRepository.findById(content.getId())).willReturn(Optional.of(content));
+        given(userRepository.findById(authorId)).willReturn(Optional.of(author));
+        given(reviewRepository.save(any(Review.class))).willThrow(exception);
+
+        // when & then
+        assertThatThrownBy(() -> reviewService.save(request, authorId))
+                .isInstanceOf(ReviewAlreadyExistsException.class);
+
+        then(eventPublisher).shouldHaveNoInteractions();
+    }
+
+    @Test
     @DisplayName("콘텐츠가 존재하지 않으면 리뷰 생성 시 예외가 발생한다.")
-    void saveReviews_withoutContent() {
+    void saveReviews_notFoundContent() {
         // given
         UUID authorId = UUID.randomUUID();
 
@@ -154,7 +193,7 @@ public class ReviewServiceTest {
 
     @Test
     @DisplayName("유저가 존재하지 않으면 리뷰 생성 시 예외가 발생한다.")
-    void saveReviews_withoutAuthor() {
+    void saveReviews_notFoundAuthor() {
         // given
         UUID authorId = UUID.randomUUID();
 

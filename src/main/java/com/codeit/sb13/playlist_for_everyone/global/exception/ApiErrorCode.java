@@ -51,6 +51,7 @@ public enum ApiErrorCode {
 
     //REVIEW R
     REVIEW_NOT_FOUND("R_001", HttpStatus.NOT_FOUND, "리뷰를 찾을 수 없습니다."),
+    REVIEW_ALREADY_EXISTS("R_002", HttpStatus.CONFLICT, "이미 작성한 리뷰가 존재합니다."),
 
     //SSE S
     SSE_PUBLISH_FAIL("S_001", HttpStatus.INTERNAL_SERVER_ERROR, "SSE 이벤트 발행에 실패했습니다."),
