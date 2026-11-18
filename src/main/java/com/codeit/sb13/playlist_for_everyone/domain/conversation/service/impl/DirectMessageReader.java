@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.UUID;
 
 /**
  * DM 목록과 전체 개수 조회의 읽기 전용 트랜잭션을 담당한다.
@@ -32,5 +33,9 @@ public class DirectMessageReader {
     @Transactional(readOnly = true)
     public long searchCount(DirectMessageSearchCondition condition){
        return directMessageRepository.searchCount(condition);
+    }
+
+    public DirectMessage getById(UUID directMessageId){
+        return null;
     }
 }
