@@ -31,7 +31,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
         JpaAuditingConfig.class
 })
 
-@DisplayName("리뷰 리스트 테스트")
+@DisplayName("리뷰 리스트 레포지토리 테스트")
 public class ReviewListRepositoryTest {
 
     @Autowired
@@ -47,6 +47,7 @@ public class ReviewListRepositoryTest {
     private User author1;
     private User author2;
     private User author3;
+    private User author4;
 
     @BeforeEach
     void setup() {
@@ -59,11 +60,13 @@ public class ReviewListRepositoryTest {
         author1 = createAuthor(1);
         author2 = createAuthor(2);
         author3 = createAuthor(3);
+        author4 = createAuthor(4);
 
         // 콘텐츠1 리뷰
         createReview(content1, author1, 5.0, "정말 재미있어요");
         createReview(content1, author2, 4.0, "재미있게 봤어요");
-        createReview(content1, author3, 3.0, "보통이에요");
+        createReview(content1, author3, 4.0, "볼만해요");
+        createReview(content1, author4, 3.0, "그냥그래요");
 
         // 콘텐츠2 리뷰
         createReview(content2, author1, 4.0, "추천합니다");
@@ -97,7 +100,7 @@ public class ReviewListRepositoryTest {
         List<Review> reviews = reviewRepository.getReviewsByContentId(contentId, condition);
 
         // then
-        assertThat(reviews).hasSize(3);
+        assertThat(reviews).hasSize(4);
 
         assertThat(reviews)
                 .extracting(r -> r.getContent().getId())
@@ -108,7 +111,8 @@ public class ReviewListRepositoryTest {
                 .containsExactlyInAnyOrder(
                         "정말 재미있어요",
                         "재미있게 봤어요",
-                        "보통이에요"
+                        "볼만해요",
+                        "그냥그래요"
                 );
     }
 
@@ -216,9 +220,20 @@ public class ReviewListRepositoryTest {
                 reviewRepository.getReviewsByContentId(contentId, nextCondition);
 
         // then
+        assertThat(firstPage)
+                .extracting(Review::getRating)
+                .startsWith(5.0, 4.0);
+
         assertThat(nextPage)
                 .extracting(Review::getRating)
-                .containsExactly(3.0);
+                .containsExactly(4.0, 3.0);
+
+        assertThat(nextPage)
+                .extracting(Review::getId)
+                .doesNotContain(lastReview.getId());
+
+        assertThat(nextPage.get(0).getId())
+                .isNotEqualTo(lastReview.getId());
     }
 
     @Test
