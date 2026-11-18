@@ -153,3 +153,14 @@ everyone:
         cron: "${EVERYONE_COLLECTION_SCHEDULE_SPORTSDB_CRON:-}"
         league-id: "${EVERYONE_COLLECTION_SCHEDULE_SPORTSDB_LEAGUE_ID:}"
         season: "${EVERYONE_COLLECTION_SCHEDULE_SPORTSDB_SEASON:}"
+
+  dm:
+    websocket:
+      # 현재는 Redis 구현체만 지원한다. Kafka는 구현체와 전환 검증을 추가한 뒤 선택할 수 있다.
+      transport: ${EVERYONE_DM_WEBSOCKET_TRANSPORT:redis}
+      # 이 서버의 DM 자동 구독만 제어한다. false여도 메시지 저장·발행과 다른 Redis 사용은 유지된다.
+      subscription-enabled: ${EVERYONE_DM_WEBSOCKET_SUBSCRIPTION_ENABLED:true}
+      redis:
+        # 같은 환경의 서버끼리 공유한다. dev/prod 프로필에 따라 자동 분리되지 않는다.
+        # 공통 인증·콘텐츠 이벤트의 채널은 이 설정으로 바뀌지 않는다.
+        channel: ${EVERYONE_DM_WEBSOCKET_REDIS_CHANNEL:everyone:dm:events}

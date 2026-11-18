@@ -1,7 +1,9 @@
 package com.codeit.sb13.playlist_for_everyone.domain.playlist.service.impl;
 
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistSearchRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistUpdateRequest;
@@ -31,14 +33,15 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListS
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscriptionDuplicatedException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.playlist.PlayListSubscriptionNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
-import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
-import java.util.HashSet;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -46,6 +49,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+
 /**
  * 플레이리스트 서비스 구현체.
  *
@@ -70,7 +74,7 @@ public class PlaylistServiceImpl implements PlaylistService {
   private final ApplicationEventPublisher eventPublisher;
   private final UserSummaryMapper  userSummaryMapper;
   private final PlaylistReader playlistReader;
-  private final PlaylistContentSummaryMapper playlistContentSummaryMapper;
+  private final ContentService contentService;
   private final PlaylistWriter playlistWriter;
 
   private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
@@ -91,7 +95,8 @@ public class PlaylistServiceImpl implements PlaylistService {
   public PlaylistResponse getPlaylist(UUID playlistId, UUID requesterId) {
     // 조회 트랜잭션은 Reader에서 끝나고, 프로필 이미지 URL 생성은 트랜잭션 밖에서 한다.
     PlaylistReader.PlaylistDetail detail = playlistReader.readOne(playlistId, requesterId);
-    return toResponse(detail.playlist(), detail.subscribedByMe(), detail.contents());
+    return toResponse(detail.playlist(), detail.subscribedByMe(),
+        toSummaries(detail.contentIds(), readSummaries(detail.contentIds())));
   }
 
   @Override
@@ -104,11 +109,16 @@ public class PlaylistServiceImpl implements PlaylistService {
     PlaylistReader.PlaylistPage result = playlistReader.readPage(condition, requesterId);
     List<Playlist> page = result.playlists();
 
+    Map<UUID, PlaylistContentSummary> summaryById = readSummaries(
+        result.contentIds().values().stream().flatMap(List::stream).toList());
+
     List<PlaylistResponse> data = page.stream()
         .map(playlist -> toResponse(
             playlist,
             result.subscribedIds().contains(playlist.getId()),
-            result.contents().getOrDefault(playlist.getId(), List.of())))
+            toSummaries(
+                result.contentIds().getOrDefault(playlist.getId(), List.of()),
+                summaryById)))
         .toList();
 
     String nextCursor = null;
@@ -133,7 +143,8 @@ public class PlaylistServiceImpl implements PlaylistService {
     playlistWriter.update(playlistId, request);
 
     PlaylistReader.PlaylistDetail detail = playlistReader.readOne(playlistId, requesterId);
-    return toResponse(detail.playlist(), detail.subscribedByMe(), detail.contents());
+    return toResponse(detail.playlist(), detail.subscribedByMe(),
+        toSummaries(detail.contentIds(), readSummaries(detail.contentIds())));
   }
 
   @Override
@@ -277,12 +288,39 @@ public class PlaylistServiceImpl implements PlaylistService {
   }
 
   private PlaylistResponse toResponse(
-      Playlist playlist, boolean subscribedByMe, List<PlaylistContentData> contents) {
+      Playlist playlist, boolean subscribedByMe, List<PlaylistContentSummary> contents) {
     UserSummary userSummary = userSummaryMapper.toSummary(playlist.getOwner());
-    List<PlaylistContentSummary> summaries = contents.stream()
-        .map(playlistContentSummaryMapper::toSummary)
+    return PlaylistResponse.from(playlist, userSummary, subscribedByMe, contents);
+  }
+
+  /**
+   * 콘텐츠 id로 요약을 한 번에 조회한다. 트랜잭션 밖에서 호출해야 한다.
+   * 콘텐츠 도메인이 DB 조회 후 썸네일 URL까지 만들어 돌려준다.
+   */
+  private Map<UUID, PlaylistContentSummary> readSummaries(Collection<UUID> contentIds) {
+    List<UUID> distinctIds = contentIds.stream().distinct().toList();
+    if (distinctIds.isEmpty()) {
+      return Map.of();
+    }
+    return contentService.getSummariesByIds(distinctIds).stream()
+        .map(this::toPlaylistContentSummary)
+        .collect(Collectors.toMap(PlaylistContentSummary::id, Function.identity()));
+  }
+
+  /** 추가한 순서를 유지하고, 삭제되어 요약이 없는 콘텐츠는 건너뛴다. */
+  private List<PlaylistContentSummary> toSummaries(
+      List<UUID> contentIds, Map<UUID, PlaylistContentSummary> summaryById) {
+    return contentIds.stream()
+        .map(summaryById::get)
+        .filter(Objects::nonNull)
         .toList();
-    return PlaylistResponse.from(playlist, userSummary, subscribedByMe, summaries);
+  }
+
+  /** 콘텐츠 도메인의 요약(contentId)을 플레이리스트 응답 스펙(id)으로 변환한다. */
+  private PlaylistContentSummary toPlaylistContentSummary(ContentSummary summary) {
+    return new PlaylistContentSummary(
+        summary.contentId(), summary.type(), summary.title(), summary.description(),
+        summary.thumbnailUrl(), summary.tags(), summary.averageRating(), summary.reviewCount());
   }
 
   private boolean isUniqueViolation(Throwable throwable) {
