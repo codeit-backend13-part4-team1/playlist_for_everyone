@@ -491,6 +491,13 @@ class SportsDbCollectionJobTest {
         assertThat(failedExecution.getStatus())
                 .isEqualTo(BatchStatus.FAILED);
 
+        // 배치는 실패했지만 첫 번째 경기는 이미 커밋됐으므로 이벤트를 발행한다.
+        assertThat(applicationEvents.stream(ContentCollectionFinishedEvent.class).toList())
+                .extracting(ContentCollectionFinishedEvent::insertedCount)
+                .containsExactly(1L);
+
+        applicationEvents.clear();
+
         var savedFirst = contentRepository.findByProviderAndTypeAndProviderItemId(
                 ContentSource.THE_SPORTS_DB,
                 ContentType.sport,
@@ -510,6 +517,11 @@ class SportsDbCollectionJobTest {
 
         assertThat(restartedExecution.getStatus())
                 .isEqualTo(BatchStatus.COMPLETED);
+
+        // 재시작해서 새로 저장한 두 번째 경기만 센다.
+        assertThat(applicationEvents.stream(ContentCollectionFinishedEvent.class).toList())
+                .extracting(ContentCollectionFinishedEvent::insertedCount)
+                .containsExactly(1L);
 
         var firstAfterRestart =
                 contentRepository.findByProviderAndTypeAndProviderItemId(
