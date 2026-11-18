@@ -14,6 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ViewingSessionRepositoryImpl implements ViewingSessionRepository{
     private final Map<UUID, ViewingSessionRoom> rooms = new ConcurrentHashMap<>();
 
+
     @Override
     public ViewingSessionRoom findOrCreate(UUID contentId) {
         return rooms.compute(contentId, (id, room) -> {
@@ -24,7 +25,7 @@ public class ViewingSessionRepositoryImpl implements ViewingSessionRepository{
 
     @Override
     public void remove(ViewingSessionRoom room) {
-        rooms.remove(room.getContentId(),room);
+        rooms.remove(room.contentId(),room);
     }
 
     @Override

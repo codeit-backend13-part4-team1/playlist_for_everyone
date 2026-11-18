@@ -11,7 +11,6 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.exception.EveryOneException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketAuthInvalidException;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistryImpl;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSession;
@@ -19,7 +18,7 @@ import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingS
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.ChangeType;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.WatchingSessionChange;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.DpeWatchingSessionService;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -70,7 +69,7 @@ public class WatchingSessionTest {
     @Mock
     WebSocketSessionRegistry webSocketSessionRegistry;
     // interface 단은 setup 에서 설정.
-    WatchingSessionService watchingSessionService;
+    DpeWatchingSessionService dpeWatchingSessionService;
     WatchingSessionMapper mapper;
     // 테스트 할 객체
     WatchingSession watchingSession;
@@ -151,7 +150,7 @@ public class WatchingSessionTest {
      */
 
     void watchingSessionLogicSet(UUID contentId, Long count){
-        given(watchingSessionService.getCurrentViewerCount(contentId))
+        given(dpeWatchingSessionService.getCurrentViewerCount(contentId))
                 .willReturn(count);
     }
 
@@ -204,14 +203,14 @@ public class WatchingSessionTest {
     void setUp(){
         socketRegistry = new WebSocketSessionRegistryImpl();
         // 별도 모듈 테스트가 있으므로, mock 으로 주입.
-        watchingSessionService = mock(WatchingSessionService.class);
+        dpeWatchingSessionService = mock(DpeWatchingSessionService.class);
         webSocketSessionRegistry = mock(WebSocketSessionRegistryImpl.class);
         mapper = new WatchingSessionMapper();
         watchingSession = new WatchingSession(
                 mapper,
                 userService,
                 contentService,
-                watchingSessionService,
+                dpeWatchingSessionService,
                 subscriptionRegistry,
                 userSummaryMapper,
                 webSocketSessionRegistry
@@ -310,7 +309,7 @@ public class WatchingSessionTest {
                         .isInstanceOf(EveryOneException.class); // InvalidAuthException
 
                 // 실제 세션 저장부 및 구독은 호출되지 않음.
-                verify(watchingSessionService, times(0)).joinViewerSession(any());
+                verify(dpeWatchingSessionService, times(0)).joinViewerSession(any());
             }
 
             @ParameterizedTest
@@ -333,7 +332,7 @@ public class WatchingSessionTest {
                         .isInstanceOf(EveryOneException.class); // InvalidAuthException
 
                 // 실제 세션 저장부는 호출되지 않음.
-                verify(watchingSessionService, times(0)).joinViewerSession(any());
+                verify(dpeWatchingSessionService, times(0)).joinViewerSession(any());
             }
         }
 
@@ -404,7 +403,7 @@ public class WatchingSessionTest {
                         .isInstanceOf(EveryOneException.class); // InvalidAuthException
 
                 // 실제 세션 저장부 및 구독은 호출되지 않음.
-                verify(watchingSessionService, times(0)).leaveViewerSession(any());
+                verify(dpeWatchingSessionService, times(0)).leaveViewerSession(any());
             }
 
             @ParameterizedTest
@@ -425,7 +424,7 @@ public class WatchingSessionTest {
                         .isInstanceOf(EveryOneException.class); // InvalidAuthException
 
                 // 실제 세션 저장부는 호출되지 않음.
-                verify(watchingSessionService, times(0)).leaveViewerSession(any());
+                verify(dpeWatchingSessionService, times(0)).leaveViewerSession(any());
             }
 
         }
@@ -469,7 +468,7 @@ public class WatchingSessionTest {
 
                 watchingSession.joinChatSession(info);
 
-                verify(watchingSessionService).joinChatSession(eq(info));
+                verify(dpeWatchingSessionService).joinChatSession(eq(info));
             }
 
             // 경로 정보만 검사함.
@@ -495,7 +494,7 @@ public class WatchingSessionTest {
                 assertThatThrownBy(() -> watchingSession.joinChatSession(info))
                         .isInstanceOf(EveryOneException.class);
 
-                verifyNoInteractions(watchingSessionService);
+                verifyNoInteractions(dpeWatchingSessionService);
                 verifyNoInteractions(userService);
             }
 
@@ -523,7 +522,7 @@ public class WatchingSessionTest {
                 assertThatThrownBy(() -> watchingSession.joinChatSession(info))
                         .isInstanceOf(EveryOneException.class);
 
-                verifyNoInteractions(watchingSessionService);
+                verifyNoInteractions(dpeWatchingSessionService);
             }
 
         }
@@ -544,7 +543,7 @@ public class WatchingSessionTest {
 
                 watchingSession.leaveChatSession(info);
 
-                verify(watchingSessionService).leaveChatSession(eq(info));
+                verify(dpeWatchingSessionService).leaveChatSession(eq(info));
             }
 
             // 경로 정보만 검사함.
@@ -570,7 +569,7 @@ public class WatchingSessionTest {
                 assertThatThrownBy(() -> watchingSession.leaveChatSession(info))
                         .isInstanceOf(EveryOneException.class);
 
-                verifyNoInteractions(watchingSessionService);
+                verifyNoInteractions(dpeWatchingSessionService);
                 verifyNoInteractions(userService);
             }
         }

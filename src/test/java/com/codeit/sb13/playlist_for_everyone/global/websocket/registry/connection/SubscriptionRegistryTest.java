@@ -2,9 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.registry.connecti
 
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSession;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistryImpl;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistry;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -19,7 +17,6 @@ import org.springframework.messaging.Message;
 import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.MessageBuilder;
-import org.springframework.web.socket.WebSocketSession;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;

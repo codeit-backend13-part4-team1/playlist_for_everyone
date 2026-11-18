@@ -7,7 +7,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.Content
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
 import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.DpeWatchingSessionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -22,7 +22,7 @@ public class ContentService {
 
     private final ContentReader contentReader;
     private final ContentWriter contentWriter;
-    private final WatchingSessionService watchingSessionService;
+    private final DpeWatchingSessionService dpeWatchingSessionService;
     private final ContentMapper contentMapper;
     private final FileService fileService;
 
@@ -32,7 +32,7 @@ public class ContentService {
 
     public ContentDto getById(UUID contentId) {
         ContentResult<ContentDto> result = contentReader.getById(contentId);
-        long watcherCount = watchingSessionService.getCurrentViewerCount(contentId);
+        long watcherCount = dpeWatchingSessionService.getCurrentViewerCount(contentId);
 
         return toContentDto(result, watcherCount);
     }
@@ -60,7 +60,7 @@ public class ContentService {
             MultipartFile file
     ) {
         ContentResult<ContentDto> result = contentWriter.update(contentId, request, file);
-        long watcherCount = watchingSessionService.getCurrentViewerCount(contentId);
+        long watcherCount = dpeWatchingSessionService.getCurrentViewerCount(contentId);
 
         return toContentDto(result, watcherCount);
     }

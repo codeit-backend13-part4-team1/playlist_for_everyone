@@ -10,6 +10,7 @@ import java.util.concurrent.CopyOnWriteArraySet;
 public abstract class SessionRoom {
     protected final UUID id;
     protected final UUID contentId;
+    // 만약 추후 UUID 에서 구독 반환이 필요하면 map 으로 변경.
     protected final Set<WSSubscription> subscriptions = new CopyOnWriteArraySet<>();
 
     public SessionRoom(UUID contentId) {
@@ -18,6 +19,8 @@ public abstract class SessionRoom {
     }
 
     abstract String topic();
+    public UUID id(){ return id; }
+    public UUID contentId(){ return contentId; }
 
     public void join(WSSubscription subscription){
       subscriptions.add(subscription);

@@ -13,7 +13,6 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentServi
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.event.WebSocketEventFactory;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatSendRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,7 +21,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.context.ApplicationEvent;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.messaging.converter.JacksonJsonMessageConverter;
 import org.springframework.messaging.simp.stomp.StompFrameHandler;
@@ -73,7 +71,7 @@ import static org.mockito.BDDMockito.*;
         classMode = DirtiesContext.ClassMode.AFTER_CLASS
 )
 @Slf4j
-public class WatchingSessionServiceE2E {
+public class DpeWatchingSessionServiceImplE2E {
 
     @LocalServerPort int port;
 

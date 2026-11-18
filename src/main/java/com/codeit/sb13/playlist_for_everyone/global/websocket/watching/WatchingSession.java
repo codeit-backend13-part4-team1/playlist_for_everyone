@@ -16,10 +16,9 @@ import com.codeit.sb13.playlist_for_everyone.global.service.MatchRule;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSession;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistry;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.*;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.DpeWatchingSessionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -53,13 +52,13 @@ public class WatchingSession {
 
     private final UserService userService;
     private final ContentService contentService;
-    private final WatchingSessionService watchingSessionService;
+    private final DpeWatchingSessionService dpeWatchingSessionService;
     private final SubscriptionRegistry subscriptionRegistry;
     private final UserSummaryMapper userSummaryMapper;
     private final WebSocketSessionRegistry webSocketSessionRegistry;
 
     public String topic(SessionInfo info){
-        return watchingSessionService.topic(info);
+        return dpeWatchingSessionService.topic(info);
     }
 
     /**
@@ -67,7 +66,7 @@ public class WatchingSession {
      */
     public void refresh(SessionInfo info){
         Objects.requireNonNull(info);
-        watchingSessionService.refresh(info.session());
+        dpeWatchingSessionService.refresh(info.session());
     }
 
     /**
@@ -125,7 +124,7 @@ public class WatchingSession {
         User user = userService.getById(auth.getUserId());
         if (user.isLocked()) throw new WebSocketAuthInvalidException();
 
-        watchingSessionService.joinChatSession(info);
+        dpeWatchingSessionService.joinChatSession(info);
     }
 
 
@@ -137,7 +136,7 @@ public class WatchingSession {
         check(info.destination());
         getContentIdFromDestination(info);
 
-        watchingSessionService.leaveChatSession(info);
+        dpeWatchingSessionService.leaveChatSession(info);
     }
 
     /**
@@ -158,7 +157,7 @@ public class WatchingSession {
     }
 
     public void disconnectWithContentId(UUID contentId){
-        List<String> sessionIds = watchingSessionService.disconnectWithContentDeleted(contentId);
+        List<String> sessionIds = dpeWatchingSessionService.disconnectWithContentDeleted(contentId);
         for (String sessionId : sessionIds)
             try {
                 WSSession session = webSocketSessionRegistry.query(sessionId)
@@ -170,7 +169,7 @@ public class WatchingSession {
     }
 
     public void disconnectWithSessionIds(String sessionId){
-        watchingSessionService.disconnectWithSessionIds(sessionId);
+        dpeWatchingSessionService.disconnectWithSessionIds(sessionId);
         try {
             WSSession session = webSocketSessionRegistry.query(sessionId)
                     .orElseThrow(WebSocketSessionNotFoundException::new);
@@ -211,15 +210,15 @@ public class WatchingSession {
 
         // 로직 마지막으로 컨텐츠에 시청자 등록.
         if (ChangeType.JOIN.equals(type))
-            watchingSessionService.joinViewerSession(info);
+            dpeWatchingSessionService.joinViewerSession(info);
         else
-            watchingSessionService.leaveViewerSession(info);
+            dpeWatchingSessionService.leaveViewerSession(info);
 
 
         return new WatchingSessionChange(
                 type,
                 dto,
-                watchingSessionService.getCurrentViewerCount(contentId)
+                dpeWatchingSessionService.getCurrentViewerCount(contentId)
         );
     }
 

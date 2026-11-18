@@ -11,8 +11,8 @@ import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.ChatSessionMessageListener;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.ViewSessionMessageListener;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.WatchingSessionRepository;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionServiceImpl;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.DpeWatchingSessionService;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.DpeWatchingSessionServiceImpl;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -42,9 +42,9 @@ import static org.mockito.BDDMockito.*;
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("WatchingSessionService 모듈 테스트")
-public class WatchingSessionServiceTest {
+public class DpeWatchingSessionServiceImplTest {
 
-    WatchingSessionService service;
+    DpeWatchingSessionService service;
     @Mock
     WatchingSessionRepository repository;
     @Mock
@@ -137,7 +137,7 @@ public class WatchingSessionServiceTest {
 
     @BeforeEach
     void setUp(){
-        service = new WatchingSessionServiceImpl(
+        service = new DpeWatchingSessionServiceImpl(
                 repository,
                 redisTopicRegistry,
                 viewSessionListener,
