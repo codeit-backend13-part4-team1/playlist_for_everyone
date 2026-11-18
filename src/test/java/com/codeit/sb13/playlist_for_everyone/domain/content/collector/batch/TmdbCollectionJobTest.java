@@ -284,10 +284,16 @@ class TmdbCollectionJobTest {
         // 첫 실행에서 기록한 이벤트를 비운다.
         applicationEvents.clear();
 
+        double moviesBeforeSecondRun = movieCounter.count();
+        double tvBeforeSecondRun = tvCounter.count();
+
         var secondExecution = jobOperator.start(job, secondParameters);
 
         assertThat(secondExecution.getStatus())
                 .isEqualTo(BatchStatus.COMPLETED);
+
+        assertThat(movieCounter.count() - moviesBeforeSecondRun).isEqualTo(1.0);
+        assertThat(tvCounter.count() - tvBeforeSecondRun).isEqualTo(1.0);
 
         // 재수집은 모두 중복이므로 캐시 이벤트를 발행하지 않는다.
         assertThat(applicationEvents
