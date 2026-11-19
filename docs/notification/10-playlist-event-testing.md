@@ -79,4 +79,4 @@ Docker를 실행한 뒤 두 테스트를 함께 확인합니다. 통합 테스�
 
 ---
 
-[← 이전: 플레이리스트 생성·콘텐츠 추가 알림](09-playlist-event-integration.md) · [알림 목차](README.md) · [공통 생성·전송 테스트](02-testing.md)
+[← 이전: 플레이리스트 생성·콘텐츠 추가 알림](09-playlist-event-integration.md) · [알림 목차](README.md) · [공통 생성·전송 테스트](02-testing.md) · [다음: DM 알림 연동 →](11-direct-message-integration.md)

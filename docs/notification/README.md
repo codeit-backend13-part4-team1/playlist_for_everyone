@@ -8,7 +8,8 @@
 [#129 수신자 연관관계](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/129),
 [#155 팔로우 알림 연동](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/155),
 [#156 권한 변경·구독 알림 연동](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/156),
-[#157 플레이리스트 생성·콘텐츠 추가 알림 연동](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/157)의 현재 코드와 검증 범위를 설명합니다.
+[#157 플레이리스트 생성·콘텐츠 추가 알림 연동](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/157),
+[#159 DM 알림 연동](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/159)의 현재 코드와 검증 범위를 설명합니다.
 
 ## 추천 읽기 순서
 
@@ -24,12 +25,15 @@
 | 8 | [권한 변경·플레이리스트 구독 알림 연동](08-role-subscription-integration.md) | 이벤트 발행 조건, 수신자·문구·자기 구독 제외, 커밋 후 공통 경로 연결 |
 | 9 | [플레이리스트 생성·콘텐츠 추가 알림 연동](09-playlist-event-integration.md) | 처리 시점의 수신자 조회, 중복·행위자 제외, 수신자별 실패 처리 |
 | 10 | [플레이리스트 알림 테스트](10-playlist-event-testing.md) | 실제 업무 커밋·롤백, 조회·첫 저장 실패, Spy 사용 목적과 실행 명령 |
+| 11 | [DM 생성 이벤트와 알림 연동](11-direct-message-integration.md) | 이름 스냅샷·수신자 규칙, 전체 흐름, 독립 저장·전송과 실패 경계 |
+| 12 | [DM 알림 테스트](12-direct-message-testing.md) | 단위·트랜잭션·실제 Redis/HTTP 수신 검증, 실패 주입과 실행 방법 |
 
 코드 안의 주석은 각 클래스의 역할과 구현 이유를 설명합니다.
 문서는 전체 흐름과 테스트의 보장 범위를 연결하여 읽는 데 사용합니다.
 
 팔로우 알림은 **7 → 1 → 2**, 권한 변경·구독 알림은 **8 → 1 → 2** 순서로 읽으면 됩니다.
 플레이리스트 생성·콘텐츠 추가 알림은 **9 → 10** 순서로 읽고 공통 저장·전송은 1번에서 확인합니다.
+DM 알림은 **11 → 12** 순서로 읽고, 메시지 생산·WebSocket은 [대화방 가이드](../conversation/README.md)에서 확인합니다.
 공통 저장·전송만 확인하려면 **1 → 2** 순서로 읽으면 됩니다.
 조회 API는 3번부터 읽으면 됩니다. 동시 삭제 테스트의 실행 순서는 5번에서 확인합니다.
 수신자 매핑 변경과 사용자 도메인 호출 구조를 확인하려면 6번부터 읽으면 됩니다.
@@ -48,9 +52,10 @@ HTTP 인증은 공통 JWT 필터가 담당하고, 알림 컨트롤러는 검증�
 
 ## 현재 구현과 후속 범위
 
-팔로우·권한 변경과 플레이리스트 구독·생성·콘텐츠 추가를 공통 알림 생성 경로에 연결합니다.
+팔로우·권한 변경·플레이리스트 구독·생성·콘텐츠 추가·DM 생성을 공통 알림 생성 경로에 연결합니다.
 업무 커밋 → 공통 생성 요청 재발행 → 알림 저장·커밋 → 공유 이력 저장 → Redis Pub/Sub → 이력 조회·필터 → SSE 응답으로 이어지는 구조입니다.
 실제 업무 서비스부터 SSE 발행 요청까지와 공통 요청부터 HTTP 수신까지는 서로 다른 통합 테스트에서 검증합니다.
+DM은 실제 저장부터 알림 저장·Redis·HTTP SSE 수신까지 연결하는 통합 테스트도 포함하며, 검증 범위는 12번에서 구분합니다.
 저장 시 사용자 조회 컴포넌트로 수신자를 찾아 `User` 연관관계로 연결하며, 요청·응답·이벤트에는 수신자 UUID를 사용합니다.
 조회·읽음 처리는 인증된 사용자의 알림에 한정합니다.
 목록 조회는 저장소의 수신자 조건으로 제한하고, 읽음 처리는 서비스가 잠금 조회 후 소유자를 확인하여 삭제합니다.
@@ -58,10 +63,10 @@ HTTP 인증은 공통 JWT 필터가 담당하고, 알림 컨트롤러는 검증�
 
 [#45](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/45)는 전체 업무 이벤트 연동을 관리합니다.
 팔로우는 [#155](07-domain-event-integration.md), 권한 변경·플레이리스트 구독은 [#156](08-role-subscription-integration.md),
-플레이리스트 생성·콘텐츠 추가는 [#157](09-playlist-event-integration.md)에 구현되어 있습니다. 이 다섯 종류 외의 업무 이벤트는 후속 연동입니다.
+플레이리스트 생성·콘텐츠 추가는 [#157](09-playlist-event-integration.md), DM은 [#159](11-direct-message-integration.md)에 구현되어 있습니다. 이 여섯 종류 외의 업무 이벤트는 후속 연동입니다.
 알림의 실제 CSRF 토큰 연동·검증과 테스트 임시 설정 제거는 [#124](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/124)에서 다룹니다.
 공유 이력과 보관 범위 내 복구는 구현되어 있으며, [공통 복구 가이드](../sse/10-recovery-and-retry.md)를 참고합니다.
-DM 본문 전송 연동, Kafka 구현체와 Outbox는 현재 구현 범위에 포함하지 않습니다.
+DM 본문의 `direct-messages` 전송은 [#62](../conversation/15-direct-message-event-sse.md)에서 설명합니다. Kafka 구현체와 Outbox는 현재 알림 구현 범위에 포함하지 않습니다.
 
 ---
 

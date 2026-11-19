@@ -5,7 +5,7 @@
 
 처음 읽는다면 [DM 전체 흐름](00-overall-flow.md)에서 연결·구독과 서버 A·B의 메시지 전달 그림을 먼저 확인합니다.
 
-**구현 기준:** 2026-11-18, [#58 대화방 생성](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/58), [#59 대화방 조회](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/59), [#60 DM 도메인·조회·읽음 처리](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/60), [#61 WebSocket 메시지 송수신](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/61), [#62 DM 생성 이벤트·SSE](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/62)입니다. 알림 구현·통합 검증은 [#159](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/159)에서 담당합니다.
+**구현 기준:** 2026-11-19, [#58 대화방 생성](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/58), [#59 대화방 조회](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/59), [#60 DM 도메인·조회·읽음 처리](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/60), [#61 WebSocket 메시지 송수신](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/61), [#62 DM 생성 이벤트·SSE](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/62), [#159 DM 알림 연동](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/159)입니다.
 코드 주석은 각 클래스의 역할과 구현 이유를, 이 문서는 컴포넌트 사이의 흐름과 테스트 범위를 설명합니다.
 
 ## 먼저 알아둘 계약
@@ -20,6 +20,7 @@
 - 저장 커밋 이후 응답 변환에 실패하면 오류를 반환하지만 저장된 대화방은 유지됩니다.
 - DM SEND·SUBSCRIBE는 대화방 참여자만 허용합니다. 메시지 수신만으로 읽음 처리하지 않으며, 기존 REST 읽음 API를 사용합니다.
 - DM 저장 커밋 후 수신자의 모든 SSE 연결에 `direct-messages`를 전달합니다. WebSocket 구독 여부로 SSE를 생략하지 않으며 두 채널의 도착 순서는 보장하지 않습니다.
+- 같은 생성 이벤트의 별도 소비자가 수신자 알림을 독립 저장하고 `notifications` SSE를 요청합니다. 접속·구독 여부로 알림 생성을 제한하지 않으며 세 전송 경로의 도착 순서는 보장하지 않습니다.
 
 ## REST 처리 흐름
 
@@ -50,6 +51,7 @@ DM은 `/ws` 연결 후 `/pub/conversations/{conversationId}/direct-messages`로 
 컴포넌트 역할·트랜잭션·실패 결과는 [송수신 흐름](11-websocket-flow.md), 전송·구독·채널은 [환경 설정](10-websocket-settings.md)을 참고합니다.
 
 저장 커밋 후 생성 이벤트 리스너는 수신자에게 `direct-messages` SSE를 발행합니다. 프론트의 대화방 목록 갱신·이력 복구와 WebSocket 실패 격리는 [DM 이벤트·SSE](15-direct-message-event-sse.md)를 참고합니다.
+알림 소비자의 문구·독립 저장·실패 경계는 [DM 알림 연동](../notification/11-direct-message-integration.md), 실제 저장부터 알림 SSE 수신까지는 [DM 알림 테스트](../notification/12-direct-message-testing.md)에서 확인합니다.
 
 ## 추천 읽기 순서
 
@@ -71,6 +73,7 @@ DM은 `/ws` 연결 후 `/pub/conversations/{conversationId}/direct-messages`로 
 | 13 | [WebSocket 테스트 읽기와 실행](13-websocket-testing.md) | Mock·실제 인프라 경계, 전체 실행 명령과 #61·#62 검증 범위 구분 |
 | 14 | [다중 서버 DM 수동 검증](14-websocket-multi-node.md) | Compose·분리된 브라우저, 양방향 전달·SSE 다중 탭·REST 재조회와 실제 결과 |
 | 15 | [DM 생성 이벤트·SSE](15-direct-message-event-sse.md) | 컴포넌트별 책임·코드 위치, 커밋 후 전달·실패별 결과, 이력 복구와 테스트 실행 방법 |
+| 연계 | [DM 알림 연동](../notification/11-direct-message-integration.md) · [알림 테스트](../notification/12-direct-message-testing.md) | 같은 이벤트의 알림 소비자, 문구·독립 저장·notifications SSE, 실패 격리 검증 |
 
 ## 현재 구현과 후속 범위
 
@@ -82,9 +85,10 @@ DM은 `/ws` 연결 후 `/pub/conversations/{conversationId}/direct-messages`로 
 | DM 읽음 | 기준 메시지까지 수신한 미읽음 메시지의 상태·수정 시각 갱신 |
 | DM WebSocket | 참여자 SEND·SUBSCRIBE, 저장·커밋 후 Redis 발행, 서버별 로컬 구독자 전달 |
 | DM 이벤트·SSE | 저장 시 이벤트 생산, 커밋 후 수신자 다중 연결 전달, 공유 이력·재연결 복구, WebSocket과의 실패 격리(#62) |
+| DM 알림 | 생성 이벤트의 수신자·이름 스냅샷으로 독립 저장·notifications SSE 요청, 트랜잭션·실패 격리·실제 수신 검증(#159) |
 | 공통 응답 | 상대방 정보, 실제 최신 메시지, 요청자 기준 미읽음 여부 |
 | 보안·문서 | JWT·참여자 제한, 생성·읽음의 CSRF, 두 API 인터페이스를 하나의 Swagger 그룹으로 표시 |
-| 후속 연동 | DM 알림 생성·전송 및 알림을 포함한 통합 검증(#159), Kafka 전송(#63), 연결 유지 중 인증 자연 만료 처리(#208) |
+| 후속 연동 | Kafka 전송(#63), 연결 유지 중 인증 자연 만료 처리(#208) |
 
 REST API 테스트 구성과 날짜별 실행 결과는 [공통 테스트](04-testing.md)·[DM 테스트](09-direct-message-testing.md)에서 구분합니다.
 WebSocket의 [자동 테스트](13-websocket-testing.md)와 [Compose 수동 검증](14-websocket-multi-node.md)은 환경과 수행 결과를 구분합니다. 문서에 절차가 있다는 것만으로 실제 수행 완료를 의미하지 않습니다.

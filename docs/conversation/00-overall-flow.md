@@ -1,6 +1,6 @@
 # DM 전체 흐름
 
-이 문서는 팀원이 DM 연결부터 저장·분산 전달·SSE·읽음 처리까지 먼저 살펴보는 안내입니다. 아래 예시는 사용자 A와 B가 같은 대화방 X에 참여하고, 각각 서버 A와 B에 연결된 상황입니다. 대화방은 기존 [REST 생성·조회 API](01-api-security.md)로 준비합니다.
+이 문서는 팀원이 DM 연결부터 저장·분산 전달·SSE·알림·읽음 처리까지 먼저 살펴보는 안내입니다. 아래 예시는 사용자 A와 B가 같은 대화방 X에 참여하고, 각각 서버 A와 B에 연결된 상황입니다. 대화방은 기존 [REST 생성·조회 API](01-api-security.md)로 준비합니다.
 
 **같은 Redis DM 채널을 구독하는 각 서버가 메시지를 받고, 자기 서버에 연결된 해당 대화방 구독자에게 전달합니다.** 발행 서버도 같은 수신 경로를 거칩니다.
 
@@ -30,8 +30,13 @@ flowchart TD
     SAVE --> EVENT["트랜잭션 안에서 DM 생성 이벤트 발행"]
     EVENT --> COMMIT["독립 트랜잭션 커밋 완료"]
     COMMIT --> SSE["AFTER_COMMIT: 저장 연결 재사용·상세 조회·DTO 변환·SSE 발행 요청"]
-    SSE --> RECEIVER["공유 이력·Redis → 수신자 B의 모든 SSE 연결"]
-    SSE --> DTO["콜백 종료 후 Service: WebSocket용 DTO·프로필 URL 변환"]
+    COMMIT --> NOTICE["별도 AFTER_COMMIT 소비자: 공통 알림 요청"]
+    NOTICE --> NSAVE["REQUIRES_NEW 알림 저장·커밋 → notifications 발행 요청"]
+    SSE --> RECEIVER["공유 이력·Redis → B의 모든 SSE 연결: direct-messages"]
+    NSAVE --> NRECEIVER["공유 이력·Redis → B의 모든 SSE 연결: notifications"]
+    SSE --> DONE["커밋 후 콜백 처리 종료·Saver 반환"]
+    NSAVE --> DONE
+    DONE --> DTO["Service: WebSocket용 DTO·프로필 URL 변환"]
     DTO --> PUB["Publisher: Redis에 JSON 발행"]
     PUB --> REDIS["공유 Redis DM 채널"]
 
@@ -54,7 +59,9 @@ flowchart TD
 
 서버 C도 같은 Redis 채널을 구독한다면 메시지를 받습니다. 다만 C에 대화방 X 구독자가 없으면 실제 전달할 클라이언트가 없습니다. Redis 수신 측에서는 DB를 다시 저장하거나 Redis에 재발행하지 않습니다.
 
-`direct-messages` SSE는 수신자 B의 모든 SSE 연결로 전달하고, 발신자 A와 다른 사용자는 제외합니다. 제공된 프론트는 WebSocket으로 말풍선을 추가하고 SSE로 대화방 목록을 갱신하므로, B가 대화방을 구독하고 있어도 SSE를 생략하지 않습니다. 두 채널의 브라우저 도착 순서는 보장하지 않습니다. SSE 조회·변환·발행 실패는 리스너가 기록한 뒤 WebSocket 경로를 계속 실행합니다.
+`direct-messages` SSE는 수신자 B의 모든 SSE 연결로 전달하고, 발신자 A와 다른 사용자는 제외합니다. 제공된 프론트는 WebSocket으로 말풍선을 추가하고 SSE로 대화방 목록을 갱신하므로, B가 대화방을 구독하고 있어도 SSE를 생략하지 않습니다.
+
+알림 소비자는 B의 접속·구독 여부와 무관하게 알림을 저장하고 `notifications` SSE를 요청합니다. 그림의 두 소비자는 동기 콜백이며 분기는 책임 구분을 뜻합니다. 소비자 실행 순서에 의존하지 않고, DM SSE·알림 SSE·WebSocket의 브라우저 도착 순서도 보장하지 않습니다. 각 경계에서 처리한 실패는 이미 커밋된 DM과 다른 전송 경로를 유지합니다.
 
 ## 두 종류의 구독을 구분한다
 
@@ -77,7 +84,7 @@ flowchart TD
 
 [컴포넌트·트랜잭션·실패 결과](11-websocket-flow.md) · [인가·오류·연결 종료](12-websocket-security-errors.md) · [환경 설정](10-websocket-settings.md) · [테스트](13-websocket-testing.md) · [다중 서버 수동 검증](14-websocket-multi-node.md)
 
-[DM 생성 이벤트·SSE·실패 격리](15-direct-message-event-sse.md)를 함께 확인합니다. DM 알림 저장·`notifications` SSE와 알림을 포함한 통합 검증은 후속 #159에서 담당합니다.
+[DM 생성 이벤트·SSE·실패 격리](15-direct-message-event-sse.md), [DM 알림 연동](../notification/11-direct-message-integration.md), [알림 통합 검증](../notification/12-direct-message-testing.md)을 함께 확인합니다.
 
 ---
 

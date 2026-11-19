@@ -241,6 +241,9 @@ public class DirectMessageWebSocketIntegrationTest {
                 userSessionRepository.endIfCurrent(counterpartId, counterpartLoginSessionId);
             }
 
+            jdbcTemplate.update("DELETE FROM notifications WHERE receiver_id IN (?, ?, ?)",
+                    userId, counterpartId, otherUserId);
+
             jdbcTemplate.update("DELETE FROM direct_messages WHERE conversation_id IN (? , ?) ",
                     conversationId, otherConversationId);
 
