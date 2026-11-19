@@ -58,19 +58,19 @@ public class WebSocketSessionRegistryTest {
     class Idempotency{
 
         @Test
-        @DisplayName("세션 저장은 최초로 저장된 세션이 저장된다.")
+        @DisplayName("세션 저장은 마지막으로 저장된 세션이 저장된다.")
         void saveIdempotency(){
             UUID userId = UUID.randomUUID();
             UUID loginId = UUID.randomUUID();
 
-            WSSession session = wssession(sessionId, userId, loginId);
-            WSSession wrongSession = wssession(sessionId, UUID.randomUUID(), UUID.randomUUID());
+            WSSession first = wssession(sessionId, userId, loginId);
+            WSSession last = wssession(sessionId, UUID.randomUUID(), UUID.randomUUID());
 
-            sessionRegistry.register(session);
-            sessionRegistry.register(wrongSession);
+            sessionRegistry.register(first);
+            sessionRegistry.register(last);
 
             sessionRegistry.query(sessionId).ifPresentOrElse(
-                    s -> assertThat(s).isEqualTo(session),
+                    s -> assertThat(s).isEqualTo(last),
                     () -> fail("세션을 찾을 수 없습니다.")
             );
         }

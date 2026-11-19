@@ -54,7 +54,7 @@ public class WSSessionTest {
 
         session.connect("test-user", "test-login-session");
 
-        assertThatNoException().isThrownBy(() -> session.unsubscribe(new WSSubscription("test-sub", "/sdf")));
+        assertThatNoException().isThrownBy(() -> session.unsubscribe(new WSSubscription("test-sub", "/sdf","/dst")));
 
         session.subscribe("test-sub-1", "/");
 

@@ -223,7 +223,7 @@ public class WatchingSessionRepository {
 
         return query.stream().map(item -> (List<?>) item)
                 .collect(Collectors.toMap(
-                        item -> (UUID) item.get(0),
+                        item -> UUID.fromString((String) item.get(0)),
                         item -> (Long) item.get(1),
                         (existing, replacement) -> existing // 중복 제거용 세 번째 인자.
                 ));

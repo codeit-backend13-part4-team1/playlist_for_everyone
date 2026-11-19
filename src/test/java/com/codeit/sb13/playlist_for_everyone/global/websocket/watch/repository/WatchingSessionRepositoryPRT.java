@@ -49,7 +49,8 @@ public class WatchingSessionRepositoryPRT {
                 script.watcherDeleteScript(),
                 script.watcherCountScript(),
                 script.watcherDeleteWithContentIdScript(),
-                script.watcherCountMultipleContentsScript()
+                script.watcherCountMultipleContentsScript(),
+                script.watcherUnregisterAllScript()
         );
 
         register();
