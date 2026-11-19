@@ -463,7 +463,7 @@ class DirectMessageSseEventIntegrationTest {
         verifyNoMoreInteractions(directMessagePublisher);
         verifyNoInteractions(fileStorage);
         assertThat(output.getAll()).contains(
-                "DM 알림 변환·재발행 실패.",
+                "DM 알림 재발행 실패.",
                 "directMessageId=" + result.id(),
                 "conversationId=" + conversationId,
                 "receiverId=" + receiverId,

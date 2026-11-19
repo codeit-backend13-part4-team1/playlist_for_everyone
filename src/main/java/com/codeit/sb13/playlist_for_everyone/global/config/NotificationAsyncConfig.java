@@ -4,15 +4,17 @@ import com.codeit.sb13.playlist_for_everyone.domain.notification.config.Notifica
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.concurrent.ThreadPoolExecutor;
 
 @Configuration(proxyBeanMethods = false)
+@EnableAsync
 @EnableConfigurationProperties(NotificationAsyncProperties.class)
 public class NotificationAsyncConfig {
 
-    /** 알림 작업의 동시 실행 수와 대기열을 제한하고, 기본 실행기의 선택에 영향을 주지 않는다. */
+    /** 명시적으로 이름을 지정한 @Async 알림 작업의 동시 실행 수와 대기열을 제한한다. */
     @Bean(name = "notificationTaskExecutor", defaultCandidate = false)
     public ThreadPoolTaskExecutor notificationTaskExecutor(NotificationAsyncProperties properties) {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();

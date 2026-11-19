@@ -2,6 +2,8 @@ package com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener
 
 import com.codeit.sb13.playlist_for_everyone.domain.follow.event.UserFollowedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationCreateRequestedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.event.NotificationAsyncProcessor;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.monitoring.NotificationMetrics;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationTargetReader;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationTaskTracker;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistContentAddedEvent;
@@ -58,6 +60,7 @@ import static org.mockito.Mockito.when;
  */
 @SpringJUnitConfig(classes = {
         NotificationAsyncConfig.class,
+        NotificationAsyncProcessor.class,
         NotificationDomainEventListener.class,
         NotificationBusinessAsyncIntegrationTest.TransactionConfig.class
 })
@@ -79,6 +82,8 @@ class NotificationBusinessAsyncIntegrationTest {
     private ThreadPoolTaskExecutor executor;
     @MockitoBean
     private NotificationTargetReader targetReader;
+    @MockitoBean
+    private NotificationMetrics metrics;
     @MockitoBean
     private NotificationEventListener notificationEventListener;
 

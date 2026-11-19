@@ -16,6 +16,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener.
 import com.codeit.sb13.playlist_for_everyone.domain.notification.repository.NotificationRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationService;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationUserReader;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationTaskTracker;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistSubscribedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.PlaylistService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
@@ -36,12 +37,14 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.*;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -84,7 +87,9 @@ import static org.mockito.Mockito.*;
  * 테스트 전체를 @Transactional로 감싸지 않으며, 직접 발행 사례의 닉네임 변경은 업무 대역이다.
  *
  * <p>ApplicationEvents에는 롤백된 업무의 발행 기록도 남는다. 이 기록만으로 커밋 후 소비를 판단하지 않고,
- * 공통 알림 요청·저장 결과·SSE 발행 요청을 함께 확인한다.
+ * 공통 알림 요청은 실제 리스너 Spy로 관찰하고, 작업 완료 후 저장 결과·SSE 발행 요청을 함께 확인한다.
+ * 작업 스레드의 이벤트를 테스트 스레드의 ApplicationEvents에 의존하여 검증하지 않는다.
+ * 데이터 정리도 작업 완료 뒤 수행하여 사용자 삭제와 알림 저장이 경합하지 않게 한다.
  *
  * <p>입력 검증·사용자 조회·DB 저장의 실패 지점은 실제 저장 서비스를 통해 구분한다.
  * 각 실패가 업무 커밋을 보존하고, 후속 정상 알림의 저장·SSE 발행을 막지 않는지 확인한다.
@@ -158,6 +163,11 @@ class NotificationIntegrationTest {
     @MockitoSpyBean
     private NotificationEventListener notificationEventListener;
 
+    @Autowired
+    @Qualifier("notificationTaskExecutor")
+    private ThreadPoolTaskExecutor notificationTaskExecutor;
+
+    private NotificationTaskTracker notificationTasks;
     private TransactionTemplate transactionTemplate;
     // 팔로워 사용자는 구독 사례에서 subscriberId로 재사용한다.
     private static final UUID FOLLOWER_ID = UUID.randomUUID();
@@ -165,6 +175,7 @@ class NotificationIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        notificationTasks = new NotificationTaskTracker(notificationTaskExecutor);
         transactionTemplate = new TransactionTemplate(transactionManager);
         // 업무 이벤트 없이 사용자를 준비하고, 팔로우·알림의 독립 트랜잭션에서도 조회할 수 있도록 먼저 커밋한다.
         jdbcTemplate.update("""
@@ -180,6 +191,7 @@ class NotificationIntegrationTest {
 
     @AfterEach
     void cleanUp() {
+        notificationTasks.close();
         // 사용자를 참조하는 알림·팔로우·구독·플레이리스트를 먼저 지운다.
         // 구독은 플레이리스트도 참조하므로 플레이리스트보다 먼저 삭제한다.
         notificationRepository.deleteAllInBatch();
@@ -255,7 +267,7 @@ class NotificationIntegrationTest {
 
     @Test
     @DisplayName("팔로우 이벤트를 발행한 트랜잭션의 커밋 후 알림을 저장한다.")
-    void savesNotificationFromFollowEventAfterBusinessCommit(ApplicationEvents applicationEvents) {
+    void savesNotificationFromFollowEventAfterBusinessCommit() {
         // 이벤트를 직접 발행해 커밋 전후의 소비 시점을 관찰한다. 실제 팔로우 등록은 별도 사례로 검증한다.
         UserFollowedEvent event = new UserFollowedEvent(UUID.randomUUID(), "홍길동", RECEIVER_ID);
         NotificationCreateRequestedEvent expectedRequest = new NotificationCreateRequestedEvent(
@@ -269,13 +281,14 @@ class NotificationIntegrationTest {
         transactionTemplate.executeWithoutResult(status -> {
             eventPublisher.publishEvent(event);
 
-            assertThat(applicationEvents.stream(NotificationCreateRequestedEvent.class)).isEmpty();
+            assertThat(notificationTasks.hasSubmittedTasks()).isFalse();
+            verifyNoInteractions(notificationEventListener);
             assertThat(notificationRepository.count()).isZero();
             verifyNoInteractions(sseEventPublisher);
         });
 
-        assertThat(applicationEvents.stream(NotificationCreateRequestedEvent.class))
-                .containsExactly(expectedRequest);
+        notificationTasks.awaitCompletion();
+        verify(notificationEventListener).handleNotification(expectedRequest);
 
         Notification saved = findOnlyNotification();
         assertThat(saved.getReceiverId()).isEqualTo(expectedRequest.receiverId());
@@ -623,8 +636,8 @@ class NotificationIntegrationTest {
 
         assertThat(applicationEvents.stream(UserFollowedEvent.class))
                 .containsExactly(event);
-        assertThat(applicationEvents.stream(NotificationCreateRequestedEvent.class))
-                .isEmpty();
+        assertThat(notificationTasks.hasSubmittedTasks()).isFalse();
+        verifyNoInteractions(notificationEventListener);
         assertThat(receiverNickname()).isEqualTo("변경 전");
         assertThat(notificationRepository.count()).isZero();
         verifyNoInteractions(sseEventPublisher);
@@ -641,8 +654,8 @@ class NotificationIntegrationTest {
         eventPublisher.publishEvent(event);
         assertThat(applicationEvents.stream(UserFollowedEvent.class))
                 .containsExactly(event);
-        assertThat(applicationEvents.stream(NotificationCreateRequestedEvent.class))
-                .isEmpty();
+        assertThat(notificationTasks.hasSubmittedTasks()).isFalse();
+        verifyNoInteractions(notificationEventListener);
         assertThat(notificationRepository.count()).isZero();
         verifyNoInteractions(sseEventPublisher);
     }
@@ -681,7 +694,7 @@ class NotificationIntegrationTest {
     @Test
     @DisplayName("알림 요청 재발행이 실패해도 커밋된 팔로우를 유지하고 실패를 기록한다.")
     void keepsFollowWhenNotificationRequestPublishFails(CapturedOutput output){
-        // 공통 요청을 수신하는 쪽에서 예외를 던져 실제 업무 이벤트 리스너의 재발행 실패 처리를 확인한다.
+        // 공통 요청을 수신하는 쪽에서 예외를 던져 실제 비동기 프로세서의 재발행 실패 처리를 확인한다.
         doThrow(new IllegalStateException("테스트용 알림 요청 재발행 실패"))
                 .when(notificationEventListener)
                 .handleNotification(any(NotificationCreateRequestedEvent.class));
@@ -700,14 +713,15 @@ class NotificationIntegrationTest {
         assertThat(followRepository.existsById(result.followDto().id())).isTrue();
         assertThat(followRepository.count()).isEqualTo(1L);
 
+        notificationTasks.awaitCompletion();
         verify(notificationEventListener)
                 .handleNotification(any(NotificationCreateRequestedEvent.class));
         assertThat(notificationRepository.count()).isZero();
 
         verifyNoInteractions(sseEventPublisher);
-        // 팔로우 유지와 함께 도메인 리스너가 예외를 처리하고 기록한 사실까지 확인한다.
+        // 팔로우 유지와 함께 비동기 프로세서가 예외를 처리하고 기록한 사실까지 확인한다.
         assertThat(output.getOut()).contains(
-                "팔로우 알림 변환·재발행 실패.",
+                "팔로우 알림 재발행 실패.",
                 "followerId=" + FOLLOWER_ID,
                 "followeeId=" + RECEIVER_ID,
                 "exceptionType=IllegalStateException"
@@ -826,8 +840,8 @@ class NotificationIntegrationTest {
 
         assertThat(applicationEvents.stream(UserRoleChangedEvent.class))
                 .containsExactly(new UserRoleChangedEvent(RECEIVER_ID, Role.USER, Role.ADMIN));
-        assertThat(applicationEvents.stream(NotificationCreateRequestedEvent.class))
-                .isEmpty();
+        assertThat(notificationTasks.hasSubmittedTasks()).isFalse();
+        verifyNoInteractions(notificationEventListener);
         assertThat(notificationRepository.count()).isZero();
         verifyNoInteractions(sseEventPublisher);
     }
@@ -856,8 +870,8 @@ class NotificationIntegrationTest {
 
         assertThat(applicationEvents.stream(PlaylistSubscribedEvent.class))
                 .containsExactly(new PlaylistSubscribedEvent(PLAYLIST_ID, "퇴근 후 영화", RECEIVER_ID, subscriberId, "홍길동"));
-        assertThat(applicationEvents.stream(NotificationCreateRequestedEvent.class))
-                .isEmpty();
+        assertThat(notificationTasks.hasSubmittedTasks()).isFalse();
+        verifyNoInteractions(notificationEventListener);
         assertThat(notificationRepository.count()).isZero();
         verifyNoInteractions(sseEventPublisher);
     }
@@ -872,6 +886,7 @@ class NotificationIntegrationTest {
     }
 
     private Notification findOnlyNotification() {
+        notificationTasks.awaitCompletion();
         // 테스트 전체를 감싸는 영속성 컨텍스트 없이 커밋된 데이터를 다시 조회한다.
         List<Notification> notifications = notificationRepository.findAll();
         assertThat(notifications).hasSize(1);
