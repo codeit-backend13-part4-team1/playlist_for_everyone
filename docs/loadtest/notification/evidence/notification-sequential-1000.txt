@@ -1,7 +1,26 @@
---before
+JMeter 샘플러 SAVE MATRICS
+GET http://localhost:8080/actuator/metrics/everyone.notification.saved
+-- before
+HTTP 상태 코드 미기록
 {"availableTags":[],"measurements":[{"statistic":"COUNT","value":211.0}],"name":"everyone.notification.saved"}
-{"availableTags":[],"measurements":[{"statistic":"COUNT","value":211.0}],"name":"everyone.notification.sse.published"}
+-- after
+HTTP 상태 코드 미기록
+{"availableTags":[],"measurements":[{"statistic":"COUNT","value":1211.0}],"name":"everyone.notification.saved"}
 
+---
+JMeter 샘플러 SSE PUBLISHED MATRICS
+GET http://localhost:8080/actuator/metrics/everyone.notification.sse.published
+-- before
+HTTP 상태 코드 미기록
+{"availableTags":[],"measurements":[{"statistic":"COUNT","value":211.0}],"name":"everyone.notification.sse.published"}
+-- after
+HTTP 상태 코드 미기록
+{"availableTags":[],"measurements":[{"statistic":"COUNT","value":1211.0}],"name":"everyone.notification.sse.published"}
+
+---
+JMeter 샘플러 FAILURES MATRICS
+GET http://localhost:8080/actuator/metrics/everyone.notification.failures
+-- before
 Thread Name:Thread Group 1-1
 Sample Start:2026-11-20 01:51:25 KST
 Load time:65
@@ -22,11 +41,7 @@ HTTPSampleResult fields:
 ContentType:
 DataEncoding: null
 
-
 -- after
-{"availableTags":[],"measurements":[{"statistic":"COUNT","value":1211.0}],"name":"everyone.notification.saved"}
-{"availableTags":[],"measurements":[{"statistic":"COUNT","value":1211.0}],"name":"everyone.notification.sse.published"}
-
 Thread Name:Thread Group 1-1
 Sample Start:2026-11-20 01:55:31 KST
 Load time:8

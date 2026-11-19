@@ -1,12 +1,38 @@
 -- bootrun
 ./gradlew bootRun --args='--spring.datasource.hikari.maximum-pool-size=2 --spring.datasource.hikari.connection-timeout=1000'
 
+JMeter 샘플러 SAVE MATRICS
+GET http://localhost:8080/actuator/metrics/everyone.notification.saved
 -- before
-saved,published,failures 아직 생성되지 않아 404 발생
-{"availableTags":[{"tag":"pool","values":["HikariPool-1"]}],"description":"Connection timeout total count","measurements":[{"statistic":"COUNT","value":0.0}],"name":"hikaricp.connections.timeout"}
-
+HTTP 404 (원본 요약 기록)
 -- after
+HTTP 상태 코드 미기록
 {"availableTags":[],"measurements":[{"statistic":"COUNT","value":1.0}],"name":"everyone.notification.saved"}
+
+---
+JMeter 샘플러 SSE PUBLISHED MATRICS
+GET http://localhost:8080/actuator/metrics/everyone.notification.sse.published
+-- before
+HTTP 404 (원본 요약 기록)
+-- after
+HTTP 상태 코드 미기록
 {"availableTags":[],"measurements":[{"statistic":"COUNT","value":1.0}],"name":"everyone.notification.sse.published"}
+
+---
+JMeter 샘플러 FAILURES MATRICS
+GET http://localhost:8080/actuator/metrics/everyone.notification.failures
+-- before
+HTTP 404 (원본 요약 기록)
+-- after
+HTTP 상태 코드 미기록
 {"availableTags":[{"tag":"stage","values":["save"]}],"measurements":[{"statistic":"COUNT","value":99.0}],"name":"everyone.notification.failures"}
+
+---
+JMeter 샘플러 HIKARICP TIMEOUT MATRICS
+GET http://localhost:8080/actuator/metrics/hikaricp.connections.timeout
+-- before
+HTTP 상태 코드 미기록
+{"availableTags":[{"tag":"pool","values":["HikariPool-1"]}],"description":"Connection timeout total count","measurements":[{"statistic":"COUNT","value":0.0}],"name":"hikaricp.connections.timeout"}
+-- after
+HTTP 상태 코드 미기록
 {"availableTags":[{"tag":"pool","values":["HikariPool-1"]}],"description":"Connection timeout total count","measurements":[{"statistic":"COUNT","value":114.0}],"name":"hikaricp.connections.timeout"}
