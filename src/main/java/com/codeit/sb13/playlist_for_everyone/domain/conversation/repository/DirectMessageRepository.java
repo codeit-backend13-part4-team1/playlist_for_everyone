@@ -1,12 +1,14 @@
 package com.codeit.sb13.playlist_for_everyone.domain.conversation.repository;
 
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.entity.DirectMessage;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
+import java.util.Optional;
 import java.util.UUID;
 
 /** DM 영속성·조회와 기준 메시지까지의 누적 읽음 갱신을 제공한다. 읽음 갱신에는 쓰기 트랜잭션이 필요하다. */
@@ -66,4 +68,22 @@ public interface DirectMessageRepository extends JpaRepository<DirectMessage, UU
             @Param("directMessageId") UUID directMessageId,
             @Param("conversationId") UUID conversationId
     );
+
+    /**
+     * 상세 조회 이후 MessageDto 변환에 사용할 송수신자와 선택적인 프로필 정보를 함께 로딩한다.
+     * 프로필 URL 생성은 Mapper가 맡으며, 이 조회에서 파일 저장소를 호출하지 않는다.
+     * 대화방은 응답의 ID 참조만 필요하므로 EntityGraph의 로딩 대상에 추가하지 않는다.
+     *
+     * <p>메시지 ID만 조회 조건으로 사용한다. 대화방 참여 인가나 읽음 상태 변경은 수행하지 않는다.
+     */
+    @EntityGraph(attributePaths = {
+            "sender", "sender.profileImage",
+            "receiver", "receiver.profileImage"
+    })
+    @Query("""
+        SELECT dm
+        FROM DirectMessage dm
+        WHERE dm.id = :directMessageId
+    """)
+    Optional<DirectMessage> findDetailedById(@Param("directMessageId") UUID directMessageId);
 }

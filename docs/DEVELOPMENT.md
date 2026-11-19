@@ -6,7 +6,7 @@
 > 도메인 구현 현황과 개발용 보안 전환 설명은 최신 코드와 다를 수 있습니다.
 > 현재 SSE 연결·공유 이력·Redis 분산 전송·복구·인증·테스트는 [SSE 구현 가이드](sse/README.md), 알림 생성·전송·조회·읽음 처리와 JWT 인증은 [알림 구현 가이드](notification/README.md)를 기준으로 확인합니다.
 > 팔로우 등록·취소·조회와 인증·이벤트의 구현 및 검증 범위는 [팔로우 구현 가이드](follow/README.md)를 참고합니다.
-> 대화방 생성·조회, DM 조회·읽음·WebSocket 송수신·보안·검증은 [대화방·DM 구현 가이드](conversation/README.md)를 참고합니다.
+> 대화방 생성·조회, DM 조회·읽음·WebSocket 송수신·생성 이벤트·SSE와 검증은 [대화방·DM 구현 가이드](conversation/README.md)를 참고합니다.
 
 ## 현재 개발 상태
 
@@ -17,7 +17,7 @@
 | 공통 기반 | 예외 처리, 응답 DTO, 엔티티 기반 클래스, JPA Auditing, Querydsl 설정, MDC 로그, 비밀번호 인코더, OpenAPI 설정 구현 |
 | 도메인 예외 | 공통 예외 기반 위에 도메인 오류 정의. 팔로우는 자기 팔로우·대상 미존재·관계 미존재·생성 실패 예외 사용 |
 | 팔로우 | 등록·취소·조회, 중복 복구와 생성 이벤트 구현. #76의 실제 JWT HTTP 통합 검증 및 Swagger 정리 완료 |
-| 대화방·DM | #58 대화방 생성·중복 복구, #59 대화방 검색·커서 조회, #60 DM 조회·누적 읽음, #61 WebSocket 송수신·Redis 분산 전송 구현. [전체 흐름](conversation/README.md), [WebSocket 환경 설정](conversation/10-websocket-settings.md) 참고 |
+| 대화방·DM | #58 대화방 생성·중복 복구, #59 대화방 검색·커서 조회, #60 DM 조회·누적 읽음, #61 WebSocket 송수신·Redis 분산 전송, #62 생성 이벤트·수신자 SSE·복구 구현. [전체 흐름](conversation/README.md), [DM 이벤트·SSE](conversation/15-direct-message-event-sse.md) 참고 |
 | DM WebSocket 협업 | [송수신·트랜잭션](conversation/11-websocket-flow.md), [보안·공통 오류와 콘텐츠 확장](conversation/12-websocket-security-errors.md), [테스트](conversation/13-websocket-testing.md), [다중 서버 수동 검증](conversation/14-websocket-multi-node.md) 참고 |
 | 로컬 인프라 | Docker Compose에 PostgreSQL과 Redis 서비스 정의 |
 | 공통 보안 | JWT 필터와 경로별 인증·인가 적용. 팔로우·알림 API는 인증 필요, 쿠키 기반 CSRF 보호 활성화 |
@@ -26,7 +26,7 @@
 | 업무 이벤트 알림 | [#155 팔로우](notification/07-domain-event-integration.md)·[#156 권한 변경·구독](notification/08-role-subscription-integration.md)·[#157 플레이리스트 생성·콘텐츠 추가](notification/09-playlist-event-integration.md)의 업무 커밋 후 공통 요청 재발행·독립 저장 연결. 실제 서비스부터 SSE 발행 요청까지 검증 |
 | 알림 수신자 | 사용자 조회 컴포넌트를 통해 User 연관관계로 저장. 요청·응답의 수신자 UUID 계약 유지. [연관관계와 검증](notification/06-receiver-association.md) 참고 |
 | 알림 조회·읽음 | JWT 사용자를 수신자 조건으로 사용하여 목록·전체 개수를 조회하고 알림 삭제로 읽음 처리. [조회·인증 흐름](notification/03-query-and-security.md) 참고 |
-| SSE·알림 후속 | 위 다섯 업무 이벤트 외의 알림 연동(#45)·DM 본문 연동·Kafka·연결 수 제한·보관 초기값의 운영 부하 검증 |
+| SSE·알림 후속 | 위 다섯 업무 이벤트 외의 알림 연동(#45), DM 알림 생성·전송 및 알림 통합 검증(#159), Kafka·연결 수 제한·보관 초기값의 운영 부하 검증. DM 본문 SSE는 #62에서 구현 |
 | 후속 기능 | 팔로우 CSRF 연동·검증은 #114, 알림 CSRF 연동·검증은 #124. 다른 기능의 진행 상태는 개별 이슈 참고 |
 
 라이브러리 의존성과 로컬 인프라를 준비한 상태와 기능 구현 완료를 구분합니다. Redis 서비스는 Compose에 포함되어 있으며, 이를 사용하는 캐시·세션 기능은 구현 전입니다. Kafka와 Elasticsearch는 현재 Compose에 포함되어 있지 않습니다.
