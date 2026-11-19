@@ -312,7 +312,7 @@ public class DirectMessageWebSocketIntegrationTest {
 
         assertThat(session.isConnected()).isTrue();
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
-                assertThat(webSocketSessionRegistry.findByUserIdAndSessionId(userId, loginSessionId))
+                assertThat(webSocketSessionRegistry.findByUserIdAndLoginSessionId(userId, loginSessionId))
                         .singleElement()
                         .satisfies(serverSession -> {
                             // XHR 요청은 이미 반환됐을 수 있으므로 요청 헤더 대신 살아 있는 연결과 전송 경로를 확인한다.
