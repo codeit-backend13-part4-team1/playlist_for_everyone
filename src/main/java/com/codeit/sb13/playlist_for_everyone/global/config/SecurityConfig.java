@@ -211,7 +211,9 @@ public class SecurityConfig {
                             .permitAll()
                             .requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/health/**")
                             .permitAll()
-
+                            // 메트릭 조회는 관리자만 허용한다.
+                            .requestMatchers("/actuator/metrics", "/actuator/metrics/**")
+                            .hasRole("ADMIN")
                             .anyRequest().authenticated();
                 })
                 .formLogin(formLogin -> formLogin
