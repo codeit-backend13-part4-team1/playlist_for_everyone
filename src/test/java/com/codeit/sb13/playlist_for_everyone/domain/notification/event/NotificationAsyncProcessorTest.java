@@ -85,6 +85,22 @@ class NotificationAsyncProcessorTest {
                 .doesNotContain(failed.title(), failed.content(), exceptionMessage);
     }
 
+    @Test
+    @DisplayName("작업 중 인터럽트가 발생하면 다음 수신자 요청을 발행하지 않는다.")
+    void stopsBatchAfterInterruption() {
+        var first = request();
+        var second = request();
+        doAnswer(invocation -> { Thread.currentThread().interrupt(); return null; })
+                .when(eventPublisher).publishEvent(first);
+        try {
+            processor.publish(new NotificationPublishBatch("DM", Map.of("directMessageId", UUID.randomUUID()), List.of(first, second)));
+            verify(eventPublisher).publishEvent(first);
+            verifyNoMoreInteractions(eventPublisher);
+        } finally {
+            Thread.interrupted();
+        }
+    }
+
     private NotificationCreateRequestedEvent request() {
         return new NotificationCreateRequestedEvent(UUID.randomUUID(), "비공개 제목", "비공개 사용자 알림 본문", NotificationLevel.INFO);
     }
