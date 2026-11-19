@@ -7,6 +7,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.follow.repository.FollowRepo
 import com.codeit.sb13.playlist_for_everyone.domain.follow.service.FollowService;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.command.NotificationCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationCreateRequestedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationSource;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.response.NotificationDto;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.Notification;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.NotificationLevel;
@@ -261,7 +262,8 @@ class NotificationIntegrationTest {
                 RECEIVER_ID,
                 "새로운 팔로워",
                 "홍길동님이 회원님을 팔로우했습니다.",
-                NotificationLevel.INFO
+                NotificationLevel.INFO,
+                NotificationSource.USER_FOLLOWED
         );
 
         transactionTemplate.executeWithoutResult(status -> {
