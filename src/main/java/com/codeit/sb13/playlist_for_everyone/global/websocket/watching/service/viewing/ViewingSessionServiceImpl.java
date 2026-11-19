@@ -128,7 +128,7 @@ public class ViewingSessionServiceImpl implements ViewingSessionService{
     }
 
     @Override
-    public Map<UUID, Long> getCurrentViewerCountMap(List<UUID> contentIdList) {
+    public Map<UUID, Long> getCurrentViewerCountWithContents(List<UUID> contentIdList) {
         return viewingSessionPresence.getWatcherCountWithMultipleContents(
                 contentIdList.stream()
                         .map(UUID::toString)
