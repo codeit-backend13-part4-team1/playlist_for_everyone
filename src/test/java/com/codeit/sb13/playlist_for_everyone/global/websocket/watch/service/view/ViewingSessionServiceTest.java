@@ -1,6 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watch.service.view;
 
-import com.codeit.sb13.playlist_for_everyone.global.service.lock.Locks;
+import com.codeit.sb13.playlist_for_everyone.global.service.lock.SpreadLock;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisTopicRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSubscription;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.ViewSessionMessageListener;
@@ -46,8 +46,9 @@ public class ViewingSessionServiceTest {
     @Mock
     RedisTemplate<String, Object> redisTemplate;
 
+    // lock 구현체 주입
     @Spy
-    Locks locks;
+    SpreadLock locks;
 
     @InjectMocks
     ViewingSessionServiceImpl viewingSessionService;
@@ -59,7 +60,7 @@ public class ViewingSessionServiceTest {
 
     UUID contentId;
 
-    private static final long TIMEOUT_SECONDS = 5L;
+    private static final long TIMEOUT_SECONDS = 1L;
 
     @BeforeEach
     void setUp() {

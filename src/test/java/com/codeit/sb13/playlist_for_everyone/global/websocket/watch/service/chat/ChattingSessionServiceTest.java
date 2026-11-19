@@ -1,7 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watch.service.chat;
 
 
-import com.codeit.sb13.playlist_for_everyone.global.service.lock.Locks;
+import com.codeit.sb13.playlist_for_everyone.global.service.lock.SpreadLock;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisTopicRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSubscription;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.ChatSessionMessageListener;
@@ -26,6 +26,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Fail.fail;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -42,7 +43,7 @@ public class ChattingSessionServiceTest {
     @Mock
     RedisTemplate<String, Object> redisTemplate;
     @Spy
-    Locks locks;
+    SpreadLock locks;
 
     @InjectMocks
     ChattingSessionServiceImpl chattingSessionService;
@@ -52,7 +53,7 @@ public class ChattingSessionServiceTest {
     ChattingSessionRoom room = mock(ChattingSessionRoom.class);
 
     // const
-    int TIME_OUT = 5;
+    long TIME_OUT = 1L;
 
     WSSubscription subscription(String sessionId, String subscriptionId){
         return new WSSubscription(sessionId, subscriptionId, "/test/destination");
@@ -144,7 +145,16 @@ public class ChattingSessionServiceTest {
                 // first lock 로직 진행. (해제)
                 firstRelease.countDown();
 
+                // 두 작업의 정상 종료 및 스레드 내부 예외 확인
+                first.get(
+                        TIME_OUT, TimeUnit.SECONDS);
+
+                second.get(
+                        TIME_OUT, TimeUnit.SECONDS);
+
             } finally {
+                // first lock 로직 진행. (해제)
+                firstRelease.countDown();
                 executor.shutdown();
             }
 
@@ -194,8 +204,8 @@ public class ChattingSessionServiceTest {
     }
 
     void validateLock(
-            Thread blockedThread,
             Thread ownerThread,
+            Thread blockedThread,
             Object expectedLock
     ) throws InterruptedException {
 
@@ -215,10 +225,12 @@ public class ChattingSessionServiceTest {
                             && threadInfo.getLockInfo() != null
                             && threadInfo.getLockInfo().getIdentityHashCode() == System.identityHashCode(expectedLock)
             ) {
-                break; // 통과 로직
+                return; // 통과 로직
             }
             Thread.sleep(10);
         }
+
+        fail("Time out");
     }
 
 

@@ -15,10 +15,12 @@ import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSubscript
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSessionMapper;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.*;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionStartedEvent;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.chatting.ChattingSessionService;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.viewing.ViewingSessionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -40,6 +42,7 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
 
     private final WatchingSessionMapper mapper;
 
+    private final ApplicationEventPublisher eventPublisher;
 
     private final MatchRule UUID_PATTERN = MatchRule
             .builder()
@@ -48,16 +51,12 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
 
     private final MatchRule VIEW_DESTINATION_PATTERN =
             MatchRule.builder()
-                    .prefix(PATH_PREFIX)
-                    .pattern(UUID_REGEX)
-                    .postfix(VIEW_POSTFIX)
+                    .pattern(PATH_PREFIX + UUID_REGEX + VIEW_POSTFIX)
                     .build();
 
     private final MatchRule CHAT_DESTINATION_PATTERN =
             MatchRule.builder()
-                    .prefix(PATH_PREFIX)
-                    .pattern(UUID_REGEX)
-                    .postfix(CHAT_POSTFIX)
+                    .pattern(PATH_PREFIX + UUID_REGEX + CHAT_POSTFIX)
                     .build();
 
     /*
@@ -110,7 +109,6 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
                 throw e;
             }
         }
-
 
         // 3. 메세지 전송
         sendViewingSessionMessage(subscription, ChangeType.JOIN, auth, content);
@@ -196,6 +194,17 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
                     type,
                     dto,
                     viewingSessionService.getCurrentViewerCount(content.id()));
+
+            // 시청 초반에 이벤트 발행
+            if (type == ChangeType.JOIN){
+                eventPublisher.publishEvent(new WatchingSessionStartedEvent(
+                        user.getId(),
+                        user.getName(),
+                        content.id(),
+                        content.title()
+                ));
+            }
+
         } catch (RuntimeException e) {
             log.warn("[{}] 페이로드 조립 실패 - contentId : {}, subscriptionId : {}",
                     this.getClass().getSimpleName(),
@@ -309,6 +318,7 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
      */
     @Override
     public void cleanUpWithSessionId(String sessionId) {
+        Objects.requireNonNull(sessionId);
         WSSession session = getSessionOrExcept(sessionId);
 
         synchronized (session) {
