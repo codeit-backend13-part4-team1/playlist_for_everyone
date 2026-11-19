@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.review.service;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.condition.ReviewListCondition;
+import com.codeit.sb13.playlist_for_everyone.domain.review.dto.response.ReviewAuthorDto;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.response.ReviewDto;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.response.ReviewResult;
 import com.codeit.sb13.playlist_for_everyone.domain.review.entity.Review;
@@ -19,6 +20,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -42,6 +44,8 @@ public class ReviewReaderTest {
     private ReviewReader reviewReader;
 
     private Content content;
+    private List<Review> reviews;
+    private List<ReviewResult> reviewResults;
 
     @BeforeEach
     void setUp() {
@@ -53,9 +57,41 @@ public class ReviewReaderTest {
         );
 
         ReflectionTestUtils.setField(content, "id", UUID.randomUUID());
+
+        List<Review> reviewList = new ArrayList<>();
+        List<ReviewResult> resultList = new ArrayList<>();
+
+        for (int i = 1; i <= 4; i++) {
+            UUID reviewId = UUID.randomUUID();
+            UUID authorId = UUID.randomUUID();
+
+            Review review = mock(Review.class);
+
+            ReviewDto dto = new ReviewDto(
+                    reviewId,
+                    content.getId(),
+                    new ReviewAuthorDto(
+                            authorId,
+                            "작성자" + i,
+                            null
+                    ),
+                    "리뷰" + i,
+                    5.0 - i
+            );
+
+            ReviewResult result = new ReviewResult(
+                    dto,
+                    "profiles/author" + i + ".png"
+            );
+
+            reviewList.add(review);
+            resultList.add(result);
+        }
+
+        reviews = List.copyOf(reviewList);
+        reviewResults = List.copyOf(resultList);
     }
 
-    /** 리뷰 목록 조회 테스트 */
     @Test
     @DisplayName("리뷰 목록을 조회할 수 있다.")
     void getReviewList() {
@@ -70,30 +106,35 @@ public class ReviewReaderTest {
                 "createdAt"
         );
 
-        Review review1 = mock(Review.class);
-        Review review2 = mock(Review.class);
+        given(reviewRepository.getReviewsByContentId(contentId, condition)).willReturn(reviews);
 
-        ReviewDto dto1 = mock(ReviewDto.class);
-        ReviewDto dto2 = mock(ReviewDto.class);
+        given(reviewRepository.countByContentId(contentId)).willReturn(4L);
 
-        when(reviewRepository.getReviewsByContentId(contentId, condition))
-                .thenReturn(List.of(review1, review2));
-
-        when(reviewMapper.toDto(review1)).thenReturn(dto1);
-        when(reviewMapper.toDto(review2)).thenReturn(dto2);
+        for (int i = 0; i < 4; i++) {
+            given(reviewMapper.toResult(reviews.get(i)))
+                    .willReturn(reviewResults.get(i));
+        }
 
         // when
-        CursorResponse<ReviewResult> result =
-                reviewReader.getReviews(contentId, condition);
+        CursorResponse<ReviewResult> result = reviewReader.getReviews(contentId, condition);
 
         // then
-        assertThat(result).isNotNull();
+        assertThat(result.data()).containsExactlyElementsOf(reviewResults);
+        assertThat(result.data())
+                .extracting(ReviewResult::profileImageKey)
+                .containsExactly(
+                        "profiles/author1.png",
+                        "profiles/author2.png",
+                        "profiles/author3.png",
+                        "profiles/author4.png"
+                );
 
-        verify(reviewRepository)
-                .getReviewsByContentId(contentId, condition);
+        assertThat(result.hasNext()).isFalse();
+        assertThat(result.nextCursor()).isNull();
+        assertThat(result.nextIdAfter()).isNull();
+        assertThat(result.totalCount()).isEqualTo(4L);
 
-        verify(reviewMapper).toResult(review1);
-        verify(reviewMapper).toResult(review2);
+        then(reviewRepository).should().getReviewsByContentId(contentId, condition);
     }
 
     @Test
@@ -110,39 +151,38 @@ public class ReviewReaderTest {
                 "rating"
         );
 
-        Review review1 = mock(Review.class);
-        Review review2 = mock(Review.class);
-        Review review3 = mock(Review.class);
+        Review secondReview = reviews.get(1);
+        UUID secondReviewId = reviewResults.get(1).dto().id();
 
-        UUID review2Id = UUID.randomUUID();
+        given(secondReview.getId()).willReturn(secondReviewId);
+        given(secondReview.getRating()).willReturn(3.0);
 
-        given(review2.getId()).willReturn(review2Id);
-        given(review2.getRating()).willReturn(4.0);
-
-        ReviewResult result1 = mock(ReviewResult.class);
-        ReviewResult result2 = mock(ReviewResult.class);
-
+        // 다음 페이지 존재 여부 확인을 위해 limit + 1개 반환
         given(reviewRepository.getReviewsByContentId(contentId, condition))
-                .willReturn(List.of(review1, review2, review3));
+                .willReturn(reviews.subList(0, 3));
 
         given(reviewRepository.countByContentId(contentId))
-                .willReturn(3L);
+                .willReturn(4L);
 
-        given(reviewMapper.toResult(review1)).willReturn(result1);
-        given(reviewMapper.toResult(review2)).willReturn(result2);
+        given(reviewMapper.toResult(reviews.get(0)))
+                .willReturn(reviewResults.get(0));
+
+        given(reviewMapper.toResult(secondReview))
+                .willReturn(reviewResults.get(1));
 
         // when
-        CursorResponse<ReviewResult> result =
-                reviewReader.getReviews(contentId, condition);
+        CursorResponse<ReviewResult> result = reviewReader.getReviews(contentId, condition);
 
         // then
-        assertThat(result.data()).containsExactly(result1, result2);
-        assertThat(result.hasNext()).isTrue();
-        assertThat(result.nextCursor()).isEqualTo("4.0");
-        assertThat(result.nextIdAfter()).isEqualTo(review2Id);
-        assertThat(result.totalCount()).isEqualTo(3L);
+        assertThat(result.data())
+                .containsExactly(reviewResults.get(0), reviewResults.get(1));
 
-        then(reviewMapper).should(never()).toDto(review3);
+        assertThat(result.hasNext()).isTrue();
+        assertThat(result.nextCursor()).isEqualTo("3.0");
+        assertThat(result.nextIdAfter()).isEqualTo(secondReviewId);
+        assertThat(result.totalCount()).isEqualTo(4L);
+
+        then(reviewMapper).should(never()).toResult(reviews.get(2));
     }
 
     @Test
@@ -152,34 +192,38 @@ public class ReviewReaderTest {
         UUID contentId = content.getId();
 
         ReviewListCondition condition = new ReviewListCondition(
-                null,
-                null,
+                "3.0",
+                reviewResults.get(1).dto().id(),
                 2,
                 SortDirection.DESCENDING,
                 "rating"
         );
 
-        Review review = mock(Review.class);
-        ReviewResult result = mock(ReviewResult.class);
-
+        // 마지막 페이지 조회를 위해 남은 리뷰 2개 반환
         given(reviewRepository.getReviewsByContentId(contentId, condition))
-                .willReturn(List.of(review));
+                .willReturn(reviews.subList(2, 4));
 
         given(reviewRepository.countByContentId(contentId))
-                .willReturn(1L);
+                .willReturn(4L);
 
-        given(reviewMapper.toResult(review)).willReturn(result);
+        given(reviewMapper.toResult(reviews.get(2)))
+                .willReturn(reviewResults.get(2));
+
+        given(reviewMapper.toResult(reviews.get(3)))
+                .willReturn(reviewResults.get(3));
 
         // when
-        CursorResponse<ReviewResult> results =
+        CursorResponse<ReviewResult> result =
                 reviewReader.getReviews(contentId, condition);
 
         // then
-        assertThat(results.data()).containsExactly(result);
-        assertThat(results.hasNext()).isFalse();
-        assertThat(results.nextCursor()).isNull();
-        assertThat(results.nextIdAfter()).isNull();
-        assertThat(results.totalCount()).isEqualTo(1L);
+        assertThat(result.data())
+                .containsExactly(reviewResults.get(2), reviewResults.get(3));
+
+        assertThat(result.hasNext()).isFalse();
+        assertThat(result.nextCursor()).isNull();
+        assertThat(result.nextIdAfter()).isNull();
+        assertThat(result.totalCount()).isEqualTo(4L);
     }
 
 }
