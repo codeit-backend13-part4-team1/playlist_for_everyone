@@ -52,9 +52,9 @@ public class ReviewMapperTest {
         assertThat(dto.rating()).isEqualTo(4.5);
 
         // 작성자 정보 검증
-        assertThat(dto.authorDto().authorId()).isEqualTo(authorId);
-        assertThat(dto.authorDto().nickname()).isEqualTo("테스트 작성자");
-        assertThat(dto.authorDto().profileImageUrl()).isNull();
+        assertThat(dto.author().authorId()).isEqualTo(authorId);
+        assertThat(dto.author().nickname()).isEqualTo("테스트 작성자");
+        assertThat(dto.author().profileImageUrl()).isNull();
     }
 
     @Test
@@ -91,9 +91,9 @@ public class ReviewMapperTest {
 
         assertThat(dto.id()).isEqualTo(reviewId);
         assertThat(dto.contentId()).isEqualTo(contentId);
-        assertThat(dto.authorDto().authorId()).isEqualTo(authorId);
-        assertThat(dto.authorDto().nickname()).isEqualTo("테스트 작성자");
-        assertThat(dto.authorDto().profileImageUrl()).isNull();
+        assertThat(dto.author().authorId()).isEqualTo(authorId);
+        assertThat(dto.author().nickname()).isEqualTo("테스트 작성자");
+        assertThat(dto.author().profileImageUrl()).isNull();
         assertThat(dto.text()).isEqualTo("재미있는 드라마였어요.");
         assertThat(dto.rating()).isEqualTo(4.5);
     }
@@ -115,7 +115,7 @@ public class ReviewMapperTest {
 
         // then
         assertThat(result.profileImageKey()).isNull();
-        assertThat(result.dto().authorDto().profileImageUrl()).isNull();
+        assertThat(result.dto().author().profileImageUrl()).isNull();
     }
 
     @Test
@@ -148,9 +148,9 @@ public class ReviewMapperTest {
         // then
         assertThat(result.id()).isEqualTo(reviewId);
         assertThat(result.contentId()).isEqualTo(contentId);
-        assertThat(result.authorDto().authorId()).isEqualTo(authorId);
-        assertThat(result.authorDto().nickname()).isEqualTo("테스트 작성자");
-        assertThat(result.authorDto().profileImageUrl()).isEqualTo(profileImageUrl);
+        assertThat(result.author().authorId()).isEqualTo(authorId);
+        assertThat(result.author().nickname()).isEqualTo("테스트 작성자");
+        assertThat(result.author().profileImageUrl()).isEqualTo(profileImageUrl);
         assertThat(result.text()).isEqualTo("재미있는 드라마였어요.");
         assertThat(result.rating()).isEqualTo(4.5);
     }

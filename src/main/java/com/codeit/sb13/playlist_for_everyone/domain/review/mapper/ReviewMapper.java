@@ -51,7 +51,7 @@ public class ReviewMapper {
             ReviewDto dto,
             String profileImageUrl
     ) {
-        ReviewAuthorDto author = dto.authorDto();
+        ReviewAuthorDto author = dto.author();
 
         ReviewAuthorDto updatedAuthor = new ReviewAuthorDto(
                 author.authorId(),

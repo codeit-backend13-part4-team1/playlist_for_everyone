@@ -187,8 +187,8 @@ public class ReviewServiceTest {
 
         // then
         assertThat(response.data()).hasSize(2);
-        assertThat(response.data().get(0).authorDto().profileImageUrl()).isEqualTo(url1);
-        assertThat(response.data().get(1).authorDto().profileImageUrl()).isEqualTo(url2);
+        assertThat(response.data().get(0).author().profileImageUrl()).isEqualTo(url1);
+        assertThat(response.data().get(1).author().profileImageUrl()).isEqualTo(url2);
         assertThat(response.totalCount()).isEqualTo(2L);
         assertThat(response.hasNext()).isFalse();
         then(reviewReader).should().getReviews(contentId, condition);

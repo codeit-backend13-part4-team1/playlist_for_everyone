@@ -5,7 +5,7 @@ import java.util.UUID;
 public record ReviewDto(
         UUID id,
         UUID contentId,
-        ReviewAuthorDto authorDto,
+        ReviewAuthorDto author,
         String text,
         double rating
 ) {
