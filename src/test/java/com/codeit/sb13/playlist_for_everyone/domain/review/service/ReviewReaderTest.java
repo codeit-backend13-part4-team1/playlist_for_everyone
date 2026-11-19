@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.condition.ReviewListCondition;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.response.ReviewDto;
+import com.codeit.sb13.playlist_for_everyone.domain.review.dto.response.ReviewResult;
 import com.codeit.sb13.playlist_for_everyone.domain.review.entity.Review;
 import com.codeit.sb13.playlist_for_everyone.domain.review.mapper.ReviewMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.review.repository.ReviewRepository;
@@ -19,11 +20,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.*;
@@ -84,7 +83,7 @@ public class ReviewReaderTest {
         when(reviewMapper.toDto(review2)).thenReturn(dto2);
 
         // when
-        CursorResponse<ReviewDto> result =
+        CursorResponse<ReviewResult> result =
                 reviewReader.getReviews(contentId, condition);
 
         // then
@@ -93,8 +92,8 @@ public class ReviewReaderTest {
         verify(reviewRepository)
                 .getReviewsByContentId(contentId, condition);
 
-        verify(reviewMapper).toDto(review1);
-        verify(reviewMapper).toDto(review2);
+        verify(reviewMapper).toResult(review1);
+        verify(reviewMapper).toResult(review2);
     }
 
     @Test
@@ -120,8 +119,8 @@ public class ReviewReaderTest {
         given(review2.getId()).willReturn(review2Id);
         given(review2.getRating()).willReturn(4.0);
 
-        ReviewDto dto1 = mock(ReviewDto.class);
-        ReviewDto dto2 = mock(ReviewDto.class);
+        ReviewResult result1 = mock(ReviewResult.class);
+        ReviewResult result2 = mock(ReviewResult.class);
 
         given(reviewRepository.getReviewsByContentId(contentId, condition))
                 .willReturn(List.of(review1, review2, review3));
@@ -129,15 +128,15 @@ public class ReviewReaderTest {
         given(reviewRepository.countByContentId(contentId))
                 .willReturn(3L);
 
-        given(reviewMapper.toDto(review1)).willReturn(dto1);
-        given(reviewMapper.toDto(review2)).willReturn(dto2);
+        given(reviewMapper.toResult(review1)).willReturn(result1);
+        given(reviewMapper.toResult(review2)).willReturn(result2);
 
         // when
-        CursorResponse<ReviewDto> result =
+        CursorResponse<ReviewResult> result =
                 reviewReader.getReviews(contentId, condition);
 
         // then
-        assertThat(result.data()).containsExactly(dto1, dto2);
+        assertThat(result.data()).containsExactly(result1, result2);
         assertThat(result.hasNext()).isTrue();
         assertThat(result.nextCursor()).isEqualTo("4.0");
         assertThat(result.nextIdAfter()).isEqualTo(review2Id);
@@ -161,7 +160,7 @@ public class ReviewReaderTest {
         );
 
         Review review = mock(Review.class);
-        ReviewDto dto = mock(ReviewDto.class);
+        ReviewResult result = mock(ReviewResult.class);
 
         given(reviewRepository.getReviewsByContentId(contentId, condition))
                 .willReturn(List.of(review));
@@ -169,19 +168,18 @@ public class ReviewReaderTest {
         given(reviewRepository.countByContentId(contentId))
                 .willReturn(1L);
 
-        given(reviewMapper.toDto(review)).willReturn(dto);
+        given(reviewMapper.toResult(review)).willReturn(result);
 
         // when
-        CursorResponse<ReviewDto> result =
+        CursorResponse<ReviewResult> results =
                 reviewReader.getReviews(contentId, condition);
 
         // then
-        assertThat(result.data()).containsExactly(dto);
-        assertThat(result.hasNext()).isFalse();
-        assertThat(result.nextCursor()).isNull();
-        assertThat(result.nextIdAfter()).isNull();
-        assertThat(result.totalCount()).isEqualTo(1L);
+        assertThat(results.data()).containsExactly(result);
+        assertThat(results.hasNext()).isFalse();
+        assertThat(results.nextCursor()).isNull();
+        assertThat(results.nextIdAfter()).isNull();
+        assertThat(results.totalCount()).isEqualTo(1L);
     }
-
 
 }

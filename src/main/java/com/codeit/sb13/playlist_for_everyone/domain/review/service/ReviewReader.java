@@ -1,7 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.review.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.condition.ReviewListCondition;
-import com.codeit.sb13.playlist_for_everyone.domain.review.dto.response.ReviewDto;
+import com.codeit.sb13.playlist_for_everyone.domain.review.dto.response.ReviewResult;
 import com.codeit.sb13.playlist_for_everyone.domain.review.entity.Review;
 import com.codeit.sb13.playlist_for_everyone.domain.review.mapper.ReviewMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.review.repository.ReviewRepository;
@@ -21,7 +21,7 @@ public class ReviewReader {
     private final ReviewMapper reviewMapper;
 
     @Transactional(readOnly = true)
-    public CursorResponse<ReviewDto> getReviews(
+    public CursorResponse<ReviewResult> getReviews(
             UUID contentId,
             ReviewListCondition condition
     ) {
@@ -57,8 +57,8 @@ public class ReviewReader {
         long totalCount = reviewRepository.countByContentId(contentId);
 
         // Review -> ReviewDto 변환
-        List<ReviewDto> data = page.stream()
-                .map(reviewMapper::toDto)
+        List<ReviewResult> data = page.stream()
+                .map(reviewMapper::toResult)
                 .toList();
 
         return new CursorResponse<>(

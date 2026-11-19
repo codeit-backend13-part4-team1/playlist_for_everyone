@@ -4,11 +4,14 @@ import com.codeit.sb13.playlist_for_everyone.domain.review.dto.condition.ReviewL
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewUpdateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.response.ReviewDto;
+import com.codeit.sb13.playlist_for_everyone.domain.review.dto.response.ReviewResult;
+import com.codeit.sb13.playlist_for_everyone.domain.review.mapper.ReviewMapper;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
+import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -17,6 +20,8 @@ public class ReviewService {
 
     private final ReviewReader reviewReader;
     private final ReviewWriter reviewWriter;
+    private final FileService fileService;
+    private final ReviewMapper reviewMapper;
 
     public ReviewDto save(ReviewCreateRequest request, UUID authorId) {
         return reviewWriter.save(request, authorId);
@@ -26,9 +31,33 @@ public class ReviewService {
             UUID contentId,
             ReviewListCondition condition
     ) {
-        CursorResponse<ReviewDto> response = reviewReader.getReviews(contentId, condition);
+        CursorResponse<ReviewResult> response
+                = reviewReader.getReviews(contentId, condition);
 
-        return response;
+        List<ReviewDto> data = response.data().stream()
+                .map(reviewResult -> {
+                    String key = reviewResult.profileImageKey();
+
+                    String url = key == null
+                            ? null
+                            : fileService.getFileUrlByKey(key);
+
+                    return reviewMapper.withProfileImageUrl(
+                            reviewResult.dto(),
+                            url
+                    );
+                })
+                .toList();
+
+        return new CursorResponse<>(
+                data,
+                response.nextCursor(),
+                response.nextIdAfter(),
+                response.hasNext(),
+                response.totalCount(),
+                response.sortBy(),
+                response.sortDirection()
+        );
     }
 
     public ReviewDto update(ReviewUpdateRequest request, UUID reviewId, UUID authorId) {
