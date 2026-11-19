@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.notification.event;
 
+import com.codeit.sb13.playlist_for_everyone.domain.notification.config.NotificationExecutorLifecycle;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationCreateRequestedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationPublishBatch;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.NotificationLevel;
@@ -31,6 +32,8 @@ class NotificationAsyncProcessorTest {
     private NotificationMetrics metrics;
     @Mock
     private ApplicationEventPublisher eventPublisher;
+    @Mock
+    private NotificationExecutorLifecycle executorLifecycle;
     @InjectMocks
     private NotificationAsyncProcessor processor;
 
@@ -95,7 +98,8 @@ class NotificationAsyncProcessorTest {
         try {
             processor.publish(new NotificationPublishBatch("DM", Map.of("directMessageId", UUID.randomUUID()), List.of(first, second)));
             verify(eventPublisher).publishEvent(first);
-            verifyNoMoreInteractions(eventPublisher);
+            verify(metrics).recordPublishAttempt(first.source());
+            verifyNoMoreInteractions(eventPublisher, metrics);
         } finally {
             Thread.interrupted();
         }

@@ -81,6 +81,8 @@ everyone:
       pool-size: ${EVERYONE_NOTIFICATION_ASYNC_POOL_SIZE:2}
       # 대기 중인 작업 수의 상한. 0이면 작업을 대기열에 보관하지 않는다.
       queue-capacity: ${EVERYONE_NOTIFICATION_ASYNC_QUEUE_CAPACITY:100}
+      # 종료 대기의 초기값. 제한 초과 시 중단을 요청하므로 미완료 알림의 전달은 보장하지 않는다.
+      shutdown-timeout: ${EVERYONE_NOTIFICATION_ASYNC_SHUTDOWN_TIMEOUT:30s}
 
   s3:
     bucket: ${EVERYONE_S3_BUCKET}

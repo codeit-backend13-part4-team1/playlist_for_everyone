@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.notification.event;
 
+import com.codeit.sb13.playlist_for_everyone.domain.notification.config.NotificationExecutorLifecycle;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationPublishBatch;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.monitoring.NotificationMetrics;
 import lombok.RequiredArgsConstructor;
@@ -23,10 +24,15 @@ public class NotificationAsyncProcessor {
 
     private final NotificationMetrics metrics;
     private final ApplicationEventPublisher eventPublisher;
+    private final NotificationExecutorLifecycle executorLifecycle;
 
     @Async("notificationTaskExecutor")
     public void publish(NotificationPublishBatch batch) {
         for (var request : batch.requests()) {
+            // 정상 종료 대기 중에는 계속 처리하고, 중단 요청 이후의 수신자만 발행하지 않는다.
+            if (Thread.currentThread().isInterrupted() || executorLifecycle.isStopRequested()) {
+                return;
+            }
             metrics.recordPublishAttempt(request.source());
             try {
                 eventPublisher.publishEvent(request);
