@@ -7,46 +7,54 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.TmdbPa
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.TmdbTvResponse;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentSource;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
+import com.codeit.sb13.playlist_for_everyone.domain.content.event.ContentCollectionFinishedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.content.event.ContentSearchCacheEvictEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.job.Job;
+import org.springframework.batch.core.job.parameters.InvalidJobParametersException;
 import org.springframework.batch.core.job.parameters.JobParametersBuilder;
 import org.springframework.batch.core.launch.JobOperator;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
+import org.springframework.boot.batch.autoconfigure.observation.BatchObservationAutoConfiguration;
 import org.springframework.boot.batch.jdbc.autoconfigure.BatchJdbcAutoConfiguration;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.boot.micrometer.metrics.autoconfigure.MetricsAutoConfiguration;
+import org.springframework.boot.micrometer.observation.autoconfigure.ObservationAutoConfiguration;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.event.ApplicationEvents;
+import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.ResourceAccessException;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.NullSource;
-import org.junit.jupiter.params.provider.ValueSource;
-import org.springframework.batch.core.job.parameters.InvalidJobParametersException;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.ArrayList;
+import java.util.concurrent.TimeUnit;
 
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.when;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.*;
 
 @DataJpaTest(properties = {
         "spring.flyway.enabled=true",
@@ -56,15 +64,23 @@ import static org.mockito.Mockito.when;
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @ActiveProfiles("test")
-@ImportAutoConfiguration(BatchJdbcAutoConfiguration.class)
+@ImportAutoConfiguration({
+        BatchJdbcAutoConfiguration.class,
+        MetricsAutoConfiguration.class,
+        ObservationAutoConfiguration.class,
+        BatchObservationAutoConfiguration.class
+})
 @Import({
         JpaAuditingConfig.class,
         QueryDslConfig.class,
         ContentCollectionService.class,
-        TmdbBatchConfig.class
+        TmdbBatchConfig.class,
+        CollectionStepMetricsListener.class,
+        TmdbCollectionJobTest.MetricsTestConfig.class
 })
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @Testcontainers
+@RecordApplicationEvents
 class TmdbCollectionJobTest {
 
     @Container
@@ -88,8 +104,39 @@ class TmdbCollectionJobTest {
     @MockitoBean
     private TmdbClient tmdbClient;
 
+    @Autowired
+    private ApplicationEvents applicationEvents;
+
+    @TestConfiguration(proxyBeanMethods = false)
+    static class MetricsTestConfig {
+
+        @Bean
+        SimpleMeterRegistry meterRegistry() {
+            return new SimpleMeterRegistry();
+        }
+    }
+
+    @Autowired
+    private SimpleMeterRegistry meterRegistry;
+
     @Test
     void 영화와_TV와_태그를_저장하고_재수집해도_중복되지_않는다() throws Exception {
+
+        var movieCounter = meterRegistry.counter(
+                "content.collection.items.write",
+                "job", "tmdbCollectionJob",
+                "step", "tmdbMovieCollectionStep"
+        );
+
+        var tvCounter = meterRegistry.counter(
+                "content.collection.items.write",
+                "job", "tmdbCollectionJob",
+                "step", "tmdbTvCollectionStep"
+        );
+
+        double moviesBefore = movieCounter.count();
+        double tvBefore = tvCounter.count();
+
         var movie = new TmdbMovieResponse(
                 550L,
                 "테스트 영화",
@@ -121,10 +168,53 @@ class TmdbCollectionJobTest {
                 .addString("run.id", UUID.randomUUID().toString())
                 .toJobParameters();
 
+        // 실행 전 성공 횟수와 실행 시간
+        var timerBefore = meterRegistry.find("spring.batch.job")
+                .tags(
+                        "spring.batch.job.name", "tmdbCollectionJob",
+                        "spring.batch.job.status", "COMPLETED"
+                )
+                .timer();
+
+        long completedBefore = timerBefore == null
+                ? 0L : timerBefore.count();
+        double secondsBefore = timerBefore == null
+                ? 0.0 : timerBefore.totalTime(TimeUnit.SECONDS);
+
         var execution = jobOperator.start(job, parameters);
 
         assertThat(execution.getStatus())
                 .isEqualTo(BatchStatus.COMPLETED);
+
+        // 영화와 TV를 합쳐 신규 2건을 담은 이벤트 한 번 발행
+        assertThat(applicationEvents
+                .stream(ContentCollectionFinishedEvent.class)
+                .toList())
+                .extracting(ContentCollectionFinishedEvent::insertedCount)
+                .containsExactly(2L);
+
+        // 건별 캐시 무효화 이벤트는 발행하지 않는다.
+        assertThat(applicationEvents
+                .stream(ContentSearchCacheEvictEvent.class)
+                .count())
+                .isZero();
+
+        // 실행 후 성공 횟수와 실행 시간 확인
+        var completedTimer = meterRegistry.find("spring.batch.job")
+                .tags(
+                        "spring.batch.job.name", "tmdbCollectionJob",
+                        "spring.batch.job.status", "COMPLETED"
+                )
+                .timer();
+
+        assertThat(completedTimer).isNotNull();
+        assertThat(completedTimer.count() - completedBefore)
+                .isEqualTo(1L);
+        assertThat(completedTimer.totalTime(TimeUnit.SECONDS) - secondsBefore)
+                .isGreaterThan(0.0);
+
+        assertThat(movieCounter.count() - moviesBefore).isEqualTo(1.0);
+        assertThat(tvCounter.count() - tvBefore).isEqualTo(1.0);
 
         var saved = contentRepository.findByProviderAndTypeAndProviderItemId(
                 ContentSource.TMDB,
@@ -191,10 +281,30 @@ class TmdbCollectionJobTest {
                 .addString("run.id", UUID.randomUUID().toString())
                 .toJobParameters();
 
+        // 첫 실행에서 기록한 이벤트를 비운다.
+        applicationEvents.clear();
+
+        double moviesBeforeSecondRun = movieCounter.count();
+        double tvBeforeSecondRun = tvCounter.count();
+
         var secondExecution = jobOperator.start(job, secondParameters);
 
         assertThat(secondExecution.getStatus())
                 .isEqualTo(BatchStatus.COMPLETED);
+
+        assertThat(movieCounter.count() - moviesBeforeSecondRun).isEqualTo(1.0);
+        assertThat(tvCounter.count() - tvBeforeSecondRun).isEqualTo(1.0);
+
+        // 재수집은 모두 중복이므로 캐시 이벤트를 발행하지 않는다.
+        assertThat(applicationEvents
+                .stream(ContentCollectionFinishedEvent.class)
+                .count())
+                .isZero();
+
+        assertThat(applicationEvents
+                .stream(ContentSearchCacheEvictEvent.class)
+                .count())
+                .isZero();
 
         // 기존 영화와 TV의 ID가 유지되고, 콘텐츠가 추가되지 않았는지 확인
         var contentIds = jdbcTemplate.queryForList(

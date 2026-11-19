@@ -10,9 +10,12 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.TmdbPa
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.TmdbTvResponse;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentSource;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
+import com.codeit.sb13.playlist_for_everyone.domain.content.event.ContentCollectionFinishedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.content.event.ContentSearchCacheEvictEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
@@ -28,14 +31,21 @@ import org.springframework.batch.infrastructure.item.ExecutionContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
+import org.springframework.boot.batch.autoconfigure.observation.BatchObservationAutoConfiguration;
 import org.springframework.boot.batch.jdbc.autoconfigure.BatchJdbcAutoConfiguration;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.boot.micrometer.metrics.autoconfigure.MetricsAutoConfiguration;
+import org.springframework.boot.micrometer.observation.autoconfigure.ObservationAutoConfiguration;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.event.ApplicationEvents;
+import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.ResourceAccessException;
@@ -46,6 +56,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
@@ -59,16 +70,24 @@ import static org.mockito.Mockito.*;
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @ActiveProfiles("test")
-@ImportAutoConfiguration(BatchJdbcAutoConfiguration.class)
+@ImportAutoConfiguration({
+        BatchJdbcAutoConfiguration.class,
+        MetricsAutoConfiguration.class,
+        ObservationAutoConfiguration.class,
+        BatchObservationAutoConfiguration.class
+})
 @Import({
         JpaAuditingConfig.class,
         QueryDslConfig.class,
         ContentCollectionService.class,
         SportsDbBatchConfig.class,
-        TmdbBatchConfig.class
+        TmdbBatchConfig.class,
+        SportsDbCollectionJobTest.MetricsTestConfig.class,
+        CollectionStepMetricsListener.class
 })
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @Testcontainers
+@RecordApplicationEvents
 class SportsDbCollectionJobTest {
 
     @Container
@@ -102,6 +121,21 @@ class SportsDbCollectionJobTest {
     @Autowired
     private JobRepository jobRepository;
 
+    @Autowired
+    private ApplicationEvents applicationEvents;
+
+    @TestConfiguration(proxyBeanMethods = false)
+    static class MetricsTestConfig {
+
+        @Bean
+        SimpleMeterRegistry meterRegistry() {
+            return new SimpleMeterRegistry();
+        }
+    }
+
+    @Autowired
+    private SimpleMeterRegistry meterRegistry;
+
     @Test
     void 배치를_실행하면_경기와_태그가_저장된다() throws Exception {
         var event = new SportsDbEventResponse(
@@ -127,6 +161,13 @@ class SportsDbCollectionJobTest {
 
         assertThat(execution.getStatus())
                 .isEqualTo(BatchStatus.COMPLETED);
+
+        assertThat(applicationEvents.stream(ContentCollectionFinishedEvent.class).toList())
+                .extracting(ContentCollectionFinishedEvent::insertedCount)
+                .containsExactly(1L);
+
+        assertThat(applicationEvents.stream(ContentSearchCacheEvictEvent.class).count())
+                .isZero();
 
         var saved = contentRepository.findByProviderAndTypeAndProviderItemId(
                 ContentSource.THE_SPORTS_DB,
@@ -310,7 +351,23 @@ class SportsDbCollectionJobTest {
     @Test
     void 잘못된_경기가_건너뛰기_제한을_초과하면_배치가_실패한다()
             throws Exception {
-        var events = new ArrayList<SportsDbEventResponse>();
+
+            var writeCounter = meterRegistry.counter(
+                    "content.collection.items.write",
+                    "job", "sportsDbCollectionJob",
+                    "step", "sportsDbCollectionStep"
+            );
+
+            var skipCounter = meterRegistry.counter(
+                    "content.collection.items.skip",
+                    "job", "sportsDbCollectionJob",
+                    "step", "sportsDbCollectionStep"
+            );
+
+            double writesBefore = writeCounter.count();
+            double skipsBefore = skipCounter.count();
+
+            var events = new ArrayList<SportsDbEventResponse>();
 
         events.add(new SportsDbEventResponse(
                 "443001", "첫 번째 정상 경기", "Soccer",
@@ -349,10 +406,37 @@ class SportsDbCollectionJobTest {
                 .addString("run.id", UUID.randomUUID().toString())
                 .toJobParameters();
 
+        // 실행 전 실패 횟수와 실행 시간
+        var timerBefore = meterRegistry.find("spring.batch.job")
+                .tags(
+                        "spring.batch.job.name", "sportsDbCollectionJob",
+                        "spring.batch.job.status", "FAILED"
+                )
+                .timer();
+
+        long failedBefore = timerBefore == null
+                ? 0L : timerBefore.count();
+        double secondsBefore = timerBefore == null
+                ? 0.0 : timerBefore.totalTime(TimeUnit.SECONDS);
+
         var execution = jobOperator.start(job, parameters);
 
         assertThat(execution.getStatus())
                 .isEqualTo(BatchStatus.FAILED);
+
+// 실패한 실행도 메트릭에 기록되는지 확인
+        var failedTimer = meterRegistry.find("spring.batch.job")
+                .tags(
+                        "spring.batch.job.name", "sportsDbCollectionJob",
+                        "spring.batch.job.status", "FAILED"
+                )
+                .timer();
+
+        assertThat(failedTimer).isNotNull();
+        assertThat(failedTimer.count() - failedBefore)
+                .isEqualTo(1L);
+        assertThat(failedTimer.totalTime(TimeUnit.SECONDS) - secondsBefore)
+                .isGreaterThan(0.0);
 
         assertThat(contentRepository.findByProviderAndTypeAndProviderItemId(
                 ContentSource.THE_SPORTS_DB,
@@ -369,6 +453,10 @@ class SportsDbCollectionJobTest {
         var stepExecution = execution.getStepExecutions().iterator().next();
 
         assertThat(stepExecution.getWriteSkipCount()).isEqualTo(10);
+        assertThat(stepExecution.getWriteCount()).isEqualTo(2);
+
+        assertThat(writeCounter.count() - writesBefore).isEqualTo(2.0);
+        assertThat(skipCounter.count() - skipsBefore).isEqualTo(10.0);
 
         // 같은 목록으로 재시작해도 건너뛰기 한도 유지
         var restartedExecution = jobOperator.restart(execution);
@@ -476,6 +564,13 @@ class SportsDbCollectionJobTest {
         assertThat(failedExecution.getStatus())
                 .isEqualTo(BatchStatus.FAILED);
 
+        // 배치는 실패했지만 첫 번째 경기는 이미 커밋됐으므로 이벤트를 발행한다.
+        assertThat(applicationEvents.stream(ContentCollectionFinishedEvent.class).toList())
+                .extracting(ContentCollectionFinishedEvent::insertedCount)
+                .containsExactly(1L);
+
+        applicationEvents.clear();
+
         var savedFirst = contentRepository.findByProviderAndTypeAndProviderItemId(
                 ContentSource.THE_SPORTS_DB,
                 ContentType.sport,
@@ -495,6 +590,11 @@ class SportsDbCollectionJobTest {
 
         assertThat(restartedExecution.getStatus())
                 .isEqualTo(BatchStatus.COMPLETED);
+
+        // 재시작해서 새로 저장한 두 번째 경기만 센다.
+        assertThat(applicationEvents.stream(ContentCollectionFinishedEvent.class).toList())
+                .extracting(ContentCollectionFinishedEvent::insertedCount)
+                .containsExactly(1L);
 
         var firstAfterRestart =
                 contentRepository.findByProviderAndTypeAndProviderItemId(
@@ -600,6 +700,10 @@ class SportsDbCollectionJobTest {
         assertThat(firstExecution.getStatus())
                 .isEqualTo(BatchStatus.COMPLETED);
 
+        assertThat(applicationEvents.stream(ContentCollectionFinishedEvent.class).toList())
+                .extracting(ContentCollectionFinishedEvent::insertedCount)
+                .containsExactly(1L);
+
         var firstSaved = contentRepository.findByProviderAndTypeAndProviderItemId(
                 ContentSource.THE_SPORTS_DB,
                 ContentType.sport,
@@ -615,10 +719,18 @@ class SportsDbCollectionJobTest {
                 .addString("run.id", UUID.randomUUID().toString())
                 .toJobParameters();
 
+        // 첫 실행에서 기록한 이벤트만 비움
+        applicationEvents.clear();
+
         var secondExecution = jobOperator.start(job, secondParameters);
 
         assertThat(secondExecution.getStatus())
                 .isEqualTo(BatchStatus.COMPLETED);
+
+        assertThat(applicationEvents.stream(ContentCollectionFinishedEvent.class).count())
+                .isZero();
+        assertThat(applicationEvents.stream(ContentSearchCacheEvictEvent.class).count())
+                .isZero();
 
         var secondSaved = contentRepository.findByProviderAndTypeAndProviderItemId(
                 ContentSource.THE_SPORTS_DB,

@@ -32,13 +32,18 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.http.HttpHeaders;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -48,11 +53,9 @@ import java.util.UUID;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(UserController.class)
@@ -715,6 +718,83 @@ class UserControllerTest {
         verifyNoInteractions(passwordChangeService);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"{}", "{\"name\": \"\"}", "{\"name\": \"   \"}"})
+    @DisplayName("변경할 이름이 없거나 비어 있으면 400을 반환한다.")
+    void 변경할_이름이_없거나_비어_있으면_400을_반환한다(String body) throws Exception {
+        prepareAuthenticatedUser(Role.USER);
+
+        mockMvc.perform(multipart(HttpMethod.PATCH, USER_URL, ADMIN_ID)
+                        .file(profileRequest(body))
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN)
+                        .with(csrf()))
+                .andExpect(status().isBadRequest());
+
+        verify(userService, never()).updateProfile(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("이미지 없이 이름만 변경할 수 있다.")
+    void 이미지_없이_이름만_변경할_수_있다() throws Exception {
+        prepareAuthenticatedUser(Role.USER);
+        given(userService.updateProfile(ADMIN_ID, "새 이름", null))
+                .willReturn(updatedUser(null));
+
+        mockMvc.perform(multipart(HttpMethod.PATCH, USER_URL, ADMIN_ID)
+                        .file(profileRequest("""
+                            {"name": "새 이름"}
+                            """))
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN)
+                        .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("새 이름"));
+
+        verify(userService).updateProfile(ADMIN_ID, "새 이름", null);
+    }
+
+    @Test
+    @DisplayName("본인은 이름과 프로필 이미지를 변경할 수 있다.")
+    void 본인은_이름과_프로필_이미지를_변경할_수_있다() throws Exception {
+        prepareAuthenticatedUser(Role.USER);
+        MockMultipartFile image = new MockMultipartFile(
+                "image", "profile.png", MediaType.IMAGE_PNG_VALUE, new byte[]{1, 2, 3}
+        );
+        given(userService.updateProfile(eq(ADMIN_ID), eq("새 이름"), any(MultipartFile.class)))
+                .willReturn(updatedUser("https://cdn.example.com/new.png"));
+
+        mockMvc.perform(multipart(HttpMethod.PATCH, USER_URL, ADMIN_ID)
+                        .file(profileRequest("""
+                            {"name": "새 이름"}
+                            """))
+                        .file(image)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN)
+                        .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(ADMIN_ID.toString()))
+                .andExpect(jsonPath("$.name").value("새 이름"))
+                .andExpect(jsonPath("$.profileImageUrl").value("https://cdn.example.com/new.png"));
+
+        verify(userService).updateProfile(
+                eq(ADMIN_ID),
+                eq("새 이름"),
+                argThat(file -> "profile.png".equals(file.getOriginalFilename()))
+        );
+    }
+
+    @Test
+    @DisplayName("인증되지 않은 사용자는 프로필을 변경할 수 없다.")
+    void 인증되지_않은_사용자는_프로필을_변경할_수_없다() throws Exception {
+        mockMvc.perform(multipart(HttpMethod.PATCH, USER_URL, ADMIN_ID)
+                        .file(profileRequest("""
+                            {"name": "새 이름"}
+                            """))
+                        .with(csrf()))
+                .andExpect(status().isUnauthorized());
+
+        verify(userService, never()).updateProfile(any(), any(), any());
+    }
+
+
     static Stream<String> tooLongPasswords() {
         return Stream.of(
                 "a".repeat(73),
@@ -749,6 +829,27 @@ class UserControllerTest {
         return """
                 {"locked": %s}
                 """.formatted(value);
+    }
+
+    private MockMultipartFile profileRequest(String json) {
+        return new MockMultipartFile(
+                "request",
+                "",
+                MediaType.APPLICATION_JSON_VALUE,
+                json.getBytes(StandardCharsets.UTF_8)
+        );
+    }
+
+    private UserDto updatedUser(String profileImageUrl) {
+        return new UserDto(
+                ADMIN_ID,
+                LocalDateTime.of(2026, 11, 1, 12, 0),
+                "requester@example.com",
+                "새 이름",
+                profileImageUrl,
+                Role.USER,
+                false
+        );
     }
 
 }

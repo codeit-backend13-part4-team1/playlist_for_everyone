@@ -1,11 +1,13 @@
 package com.codeit.sb13.playlist_for_everyone.global.config;
 
 import com.codeit.sb13.playlist_for_everyone.global.websocket.WebSocketInterceptor;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.config.WebSocketOriginProperties;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSession;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistry;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.messaging.Message;
@@ -31,11 +33,13 @@ import org.springframework.web.socket.messaging.StompSubProtocolErrorHandler;
  */
 @Configuration
 @EnableWebSocketMessageBroker
+@EnableConfigurationProperties(WebSocketOriginProperties.class)
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private TaskScheduler taskScheduler;
     private final WebSocketInterceptor webSocketInterceptor;
     private final WebSocketSessionRegistry socketRegistry;
+    private final WebSocketOriginProperties originProperties;
 
     /** 메시지 종류와 목적지별 접근 규칙을 가진 공통 인가 매니저를 빈 이름으로 지정해 주입한다. */
     private final AuthorizationManager<Message<?>> webSocketAuthorizationManager;
@@ -44,12 +48,14 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     public WebSocketConfig(
             WebSocketInterceptor webSocketInterceptor,
             WebSocketSessionRegistry socketRegistry,
+            WebSocketOriginProperties originProperties,
             @Qualifier("webSocketAuthorizationManager")
             AuthorizationManager<Message<?>> webSocketAuthorizationManager,
             @Qualifier("webSocketStompErrorHandler")
             ObjectProvider<StompSubProtocolErrorHandler> stompErrorHandlerProvider) {
         this.webSocketInterceptor = webSocketInterceptor;
         this.socketRegistry = socketRegistry;
+        this.originProperties = originProperties;
         this.webSocketAuthorizationManager = webSocketAuthorizationManager;
         this.stompErrorHandlerProvider = stompErrorHandlerProvider;
     }
@@ -59,15 +65,18 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     }
 
     /**
-     * 기본 WebSocket과 SockJS에 같은 오류 처리기를 연결하고 기본 동일 출처 제한을 유지한다.
+     * 기본 WebSocket과 SockJS에 같은 오류 처리기와 프로필별 허용 Origin을 적용한다.
+     * 동일 출처는 유지하며, 프록시를 거치는 프론트의 Origin은 환경변수로 명시한다.
      * SockJS HTTP 요청의 CSRF 예외는 SecurityConfig의 /ws 범위에서 관리한다.
      * HTTP 연결 허용과 STOMP CONNECT의 JWT 인증은 별개의 단계다.
      */
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.setErrorHandler(stompErrorHandlerProvider.getObject());
-        registry.addEndpoint("/ws");
-        registry.addEndpoint("/ws").withSockJS();   // 제공된 프론트의 SockJS 연결과 XHR 폴백 지원.
+        String[] allowedOrigins = originProperties.allowedOrigins().toArray(String[]::new);
+        registry.addEndpoint("/ws").setAllowedOrigins(allowedOrigins);
+        registry.addEndpoint("/ws").setAllowedOrigins(allowedOrigins)
+                .withSockJS();   // 제공된 프론트의 SockJS 연결과 XHR 폴백 지원.
     }
 
     /** /pub은 컨트롤러로, /sub는 이 서버의 구독자로 전달한다. Simple Broker 자체는 서버 간 공유되지 않는다. */

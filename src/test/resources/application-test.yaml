@@ -57,6 +57,8 @@ everyone:
       key-prefix: everyone:test:sse:history
 
   websocket:
+    # 운영 환경변수 없이 테스트한다. 임의 포트로 실행되는 서버의 동일 출처 연결도 허용된다.
+    allowed-origins: http://localhost:8080
     event:
       # 이벤트 리스너의 구현체를 선택. 테스트에서만 명시적으로 true 를 덮어쓴다.
       multiple: false

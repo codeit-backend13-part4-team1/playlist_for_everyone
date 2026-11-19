@@ -7,6 +7,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentSource;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentTag;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
+import com.codeit.sb13.playlist_for_everyone.domain.content.event.ContentSearchCacheEvictEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
@@ -22,6 +23,8 @@ import org.springframework.boot.testcontainers.service.connection.ServiceConnect
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.test.context.event.ApplicationEvents;
+import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.junit.jupiter.Container;
@@ -29,6 +32,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CyclicBarrier;
@@ -48,6 +52,7 @@ import static org.mockito.Mockito.*;
 @ActiveProfiles("test")
 @Import({JpaAuditingConfig.class, QueryDslConfig.class, ContentCollectionService.class})
 @Testcontainers
+@RecordApplicationEvents
 class ContentCollectionServiceTest {
 
     @Container
@@ -59,6 +64,9 @@ class ContentCollectionServiceTest {
 
     @Autowired
     private EntityManager em;
+
+    @Autowired
+    private ApplicationEvents applicationEvents;
 
     @MockitoSpyBean
     private ContentRepository contentRepository;
@@ -482,6 +490,124 @@ class ContentCollectionServiceTest {
                     contentRepository.deleteById(content.getId())
             );
         }
+    }
+
+    @Test
+    void 새_콘텐츠를_저장하면_캐시_무효화_이벤트를_발행한다() {
+        var data = new CollectedContentData(
+                ContentType.movie, "테스트 영화", "영화 설명",
+                "https://example.com/poster.jpg",
+                ContentSource.TMDB, "550",
+                List.of("액션")
+        );
+
+        service.save(data);
+        em.flush();
+
+        assertThat(applicationEvents
+                .stream(ContentSearchCacheEvictEvent.class)
+                .count())
+                .isEqualTo(1L);
+    }
+
+    @Test
+    void 중복_콘텐츠를_수집하면_캐시_무효화_이벤트를_발행하지_않는다() {
+        var data = new CollectedContentData(
+                ContentType.movie, "테스트 영화", "영화 설명",
+                "https://example.com/poster.jpg",
+                ContentSource.TMDB, "550",
+                List.of("액션")
+        );
+
+        service.save(data);
+        em.flush();
+
+        // 처음 저장할 때 기록된 이벤트는 비운다.
+        applicationEvents.clear();
+
+        service.save(data);
+        em.flush();
+
+        assertThat(applicationEvents
+                .stream(ContentSearchCacheEvictEvent.class)
+                .count())
+                .isZero();
+    }
+
+    @Test
+    void INSERT가_중복으로_건너뛰어지면_캐시_이벤트를_발행하지_않는다() {
+        var data = new CollectedContentData(
+                ContentType.movie, "테스트 영화", "영화 설명",
+                "https://example.com/poster.jpg",
+                ContentSource.TMDB, "550",
+                List.of("액션")
+        );
+
+        Content existing = service.save(data);
+        em.flush();
+        applicationEvents.clear();
+
+        // 처음에는 없는 것으로 조회하고, 저장 후에는 기존 콘텐츠를 반환한다.
+        doReturn(Optional.empty(), Optional.of(existing))
+                .when(contentRepository)
+                .findByProviderAndTypeAndProviderItemId(
+                        ContentSource.TMDB,
+                        ContentType.movie,
+                        "550"
+                );
+
+        Content result = service.save(data);
+        em.flush();
+
+        assertThat(result.getId()).isEqualTo(existing.getId());
+        assertThat(applicationEvents
+                .stream(ContentSearchCacheEvictEvent.class)
+                .count())
+                .isZero();
+    }
+
+    @Test
+    void 배치용_저장은_신규_저장_여부를_반환하고_이벤트는_발행하지_않는다() {
+        var data = new CollectedContentData(
+                ContentType.movie, "테스트 영화", "영화 설명",
+                "https://example.com/poster.jpg",
+                ContentSource.TMDB, "550",
+                List.of("액션")
+        );
+
+        var result = service.saveForBatch(data);
+        em.flush();
+
+        assertThat(result.inserted()).isTrue();
+        assertThat(result.content().getId()).isNotNull();
+        assertThat(applicationEvents
+                .stream(ContentSearchCacheEvictEvent.class)
+                .count())
+                .isZero();
+    }
+
+    @Test
+    void 배치용_저장은_중복이면_기존_콘텐츠와_false를_반환한다() {
+        var data = new CollectedContentData(
+                ContentType.movie, "테스트 영화", "영화 설명",
+                "https://example.com/poster.jpg",
+                ContentSource.TMDB, "550",
+                List.of("액션")
+        );
+
+        Content existing = service.save(data);
+        em.flush();
+        applicationEvents.clear();
+
+        var result = service.saveForBatch(data);
+        em.flush();
+
+        assertThat(result.inserted()).isFalse();
+        assertThat(result.content().getId()).isEqualTo(existing.getId());
+        assertThat(applicationEvents
+                .stream(ContentSearchCacheEvictEvent.class)
+                .count())
+                .isZero();
     }
 
 }
