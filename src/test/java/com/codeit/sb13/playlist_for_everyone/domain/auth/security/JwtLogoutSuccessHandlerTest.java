@@ -16,6 +16,8 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import tools.jackson.databind.ObjectMapper;
 
+import java.time.Duration;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
@@ -40,7 +42,7 @@ class JwtLogoutSuccessHandlerTest {
         handler = new JwtLogoutSuccessHandler(
                 authService,
                 new ObjectMapper(),
-                true
+                new RefreshTokenCookieFactory(Duration.ofDays(7), true)
         );
 
         request = new MockHttpServletRequest();
