@@ -5,7 +5,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.review.dto.response.ReviewDt
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.response.ReviewResult;
 import com.codeit.sb13.playlist_for_everyone.domain.review.entity.Review;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
-import com.codeit.sb13.playlist_for_everyone.domain.user.mapper.UserDtoMapper;
+import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -34,10 +34,12 @@ public class ReviewMapper {
     public ReviewResult toResult(Review review) {
         ReviewDto dto = toDto(review);
 
-        String profileImageKey = review.getAuthor()
-                .getProfileImage() == null
+        User author = review.getAuthor();
+        FileInfo profileImage = author.getProfileImage();
+
+        String profileImageKey = profileImage == null
                 ? null
-                : review.getAuthor().getProfileImage().getKey();
+                : profileImage.getKey();
 
         return new ReviewResult(
                 dto,

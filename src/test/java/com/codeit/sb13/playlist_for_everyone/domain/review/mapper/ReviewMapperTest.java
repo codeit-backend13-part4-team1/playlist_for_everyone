@@ -6,7 +6,6 @@ import com.codeit.sb13.playlist_for_everyone.domain.review.dto.response.ReviewDt
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.response.ReviewResult;
 import com.codeit.sb13.playlist_for_everyone.domain.review.entity.Review;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
-import com.codeit.sb13.playlist_for_everyone.domain.user.mapper.UserDtoMapper;
 import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -100,7 +99,7 @@ public class ReviewMapperTest {
     }
 
     @Test
-    @DisplayName("작성자 프로필 이미지가 없으면 파일 키는 null이다.")
+    @DisplayName("작성자의 프로필 이미지가 없으면 이미지 키를 null로 반환한다.")
     void toResult_withoutProfileImage() {
         // given
         Content content = mock(Content.class);
@@ -109,6 +108,7 @@ public class ReviewMapperTest {
 
         given(review.getContent()).willReturn(content);
         given(review.getAuthor()).willReturn(author);
+        given(author.getProfileImage()).willReturn(null);
 
         // when
         ReviewResult result = reviewMapper.toResult(review);

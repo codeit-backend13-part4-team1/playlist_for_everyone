@@ -14,6 +14,8 @@ import java.util.List;
 import java.util.UUID;
 
 import static com.codeit.sb13.playlist_for_everyone.domain.review.entity.QReview.review;
+import static com.codeit.sb13.playlist_for_everyone.domain.user.entity.QUser.user;
+import static com.codeit.sb13.playlist_for_everyone.global.file.entity.QFileInfo.fileInfo;
 
 @RequiredArgsConstructor
 public class ReviewListRepositoryImpl implements ReviewListRepository {
@@ -32,6 +34,8 @@ public class ReviewListRepositoryImpl implements ReviewListRepository {
                         review.content.id.eq(contentId),
                         cursorCondition(condition)
                 )
+                .join(review.author, user).fetchJoin()
+                .leftJoin(user.profileImage, fileInfo).fetchJoin()
                 .orderBy(
                         getOrderSpecifier(
                                 condition.sortBy(),

@@ -10,6 +10,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
+import org.hibernate.SessionFactory;
+import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -22,6 +24,7 @@ import org.springframework.dao.InvalidDataAccessApiUsageException;
 import java.util.List;
 import java.util.UUID;
 
+import static com.codeit.sb13.playlist_for_everyone.domain.review.entity.QReview.review;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -297,6 +300,56 @@ public class ReviewListRepositoryTest {
         )
                 .isInstanceOf(InvalidDataAccessApiUsageException.class)
                 .hasMessageContaining("cursor와 idAfter는 함께 전달해야 합니다.");
+    }
+
+    @Test
+    @DisplayName("리뷰 목록 조회 시 작성자와 프로필 이미지로 인한 추가 쿼리가 발생하지 않는다.")
+    void getReviews_withoutNPlusOne() {
+        // given
+        ReviewListCondition condition = new ReviewListCondition(
+                null,
+                null,
+                10,
+                SortDirection.DESCENDING,
+                "createdAt"
+        );
+
+        // 기존 setUp에서 서로 다른 작성자의 리뷰가 저장되어 있다고 가정
+        em.flush();
+        em.clear();
+
+        SessionFactory sessionFactory = em
+                .getEntityManager()
+                .getEntityManagerFactory()
+                .unwrap(SessionFactory.class);
+
+        Statistics statistics = sessionFactory.getStatistics();
+        boolean previousEnabled = statistics.isStatisticsEnabled();
+
+        statistics.setStatisticsEnabled(true);
+
+        try {
+            statistics.clear();
+
+            // when
+            List<Review> results =
+                    reviewRepository.getReviewsByContentId(content1.getId(), condition);
+
+            // 작성자와 프로필 이미지 접근 시 추가 쿼리가 발생하는지 확인
+            for (Review review : results) {
+                review.getAuthor().getName();
+
+                if (review.getAuthor().getProfileImage() != null) {
+                    review.getAuthor().getProfileImage().getKey();
+                }
+            }
+
+            // then
+            assertThat(results).hasSize(4);
+            assertThat(statistics.getPrepareStatementCount()).isEqualTo(1);
+        } finally {
+            statistics.setStatisticsEnabled(previousEnabled);
+        }
     }
 
     private Content createContent(String title) {
