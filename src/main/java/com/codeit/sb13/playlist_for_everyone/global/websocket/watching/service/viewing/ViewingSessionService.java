@@ -63,7 +63,7 @@ public interface ViewingSessionService {
      * @param contentIdList 리스트로 된 조회 대상 컨텐츠
      * @return contentId 와 각 컨텐츠에 해당하는 시청자 수
      */
-    Map<UUID, Long> getCurrentViewerCountMap(List<UUID> contentIdList);
+    Map<UUID, Long> getCurrentViewerCountWithContents(List<UUID> contentIdList);
 
 
 }

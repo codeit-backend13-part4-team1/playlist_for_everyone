@@ -9,7 +9,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.DpeWatchingSessionService;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.viewing.ViewingSessionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,7 +24,7 @@ import java.util.UUID;
 public class ContentSearchQueryService {
 
     private final ContentRepository contentRepository;
-    private final DpeWatchingSessionService dpeWatchingSessionService;
+    private final ViewingSessionService viewingSessionService;
     private final ContentMapper contentMapper;
 
     @Transactional(readOnly = true)
@@ -97,15 +97,15 @@ public class ContentSearchQueryService {
                 .toList();
 
         // Redis에서 전체 콘텐츠 시청자 수 조회
-        Map<String, Long> viewerCounts = contentIds.isEmpty()
+        Map<UUID, Long> viewerCounts = contentIds.isEmpty()
                 ? Map.of()
-                : dpeWatchingSessionService.getCurrentViewerCountWithContents(contentIds);
+                : viewingSessionService.getCurrentViewerCountWithContents(contentIds);
 
         Comparator<ContentSearchResult> comparator =
                 Comparator.comparingLong(
                         (ContentSearchResult result) ->
                                 viewerCounts.getOrDefault(
-                                        result.content().getId().toString(),
+                                        result.content().getId(),
                                         0L
                                 )
                 ).thenComparing(
@@ -133,7 +133,7 @@ public class ContentSearchQueryService {
             filtered = sorted.stream()
                     .filter(result -> {
                         long watcherCount = viewerCounts.getOrDefault(
-                                result.content().getId().toString(),
+                                result.content().getId(),
                                 0L
                         );
 
@@ -167,7 +167,7 @@ public class ContentSearchQueryService {
 
             nextCursor = String.valueOf(
                     viewerCounts.getOrDefault(
-                            lastResult.content().getId().toString(),
+                            lastResult.content().getId(),
                             0L
                     )
             );
@@ -193,14 +193,14 @@ public class ContentSearchQueryService {
 
     private List<ContentResult<ContentDto>> toContentResults(
             List<ContentSearchResult> page,
-            Map<String, Long> viewerCounts
+            Map<UUID, Long> viewerCounts
     ) {
         return page.stream()
                 .map(result -> {
                     Content content = result.content();
 
                     long watcherCount = viewerCounts.getOrDefault(
-                            content.getId().toString(), 0L
+                            content.getId(), 0L
                     );
 
                     ContentDto dto = contentMapper.toDto(
