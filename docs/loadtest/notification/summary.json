@@ -1,0 +1,889 @@
+[
+  {
+    "label": "smoke",
+    "receivers": 1,
+    "concurrency": 1,
+    "pool": 10,
+    "warmup": 0,
+    "requests": 1,
+    "successfulHttp": 1,
+    "committed": 1,
+    "startingTableRows": {
+      "users": 14,
+      "follows": 11,
+      "playlists": 0,
+      "notifications": 11
+    },
+    "httpStatuses": {
+      "201": 1
+    },
+    "httpErrorRatePct": 0.0,
+    "wallSeconds": 0.079137,
+    "successfulRequestsPerSecond": 12.636,
+    "httpSuccessMs": {
+      "p50": 53.189,
+      "p95": 53.189,
+      "p99": 53.189
+    },
+    "httpSuccessSamples": 1,
+    "notificationPerRequestMs": {
+      "p50": 11.025,
+      "p95": 11.025,
+      "p99": 11.025
+    },
+    "notificationSamples": 1,
+    "notifications": {
+      "expected": 1,
+      "savedRows": 1,
+      "matchedRows": 1,
+      "missing": 0,
+      "unexpectedOrDuplicate": 0,
+      "savedCounter": 1.0,
+      "publishAttempts": 1.0,
+      "processingCount": 1.0,
+      "jfrListenerCount": 1,
+      "ssePublished": 1.0,
+      "failures": {
+        "lookup": 0,
+        "publish": 0,
+        "save": 0,
+        "sse": 0
+      },
+      "committedWithNoCompletionEvent": 0,
+      "unknownCommitAfterNoResponse": 0,
+      "duplicateCompletionEvents": 0
+    },
+    "hikari": {
+      "sampleCount": 1,
+      "pendingPeak": 0,
+      "activePeak": 0,
+      "idleLow": 10,
+      "timeouts": 0.0,
+      "acquireCount": 17.0,
+      "acquireTotalSeconds": 0.001
+    },
+    "checks": {
+      "observability": true,
+      "normalScenario": true
+    }
+  },
+  {
+    "label": "r1c1-1",
+    "receivers": 1,
+    "concurrency": 1,
+    "pool": 10,
+    "warmup": 10,
+    "requests": 100,
+    "successfulHttp": 100,
+    "committed": 100,
+    "startingTableRows": {
+      "users": 14,
+      "follows": 11,
+      "playlists": 11,
+      "notifications": 22
+    },
+    "httpStatuses": {
+      "201": 100
+    },
+    "httpErrorRatePct": 0.0,
+    "wallSeconds": 1.693902,
+    "successfulRequestsPerSecond": 59.035,
+    "httpSuccessMs": {
+      "p50": 14.576,
+      "p95": 27.928,
+      "p99": 51.54
+    },
+    "httpSuccessSamples": 100,
+    "notificationPerRequestMs": {
+      "p50": 4.737,
+      "p95": 9.915,
+      "p99": 16.203
+    },
+    "notificationSamples": 100,
+    "notifications": {
+      "expected": 100,
+      "savedRows": 100,
+      "matchedRows": 100,
+      "missing": 0,
+      "unexpectedOrDuplicate": 0,
+      "savedCounter": 100.0,
+      "publishAttempts": 100.0,
+      "processingCount": 100.0,
+      "jfrListenerCount": 100,
+      "ssePublished": 100.0,
+      "failures": {
+        "lookup": 0,
+        "publish": 0,
+        "save": 0,
+        "sse": 0
+      },
+      "committedWithNoCompletionEvent": 0,
+      "unknownCommitAfterNoResponse": 0,
+      "duplicateCompletionEvents": 0
+    },
+    "hikari": {
+      "sampleCount": 17,
+      "pendingPeak": 0,
+      "activePeak": 2,
+      "idleLow": 8,
+      "timeouts": 0.0,
+      "acquireCount": 314.0,
+      "acquireTotalSeconds": 0.001
+    },
+    "checks": {
+      "observability": true,
+      "normalScenario": true
+    }
+  },
+  {
+    "label": "r10c1-1",
+    "receivers": 10,
+    "concurrency": 1,
+    "pool": 10,
+    "warmup": 10,
+    "requests": 100,
+    "successfulHttp": 100,
+    "committed": 100,
+    "startingTableRows": {
+      "users": 14,
+      "follows": 11,
+      "playlists": 121,
+      "notifications": 222
+    },
+    "httpStatuses": {
+      "201": 100
+    },
+    "httpErrorRatePct": 0.0,
+    "wallSeconds": 6.284613,
+    "successfulRequestsPerSecond": 15.912,
+    "httpSuccessMs": {
+      "p50": 59.114,
+      "p95": 89.087,
+      "p99": 110.671
+    },
+    "httpSuccessSamples": 100,
+    "notificationPerRequestMs": {
+      "p50": 47.999,
+      "p95": 72.842,
+      "p99": 93.269
+    },
+    "notificationSamples": 100,
+    "notifications": {
+      "expected": 1000,
+      "savedRows": 1000,
+      "matchedRows": 1000,
+      "missing": 0,
+      "unexpectedOrDuplicate": 0,
+      "savedCounter": 1000.0,
+      "publishAttempts": 1000.0,
+      "processingCount": 1000.0,
+      "jfrListenerCount": 1000,
+      "ssePublished": 1000.0,
+      "failures": {
+        "lookup": 0,
+        "publish": 0,
+        "save": 0,
+        "sse": 0
+      },
+      "committedWithNoCompletionEvent": 0,
+      "unknownCommitAfterNoResponse": 0,
+      "duplicateCompletionEvents": 0
+    },
+    "hikari": {
+      "sampleCount": 62,
+      "pendingPeak": 0,
+      "activePeak": 2,
+      "idleLow": 8,
+      "timeouts": 0.0,
+      "acquireCount": 1214.0,
+      "acquireTotalSeconds": 0.004
+    },
+    "checks": {
+      "observability": true,
+      "normalScenario": true
+    }
+  },
+  {
+    "label": "r10c5-1",
+    "receivers": 10,
+    "concurrency": 5,
+    "pool": 10,
+    "warmup": 10,
+    "requests": 100,
+    "successfulHttp": 100,
+    "committed": 100,
+    "startingTableRows": {
+      "users": 14,
+      "follows": 11,
+      "playlists": 231,
+      "notifications": 1322
+    },
+    "httpStatuses": {
+      "201": 100
+    },
+    "httpErrorRatePct": 0.0,
+    "wallSeconds": 1.400619,
+    "successfulRequestsPerSecond": 71.397,
+    "httpSuccessMs": {
+      "p50": 59.896,
+      "p95": 117.664,
+      "p99": 119.837
+    },
+    "httpSuccessSamples": 100,
+    "notificationPerRequestMs": {
+      "p50": 51.092,
+      "p95": 101.705,
+      "p99": 107.265
+    },
+    "notificationSamples": 100,
+    "notifications": {
+      "expected": 1000,
+      "savedRows": 1000,
+      "matchedRows": 1000,
+      "missing": 0,
+      "unexpectedOrDuplicate": 0,
+      "savedCounter": 1000.0,
+      "publishAttempts": 1000.0,
+      "processingCount": 1000.0,
+      "jfrListenerCount": 1000,
+      "ssePublished": 1000.0,
+      "failures": {
+        "lookup": 0,
+        "publish": 0,
+        "save": 0,
+        "sse": 0
+      },
+      "committedWithNoCompletionEvent": 0,
+      "unknownCommitAfterNoResponse": 0,
+      "duplicateCompletionEvents": 0
+    },
+    "hikari": {
+      "sampleCount": 14,
+      "pendingPeak": 0,
+      "activePeak": 10,
+      "idleLow": 0,
+      "timeouts": 0.0,
+      "acquireCount": 1214.0,
+      "acquireTotalSeconds": 0.041
+    },
+    "checks": {
+      "observability": true,
+      "normalScenario": true
+    }
+  },
+  {
+    "label": "r1c1-2",
+    "receivers": 1,
+    "concurrency": 1,
+    "pool": 10,
+    "warmup": 10,
+    "requests": 100,
+    "successfulHttp": 100,
+    "committed": 100,
+    "startingTableRows": {
+      "users": 14,
+      "follows": 11,
+      "playlists": 341,
+      "notifications": 2332
+    },
+    "httpStatuses": {
+      "201": 100
+    },
+    "httpErrorRatePct": 0.0,
+    "wallSeconds": 0.93242,
+    "successfulRequestsPerSecond": 107.248,
+    "httpSuccessMs": {
+      "p50": 7.686,
+      "p95": 15.3,
+      "p99": 20.846
+    },
+    "httpSuccessSamples": 100,
+    "notificationPerRequestMs": {
+      "p50": 2.574,
+      "p95": 5.611,
+      "p99": 8.99
+    },
+    "notificationSamples": 100,
+    "notifications": {
+      "expected": 100,
+      "savedRows": 100,
+      "matchedRows": 100,
+      "missing": 0,
+      "unexpectedOrDuplicate": 0,
+      "savedCounter": 100.0,
+      "publishAttempts": 100.0,
+      "processingCount": 100.0,
+      "jfrListenerCount": 100,
+      "ssePublished": 100.0,
+      "failures": {
+        "lookup": 0,
+        "publish": 0,
+        "save": 0,
+        "sse": 0
+      },
+      "committedWithNoCompletionEvent": 0,
+      "unknownCommitAfterNoResponse": 0,
+      "duplicateCompletionEvents": 0
+    },
+    "hikari": {
+      "sampleCount": 10,
+      "pendingPeak": 0,
+      "activePeak": 2,
+      "idleLow": 8,
+      "timeouts": 0.0,
+      "acquireCount": 314.0,
+      "acquireTotalSeconds": 0.007
+    },
+    "checks": {
+      "observability": true,
+      "normalScenario": true
+    }
+  },
+  {
+    "label": "r10c1-2",
+    "receivers": 10,
+    "concurrency": 1,
+    "pool": 10,
+    "warmup": 10,
+    "requests": 100,
+    "successfulHttp": 100,
+    "committed": 100,
+    "startingTableRows": {
+      "users": 14,
+      "follows": 11,
+      "playlists": 451,
+      "notifications": 2532
+    },
+    "httpStatuses": {
+      "201": 100
+    },
+    "httpErrorRatePct": 0.0,
+    "wallSeconds": 4.445551,
+    "successfulRequestsPerSecond": 22.494,
+    "httpSuccessMs": {
+      "p50": 42.854,
+      "p95": 71.192,
+      "p99": 75.695
+    },
+    "httpSuccessSamples": 100,
+    "notificationPerRequestMs": {
+      "p50": 35.044,
+      "p95": 61.055,
+      "p99": 67.874
+    },
+    "notificationSamples": 100,
+    "notifications": {
+      "expected": 1000,
+      "savedRows": 1000,
+      "matchedRows": 1000,
+      "missing": 0,
+      "unexpectedOrDuplicate": 0,
+      "savedCounter": 1000.0,
+      "publishAttempts": 1000.0,
+      "processingCount": 1000.0,
+      "jfrListenerCount": 1000,
+      "ssePublished": 1000.0,
+      "failures": {
+        "lookup": 0,
+        "publish": 0,
+        "save": 0,
+        "sse": 0
+      },
+      "committedWithNoCompletionEvent": 0,
+      "unknownCommitAfterNoResponse": 0,
+      "duplicateCompletionEvents": 0
+    },
+    "hikari": {
+      "sampleCount": 44,
+      "pendingPeak": 0,
+      "activePeak": 2,
+      "idleLow": 8,
+      "timeouts": 0.0,
+      "acquireCount": 1214.0,
+      "acquireTotalSeconds": 0.006
+    },
+    "checks": {
+      "observability": true,
+      "normalScenario": true
+    }
+  },
+  {
+    "label": "r10c5-2",
+    "receivers": 10,
+    "concurrency": 5,
+    "pool": 10,
+    "warmup": 10,
+    "requests": 100,
+    "successfulHttp": 100,
+    "committed": 100,
+    "startingTableRows": {
+      "users": 14,
+      "follows": 11,
+      "playlists": 561,
+      "notifications": 3632
+    },
+    "httpStatuses": {
+      "201": 100
+    },
+    "httpErrorRatePct": 0.0,
+    "wallSeconds": 1.126826,
+    "successfulRequestsPerSecond": 88.745,
+    "httpSuccessMs": {
+      "p50": 52.029,
+      "p95": 62.797,
+      "p99": 110.259
+    },
+    "httpSuccessSamples": 100,
+    "notificationPerRequestMs": {
+      "p50": 43.152,
+      "p95": 53.872,
+      "p99": 97.838
+    },
+    "notificationSamples": 100,
+    "notifications": {
+      "expected": 1000,
+      "savedRows": 1000,
+      "matchedRows": 1000,
+      "missing": 0,
+      "unexpectedOrDuplicate": 0,
+      "savedCounter": 1000.0,
+      "publishAttempts": 1000.0,
+      "processingCount": 1000.0,
+      "jfrListenerCount": 1000,
+      "ssePublished": 1000.0,
+      "failures": {
+        "lookup": 0,
+        "publish": 0,
+        "save": 0,
+        "sse": 0
+      },
+      "committedWithNoCompletionEvent": 0,
+      "unknownCommitAfterNoResponse": 0,
+      "duplicateCompletionEvents": 0
+    },
+    "hikari": {
+      "sampleCount": 12,
+      "pendingPeak": 0,
+      "activePeak": 10,
+      "idleLow": 0,
+      "timeouts": 0.0,
+      "acquireCount": 1214.0,
+      "acquireTotalSeconds": 0.009
+    },
+    "checks": {
+      "observability": true,
+      "normalScenario": true
+    }
+  },
+  {
+    "label": "r1c1-3",
+    "receivers": 1,
+    "concurrency": 1,
+    "pool": 10,
+    "warmup": 10,
+    "requests": 100,
+    "successfulHttp": 100,
+    "committed": 100,
+    "startingTableRows": {
+      "users": 14,
+      "follows": 11,
+      "playlists": 671,
+      "notifications": 4642
+    },
+    "httpStatuses": {
+      "201": 100
+    },
+    "httpErrorRatePct": 0.0,
+    "wallSeconds": 1.46493,
+    "successfulRequestsPerSecond": 68.263,
+    "httpSuccessMs": {
+      "p50": 14.178,
+      "p95": 21.748,
+      "p99": 24.577
+    },
+    "httpSuccessSamples": 100,
+    "notificationPerRequestMs": {
+      "p50": 4.632,
+      "p95": 7.945,
+      "p99": 10.873
+    },
+    "notificationSamples": 100,
+    "notifications": {
+      "expected": 100,
+      "savedRows": 100,
+      "matchedRows": 100,
+      "missing": 0,
+      "unexpectedOrDuplicate": 0,
+      "savedCounter": 100.0,
+      "publishAttempts": 100.0,
+      "processingCount": 100.0,
+      "jfrListenerCount": 100,
+      "ssePublished": 100.0,
+      "failures": {
+        "lookup": 0,
+        "publish": 0,
+        "save": 0,
+        "sse": 0
+      },
+      "committedWithNoCompletionEvent": 0,
+      "unknownCommitAfterNoResponse": 0,
+      "duplicateCompletionEvents": 0
+    },
+    "hikari": {
+      "sampleCount": 15,
+      "pendingPeak": 0,
+      "activePeak": 2,
+      "idleLow": 8,
+      "timeouts": 0.0,
+      "acquireCount": 314.0,
+      "acquireTotalSeconds": 0.007
+    },
+    "checks": {
+      "observability": true,
+      "normalScenario": true
+    }
+  },
+  {
+    "label": "r10c1-3",
+    "receivers": 10,
+    "concurrency": 1,
+    "pool": 10,
+    "warmup": 10,
+    "requests": 100,
+    "successfulHttp": 100,
+    "committed": 100,
+    "startingTableRows": {
+      "users": 14,
+      "follows": 11,
+      "playlists": 781,
+      "notifications": 4842
+    },
+    "httpStatuses": {
+      "201": 100
+    },
+    "httpErrorRatePct": 0.0,
+    "wallSeconds": 6.010963,
+    "successfulRequestsPerSecond": 16.636,
+    "httpSuccessMs": {
+      "p50": 60.379,
+      "p95": 82.591,
+      "p99": 100.981
+    },
+    "httpSuccessSamples": 100,
+    "notificationPerRequestMs": {
+      "p50": 50.036,
+      "p95": 67.709,
+      "p99": 94.068
+    },
+    "notificationSamples": 100,
+    "notifications": {
+      "expected": 1000,
+      "savedRows": 1000,
+      "matchedRows": 1000,
+      "missing": 0,
+      "unexpectedOrDuplicate": 0,
+      "savedCounter": 1000.0,
+      "publishAttempts": 1000.0,
+      "processingCount": 1000.0,
+      "jfrListenerCount": 1000,
+      "ssePublished": 1000.0,
+      "failures": {
+        "lookup": 0,
+        "publish": 0,
+        "save": 0,
+        "sse": 0
+      },
+      "committedWithNoCompletionEvent": 0,
+      "unknownCommitAfterNoResponse": 0,
+      "duplicateCompletionEvents": 0
+    },
+    "hikari": {
+      "sampleCount": 59,
+      "pendingPeak": 0,
+      "activePeak": 2,
+      "idleLow": 8,
+      "timeouts": 0.0,
+      "acquireCount": 1214.0,
+      "acquireTotalSeconds": 0.01
+    },
+    "checks": {
+      "observability": true,
+      "normalScenario": true
+    }
+  },
+  {
+    "label": "r10c5-3",
+    "receivers": 10,
+    "concurrency": 5,
+    "pool": 10,
+    "warmup": 10,
+    "requests": 100,
+    "successfulHttp": 100,
+    "committed": 100,
+    "startingTableRows": {
+      "users": 14,
+      "follows": 11,
+      "playlists": 891,
+      "notifications": 5942
+    },
+    "httpStatuses": {
+      "201": 100
+    },
+    "httpErrorRatePct": 0.0,
+    "wallSeconds": 1.264414,
+    "successfulRequestsPerSecond": 79.088,
+    "httpSuccessMs": {
+      "p50": 49.795,
+      "p95": 112.547,
+      "p99": 168.688
+    },
+    "httpSuccessSamples": 100,
+    "notificationPerRequestMs": {
+      "p50": 41.217,
+      "p95": 98.508,
+      "p99": 158.949
+    },
+    "notificationSamples": 100,
+    "notifications": {
+      "expected": 1000,
+      "savedRows": 1000,
+      "matchedRows": 1000,
+      "missing": 0,
+      "unexpectedOrDuplicate": 0,
+      "savedCounter": 1000.0,
+      "publishAttempts": 1000.0,
+      "processingCount": 1000.0,
+      "jfrListenerCount": 1000,
+      "ssePublished": 1000.0,
+      "failures": {
+        "lookup": 0,
+        "publish": 0,
+        "save": 0,
+        "sse": 0
+      },
+      "committedWithNoCompletionEvent": 0,
+      "unknownCommitAfterNoResponse": 0,
+      "duplicateCompletionEvents": 0
+    },
+    "hikari": {
+      "sampleCount": 13,
+      "pendingPeak": 0,
+      "activePeak": 10,
+      "idleLow": 0,
+      "timeouts": 0.0,
+      "acquireCount": 1214.0,
+      "acquireTotalSeconds": 0.016
+    },
+    "checks": {
+      "observability": true,
+      "normalScenario": true
+    }
+  },
+  {
+    "label": "r10c5p2-1",
+    "receivers": 10,
+    "concurrency": 5,
+    "pool": 2,
+    "warmup": 10,
+    "requests": 25,
+    "successfulHttp": 10,
+    "committed": 10,
+    "startingTableRows": {
+      "users": 25,
+      "follows": 21,
+      "playlists": 1001,
+      "notifications": 7052
+    },
+    "httpStatuses": {
+      "500": 15,
+      "201": 10
+    },
+    "httpErrorRatePct": 60.0,
+    "wallSeconds": 52.673764,
+    "successfulRequestsPerSecond": 0.19,
+    "httpSuccessMs": {
+      "p50": 10499.101,
+      "p95": 10739.372,
+      "p99": 10739.372
+    },
+    "httpSuccessSamples": 10,
+    "notificationPerRequestMs": {
+      "p50": 10266.126,
+      "p95": 10714.432,
+      "p99": 10714.432
+    },
+    "notificationSamples": 10,
+    "notifications": {
+      "expected": 100,
+      "savedRows": 1,
+      "matchedRows": 1,
+      "missing": 99,
+      "unexpectedOrDuplicate": 0,
+      "savedCounter": 1.0,
+      "publishAttempts": 100.0,
+      "processingCount": 100.0,
+      "jfrListenerCount": 100,
+      "ssePublished": 1.0,
+      "failures": {
+        "lookup": 0,
+        "publish": 0,
+        "save": 99.0,
+        "sse": 0
+      },
+      "committedWithNoCompletionEvent": 0,
+      "unknownCommitAfterNoResponse": 0,
+      "duplicateCompletionEvents": 0
+    },
+    "hikari": {
+      "sampleCount": 511,
+      "pendingPeak": 5,
+      "activePeak": 2,
+      "idleLow": 0,
+      "timeouts": 114.0,
+      "acquireCount": 152.0,
+      "acquireTotalSeconds": 115.41
+    },
+    "checks": {
+      "observability": true,
+      "normalScenario": null
+    }
+  },
+  {
+    "label": "r10c5p2-2",
+    "receivers": 10,
+    "concurrency": 5,
+    "pool": 2,
+    "warmup": 10,
+    "requests": 25,
+    "successfulHttp": 10,
+    "committed": 10,
+    "startingTableRows": {
+      "users": 25,
+      "follows": 21,
+      "playlists": 1021,
+      "notifications": 7153
+    },
+    "httpStatuses": {
+      "500": 15,
+      "201": 10
+    },
+    "httpErrorRatePct": 60.0,
+    "wallSeconds": 50.91318,
+    "successfulRequestsPerSecond": 0.196,
+    "httpSuccessMs": {
+      "p50": 10176.644,
+      "p95": 10219.591,
+      "p99": 10219.591
+    },
+    "httpSuccessSamples": 10,
+    "notificationPerRequestMs": {
+      "p50": 10122.607,
+      "p95": 10153.859,
+      "p99": 10153.859
+    },
+    "notificationSamples": 10,
+    "notifications": {
+      "expected": 100,
+      "savedRows": 1,
+      "matchedRows": 1,
+      "missing": 99,
+      "unexpectedOrDuplicate": 0,
+      "savedCounter": 1.0,
+      "publishAttempts": 100.0,
+      "processingCount": 100.0,
+      "jfrListenerCount": 100,
+      "ssePublished": 1.0,
+      "failures": {
+        "lookup": 0,
+        "publish": 0,
+        "save": 99.0,
+        "sse": 0
+      },
+      "committedWithNoCompletionEvent": 0,
+      "unknownCommitAfterNoResponse": 0,
+      "duplicateCompletionEvents": 0
+    },
+    "hikari": {
+      "sampleCount": 493,
+      "pendingPeak": 5,
+      "activePeak": 2,
+      "idleLow": 0,
+      "timeouts": 114.0,
+      "acquireCount": 152.0,
+      "acquireTotalSeconds": 115.436
+    },
+    "checks": {
+      "observability": true,
+      "normalScenario": null
+    }
+  },
+  {
+    "label": "r10c5p2-3",
+    "receivers": 10,
+    "concurrency": 5,
+    "pool": 2,
+    "warmup": 10,
+    "requests": 25,
+    "successfulHttp": 10,
+    "committed": 10,
+    "startingTableRows": {
+      "users": 25,
+      "follows": 21,
+      "playlists": 1041,
+      "notifications": 7254
+    },
+    "httpStatuses": {
+      "500": 15,
+      "201": 10
+    },
+    "httpErrorRatePct": 60.0,
+    "wallSeconds": 50.912997,
+    "successfulRequestsPerSecond": 0.196,
+    "httpSuccessMs": {
+      "p50": 10131.14,
+      "p95": 10291.729,
+      "p99": 10291.729
+    },
+    "httpSuccessSamples": 10,
+    "notificationPerRequestMs": {
+      "p50": 10102.571,
+      "p95": 10152.194,
+      "p99": 10152.194
+    },
+    "notificationSamples": 10,
+    "notifications": {
+      "expected": 100,
+      "savedRows": 1,
+      "matchedRows": 1,
+      "missing": 99,
+      "unexpectedOrDuplicate": 0,
+      "savedCounter": 1.0,
+      "publishAttempts": 100.0,
+      "processingCount": 100.0,
+      "jfrListenerCount": 100,
+      "ssePublished": 1.0,
+      "failures": {
+        "lookup": 0,
+        "publish": 0,
+        "save": 99.0,
+        "sse": 0
+      },
+      "committedWithNoCompletionEvent": 0,
+      "unknownCommitAfterNoResponse": 0,
+      "duplicateCompletionEvents": 0
+    },
+    "hikari": {
+      "sampleCount": 495,
+      "pendingPeak": 5,
+      "activePeak": 2,
+      "idleLow": 0,
+      "timeouts": 114.0,
+      "acquireCount": 152.0,
+      "acquireTotalSeconds": 115.442
+    },
+    "checks": {
+      "observability": true,
+      "normalScenario": null
+    }
+  }
+]

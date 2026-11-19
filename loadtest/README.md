@@ -3,6 +3,8 @@
 JMeter로 API 부하테스트를 재현하기 위한 시드 데이터, 시나리오, 스크립트 모음입니다.
 도메인별로 어느 API가 어느 부하에서 느려지는지 찾는 것이 목적이며, 측정 결과는 [`docs/loadtest/loadtest-results.md`](../docs/loadtest/loadtest-results.md)와 관련 PR(이슈 #163)에 정리합니다.
 
+플레이리스트 생성 후 알림을 저장하고 SSE를 발행하는 동기 처리 경로는 [알림 기준값 측정](../docs/loadtest/notification/README.md)에서 재현합니다.
+
 ## 현재 범위
 
 | 도메인 | 시드 | 시나리오 | 측정 대상 |
@@ -321,6 +323,8 @@ docker compose --env-file .env.dev exec -T postgres psql -U everyone -d everyone
 시드의 구독 데이터는 `loadtest` 계정 전체에 해당하므로, 테스트 후 정리용으로 `subscriptions`를 계정 기준으로 지우지 마세요(시드가 같이 사라집니다). 필요하면 시드를 다시 실행하세요.
 
 ## Windows (Git Bash)
+
+알림 기준값 수집기는 Git Bash에서 WSL2에 진입해 실행합니다. [알림 측정의 Windows 실행 절차](../docs/loadtest/notification/README.md#windows에서-실행)
 
 > Windows에서 직접 실행해 확인하지 못했습니다. 아래는 예상되는 차이이고, 확인한 뒤 이 절을 고쳐 주세요.
 
