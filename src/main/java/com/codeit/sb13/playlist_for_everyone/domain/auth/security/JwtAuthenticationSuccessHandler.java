@@ -34,8 +34,7 @@ import java.util.UUID;
 @Slf4j
 public class JwtAuthenticationSuccessHandler implements AuthenticationSuccessHandler {
 
-    private static final String REFRESH_COOKIE_NAME = "REFRESH_TOKEN";
-    private static final String REFRESH_COOKIE_PATH = "/api/auth";
+    private final RefreshTokenCookieFactory refreshTokenCookieFactory;
 
     private final JwtTokenProvider jwtTokenProvider;
     private final UserService userService;
@@ -45,7 +44,6 @@ public class JwtAuthenticationSuccessHandler implements AuthenticationSuccessHan
     private final UserSessionRepository userSessionRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final Duration refreshTokenValidity;
-    private final boolean refreshCookieSecure;
 
     /**
      * 로그인 세션 시작, Refresh Token 발급·저장과 쿠키 전달에 필요한 의존성을 전달받는다.
@@ -61,7 +59,7 @@ public class JwtAuthenticationSuccessHandler implements AuthenticationSuccessHan
                                            UserSessionRepository userSessionRepository,
                                            ApplicationEventPublisher eventPublisher,
                                            Duration refreshTokenValidity,
-                                           boolean refreshCookieSecure) {
+                                           RefreshTokenCookieFactory refreshTokenCookieFactory) {
         this.jwtTokenProvider = Objects.requireNonNull(jwtTokenProvider);
         this.userService = Objects.requireNonNull(userService);
         this.objectMapper = Objects.requireNonNull(objectMapper);
@@ -73,7 +71,7 @@ public class JwtAuthenticationSuccessHandler implements AuthenticationSuccessHan
         if (refreshTokenValidity.isZero() || refreshTokenValidity.isNegative()) {
             throw new IllegalArgumentException("Refresh Token 유효기간은 양수여야 합니다.");
         }
-        this.refreshCookieSecure = refreshCookieSecure;
+        this.refreshTokenCookieFactory = Objects.requireNonNull(refreshTokenCookieFactory);
     }
 
     @Override
@@ -95,7 +93,7 @@ public class JwtAuthenticationSuccessHandler implements AuthenticationSuccessHan
         String accessToken = jwtTokenProvider.createAccessToken(userId, session.sessionId());
         String refreshToken = jwtTokenProvider.createRefreshToken(userId, session.sessionId());
 
-        ResponseCookie refreshCookie = createRefreshCookie(refreshToken);
+        ResponseCookie refreshCookie = refreshTokenCookieFactory.create(refreshToken);
 
         refreshTokenRepository.save(userId, refreshToken, refreshTokenValidity);
 
@@ -128,29 +126,5 @@ public class JwtAuthenticationSuccessHandler implements AuthenticationSuccessHan
                     userId, replacedSessionId, exception);
         }
     }
-
-    /**
-     * 브라우저가 보관할 Refresh Token 쿠키를 생성한다.
-     *
-     * 쿠키 생성과 HTTP 응답을 추가로 분리하여,
-     * Redis 저장이 실패하면 쿠키가 전달되지 않도록 한다.
-     */
-
-    private ResponseCookie createRefreshCookie(String refreshToken) {
-        return ResponseCookie.from(REFRESH_COOKIE_NAME, refreshToken)
-                // JavaScript에서 쿠키 값을 읽지 못하게 한다.
-                .httpOnly(true)
-                // HTTPS 환경에서는 true, 로컬 HTTP에서는 false로 설정한다.
-                .secure(refreshCookieSecure)
-                // 현재 같은 사이트에서 사용하는 프론트/API 구성을 기준으로 한다.
-                .sameSite("Lax")
-                // 토큰 재발급과 로그아웃 경로에서 사용할 수 있도록 한다.
-                .path(REFRESH_COOKIE_PATH)
-                // 브라우저의 쿠키 보관 기간이다.
-                .maxAge(refreshTokenValidity)
-                // Domain은 지정하지 않아 현재 호스트에 한정한다.
-                .build();
-    }
-
 
 }
