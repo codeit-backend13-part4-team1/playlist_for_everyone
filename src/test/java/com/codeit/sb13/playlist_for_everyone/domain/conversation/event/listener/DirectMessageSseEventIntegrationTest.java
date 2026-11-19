@@ -15,6 +15,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.Notifica
 import com.codeit.sb13.playlist_for_everyone.domain.notification.event.NotificationCreatedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener.NotificationEventListener;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.repository.NotificationRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationTaskTracker;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.global.exception.conversation.DirectMessagePublishException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.sse.SsePublishException;
@@ -32,13 +33,18 @@ import org.mockito.InOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.event.EventListener;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.auditing.AuditingHandler;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -58,6 +64,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationMetricReader.processingCount;
@@ -83,12 +90,13 @@ import static org.mockito.Mockito.when;
 /**
  * 실제 저장 트랜잭션과 커밋 후 SSE 리스너를 연결하고, 외부 파일 조회·전송만 Mock으로 분리한다.
  * Repository와 알림 리스너 Spy는 실제 동작을 유지하고, 지정한 경계에서만 실패를 주입한다.
- * 커밋 후 콜백의 단언 실패가 Spring 내부에 흡수되지 않도록 관찰값은 저장 호출이 끝난 뒤 검증한다.
+ * 커밋 후 콜백의 단언 실패가 Spring 내부에 흡수되지 않도록 관찰값은 호출과 알림 작업이 끝난 뒤 검증한다.
  *
  * <p>클래스 전체를 테스트 트랜잭션으로 감싸지 않고, 롤백·상위 트랜잭션 시나리오마다 TransactionTemplate을 사용한다.
  * 따라서 실제 커밋 여부와 AFTER_COMMIT 실행 시점을 구분할 수 있다. Reader가 반환되어도 콜백의 저장 측
  * 자원이 해제됐다고 가정하지 않는다.
  * 알림 소비자도 실제로 실행하므로 관찰·실패 주입·발행 횟수는 SSE 이벤트 이름으로 구분한다.
+ * 워커에서 발생하는 알림 이벤트는 스레드 안전한 수집기로 관측하고, 작업 완료 후 데이터를 정리한다.
  * Redis 전송·HTTP 수신은 별도의 DirectMessageSseIntegrationTest에서 검증한다.
  */
 @RecordApplicationEvents
@@ -99,6 +107,7 @@ import static org.mockito.Mockito.when;
         "spring.docker.compose.enabled=false"
 })
 @Testcontainers
+@Import(DirectMessageSseEventIntegrationTest.ObservationConfig.class)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @DisplayName("DM 저장 후 SSE 이벤트 연동 통합 테스트")
 class DirectMessageSseEventIntegrationTest {
@@ -137,6 +146,15 @@ class DirectMessageSseEventIntegrationTest {
     @Qualifier("jpaAuditingHandler")
     private AuditingHandler auditingHandler;
 
+    @Autowired
+    @Qualifier("notificationTaskExecutor")
+    private ThreadPoolTaskExecutor notificationTaskExecutor;
+
+    @Autowired
+    private NotificationEventProbe notificationEventProbe;
+
+    private NotificationTaskTracker notificationTasks;
+
     @MockitoSpyBean
     private DirectMessageRepository directMessageRepository;
 
@@ -163,6 +181,8 @@ class DirectMessageSseEventIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        notificationEventProbe.clear();
+        notificationTasks = new NotificationTaskTracker(notificationTaskExecutor);
         insertUser(senderId, "발신자");
         insertUser(receiverId, "수신자");
 
@@ -178,6 +198,7 @@ class DirectMessageSseEventIntegrationTest {
 
     @AfterEach
     void cleanUp() {
+        notificationTasks.close();
         auditingHandler.setDateTimeProvider(null);
         jdbcTemplate.update(
                 "DELETE FROM notifications WHERE receiver_id IN (?, ?)",
@@ -211,6 +232,7 @@ class DirectMessageSseEventIntegrationTest {
         long processedBefore = processingCount(meterRegistry, "direct_message_created");
 
         DirectMessage saved = directMessageSaver.save(command("커밋된 메시지"));
+        awaitNotificationTasks();
 
         assertThat(applicationEvents.stream(DirectMessageCreatedEvent.class).toList())
                 .containsExactly(event(saved.getId()));
@@ -243,9 +265,7 @@ class DirectMessageSseEventIntegrationTest {
                 new UserSummary(stored.receiverId(), "수신자", null), stored.content()
         ));
 
-        List<NotificationCreatedEvent> notificationEvents = applicationEvents
-                .stream(NotificationCreatedEvent.class)
-                .toList();
+        List<NotificationCreatedEvent> notificationEvents = notificationEventProbe.snapshot();
         assertThat(notificationEvents).hasSize(1);
         NotificationCreatedEvent notificationCreated = notificationEvents.get(0);
 
@@ -286,9 +306,9 @@ class DirectMessageSseEventIntegrationTest {
             insertMessage(directMessageId, "롤백할 메시지");
             eventPublisher.publishEvent(event(directMessageId));
 
+            assertThat(notificationTasks.hasSubmittedTasks()).as("커밋 전 알림 작업 미제출").isFalse();
             assertThat(countSavedNotifications()).isZero();
-            assertThat(applicationEvents.stream(NotificationCreatedEvent.class).toList())
-                    .isEmpty();
+            assertThat(notificationEventProbe.snapshot()).isEmpty();
 
             // TransactionTemplate의 본문에서 실패한 검증은 호출한 테스트로 직접 전달된다.
             verify(directMessageRepository, never()).findDetailedById(any(UUID.class));
@@ -300,8 +320,8 @@ class DirectMessageSseEventIntegrationTest {
                 .containsExactly(event(directMessageId));
         assertThat(countSavedMessages()).isZero();
         assertThat(countSavedNotifications()).isZero();
-        assertThat(applicationEvents.stream(NotificationCreatedEvent.class).toList())
-                .isEmpty();
+        assertThat(notificationTasks.hasSubmittedTasks()).as("롤백 후 알림 작업 미제출").isFalse();
+        assertThat(notificationEventProbe.snapshot()).isEmpty();
         verify(directMessageRepository, never()).findDetailedById(any(UUID.class));
         verifyNoInteractions(fileStorage, sseEventPublisher);
     }
@@ -315,10 +335,10 @@ class DirectMessageSseEventIntegrationTest {
                 .isInstanceOf(DataIntegrityViolationException.class);
 
         assertThat(applicationEvents.stream(DirectMessageCreatedEvent.class).toList()).hasSize(1);
+        assertThat(notificationTasks.hasSubmittedTasks()).as("DM 커밋 실패 시 알림 작업 미제출").isFalse();
         assertThat(countSavedMessages()).isZero();
         assertThat(countSavedNotifications()).isZero();
-        assertThat(applicationEvents.stream(NotificationCreatedEvent.class).toList())
-                .isEmpty();
+        assertThat(notificationEventProbe.snapshot()).isEmpty();
         verify(directMessageRepository, never()).findDetailedById(any(UUID.class));
         verifyNoInteractions(fileStorage, sseEventPublisher);
     }
@@ -332,12 +352,12 @@ class DirectMessageSseEventIntegrationTest {
 
         eventPublisher.publishEvent(event(directMessageId));
 
+        assertThat(notificationTasks.hasSubmittedTasks()).as("트랜잭션 없는 업무 이벤트의 알림 작업 미제출").isFalse();
         assertThat(applicationEvents.stream(DirectMessageCreatedEvent.class).toList())
                 .containsExactly(event(directMessageId));
         assertThat(findStoredMessage(directMessageId)).isEqualTo(before);
         assertThat(countSavedNotifications()).isZero();
-        assertThat(applicationEvents.stream(NotificationCreatedEvent.class).toList())
-                .isEmpty();
+        assertThat(notificationEventProbe.snapshot()).isEmpty();
         verify(directMessageRepository, never()).findDetailedById(any(UUID.class));
         verifyNoInteractions(fileStorage, sseEventPublisher);
     }
@@ -353,6 +373,7 @@ class DirectMessageSseEventIntegrationTest {
             status.setRollbackOnly();
             return message;
         });
+        awaitNotificationTasks();
 
         assertThat(saved).isNotNull();
         assertThat(countSavedMessages()).isEqualTo(1L);
@@ -414,6 +435,7 @@ class DirectMessageSseEventIntegrationTest {
         String content = "알림 요청 실패 후에도 전달할 메시지";
 
         MessageDto result = directMessageService.send(command(content));
+        awaitNotificationTasks();
 
         assertThat(countSavedMessages()).isEqualTo(1L);
         StoredMessage stored = findStoredMessage(result.id());
@@ -426,7 +448,7 @@ class DirectMessageSseEventIntegrationTest {
                 .handleNotification(argThat(event -> receiverId.equals(event.receiverId())));
         verify(notificationRepository, never()).save(any(Notification.class));
         assertThat(countSavedNotifications()).isZero();
-        assertThat(applicationEvents.stream(NotificationCreatedEvent.class).toList()).isEmpty();
+        assertThat(notificationEventProbe.snapshot()).isEmpty();
         verify(sseEventPublisher, never())
                 .publish(argThat(event -> "notifications".equals(event.eventName())));
 
@@ -459,6 +481,7 @@ class DirectMessageSseEventIntegrationTest {
         String content = "알림 저장 실패 후에도 전달할 메시지";
 
         MessageDto result = directMessageService.send(command(content));
+        awaitNotificationTasks();
 
         assertThat(countSavedMessages()).isEqualTo(1L);
         StoredMessage stored = findStoredMessage(result.id());
@@ -471,7 +494,7 @@ class DirectMessageSseEventIntegrationTest {
                 .handleNotification(argThat(event -> receiverId.equals(event.receiverId())));
         verify(notificationRepository).save(any(Notification.class));
         assertThat(countSavedNotifications()).isZero();
-        assertThat(applicationEvents.stream(NotificationCreatedEvent.class).toList()).isEmpty();
+        assertThat(notificationEventProbe.snapshot()).isEmpty();
         verify(sseEventPublisher, never())
                 .publish(argThat(event -> "notifications".equals(event.eventName())));
 
@@ -502,6 +525,7 @@ class DirectMessageSseEventIntegrationTest {
         String content = "알림 SSE 실패 후에도 전달할 메시지";
 
         MessageDto result = directMessageService.send(command(content));
+        awaitNotificationTasks();
 
         assertThat(countSavedMessages()).isEqualTo(1L);
         StoredMessage stored = findStoredMessage(result.id());
@@ -511,8 +535,7 @@ class DirectMessageSseEventIntegrationTest {
         assertThat(applicationEvents.stream(DirectMessageCreatedEvent.class).toList())
                 .containsExactly(event(result.id()));
         SseEvent<?> notificationAttempted = assertStoredNotificationAndSseRequested();
-        List<NotificationCreatedEvent> notificationEvents = applicationEvents
-                .stream(NotificationCreatedEvent.class).toList();
+        List<NotificationCreatedEvent> notificationEvents = notificationEventProbe.snapshot();
         assertThat(notificationEvents).hasSize(1);
         NotificationCreatedEvent notificationCreated = notificationEvents.get(0);
         assertThat(notificationAttempted.eventId()).isEqualTo(notificationCreated.eventId());
@@ -545,6 +568,7 @@ class DirectMessageSseEventIntegrationTest {
         String content = "SSE 조회 실패 후에도 전달할 메시지";
 
         MessageDto result = directMessageService.send(command(content));
+        awaitNotificationTasks();
 
         assertThat(countSavedMessages()).isEqualTo(1L);
         StoredMessage stored = findStoredMessage(result.id());
@@ -573,6 +597,7 @@ class DirectMessageSseEventIntegrationTest {
         String content = "SSE URL 생성 실패 후에도 전달할 메시지";
 
         MessageDto result = directMessageService.send(command(content));
+        awaitNotificationTasks();
 
         assertThat(countSavedMessages()).isEqualTo(1L);
         StoredMessage stored = findStoredMessage(result.id());
@@ -599,6 +624,7 @@ class DirectMessageSseEventIntegrationTest {
         String content = "SSE 발행 실패 후에도 전달할 메시지";
 
         MessageDto result = directMessageService.send(command(content));
+        awaitNotificationTasks();
 
         assertThat(countSavedMessages()).isEqualTo(1L);
         StoredMessage stored = findStoredMessage(result.id());
@@ -701,6 +727,7 @@ class DirectMessageSseEventIntegrationTest {
     }
 
     private SseEvent<?> onlyPublishedEvent(String eventName) {
+        awaitNotificationTasks();
         ArgumentCaptor<SseEvent<?>> captor = ArgumentCaptor.captor();
         verify(sseEventPublisher, atLeastOnce()).publish(captor.capture());
         verifyNoMoreInteractions(sseEventPublisher);
@@ -715,6 +742,7 @@ class DirectMessageSseEventIntegrationTest {
     }
 
     private SseEvent<?> assertStoredNotificationAndSseRequested() {
+        awaitNotificationTasks();
         assertThat(countSavedNotifications()).isEqualTo(1L);
         verify(notificationRepository).save(any(Notification.class));
         NotificationDto stored = findStoredNotification();
@@ -735,6 +763,10 @@ class DirectMessageSseEventIntegrationTest {
     private long countSavedMessages() {
         return jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM direct_messages WHERE conversation_id = ?", Long.class, conversationId);
+    }
+
+    private void awaitNotificationTasks() {
+        notificationTasks.awaitCompletion();
     }
 
     private long countSavedNotifications() {
@@ -803,6 +835,31 @@ class DirectMessageSseEventIntegrationTest {
                 VALUES (?, ?, 'profile.png', 'image/png', 1024, CURRENT_TIMESTAMP)
                 """, profileImageId, profileImageKey);
         jdbcTemplate.update("UPDATE users SET profile_image_id = ? WHERE id = ?", profileImageId, receiverId);
+    }
+
+    @TestConfiguration(proxyBeanMethods = false)
+    static class ObservationConfig {
+        @Bean
+        NotificationEventProbe notificationEventProbe() {
+            return new NotificationEventProbe();
+        }
+    }
+
+    static class NotificationEventProbe {
+        private final ConcurrentLinkedQueue<NotificationCreatedEvent> events = new ConcurrentLinkedQueue<>();
+
+        @EventListener
+        public void onCreated(NotificationCreatedEvent event) {
+            events.add(event);
+        }
+
+        List<NotificationCreatedEvent> snapshot() {
+            return List.copyOf(events);
+        }
+
+        void clear() {
+            events.clear();
+        }
     }
 
     private record StoredMessage(

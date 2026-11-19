@@ -8,6 +8,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.command.Dir
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.response.MessageDto;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.event.DirectMessageCreatedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.DirectMessageService;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationTaskTracker;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.global.exception.sse.SsePublishException;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
@@ -25,6 +26,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -48,6 +50,7 @@ import org.springframework.messaging.simp.stomp.StompHeaders;
 import org.springframework.messaging.simp.stomp.StompSession;
 import org.springframework.messaging.simp.stomp.StompSessionHandlerAdapter;
 import org.springframework.messaging.support.MessageBuilder;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -104,7 +107,8 @@ import static org.mockito.Mockito.verify;
  * <p>JWT와 Redis 로그인 세션을 준비해 실제 인증된 HTTP 스트림을 읽는다. WebSocket 동시 구독 검증은
  * STOMP 구독 등록을 확인한 뒤 전송하여 연결 준비와 메시지 전달 사이의 경쟁을 피한다.
  * 재연결은 실제 저장한 DM의 ID를 커서로 사용하며, 복구 DTO와 DB의 읽음 상태를 각각 비교한다.
- * 함께 생성된 알림도 실제로 저장·전송한다. 전체 프레임을 공유 이력과 비교하되 DM·알림 간 도착 순서는
+ * 함께 생성된 알림도 실제로 저장·전송하며, 작업 완료를 기다린 뒤 공유 이력과 수신 프레임을 비교한다.
+ * DM·알림 간 도착 순서는
  * 고정하지 않으며, DM끼리의 저장·복구 순서와 이벤트별 단건 전달은 유지한다.
  * 브라우저 화면·별도 JVM 배포와 모든 장애 상황의 중복 없는 전달을 검증하는 테스트는 아니다.
  */
@@ -173,6 +177,9 @@ class DirectMessageSseIntegrationTest {
     private Environment environment;
     @Autowired
     private EventProbe eventProbe;
+    @Autowired
+    @Qualifier("notificationTaskExecutor")
+    private ThreadPoolTaskExecutor notificationTaskExecutor;
     @MockitoSpyBean
     private RedisSseEventPublisher transportPublisher;
     @LocalServerPort
@@ -186,6 +193,8 @@ class DirectMessageSseIntegrationTest {
     private final List<SseClient> sseClients = new ArrayList<>();
     private final List<StompSession> stompSessions = new ArrayList<>();
     private final List<ConfigurableApplicationContext> additionalNodes = new ArrayList<>();
+    private final List<NotificationTaskTracker> additionalNotificationTasks = new ArrayList<>();
+    private NotificationTaskTracker notificationTasks;
     private WebSocketStompClient stompClient;
     private String senderToken;
     private String receiverToken;
@@ -193,6 +202,7 @@ class DirectMessageSseIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        notificationTasks = new NotificationTaskTracker(notificationTaskExecutor);
         insertUser(senderId, "발신자");
         insertUser(receiverId, "수신자");
         insertUser(otherUserId, "다른 사용자");
@@ -224,6 +234,9 @@ class DirectMessageSseIntegrationTest {
         if (stompClient != null) {
             cleanups.add(stompClient::stop);
         }
+        // 비동기 저장·발행이 끝난 뒤 컨텍스트와 이력·DB 데이터를 정리한다.
+        cleanups.add(notificationTasks::close);
+        additionalNotificationTasks.forEach(tasks -> cleanups.add(tasks::close));
         additionalNodes.forEach(node -> cleanups.add(node::close));
         loginSessions.forEach((userId, sessionId) ->
                 cleanups.add(() -> userSessionRepository.endIfCurrent(userId, sessionId)));
@@ -314,6 +327,7 @@ class DirectMessageSseIntegrationTest {
         UUID lastEventId = receiveCursorAndDisconnect();
         MessageDto first = send("미접속 중 첫 번째 메시지");
         MessageDto second = send("미접속 중 두 번째 메시지");
+        notificationTasks.awaitCompletion();
         assertThat(emitterRepository.findAllByUserId(receiverId)).isEmpty();
         List<SseHistoryEntry> snapshots = historyStore.snapshot(receiverId, lastEventId).entries();
         List<SseHistoryEntry> messageSnapshots = directMessageHistory(snapshots);
@@ -345,6 +359,7 @@ class DirectMessageSseIntegrationTest {
     void replaysReadMessageWithoutChangingReadState() throws IOException {
         UUID lastEventId = receiveCursorAndDisconnect();
         MessageDto saved = send("이미 읽은 뒤 복구할 메시지");
+        notificationTasks.awaitCompletion();
         List<SseHistoryEntry> snapshots = historyStore.snapshot(receiverId, lastEventId).entries();
         List<SseHistoryEntry> messageSnapshots = directMessageHistory(snapshots);
         assertThat(messageSnapshots).hasSize(1);
@@ -409,6 +424,7 @@ class DirectMessageSseIntegrationTest {
                     .publish(argThat(event -> "direct-messages".equals(event.eventName())));
         }
 
+        notificationTasks.awaitCompletion();
         List<SseHistoryEntry> snapshots = historyStore.snapshot(receiverId, cursor).entries();
         List<SseHistoryEntry> messageSnapshots = directMessageHistory(snapshots);
         assertThat(messageSnapshots).hasSize(1);
@@ -454,6 +470,7 @@ class DirectMessageSseIntegrationTest {
     }
 
     private void assertHistoryIds(UUID userId, UUID... ids) {
+        notificationTasks.awaitCompletion();
         List<SseHistoryEntry> entries = historyStore.readAfter(userId, null).entries();
         assertThat(entries).extracting(entry -> entry.event().eventName())
                 .isSubsetOf("direct-messages", "notifications");
@@ -480,6 +497,7 @@ class DirectMessageSseIntegrationTest {
 
     private void assertLiveMessageAndNotification(SseClient client, UUID messageId, JsonNode expectedData)
             throws IOException {
+        notificationTasks.awaitCompletion();
         List<SseHistoryEntry> entries = historyStore.readAfter(receiverId, null).entries();
         assertThat(entries).extracting(entry -> entry.event().eventName())
                 .containsExactlyInAnyOrder("direct-messages", "notifications");
@@ -692,6 +710,8 @@ class DirectMessageSseIntegrationTest {
                         "--everyone.dm.websocket.redis.channel=" + environment.getRequiredProperty("everyone.dm.websocket.redis.channel")
                 );
         additionalNodes.add(node);
+        additionalNotificationTasks.add(new NotificationTaskTracker(
+                node.getBean("notificationTaskExecutor", ThreadPoolTaskExecutor.class)));
         return node;
     }
 

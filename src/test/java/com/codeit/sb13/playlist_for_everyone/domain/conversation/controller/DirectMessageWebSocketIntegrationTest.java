@@ -9,6 +9,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.request.Dir
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.response.MessageDto;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.event.DirectMessagePublisher;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.DirectMessageDeliveryService;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationTaskTracker;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.ApiErrorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.exception.ApiErrorCode;
@@ -25,6 +26,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -52,6 +54,7 @@ import org.springframework.messaging.simp.broker.SimpleBrokerMessageHandler;
 import org.springframework.messaging.simp.stomp.*;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -167,6 +170,12 @@ public class DirectMessageWebSocketIntegrationTest {
     @Autowired
     private Environment environment;
 
+    @Autowired
+    @Qualifier("notificationTaskExecutor")
+    private ThreadPoolTaskExecutor notificationTaskExecutor;
+
+    private NotificationTaskTracker notificationTasks;
+
     @MockitoSpyBean
     private DirectMessagePublisher directMessagePublisher;
 
@@ -191,6 +200,7 @@ public class DirectMessageWebSocketIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        notificationTasks = new NotificationTaskTracker(notificationTaskExecutor);
         insertUser(userId, "웹소켓 테스트 사용자");
         insertUser(counterpartId, "대화 상대");
         insertUser(otherUserId, "다른 대화 상대");
@@ -233,6 +243,9 @@ public class DirectMessageWebSocketIntegrationTest {
             if (stompClient != null) {
                 stompClient.stop();
             }
+
+            // WebSocket 수신 완료와 알림 완료는 별개이므로 DB 정리 전에 실제 작업을 기다린다.
+            notificationTasks.close();
 
             if (loginSessionId != null) {
                 userSessionRepository.endIfCurrent(userId, loginSessionId);
@@ -911,7 +924,9 @@ public class DirectMessageWebSocketIntegrationTest {
     @Test
     @DisplayName("서버 A에서 보낸 DM이 서버 A와 B의 실제 구독자에게 한 번씩 전달되고 미읽음 한 건으로 유지된다.")
     void send_deliversAcrossActualServersWithoutDuplicatingMessages() throws Exception {
-        try (ConfigurableApplicationContext nodeB = startAdditionalNode()) {
+        try (ConfigurableApplicationContext nodeB = startAdditionalNode();
+             NotificationTaskTracker nodeBTasks = new NotificationTaskTracker(
+                     nodeB.getBean("notificationTaskExecutor", ThreadPoolTaskExecutor.class))) {
             int portB = ((WebServerApplicationContext) nodeB).getWebServer().getPort();
             SimpleBrokerMessageHandler brokerB = nodeB.getBean(SimpleBrokerMessageHandler.class);
             assertThat(portB).isNotEqualTo(port);
