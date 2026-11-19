@@ -5,9 +5,9 @@ import com.codeit.sb13.playlist_for_everyone.domain.review.dto.condition.ReviewL
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewListRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewUpdateRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.review.dto.response.ReviewAuthorDto;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.response.ReviewDto;
 import com.codeit.sb13.playlist_for_everyone.domain.review.service.ReviewService;
-import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
@@ -83,12 +83,12 @@ public class ReviewControllerTest {
                         securityUser.getAuthorities()
                 );
 
-        UserDto userDto = mock(UserDto.class);
+        ReviewAuthorDto authorDto = mock(ReviewAuthorDto.class);
 
         ReviewDto response = new ReviewDto(
                 reviewId,
                 contentId,
-                userDto,
+                authorDto,
                 "재미있는 드라마였어요.",
                 4.5
         );
@@ -168,12 +168,12 @@ public class ReviewControllerTest {
 
         ReviewListCondition condition = request.toCondition();
 
-        UserDto userDto = mock(UserDto.class);
+        ReviewAuthorDto authorDto = mock(ReviewAuthorDto.class);
 
         ReviewDto review1 = new ReviewDto(
                 UUID.randomUUID(),
                 contentId,
-                userDto,
+                authorDto,
                 "정말 재미있었어요.",
                 5.0
         );
@@ -181,7 +181,7 @@ public class ReviewControllerTest {
         ReviewDto review2 = new ReviewDto(
                 UUID.randomUUID(),
                 contentId,
-                userDto,
+                authorDto,
                 "볼만한 드라마였어요.",
                 4.0
         );
@@ -189,7 +189,7 @@ public class ReviewControllerTest {
         ReviewDto review3 = new ReviewDto(
                 UUID.randomUUID(),
                 contentId,
-                userDto,
+                authorDto,
                 "조금 아쉬웠어요.",
                 3.0
         );

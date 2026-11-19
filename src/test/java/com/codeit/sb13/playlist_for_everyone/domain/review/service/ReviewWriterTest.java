@@ -11,7 +11,6 @@ import com.codeit.sb13.playlist_for_everyone.domain.review.entity.Review;
 import com.codeit.sb13.playlist_for_everyone.domain.review.mapper.ReviewMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.review.repository.ReviewRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
-import com.codeit.sb13.playlist_for_everyone.domain.user.mapper.UserDtoMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.review.ReviewAlreadyExistsException;
@@ -60,9 +59,6 @@ public class ReviewWriterTest {
     private ReviewMapper reviewMapper;
 
     @Mock
-    private UserDtoMapper userMapper;
-
-    @Mock
     private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
@@ -103,18 +99,7 @@ public class ReviewWriterTest {
         given(reviewRepository.saveAndFlush(any(Review.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
 
-        given(reviewMapper.toDto(any(Review.class)))
-                .willAnswer(invocation -> {
-                    Review review = invocation.getArgument(0);
-
-                    return new ReviewDto(
-                            UUID.randomUUID(),
-                            content.getId(),
-                            userMapper.toDto(author),
-                            review.getText(),
-                            review.getRating()
-                    );
-                });
+        given(reviewMapper.toDto(any(Review.class))).willReturn(mock(ReviewDto.class));
 
         // when
         reviewWriter.save(request, authorId);

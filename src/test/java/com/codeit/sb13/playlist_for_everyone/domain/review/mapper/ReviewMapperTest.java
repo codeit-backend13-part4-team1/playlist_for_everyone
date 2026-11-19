@@ -17,8 +17,7 @@ import static org.mockito.Mockito.mock;
 @DisplayName("리뷰 매퍼 테스트")
 public class ReviewMapperTest {
 
-    private final UserDtoMapper userMapper = mock(UserDtoMapper.class);
-    private final ReviewMapper reviewMapper = new ReviewMapper(userMapper);
+    private final ReviewMapper reviewMapper = new ReviewMapper();
 
     @Test
     @DisplayName("리뷰 엔터티를 ReviewDto로 변환한다.")
@@ -26,6 +25,7 @@ public class ReviewMapperTest {
         // given
         UUID reviewId = UUID.randomUUID();
         UUID contentId = UUID.randomUUID();
+        UUID authorId = UUID.randomUUID();
 
         Content content = mock(Content.class);
         User author = mock(User.class);
@@ -35,6 +35,8 @@ public class ReviewMapperTest {
         given(review.getContent()).willReturn(content);
         given(content.getId()).willReturn(contentId);
         given(review.getAuthor()).willReturn(author);
+        given(author.getId()).willReturn(authorId);
+        given(author.getName()).willReturn("테스트 작성자");
         given(review.getText()).willReturn("재미있는 드라마였어요.");
         given(review.getRating()).willReturn(4.5);
 
@@ -46,6 +48,11 @@ public class ReviewMapperTest {
         assertThat(dto.contentId()).isEqualTo(contentId);
         assertThat(dto.text()).isEqualTo("재미있는 드라마였어요.");
         assertThat(dto.rating()).isEqualTo(4.5);
+
+        // 작성자 정보 검증
+        assertThat(dto.authorDto().authorId()).isEqualTo(authorId);
+        assertThat(dto.authorDto().nickname()).isEqualTo("테스트 작성자");
+        assertThat(dto.authorDto().profileImageUrl()).isNull();
     }
 
 }
