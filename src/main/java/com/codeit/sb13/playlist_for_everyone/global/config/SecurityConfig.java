@@ -8,6 +8,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionR
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.JwtAuthenticationFailureHandler;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.JwtAuthenticationSuccessHandler;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.JwtLogoutSuccessHandler;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.security.RefreshTokenCookieFactory;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AuthService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.ApiErrorResponse;
@@ -56,8 +57,7 @@ public class SecurityConfig {
                                                    AuthService authService,
                                                    UserSessionRepository userSessionRepository,
                                                    ApplicationEventPublisher eventPublisher,
-                                                   @Value("${everyone.jwt.refresh-cookie-secure:true}")
-                                                   boolean refreshCookieSecure) throws Exception{
+                                                   RefreshTokenCookieFactory refreshTokenCookieFactory) throws Exception{
 
         // 인증 정보가 없거나 JWT 검증에 실패한 경우의 응답이다.
         // 로그인 시 이메일·비밀번호 검증 실패는 기존 로그인 실패 핸들러가 담당한다.
@@ -100,13 +100,13 @@ public class SecurityConfig {
         JwtAuthenticationSuccessHandler successHandler =
                 new JwtAuthenticationSuccessHandler(jwtTokenProvider, userService, objectMapper,
                         refreshTokenRepository,userSessionRepository, eventPublisher,
-                        jwtProperties.refreshTokenValidity(), refreshCookieSecure
+                        jwtProperties.refreshTokenValidity(), refreshTokenCookieFactory
                 );
 
         // Refresh Token 삭제와 쿠키 만료, 로그아웃 응답을 담당한다.
         // 쿠키 삭제 시에도 로그인 때와 동일한 Secure 설정을 사용한다.
         JwtLogoutSuccessHandler logoutSuccessHandler =
-                new JwtLogoutSuccessHandler(authService, objectMapper, refreshCookieSecure);
+                new JwtLogoutSuccessHandler(authService, objectMapper, refreshTokenCookieFactory);
 
 
         JwtAuthenticationFailureHandler failureHandler =
@@ -228,4 +228,11 @@ public class SecurityConfig {
                 .build();
 
     }
+
+    @Bean
+    public RefreshTokenCookieFactory refreshTokenCookieFactory(JwtProperties jwtProperties,
+                                                               @Value("${everyone.jwt.refresh-cookie-secure:true}") boolean refreshCookieSecure) {
+        return new RefreshTokenCookieFactory(jwtProperties.refreshTokenValidity(), refreshCookieSecure);
+    }
+
 }
