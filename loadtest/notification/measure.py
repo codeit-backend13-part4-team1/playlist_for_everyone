@@ -562,7 +562,7 @@ def run_round(admin, fixture, db, args, checkout, output, pid, label, sample_poo
 def application_environment(connection, java_home, admin_email, admin_password):
     env = {
         name: value for name, value in os.environ.items()
-        if not name.startswith(("SPRING_FLYWAY_", "SPRING_CONFIG_", "SPRING_DATASOURCE_"))
+        if not name.startswith(("SPRING_FLYWAY_", "SPRING_CONFIG_", "SPRING_DATASOURCE_", "SPRING_DATA_REDIS_"))
     }
     for variable in ("SPRING_APPLICATION_JSON", "JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS"):
         env.pop(variable, None)

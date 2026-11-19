@@ -34,7 +34,7 @@ class Clock:
 
 
 class MeasurementTest(unittest.TestCase):
-    def test_application_uses_temporary_database_for_flyway(self):
+    def test_application_uses_temporary_postgres_and_redis(self):
         with patch.dict(os.environ, {
             "SPRING_FLYWAY_URL": "jdbc:postgresql://other-host/other-db",
             "SPRING_FLYWAY_USER": "other-user",
@@ -42,6 +42,10 @@ class MeasurementTest(unittest.TestCase):
             "SPRING_FLYWAY_ENABLED": "false",
             "SPRING_CONFIG_LOCATION": "file:/other-config.yml",
             "SPRING_DATASOURCE_HIKARI_JDBC_URL": "jdbc:postgresql://other-host/other-db",
+            "SPRING_DATA_REDIS_URL": "redis://other-host:6379",
+            "SPRING_DATA_REDIS_CLUSTER_NODES": "other-cluster:6379",
+            "SPRING_DATA_REDIS_SENTINEL_MASTER": "other-master",
+            "SPRING_DATA_REDIS_SENTINEL_NODES": "other-sentinel:26379",
         }):
             env = measure.application_environment(connection(), Path("jdk"), "admin", "secret")
 
@@ -50,6 +54,8 @@ class MeasurementTest(unittest.TestCase):
         self.assertEqual(env["SPRING_DATASOURCE_URL"], "jdbc:postgresql://127.0.0.1:15432/loadtest")
         self.assertNotIn("SPRING_CONFIG_LOCATION", env)
         self.assertNotIn("SPRING_DATASOURCE_HIKARI_JDBC_URL", env)
+        redis_settings = {key: value for key, value in env.items() if key.startswith("SPRING_DATA_REDIS_")}
+        self.assertEqual(redis_settings, {"SPRING_DATA_REDIS_URL": "redis://127.0.0.1:16379"})
 
     def test_truncated_response_is_not_retried_and_can_be_reconciled(self):
         socket = Mock()
