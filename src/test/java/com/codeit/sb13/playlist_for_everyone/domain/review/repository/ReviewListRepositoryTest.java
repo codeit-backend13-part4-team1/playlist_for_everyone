@@ -10,6 +10,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
+import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
 import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,7 +25,6 @@ import org.springframework.dao.InvalidDataAccessApiUsageException;
 import java.util.List;
 import java.util.UUID;
 
-import static com.codeit.sb13.playlist_for_everyone.domain.review.entity.QReview.review;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -59,11 +59,19 @@ public class ReviewListRepositoryTest {
         content2 = createContent("영화2");
         content3 = createContent("영화3");
 
-        // 사용자 3명
+        // 사용자 4명
         author1 = createAuthor(1);
         author2 = createAuthor(2);
         author3 = createAuthor(3);
         author4 = createAuthor(4);
+
+        // 프로필 이미지가 있는 작성자
+        // 실제 FileInfo 생성 방식에 맞춰 작성
+        FileInfo image1 = createFileInfo("profiles/author1.png");
+        FileInfo image2 = createFileInfo("profiles/author2.png");
+
+        author1.updateProfileImage(image1);
+        author2.updateProfileImage(image2);
 
         // 콘텐츠1 리뷰
         createReview(content1, author1, 5.0, "정말 재미있어요");
@@ -335,18 +343,33 @@ public class ReviewListRepositoryTest {
             List<Review> results =
                     reviewRepository.getReviewsByContentId(content1.getId(), condition);
 
-            // 작성자와 프로필 이미지 접근 시 추가 쿼리가 발생하는지 확인
-            for (Review review : results) {
-                review.getAuthor().getName();
+            // 작성자 및 프로필 이미지 접근
+            List<String> profileImageKeys = results.stream()
+                    .map(review -> {
+                        User author = review.getAuthor();
+                        author.getName();
 
-                if (review.getAuthor().getProfileImage() != null) {
-                    review.getAuthor().getProfileImage().getKey();
-                }
-            }
+                        FileInfo profileImage = author.getProfileImage();
+
+                        return profileImage == null
+                                ? null
+                                : profileImage.getKey();
+                    })
+                    .toList();
 
             // then
             assertThat(results).hasSize(4);
-            assertThat(statistics.getPrepareStatementCount()).isEqualTo(1);
+
+            assertThat(profileImageKeys)
+                    .containsExactlyInAnyOrder(
+                            "profiles/author1.png",
+                            "profiles/author2.png",
+                            null,
+                            null
+                    );
+
+            assertThat(statistics.getPrepareStatementCount())
+                    .isEqualTo(1);
         } finally {
             statistics.setStatisticsEnabled(previousEnabled);
         }
@@ -386,6 +409,17 @@ public class ReviewListRepositoryTest {
                 .rating(rating)
                 .text(text)
                 .build());
+    }
+
+    private FileInfo createFileInfo(String key) {
+        return em.persist(
+                FileInfo.createS3File(
+                        key,
+                        "profile.png",
+                        "image/png",
+                        1024L
+                )
+        );
     }
 
 }
