@@ -1,44 +1,32 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watch;
 
-
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
-import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
-import com.codeit.sb13.playlist_for_everyone.global.exception.EveryOneException;
-import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatDto;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.ChangeType;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.WatchingSessionChange;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.*;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionDisconnectEvent;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionEventListener;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.chat.WatchingChatJoinEvent;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.chat.WatchingChatLeaveEvent;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.chat.WatchingChatSendEvent;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.view.WatchingSessionJoinEvent;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.view.WatchingSessionLeaveEvent;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.view.WatchingSessionRefreshEvent;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.chatting.ChattingSessionService;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.viewing.ViewingSessionService;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.messaging.Message;
-import org.springframework.messaging.simp.stomp.StompCommand;
-import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
-import org.springframework.messaging.support.MessageBuilder;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 
 import java.util.UUID;
 
-import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.MESSAGE_CHAT_PREFIX;
-import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.MESSAGE_VIEW_PREFIX;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.BDDMockito.*;
+import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 /**
  * WatchingSession 서비스 이벤트 테스트
@@ -55,60 +43,538 @@ public class WatchingSessionEventListenerTest {
 
     @Mock
     WatchingSessionService watchingSessionService;
-    @Mock
-    ViewingSessionService viewingSessionService;
-    @Mock
-    ChattingSessionService chattingSessionService;
 
-    @InjectMocks
+    @Mock
+    ChattingSessionService chatService;
+
+    @Mock
+    ViewingSessionService viewService;
+
+    @Mock
+    SecurityUser auth;
+
     WatchingSessionEventListener eventListener;
 
+    String sessionId = "test-session";
+    String subscriptionId = "test-subscription";
 
-    /**
-     * 테스트용 SessionInfo 생성 편의 매서드
+    UUID contentId = UUID.randomUUID();
+
+    String viewDestination =
+            PATH_PREFIX + contentId + VIEW_POSTFIX;
+
+    String chatDestination =
+            PATH_PREFIX + contentId + CHAT_POSTFIX;
+
+    @BeforeEach
+    void setUp() {
+        eventListener = new WatchingSessionEventListener(
+                watchingSessionService,
+                chatService,
+                viewService
+        );
+    }
+
+    /*
+     * ==========================================
+     * Viewing 이벤트 테스트
+     * ==========================================
      */
 
-    SessionInfo getSessionInfo(
+    @Nested
+    @DisplayName("Viewing 이벤트 처리 테스트")
+    class ViewingEventTest {
+
+        @Test
+        @DisplayName("JOIN 이벤트 수신 시 Viewing JOIN을 호출한다.")
+        void watchJoinEventTest() {
+
+            // given
+            SessionInfo info = sessionInfoStub(
+                    sessionId,
+                    subscriptionId,
+                    viewDestination,
+                    auth
+            );
+
+            WatchingSessionJoinEvent event =
+                    mock(WatchingSessionJoinEvent.class);
+
+            when(event.info()).thenReturn(info);
+
+            // when
+            eventListener.watchJoinEvent(event);
+
+            // then
+            verify(watchingSessionService, times(1))
+                    .joinViewerSession(
+                            sessionId,
+                            subscriptionId,
+                            viewDestination,
+                            auth
+                    );
+
+            verifyNoMoreInteractions(watchingSessionService);
+
+            verifyNoInteractions(
+                    chatService,
+                    viewService
+            );
+        }
+
+        @Test
+        @DisplayName("LEAVE 이벤트 수신 시 Viewing LEAVE를 호출한다.")
+        void watchLeaveEventTest() {
+
+            // given
+            SessionInfo info = sessionInfoStub(
+                    sessionId,
+                    subscriptionId,
+                    viewDestination,
+                    auth
+            );
+
+            WatchingSessionLeaveEvent event =
+                    mock(WatchingSessionLeaveEvent.class);
+
+            when(event.info()).thenReturn(info);
+
+            // when
+            eventListener.watchLeaveEvent(event);
+
+            // then
+            verify(watchingSessionService, times(1))
+                    .leaveViewerSession(
+                            sessionId,
+                            subscriptionId,
+                            auth
+                    );
+
+            verifyNoMoreInteractions(watchingSessionService);
+
+            verifyNoInteractions(
+                    chatService,
+                    viewService
+            );
+        }
+
+        @Test
+        @DisplayName("REFRESH 이벤트 수신 시 Viewing REFRESH를 호출한다.")
+        void watchRefreshEventTest() {
+
+            // given
+            SessionInfo info = sessionInfoStub(
+                    sessionId,
+                    subscriptionId,
+                    viewDestination,
+                    auth
+            );
+
+            WatchingSessionRefreshEvent event =
+                    mock(WatchingSessionRefreshEvent.class);
+
+            when(event.info()).thenReturn(info);
+
+            // when
+            eventListener.watchRefreshEvent(event);
+
+            // then
+            verify(viewService, times(1))
+                    .refresh(sessionId);
+
+            verifyNoMoreInteractions(viewService);
+
+            verifyNoInteractions(
+                    watchingSessionService,
+                    chatService
+            );
+        }
+    }
+
+    /*
+     * ==========================================
+     * Chatting 이벤트 테스트
+     * ==========================================
+     */
+
+    @Nested
+    @DisplayName("Chatting 이벤트 처리 테스트")
+    class ChattingEventTest {
+
+        @Test
+        @DisplayName("JOIN 이벤트 수신 시 Chatting JOIN을 호출한다.")
+        void chatJoinEventTest() {
+
+            // given
+            SessionInfo info = sessionInfoStub(
+                    sessionId,
+                    subscriptionId,
+                    chatDestination,
+                    auth
+            );
+
+            WatchingChatJoinEvent event =
+                    mock(WatchingChatJoinEvent.class);
+
+            when(event.info()).thenReturn(info);
+
+            // when
+            eventListener.chatJoinEvent(event);
+
+            // then
+            verify(watchingSessionService, times(1))
+                    .joinChattingSession(
+                            sessionId,
+                            subscriptionId,
+                            chatDestination,
+                            auth
+                    );
+
+            verifyNoMoreInteractions(watchingSessionService);
+
+            verifyNoInteractions(
+                    chatService,
+                    viewService
+            );
+        }
+
+        @Test
+        @DisplayName("LEAVE 이벤트 수신 시 Chatting LEAVE를 호출한다.")
+        void chatLeaveEventTest() {
+
+            // given
+            SessionInfo info = sessionInfoStub(
+                    sessionId,
+                    subscriptionId,
+                    chatDestination,
+                    auth
+            );
+
+            WatchingChatLeaveEvent event =
+                    mock(WatchingChatLeaveEvent.class);
+
+            when(event.info()).thenReturn(info);
+
+            // when
+            eventListener.chatLeaveEvent(event);
+
+            // then
+            verify(watchingSessionService, times(1))
+                    .leaveChattingSession(
+                            sessionId,
+                            subscriptionId,
+                            auth
+                    );
+
+            verifyNoMoreInteractions(watchingSessionService);
+
+            verifyNoInteractions(
+                    chatService,
+                    viewService
+            );
+        }
+
+        @Test
+        @DisplayName("SEND 이벤트 수신 시 contentId를 추출하여 메시지를 전송한다.")
+        void chatSendEventTest() {
+
+            // given
+            SessionInfo info = sessionInfoStub(
+                    sessionId,
+                    subscriptionId,
+                    chatDestination,
+                    auth
+            );
+
+            /*
+             * 메시지 객체의 구체적인 타입에 의존하지 않도록
+             * Deep Stub을 사용한다.
+             */
+            WatchingChatSendEvent event = mock(
+                    WatchingChatSendEvent.class,
+                    RETURNS_DEEP_STUBS
+            );
+
+            when(event.info()).thenReturn(info);
+
+            var message = event.message();
+
+            // when
+            eventListener.chatSendEvent(event);
+
+            // then
+            verify(chatService, times(1))
+                    .send(
+                            eq(contentId),
+                            same(message)
+                    );
+
+            verifyNoMoreInteractions(chatService);
+
+            verifyNoInteractions(
+                    watchingSessionService,
+                    viewService
+            );
+        }
+    }
+
+    /*
+     * ==========================================
+     * Disconnect 이벤트 테스트
+     * ==========================================
+     */
+
+    @Nested
+    @DisplayName("Disconnect 이벤트 처리 테스트")
+    class DisconnectEventTest {
+
+        @Test
+        @DisplayName("DISCONNECT 이벤트 수신 시 세션 리소스 정리를 호출한다.")
+        void disconnectEventTest() {
+
+            // given
+            SessionInfo info = sessionInfoStub(
+                    sessionId,
+                    subscriptionId,
+                    viewDestination,
+                    auth
+            );
+
+            WatchingSessionDisconnectEvent event =
+                    mock(WatchingSessionDisconnectEvent.class);
+
+            when(event.info()).thenReturn(info);
+
+            // when
+            eventListener.DisconnectEvent(event);
+
+            // then
+            verify(watchingSessionService, times(1))
+                    .cleanUpWithSessionId(sessionId);
+
+            verifyNoMoreInteractions(watchingSessionService);
+
+            verifyNoInteractions(
+                    chatService,
+                    viewService
+            );
+        }
+    }
+
+    /*
+     * ==========================================
+     * 이벤트 정보 유효성 검증 테스트
+     * ==========================================
+     */
+
+    @Nested
+    @DisplayName("이벤트 정보 유효성 검증")
+    class ValidationTest {
+
+        @Test
+        @DisplayName("Viewing JOIN의 SessionInfo가 null이면 NPE를 반환한다.")
+        void watchJoinEventNullInfoTest() {
+
+            // given
+            WatchingSessionJoinEvent event =
+                    mock(WatchingSessionJoinEvent.class);
+
+            when(event.info()).thenReturn(null);
+
+            // when & then
+            assertThatThrownBy(
+                    () -> eventListener.watchJoinEvent(event)
+            ).isInstanceOf(NullPointerException.class);
+
+            verifyNoServiceInteractions();
+        }
+
+        @Test
+        @DisplayName("Viewing LEAVE의 SessionInfo가 null이면 NPE를 반환한다.")
+        void watchLeaveEventNullInfoTest() {
+
+            // given
+            WatchingSessionLeaveEvent event =
+                    mock(WatchingSessionLeaveEvent.class);
+
+            when(event.info()).thenReturn(null);
+
+            // when & then
+            assertThatThrownBy(
+                    () -> eventListener.watchLeaveEvent(event)
+            ).isInstanceOf(NullPointerException.class);
+
+            verifyNoServiceInteractions();
+        }
+
+        @Test
+        @DisplayName("Viewing REFRESH의 SessionInfo가 null이면 NPE를 반환한다.")
+        void watchRefreshEventNullInfoTest() {
+
+            // given
+            WatchingSessionRefreshEvent event =
+                    mock(WatchingSessionRefreshEvent.class);
+
+            when(event.info()).thenReturn(null);
+
+            // when & then
+            assertThatThrownBy(
+                    () -> eventListener.watchRefreshEvent(event)
+            ).isInstanceOf(NullPointerException.class);
+
+            verifyNoServiceInteractions();
+        }
+
+        @Test
+        @DisplayName("Chatting JOIN의 SessionInfo가 null이면 NPE를 반환한다.")
+        void chatJoinEventNullInfoTest() {
+
+            // given
+            WatchingChatJoinEvent event =
+                    mock(WatchingChatJoinEvent.class);
+
+            when(event.info()).thenReturn(null);
+
+            // when & then
+            assertThatThrownBy(
+                    () -> eventListener.chatJoinEvent(event)
+            ).isInstanceOf(NullPointerException.class);
+
+            verifyNoServiceInteractions();
+        }
+
+        @Test
+        @DisplayName("Chatting LEAVE의 SessionInfo가 null이면 NPE를 반환한다.")
+        void chatLeaveEventNullInfoTest() {
+
+            // given
+            WatchingChatLeaveEvent event =
+                    mock(WatchingChatLeaveEvent.class);
+
+            when(event.info()).thenReturn(null);
+
+            // when & then
+            assertThatThrownBy(
+                    () -> eventListener.chatLeaveEvent(event)
+            ).isInstanceOf(NullPointerException.class);
+
+            verifyNoServiceInteractions();
+        }
+
+        @Test
+        @DisplayName("Chatting SEND의 SessionInfo가 null이면 NPE를 반환한다.")
+        void chatSendEventNullInfoTest() {
+
+            // given
+            WatchingChatSendEvent event =
+                    mock(WatchingChatSendEvent.class);
+
+            when(event.info()).thenReturn(null);
+
+            // when & then
+            assertThatThrownBy(
+                    () -> eventListener.chatSendEvent(event)
+            ).isInstanceOf(NullPointerException.class);
+
+            verifyNoServiceInteractions();
+        }
+
+        @Test
+        @DisplayName("Chatting SEND의 destination이 null이면 NPE를 반환한다.")
+        void chatSendEventNullDestinationTest() {
+
+            // given
+            SessionInfo info = mock(SessionInfo.class);
+
+            when(info.destination()).thenReturn(null);
+
+            WatchingChatSendEvent event =
+                    mock(WatchingChatSendEvent.class);
+
+            when(event.info()).thenReturn(info);
+
+            // when & then
+            assertThatThrownBy(
+                    () -> eventListener.chatSendEvent(event)
+            ).isInstanceOf(NullPointerException.class);
+
+            verifyNoServiceInteractions();
+        }
+
+        @Test
+        @DisplayName("destination에 UUID가 존재하지 않으면 서비스 호출에 실패한다.")
+        void chatSendEventInvalidDestinationTest() {
+
+            // given
+            SessionInfo info = mock(SessionInfo.class);
+
+            when(info.destination())
+                    .thenReturn("/invalid-destination");
+
+            WatchingChatSendEvent event =
+                    mock(WatchingChatSendEvent.class);
+
+            when(event.info()).thenReturn(info);
+
+            // when & then
+            assertThatThrownBy(
+                    () -> eventListener.chatSendEvent(event)
+            ).isInstanceOf(RuntimeException.class);
+
+            verifyNoServiceInteractions();
+        }
+    }
+
+    /*
+     * ==========================================
+     * 공통 Stub
+     * ==========================================
+     */
+
+    /**
+     * 이벤트에서 참조하는 SessionInfo 객체.
+     *
+     * 이벤트마다 사용하는 필드가 다르므로
+     * 선택적으로 사용되는 필드에 lenient를 적용한다.
+     */
+    SessionInfo sessionInfoStub(
             String sessionId,
             String subscriptionId,
             String destination,
-            Role role
-    ){
-        return getSessionInfo(sessionId, subscriptionId, destination, role, false);
+            SecurityUser auth
+    ) {
+        SessionInfo info = mock(SessionInfo.class);
+
+        lenient().when(info.session())
+                .thenReturn(sessionId);
+
+        lenient().when(info.subscription())
+                .thenReturn(subscriptionId);
+
+        lenient().when(info.destination())
+                .thenReturn(destination);
+
+        lenient().when(info.user())
+                .thenReturn(auth);
+
+        return info;
     }
 
-    SessionInfo getSessionInfo(
-            String sessionId,
-            String subscriptionId,
-            String destination,
-            Role role,
-            Boolean isLocked
-    ){
-        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.STOMP);
+    /*
+     * ==========================================
+     * 공통 검증 메서드
+     * ==========================================
+     */
 
-        accessor.setSessionId(sessionId);
-        accessor.setSubscriptionId(subscriptionId);
-        accessor.setDestination(destination);
-        accessor.setLeaveMutable(true);
-
-        SecurityUser user = new SecurityUser(
-                UUID.randomUUID(),
-                "test@email.com",
-                "",
-                role,
-                isLocked
+    /**
+     * 입력값 검증 실패 시 하위 서비스가
+     * 호출되지 않았음을 검증한다.
+     */
+    void verifyNoServiceInteractions() {
+        verifyNoInteractions(
+                watchingSessionService,
+                chatService,
+                viewService
         );
-        UsernamePasswordAuthenticationToken authentication =
-                new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
-
-        accessor.setUser(authentication);
-
-        Message<byte[]> message =  MessageBuilder.createMessage(
-                new byte[0],
-                accessor.getMessageHeaders()
-        );
-
-        return new SessionInfo(message);
     }
-
 }

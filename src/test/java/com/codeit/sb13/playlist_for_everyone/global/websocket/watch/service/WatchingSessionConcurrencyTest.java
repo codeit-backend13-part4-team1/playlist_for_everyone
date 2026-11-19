@@ -1,4 +1,4 @@
-package com.codeit.sb13.playlist_for_everyone.global.websocket.watch;
+package com.codeit.sb13.playlist_for_everyone.global.websocket.watch.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
