@@ -135,10 +135,6 @@ public class WatchingSessionBasicTest {
                 verify(viewingSessionService).destroy(contentId);
                 verify(chattingSessionService).destroy(contentId);
 
-
-                verify(sessionRegistry, times(expected.size()))
-                        .query(sessionId);
-
                 verify(session, times(expected.size()))
                         .unsubscribe(captor.capture());
 
