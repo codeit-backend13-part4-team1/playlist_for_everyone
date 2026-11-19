@@ -115,6 +115,25 @@ public class UserService {
      */
     @Transactional
     public UserDto updateProfile(UUID userId, String name, MultipartFile image) {
-        throw new UnsupportedOperationException("아직 구현되지 않았습니다");
+        User user = getById(userId);
+
+        user.updateName(name);
+
+        if (image != null && !image.isEmpty()) {
+            FileInfo oldImage = user.getProfileImage();
+
+            // 업로드 후 트랜잭션이 롤백되면 FileService가 올린 파일을 정리한다.
+            FileInfo newImage = fileService.upload(image);
+            user.updateProfileImage(newImage);
+
+            userRepository.flush();
+
+            if (oldImage != null) {
+                fileService.delete(oldImage.getId());
+            }
+        }
+        log.info("[USER] 프로필 변경 완료 userId - {}", userId);
+
+        return toUserDto(user);
     }
 }

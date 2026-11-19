@@ -385,7 +385,7 @@ class UserServiceTest {
     }
 
     @Test
-    @DisplayName("새 이미지로 교체하면 사용자 변경을 반영한 뒤 기존 이미지를 삭제한다.")
+    @DisplayName("새 이미지로 교체하면 사용자 변경을 반영한 뒤 기존 이미지를 삭제한다")
     void 새_이미지로_교체하면_사용자_변경을_반영한_뒤_기존_이미지를_삭제한다() {
         UUID userId = UUID.randomUUID();
         UUID oldImageId = UUID.randomUUID();
@@ -395,7 +395,7 @@ class UserServiceTest {
         FileInfo newImage = createProfileTestImage(newImageId);
         user.updateProfileImage(oldImage);
         MockMultipartFile image = new MockMultipartFile(
-                "image", "new.png", "image/png", new byte[0]
+                "image", "new.png", "image/png", new byte[]{1, 2, 3}
         );
 
         given(userRepository.findWithProfileImageById(userId))
