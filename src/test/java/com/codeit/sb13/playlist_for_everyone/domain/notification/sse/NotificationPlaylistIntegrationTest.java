@@ -11,6 +11,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistCreat
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.PlaylistService;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEventPublisher;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -40,6 +41,9 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.util.UUID;
 
+import static com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationMetricReader.failureCount;
+import static com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationMetricReader.processingCount;
+import static com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationMetricReader.publishAttempts;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
@@ -99,6 +103,9 @@ public class NotificationPlaylistIntegrationTest {
 
     @Autowired
     private PlatformTransactionManager transactionManager;
+
+    @Autowired
+    private MeterRegistry meterRegistry;
 
     private TransactionTemplate transactionTemplate;
     private final UUID ownerId = UUID.randomUUID();
@@ -164,6 +171,8 @@ public class NotificationPlaylistIntegrationTest {
     @DisplayName("실제 플레이리스트 생성 커밋 후 처리 시점의 팔로워들에게 알림을 저장하고 SSE 발행을 요청한다.")
     void savesNotificationsAfterActualPlaylistCreationCommits(ApplicationEvents applicationEvents) {
         insertFollow(firstReceiverId, ownerId);
+        double attemptsBefore = publishAttempts(meterRegistry, "playlist_created");
+        long processedBefore = processingCount(meterRegistry, "playlist_created");
 
         UUID playlistId = transactionTemplate.execute(status ->{
             PlaylistResponse response = playlistService.create(ownerId, new PlaylistCreateRequest("퇴근 후 영화", "함께 볼 영화"));
@@ -190,6 +199,13 @@ public class NotificationPlaylistIntegrationTest {
         assertThat(sseCaptor.getAllValues())
                 .extracting(SseEvent::receiverId)
                 .containsExactlyInAnyOrder(firstReceiverId, secondReceiverId);
+        assertThat(publishAttempts(meterRegistry, "playlist_created") - attemptsBefore)
+                .as("플레이리스트 생성 알림 발행 시도 증가량")
+                .isEqualTo(2.0);
+
+        assertThat(processingCount(meterRegistry, "playlist_created") - processedBefore)
+                .as("알림 처리 시간 기록 증가량")
+                .isEqualTo(2L);
     }
 
     @Test
@@ -199,6 +215,8 @@ public class NotificationPlaylistIntegrationTest {
         insertPlaylist();
         insertContent();
         insertSubscription(firstReceiverId);
+        double attemptsBefore = publishAttempts(meterRegistry, "playlist_content_added");
+        long processedBefore = processingCount(meterRegistry, "playlist_content_added");
 
         transactionTemplate.executeWithoutResult(status ->{
             playlistService.addContent(existingPlaylistId, contentId, ownerId);
@@ -223,6 +241,13 @@ public class NotificationPlaylistIntegrationTest {
         assertThat(sseCaptor.getAllValues())
                 .extracting(SseEvent::receiverId)
                 .containsExactlyInAnyOrder(firstReceiverId, secondReceiverId);
+        assertThat(publishAttempts(meterRegistry, "playlist_content_added") - attemptsBefore)
+                .as("콘텐츠 추가 알림 발행 시도 증가량")
+                .isEqualTo(2.0);
+
+        assertThat(processingCount(meterRegistry, "playlist_content_added") - processedBefore)
+                .as("알림 처리 시간 기록 증가량")
+                .isEqualTo(2L);
     }
 
     @Test
@@ -280,6 +305,7 @@ public class NotificationPlaylistIntegrationTest {
                 .when(targetReader)
                 .findFollowerIds(ownerId);
 
+        double lookupFailedBefore = failureCount(meterRegistry, "lookup");
         PlaylistResponse response = playlistService.create(ownerId,
                 new PlaylistCreateRequest("퇴근 후 영화", "함께 볼 영화"));
 
@@ -295,6 +321,9 @@ public class NotificationPlaylistIntegrationTest {
                         "ownerId=" + ownerId,
                         "exceptionType=IllegalStateException"
                 );
+        assertThat(failureCount(meterRegistry, "lookup") - lookupFailedBefore)
+                .as("수신자 조회 실패 증가량")
+                .isEqualTo(1.0);
     }
 
     @Test
@@ -309,7 +338,7 @@ public class NotificationPlaylistIntegrationTest {
         doThrow(new IllegalStateException("테스트용 구독자 조회 실패"))
                 .when(targetReader)
                 .findSubscriberIds(existingPlaylistId);
-
+        double lookupFailedBefore = failureCount(meterRegistry, "lookup");
         playlistService.addContent(existingPlaylistId, contentId, ownerId);
 
         verify(targetReader).findSubscriberIds(existingPlaylistId);
@@ -325,6 +354,9 @@ public class NotificationPlaylistIntegrationTest {
                         "actorId=" + ownerId,
                         "exceptionType=IllegalStateException"
                 );
+        assertThat(failureCount(meterRegistry, "lookup") - lookupFailedBefore)
+                .as("수신자 조회 실패 증가량")
+                .isEqualTo(1.0);
     }
 
     @Test
