@@ -7,12 +7,14 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.DynamicUpdate;
 import org.springframework.util.StringUtils;
 
 import java.util.Objects;
 
 @Entity
 @Getter
+@DynamicUpdate
 @Table(name = "users",
         uniqueConstraints = @UniqueConstraint(name = "UQ_USERS_EMAIL", columnNames = "email")
 )

@@ -34,6 +34,10 @@ logging:
     org.hibernate.orm.jdbc.bind: warn
 
 everyone:
+  websocket:
+    # 운영 프론트의 Origin을 반드시 주입한다. 경로·마지막 / 없이 지정하며 누락·빈 값이면 기동에 실패한다.
+    allowed-origins: ${EVERYONE_WEBSOCKET_ALLOWED_ORIGINS}
+
   openapi:
     server-url: ${EVERYONE_OPENAPI_SERVER_URL}
     server-description: 운영 배포 서버

@@ -109,8 +109,25 @@ jobs:
         with:
           context: .
           push: true
+          # 출처 정보를 별도 항목으로 올리지 않아 푸시 1회에 이미지 1개만 남긴다.
+          provenance: false
           tags: |
             ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
             ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to ECS
+    # 이미지가 ECR에 올라간 뒤에만 실행한다. 배포 단계는 deploy.yml에서 관리한다.
+    needs: push-image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # 호출되는 워크플로는 이 job에 준 권한 안에서만 동작한다.
+    permissions:
+      id-token: write
+      contents: read
+    uses: ./.github/workflows/deploy.yml
+    with:
+      image-tag: ${{ github.sha }}
+    secrets:
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}

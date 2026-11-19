@@ -6,7 +6,7 @@
 > 도메인 구현 현황과 개발용 보안 전환 설명은 최신 코드와 다를 수 있습니다.
 > 현재 SSE 연결·공유 이력·Redis 분산 전송·복구·인증·테스트는 [SSE 구현 가이드](sse/README.md), 알림 생성·전송·조회·읽음 처리와 JWT 인증은 [알림 구현 가이드](notification/README.md)를 기준으로 확인합니다.
 > 팔로우 등록·취소·조회와 인증·이벤트의 구현 및 검증 범위는 [팔로우 구현 가이드](follow/README.md)를 참고합니다.
-> 대화방 생성·조회, DM 조회·읽음·WebSocket 송수신·보안·검증은 [대화방·DM 구현 가이드](conversation/README.md)를 참고합니다.
+> 대화방 생성·조회, DM 조회·읽음·WebSocket 송수신·생성 이벤트·SSE와 검증은 [대화방·DM 구현 가이드](conversation/README.md)를 참고합니다.
 
 ## 현재 개발 상태
 
@@ -17,16 +17,16 @@
 | 공통 기반 | 예외 처리, 응답 DTO, 엔티티 기반 클래스, JPA Auditing, Querydsl 설정, MDC 로그, 비밀번호 인코더, OpenAPI 설정 구현 |
 | 도메인 예외 | 공통 예외 기반 위에 도메인 오류 정의. 팔로우는 자기 팔로우·대상 미존재·관계 미존재·생성 실패 예외 사용 |
 | 팔로우 | 등록·취소·조회, 중복 복구와 생성 이벤트 구현. #76의 실제 JWT HTTP 통합 검증 및 Swagger 정리 완료 |
-| 대화방·DM | #58 대화방 생성·중복 복구, #59 대화방 검색·커서 조회, #60 DM 조회·누적 읽음, #61 WebSocket 송수신·Redis 분산 전송 구현. [전체 흐름](conversation/README.md), [WebSocket 환경 설정](conversation/10-websocket-settings.md) 참고 |
+| 대화방·DM | #58 생성·중복 복구, #59 대화방 조회, #60 DM 조회·읽음, #61 WebSocket·Redis, #62 생성 이벤트·SSE·복구, #159 알림 연동 구현. [전체 흐름](conversation/README.md), [DM 알림](notification/11-direct-message-integration.md) 참고 |
 | DM WebSocket 협업 | [송수신·트랜잭션](conversation/11-websocket-flow.md), [보안·공통 오류와 콘텐츠 확장](conversation/12-websocket-security-errors.md), [테스트](conversation/13-websocket-testing.md), [다중 서버 수동 검증](conversation/14-websocket-multi-node.md) 참고 |
 | 로컬 인프라 | Docker Compose에 PostgreSQL과 Redis 서비스 정의 |
 | 공통 보안 | JWT 필터와 경로별 인증·인가 적용. 팔로우·알림 API는 인증 필요, 쿠키 기반 CSRF 보호 활성화 |
 | SSE | 다중 연결·하트비트·종료 정리, 공유 이력 저장·재연결 복구, 연결별 후속 조회·제한된 재시도. [SSE 구현 가이드](sse/README.md) 참고 |
 | 알림 전송 | 공통 생성 요청 → 독립 저장·커밋 → 공유 이력 → Pub/Sub → 이력 조회·삭제 필터 → SSE 수신. [알림 전송 흐름](notification/01-creation-and-delivery.md) 참고 |
-| 업무 이벤트 알림 | [#155 팔로우](notification/07-domain-event-integration.md)·[#156 권한 변경·구독](notification/08-role-subscription-integration.md)·[#157 플레이리스트 생성·콘텐츠 추가](notification/09-playlist-event-integration.md)의 업무 커밋 후 공통 요청 재발행·독립 저장 연결. 실제 서비스부터 SSE 발행 요청까지 검증 |
+| 업무 이벤트 알림 | [#155 팔로우](notification/07-domain-event-integration.md)·[#156 권한 변경·구독](notification/08-role-subscription-integration.md)·[#157 플레이리스트](notification/09-playlist-event-integration.md)·[#159 DM](notification/11-direct-message-integration.md)의 업무 커밋 후 공통 요청·독립 저장 연결. DM은 실제 저장부터 알림 HTTP SSE 수신까지 검증 |
 | 알림 수신자 | 사용자 조회 컴포넌트를 통해 User 연관관계로 저장. 요청·응답의 수신자 UUID 계약 유지. [연관관계와 검증](notification/06-receiver-association.md) 참고 |
 | 알림 조회·읽음 | JWT 사용자를 수신자 조건으로 사용하여 목록·전체 개수를 조회하고 알림 삭제로 읽음 처리. [조회·인증 흐름](notification/03-query-and-security.md) 참고 |
-| SSE·알림 후속 | 위 다섯 업무 이벤트 외의 알림 연동(#45)·DM 본문 연동·Kafka·연결 수 제한·보관 초기값의 운영 부하 검증 |
+| SSE·알림 후속 | 위 여섯 업무 이벤트 외의 알림 연동(#45), Kafka·연결 수 제한·보관 초기값의 운영 부하 검증. DM 본문 SSE는 #62, DM 알림은 #159에서 구현 |
 | 후속 기능 | 팔로우 CSRF 연동·검증은 #114, 알림 CSRF 연동·검증은 #124. 다른 기능의 진행 상태는 개별 이슈 참고 |
 
 라이브러리 의존성과 로컬 인프라를 준비한 상태와 기능 구현 완료를 구분합니다. Redis 서비스는 Compose에 포함되어 있으며, 이를 사용하는 캐시·세션 기능은 구현 전입니다. Kafka와 Elasticsearch는 현재 Compose에 포함되어 있지 않습니다.
@@ -448,6 +448,7 @@ CI는 성공한 빌드의 JaCoCo XML에서 전체 LINE 수치로 SVG 배지를 �
 - 기존 테스트는 애플리케이션 컨텍스트, 예외 응답, 검증 오류, MDC, JPA Auditing, Querydsl 조회, 비밀번호 인코더, OpenAPI 설정을 확인합니다.
 - 알림 테스트는 제목 말줄임·입력 검증, 업무 커밋 후 저장, 알림 커밋 후 SSE 발행, 롤백·트랜잭션 외 발행 시 미처리를 확인합니다. `NotificationIntegrationTest`는 실제 PostgreSQL과 `TransactionTemplate`을 사용하고, SSE 발행자는 Mock으로 대체하여 저장·전송 실패 격리를 검증합니다.
 - 플레이리스트 알림은 수신자 중복·행위자 제외를 단위 테스트로, 처리 시점의 관계 조회와 업무 커밋 후 독립 저장을 통합 테스트로 확인합니다. 첫 저장 실패는 Spy로 유도하며, 검증 범위는 [플레이리스트 알림 테스트](notification/10-playlist-event-testing.md)에 정리했습니다.
+- DM 알림은 문구 변환·실제 트랜잭션·Redis/HTTP 수신으로 나눕니다. 접속·구독 여부에 따른 알림 생략 없이 단건 생성하고, 각 전송 경로의 실패가 다른 경로를 차단하지 않는지 [DM 알림 테스트](notification/12-direct-message-testing.md)에서 확인합니다.
 - 알림 조회·삭제는 MVC·서비스 단위·저장소·서비스 통합·JWT 통합 테스트로 나눕니다. 서비스 단위 테스트는 소유자별 삭제 여부, 저장소 테스트는 목록·개수·커서 조회, `NotificationServiceIntegrationTest`는 실제 잠금 대기와 삭제 커밋을 확인합니다. [검증 범위와 실행 명령](notification/04-query-and-security-testing.md)을 참고합니다.
 - `NotificationSecurityIntegrationTest`는 실제 JWT·사용자 조회·서비스·PostgreSQL을 사용하여 본인 데이터 제한과 인증 실패 시 데이터 보존을 확인합니다. 이 클래스의 MockMvc 요청에서만 CSRF 검사를 임시 제외하며, 실제 CSRF 검증은 #124에서 진행합니다.
 - 공통 예외 핸들러·인터셉터의 MVC 테스트는 Security 필터를 제외합니다. 이 테스트의 통과는 인증·인가 동작 검증을 의미하지 않습니다.
@@ -462,6 +463,7 @@ CI는 성공한 빌드의 JaCoCo XML에서 전체 LINE 수치로 SVG 배지를 �
 A·B는 동일 JVM의 독립 컨텍스트와 서로 다른 HTTP 포트이며, 이 검증에 로그인 API·업무 이벤트 변환·DM 연동은 포함하지 않습니다.
 팔로우(#155)·권한 변경·구독(#156)의 업무 이벤트 변환부터 SSE 발행 요청까지는 `NotificationIntegrationTest`에서 별도로 검증합니다.
 플레이리스트 생성·콘텐츠 추가(#157)는 `NotificationPlaylistIntegrationTest`에서 검증합니다. 두 클래스는 실제 HTTP 수신까지 검증하는 테스트와 구분합니다.
+DM(#159)은 `DirectMessageSseEventIntegrationTest`에서 커밋·롤백·실패 경계를, `DirectMessageSseIntegrationTest`에서 실제 DM 저장부터 알림 DB·Redis·HTTP SSE 수신까지 검증합니다.
 공통 Redis 전송 테스트와 알림 연동 테스트의 차이는 [알림 테스트 가이드](notification/02-testing.md)에 정리합니다.
 최신 결과와 수치는 각자의 코드에서 명령을 실행해 보고서로 확인합니다.
 
@@ -692,6 +694,9 @@ cron은 `초 분 시 일 월 요일` 순서입니다.
 - 새 실행마다 새로운 `run.id`를 부여합니다. 실패한 실행을 이어서 재시작하는 방식은 아닙니다.
 - 실패한 작업의 자동 재시도·재시작은 이번 작업에 포함하지 않습니다.
 - 재수집하더라도 기존 콘텐츠와 태그는 중복 저장하거나 덮어쓰지 않습니다.
+- 수집 배치는 실제 커밋된 신규 콘텐츠가 있을 때 Job 종료 후 검색 목록 캐시를 한 번 비웁니다. 중간에 실패해도 이미 커밋한 신규 콘텐츠가 있으면 비웁니다.
+- 신규 저장이 없는 재수집에서는 캐시를 비우지 않습니다.
+- 프로세스가 강제 종료되어 Job 종료 처리가 실행되지 않으면 즉시 캐시를 비우지 못할 수 있습니다. 검색 캐시는 현재 5분 후 만료됩니다.
 
 현재는 단일 서버에서 사용하는 것을 기준으로 구현했습니다.
 정기 수집을 활성화한 서버는 예약 등록 전에 TMDB·스포츠 Job의
@@ -728,6 +733,39 @@ cron은 `초 분 시 일 월 요일` 순서입니다.
 제외되는지는 SportsDbCollectionJobTest에서 검증합니다.
 이 테스트에는 Docker가 필요합니다.
 
+### 콘텐츠 수집 배치 모니터링
+
+Actuator의 `/actuator/metrics`는 관리자만 조회할 수 있습니다.
+`/actuator/health`는 기존처럼 인증 없이 조회할 수 있습니다.
+
+TMDB·스포츠 수집 Step의 처리량은 `content.collection.items.read`,
+`content.collection.items.write`, `content.collection.items.skip`으로 확인합니다.
+각 수치에는 Job 이름과 Step 이름이 태그로 붙습니다.
+`write`는 배치가 처리한 건수이며, 중복을 제외한 신규 저장 건수는 아닙니다.
+
+Job의 실행 횟수와 소요 시간은 `spring.batch.job` 메트릭에서
+Job 이름과 실행 상태별로 확인할 수 있습니다.
+`spring.batch.job`의 실패 횟수는 실행이 끝나 타이머에 기록된 횟수입니다.
+프로세스가 강제 종료되면 타이머가 기록되지 않을 수 있습니다.
+다음 시작에서 해당 실행을 `FAILED`로 복구하더라도 타이머 횟수는 늘지 않습니다.
+Actuator 메트릭은 현재 프로세스에서 누적된 값이라 정상 재시작 때도 초기화됩니다.
+여러 인스턴스에서는 조회한 인스턴스의 값만 보입니다.
+전체 Job·Step 실행 이력은 배치 메타데이터 DB에서 확인합니다.
+
+관리자 권한으로 Job·Step별 메트릭을 조회할 수 있습니다.
+
+```text
+GET /actuator/metrics/spring.batch.job?tag=spring.batch.job.name:sportsDbCollectionJob&tag=spring.batch.job.status:FAILED
+GET /actuator/metrics/content.collection.items.write?tag=job:sportsDbCollectionJob&tag=step:sportsDbCollectionStep
+```
+
+첫 번째 응답의 `COUNT`는 해당 Job의 실패 실행 횟수,
+`TOTAL_TIME`은 누적 실행 시간입니다.
+두 번째 응답의 `COUNT`는 해당 Step에서 처리한 쓰기 건수입니다.
+읽기·건너뛰기 건수는 메트릭 이름을 각각
+`content.collection.items.read`, `content.collection.items.skip`으로 바꿔 조회합니다.
+태그 없이 조회하면 여러 Job·Step의 값이 합산됩니다.
+
 ## 협업과 후속 작업
 
 기능 작업에는 [이슈 템플릿](../.github/ISSUE_TEMPLATE/feature.md)을, 변경 공유에는 [PR 템플릿](../.github/PULL_REQUEST_TEMPLATE.md)을 사용합니다. PR에는 변경 이유, 실행한 테스트와 결과, 후속 작업을 기록합니다. 공통 응답이나 설정을 변경하면 관련 테스트와 이 문서도 함께 확인합니다.
@@ -741,7 +779,7 @@ cron은 `초 분 시 일 월 요일` 순서입니다.
 - 목록 API의 커서 규칙 확정과 직렬화·페이징 테스트
 - Redis 기반 캐시·세션 기능 구현과 데이터 보관 정책 결정
 - 배치, S3 등 기능별 구현과 필요한 인프라 추가. DM WebSocket 구현·검증 범위는 [대화방 가이드](conversation/README.md), 연결 유지 중 인증 자연 만료는 #208 참고
-- 팔로우(#155)·권한 변경·구독(#156)·플레이리스트 생성·콘텐츠 추가(#157) 외 업무 이벤트의 알림 연동(#45), DM 본문 전송 연동, SSE Kafka 구현체, 이력 보관 초기값의 운영 부하 검증, [동시 연결 수 제한·모니터링 #107](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/107)
+- 팔로우(#155)·권한 변경·구독(#156)·플레이리스트 생성·콘텐츠 추가(#157)·DM(#159) 외 업무 이벤트의 알림 연동(#45), SSE Kafka 구현체, 이력 보관 초기값의 운영 부하 검증, [동시 연결 수 제한·모니터링 #107](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/107)
 - README 배지 자동 게시 방식 확정 및 연결
 - 배포 파이프라인 구성
 

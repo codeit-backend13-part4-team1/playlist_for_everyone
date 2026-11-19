@@ -65,4 +65,40 @@ public class DirectMessage extends UpdatedAtEntity {
         }
         return sender.getId().equals(userId) || receiver.getId().equals(userId);
     }
+
+    /** 이벤트·응답 구성에 사용할 대화방 ID를 반환한다. 연관 대화방이 없으면 null이다. */
+    public UUID getConversationId(){
+        if (conversation == null) {
+            return null;
+        }
+        return conversation.getId();
+    }
+
+    /** 대화방의 사용자 정렬 순서와 관계없이 이 메시지를 실제로 보낸 사용자의 ID를 반환한다. */
+    public UUID getSenderId(){
+        if (sender == null) {
+            return null;
+        }
+        return sender.getId();
+    }
+
+    /**
+     * 현재 연관된 발신자의 이름을 반환한다. 메시지에 별도로 저장한 이름 스냅샷은 아니다.
+     * 생성 이벤트는 저장 트랜잭션에서 읽은 이 값을 보관하며, 발신자가 없으면 null을 반환한다.
+     */
+    public String getSenderName(){
+        if (sender == null){
+            return null;
+        }
+
+        return sender.getName();
+    }
+
+    /** 이 메시지의 실제 수신자 ID로, 읽음 처리 대상과 DM SSE 전달 대상을 식별한다. */
+    public UUID getReceiverId(){
+        if (receiver == null) {
+            return null;
+        }
+        return receiver.getId();
+    }
 }

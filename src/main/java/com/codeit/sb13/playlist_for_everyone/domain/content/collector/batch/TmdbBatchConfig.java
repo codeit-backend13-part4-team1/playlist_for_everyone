@@ -17,17 +17,20 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.batch.core.job.parameters.InvalidJobParametersException;
 
 @Configuration(proxyBeanMethods = false)
+@Import(CollectionCacheEvictConfig.class)
 public class TmdbBatchConfig {
 
     @Bean
     public Job tmdbCollectionJob(
             JobRepository jobRepository,
             @Qualifier("tmdbMovieCollectionStep") Step movieStep,
-            @Qualifier("tmdbTvCollectionStep") Step tvStep
+            @Qualifier("tmdbTvCollectionStep") Step tvStep,
+            CollectionCacheEvictJobListener cacheEvictJobListener
     ) {
         return new JobBuilder("tmdbCollectionJob", jobRepository)
                 .validator(parameters -> {
@@ -49,6 +52,7 @@ public class TmdbBatchConfig {
                     }
                 })
 
+                .listener(cacheEvictJobListener)
                 .start(movieStep)
                 .next(tvStep)
                 .build();
@@ -76,7 +80,9 @@ public class TmdbBatchConfig {
             JobRepository jobRepository,
             PlatformTransactionManager transactionManager,
             @Qualifier("tmdbMovieReader") TmdbMovieReader reader,
-            ContentCollectionService collectionService
+            ContentCollectionService collectionService,
+            CollectionStepMetricsListener metricsListener,
+            CollectionInsertCounter counter
     ) {
         var mapper = new TmdbContentMapper();
 
@@ -86,11 +92,16 @@ public class TmdbBatchConfig {
                 .faultTolerant()
                 .skip(CollectedContentValidationException.class)
                 .skipLimit(10)
+                .listener(metricsListener)
                 .reader(reader)
                 .processor(mapper::fromMovie)
                 .writer(chunk -> {
                     for (var data : chunk.getItems()) {
-                        collectionService.save(data);
+                        var result = collectionService.saveForBatch(data);
+
+                        if (result.inserted()) {
+                            counter.recordInserted();
+                        }
                     }
                 })
                 .build();
@@ -116,7 +127,9 @@ public class TmdbBatchConfig {
             JobRepository jobRepository,
             PlatformTransactionManager transactionManager,
             @Qualifier("tmdbTvReader") TmdbTvReader reader,
-            ContentCollectionService collectionService
+            ContentCollectionService collectionService,
+            CollectionInsertCounter counter,
+            CollectionStepMetricsListener metricsListener
     ) {
         var mapper = new TmdbContentMapper();
 
@@ -126,11 +139,16 @@ public class TmdbBatchConfig {
                 .faultTolerant()
                 .skip(CollectedContentValidationException.class)
                 .skipLimit(10)
+                .listener(metricsListener)
                 .reader(reader)
                 .processor(mapper::fromTv)
                 .writer(chunk -> {
                     for (var data : chunk.getItems()) {
-                        collectionService.save(data);
+                        var result = collectionService.saveForBatch(data);
+
+                        if (result.inserted()) {
+                            counter.recordInserted();
+                        }
                     }
                 })
                 .build();
