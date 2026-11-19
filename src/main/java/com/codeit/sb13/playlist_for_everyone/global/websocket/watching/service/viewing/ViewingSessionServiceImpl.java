@@ -111,7 +111,7 @@ public class ViewingSessionServiceImpl implements ViewingSessionService{
                 res = room.getAll();
                 room.clear();
                 return res;
-            } catch (WebSocketSessionNotFoundException e) {
+            } catch (WebSocketSessionRegisterException e) {
                 return List.of();
             }
         }
