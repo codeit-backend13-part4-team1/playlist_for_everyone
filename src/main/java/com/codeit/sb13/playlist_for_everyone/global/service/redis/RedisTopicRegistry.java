@@ -111,6 +111,9 @@ public class RedisTopicRegistry {
                 // 등록 실패시 키 삭제.
                 registerMap.get(topic).remove(key);
                 registerIndex.remove(key);
+
+                // todo - 적절한 입력 실패 에러 작성.
+                throw new RuntimeException(e);
             }
         }
     }

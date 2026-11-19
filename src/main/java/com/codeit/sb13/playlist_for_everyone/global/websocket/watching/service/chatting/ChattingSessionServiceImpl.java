@@ -81,13 +81,19 @@ public class ChattingSessionServiceImpl implements ChattingSessionService {
         List<WSSubscription> res;
 
         synchronized (locks.lock(contentId)) {
-            ChattingSessionRoom room = getRoomOrException(contentId);
-            // 저장소에서 세션 해지 및, 토픽 등록 해제.
-            redisTopicRegistry.disconnectWithContentId(contentId.toString());
+            try {
+                ChattingSessionRoom room = getRoomOrException(contentId);
+                // 저장소에서 세션 해지 및, 토픽 등록 해제.
+                redisTopicRegistry.disconnectWithContentId(contentId.toString());
 
-            res = room.getAll();
-            room.clear();
-            return res;
+                res = room.getAll();
+                room.clear();
+                chattingSessionRepository.remove(room);
+                return res;
+            } catch (WebSocketSessionNotFoundException e) {
+                return List.of();
+            }
+
         }
     }
     // todo - 메세지의 전송기를 별도로 분리하고, 인스턴스에 따라 redis 구현체와 로컬 구현체를 작성할 것.

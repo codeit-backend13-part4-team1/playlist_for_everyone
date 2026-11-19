@@ -99,7 +99,7 @@ public class WSSession {
      * @return 옵셔넝 구독
      */
     public Optional<WSSubscription> getSubscription(String subscriptionId){
-        Objects.requireNonNull(subscriptionId);
+        if (subscriptionId == null) return Optional.empty();
         return subscriptions.get(subscriptionId);
     }
 
@@ -110,7 +110,7 @@ public class WSSession {
      * @return 옵셔넝 구독
      */
     public Optional<WSSubscription> getSubscription(UUID subscriptionUUID){
-        Objects.requireNonNull(subscriptionUUID);
+        if (subscriptionUUID == null) return Optional.empty();
         return subscriptions.get(subscriptionUUID);
     }
 
