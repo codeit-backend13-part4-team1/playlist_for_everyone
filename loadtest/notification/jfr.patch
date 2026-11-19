@@ -38,14 +38,14 @@ diff --git a/src/main/java/com/codeit/sb13/playlist_for_everyone/domain/notifica
 +                            publishPlaylistCreatedNotification(event, receiverId, ownerName));
 +        }
      }
- 
+
      /**
 diff --git a/src/main/java/com/codeit/sb13/playlist_for_everyone/domain/notification/monitoring/NotificationMetrics.java b/src/main/java/com/codeit/sb13/playlist_for_everyone/domain/notification/monitoring/NotificationMetrics.java
 --- a/src/main/java/com/codeit/sb13/playlist_for_everyone/domain/notification/monitoring/NotificationMetrics.java
 +++ b/src/main/java/com/codeit/sb13/playlist_for_everyone/domain/notification/monitoring/NotificationMetrics.java
 @@ -48,6 +48,9 @@
      }
- 
+
      public void recordProcessing(NotificationSource source, Timer.Sample sample) {
 -        sample.stop(meterRegistry.timer(METRIC_PREFIX + ".processing.duration", "source", source.tagValue()));
 +        long elapsedNanos = sample.stop(meterRegistry.timer(METRIC_PREFIX + ".processing.duration", "source", source.tagValue()));
