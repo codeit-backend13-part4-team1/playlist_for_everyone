@@ -6,6 +6,6 @@ import java.util.UUID;
 public record ReviewAuthorDto (
         UUID authorId,
         String nickname,
-        Spring profileImageUrl
+        String profileImageUrl
 ) {
 }
