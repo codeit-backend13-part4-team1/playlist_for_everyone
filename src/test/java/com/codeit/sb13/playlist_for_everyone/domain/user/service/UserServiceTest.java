@@ -15,12 +15,15 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.sql.SQLException;
 import java.time.LocalDateTime;
@@ -338,6 +341,121 @@ class UserServiceTest {
 
         verify(fileService).getFileUrl(fileId);
     }
+
+    @Test
+    @DisplayName("이미지 없이 요청하면 이름만 변경하고 기존 프로필 이미지를 유지한다.")
+    void 이미지_없이_요청하면_이름만_변경하고_기존_프로필_이미지를_유지한다() {
+        UUID userId = UUID.randomUUID();
+        UUID oldImageId = UUID.randomUUID();
+        User user = createProfileTestUser(userId);
+        FileInfo oldImage = createProfileTestImage(oldImageId);
+        user.updateProfileImage(oldImage);
+
+        given(userRepository.findWithProfileImageById(userId))
+                .willReturn(Optional.of(user));
+        given(fileService.getFileUrl(oldImageId))
+                .willReturn("https://example.com/old.png");
+
+        UserDto response = userService.updateProfile(userId, "새 이름", null);
+
+        assertThat(user.getName()).isEqualTo("새 이름");
+        assertThat(user.getProfileImage()).isSameAs(oldImage);
+        assertThat(response.name()).isEqualTo("새 이름");
+        assertThat(response.profileImageUrl()).isEqualTo("https://example.com/old.png");
+
+        verify(fileService, never()).upload(any());
+        verify(fileService, never()).delete(any());
+    }
+
+    @Test
+    @DisplayName("빈 이미지 파일은 무시하고 기존 프로필 이미지를 유지한다.")
+    void 빈_이미지_파일은_무시하고_기존_프로필_이미지를_유지한다(){
+        UUID userId = UUID.randomUUID();
+        User user = createProfileTestUser(userId);
+        MultipartFile emptyImage = new MockMultipartFile(
+                "image", "empty.png", "image/png", new byte[0]
+        );
+
+        given(userRepository.findWithProfileImageById(userId))
+                .willReturn(Optional.of(user));
+        userService.updateProfile(userId, "새 이름", emptyImage);
+
+        assertThat(user.getProfileImage()).isNull();
+        verify(fileService, never()).upload(any());
+    }
+
+    @Test
+    @DisplayName("새 이미지로 교체하면 사용자 변경을 반영한 뒤 기존 이미지를 삭제한다.")
+    void 새_이미지로_교체하면_사용자_변경을_반영한_뒤_기존_이미지를_삭제한다() {
+        UUID userId = UUID.randomUUID();
+        UUID oldImageId = UUID.randomUUID();
+        UUID newImageId = UUID.randomUUID();
+        User user = createProfileTestUser(userId);
+        FileInfo oldImage = createProfileTestImage(oldImageId);
+        FileInfo newImage = createProfileTestImage(newImageId);
+        user.updateProfileImage(oldImage);
+        MockMultipartFile image = new MockMultipartFile(
+                "image", "new.png", "image/png", new byte[0]
+        );
+
+        given(userRepository.findWithProfileImageById(userId))
+                .willReturn(Optional.of(user));
+        given(fileService.upload(image))
+                .willReturn(newImage);
+        given(fileService.getFileUrl(newImageId))
+                .willReturn("https://example.com/new.png");
+
+        UserDto response = userService.updateProfile(userId, "새 이름", image);
+
+        assertThat(user.getProfileImage()).isSameAs(newImage);
+        assertThat(response.profileImageUrl()).isEqualTo("https://example.com/new.png");
+
+        // 기존 파일 정보를 지우기 전에 사용자가 새 이미지를 가리키도록 먼저 반영한다.
+        InOrder inOrder = inOrder(fileService, userRepository);
+        inOrder.verify(fileService).upload(image);
+        inOrder.verify(userRepository).flush();
+        inOrder.verify(fileService).delete(oldImageId);
+    }
+
+    @Test
+    @DisplayName("기존 이미지가 없으면 새 이미지만 연결하고 삭제하지 않는다")
+    void 기존_이미지가_없으면_새_이미지만_연결하고_삭제하지_않는다() {
+        UUID userId = UUID.randomUUID();
+        UUID newImageId = UUID.randomUUID();
+        User user = createProfileTestUser(userId);
+        FileInfo newImage = createProfileTestImage(newImageId);
+        MockMultipartFile image = new MockMultipartFile(
+                "image", "new.png", "image/png", new byte[]{1, 2, 3}
+        );
+
+        given(userRepository.findWithProfileImageById(userId))
+                .willReturn(Optional.of(user));
+        given(fileService.upload(image))
+                .willReturn(newImage);
+
+        userService.updateProfile(userId, "새 이름", image);
+
+        assertThat(user.getProfileImage()).isSameAs(newImage);
+        verify(fileService, never()).delete(any());
+    }
+
+    @Test
+    @DisplayName("프로필 변경 시 사용자가 없으면 예외가 발생하고 파일을 업로드하지 않는다")
+    void 프로필_변경_시_사용자가_없으면_예외가_발생하고_파일을_업로드하지_않는다() {
+        UUID userId = UUID.randomUUID();
+        MockMultipartFile image = new MockMultipartFile(
+                "image", "new.png", "image/png", new byte[]{1, 2, 3}
+        );
+
+        given(userRepository.findWithProfileImageById(userId))
+                .willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.updateProfile(userId, "새 이름", image))
+                .isInstanceOf(UserNotFoundException.class);
+
+        verify(fileService, never()).upload(any());
+    }
+
 
     /**
      * DB 없이 저장된 사용자 상태를 준비한다.

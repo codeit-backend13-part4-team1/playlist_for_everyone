@@ -15,6 +15,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Map;
 import java.util.UUID;
@@ -93,8 +94,6 @@ public class UserService {
 
     }
 
-
-
     /**
      * 사용자 ID로 조회하는 공통 메서드
      *
@@ -110,8 +109,12 @@ public class UserService {
         return owner;
     }
 
-
-
-
-
+    /**
+     * 본인의 이름과 프로필 이미지를 변경한다.
+     * 이미지가 없으면 기존 프로필 이미지를 유지한다.
+     */
+    @Transactional
+    public UserDto updateProfile(UUID userId, String name, MultipartFile image) {
+        throw new UnsupportedOperationException("아직 구현되지 않았습니다");
+    }
 }
