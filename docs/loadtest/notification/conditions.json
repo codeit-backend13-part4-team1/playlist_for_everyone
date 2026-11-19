@@ -25,6 +25,7 @@
   "completionWaitSeconds": 30,
   "hikariProbeIntervalMs": 100,
   "hikariProbe": "JVM-local Hikari JMX; Actuator snapshots before and after the workload",
+  "hikariAcquisitionScope": "Actuator snapshot delta including the administrator authentication queries",
   "percentiles": "nearest-rank",
   "normalPoolSize": 10,
   "stressPoolSize": 2,

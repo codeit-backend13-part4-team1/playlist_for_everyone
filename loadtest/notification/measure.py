@@ -8,9 +8,10 @@ import json
 import math
 import os
 import platform
-import select
 import re
 import secrets
+import select
+import shutil
 import signal
 import subprocess
 import tempfile
@@ -20,6 +21,7 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from http.client import IncompleteRead
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import unquote, urlencode
@@ -32,13 +34,18 @@ INSTRUMENTATION_BASE = "288227a7"
 INSTRUMENTATION = "7fd8c279e93570492d8cb0c3e43d291e2b8a4929"
 NOTIFICATION_JAVA = "src/main/java/com/codeit/sb13/playlist_for_everyone/domain/notification"
 JFR_EVENT = "everyone.PlaylistNotificationTiming"
+JFR_DIRECTORY = Path(".notification-jfr")
+JFR_CONFIG = JFR_DIRECTORY / "notification-only.jfc"
+COMPLETION_WAIT_SECONDS = 30
+HIKARI_ACQUISITION_SCOPE = "Actuator snapshot delta including the administrator authentication queries"
 METRICS = "everyone.notification."
 HIKARI = "hikaricp.connections."
 SOURCE = "source:playlist_created"
 FAILURE_STAGES = ("lookup", "publish", "save", "sse")
 POOL_METERS = ("max", "active", "idle", "pending", "acquire", "timeout")
 NOTIFICATION_TITLE = "팔로우한 사용자의 새 플레이리스트"
-ROOT = Path(__file__).resolve().parents[2]
+SCRIPT_DIRECTORY = Path(__file__).resolve().parent
+ROOT = SCRIPT_DIRECTORY.parents[1]
 
 
 def command(*args, **kwargs):
@@ -148,9 +155,9 @@ def snapshot(client):
     }
 
 
-def postgres(container, query):
+def postgres(container, query, *, timeout=None):
     return command("docker", "exec", container, "psql", "-XAt", "-v", "ON_ERROR_STOP=1",
-                   "-U", "monitoring223", "-d", "loadtest", "-c", query)
+                   "-U", "monitoring223", "-d", "loadtest", "-c", query, timeout=timeout)
 
 
 def table_sizes(container):
@@ -195,9 +202,11 @@ def prepare_checkout(work):
     patch = work / "instrumentation.patch"
     patch.write_text(command("git", "diff", "--binary", INSTRUMENTATION_BASE, INSTRUMENTATION, "--",
                              NOTIFICATION_JAVA, cwd=ROOT) + "\n")
-    for change in (patch, Path(__file__).with_name("jfr.patch")):
+    for change in (patch, SCRIPT_DIRECTORY / "jfr.patch"):
         subprocess.run(["git", "apply", "--check", str(change)], cwd=checkout, check=True)
         subprocess.run(["git", "apply", str(change)], cwd=checkout, check=True)
+    (checkout / JFR_DIRECTORY).mkdir()
+    shutil.copyfile(SCRIPT_DIRECTORY / JFR_CONFIG.name, checkout / JFR_CONFIG)
     return checkout
 
 
@@ -285,8 +294,7 @@ def application(checkout, output, args, env, pool, timeout_ms, label):
             raise RuntimeError(f"Application readiness timed out. See {log}")
         pid = int(match.group(2))
         jcmd = args.java_home / "bin" / "jcmd"
-        jfr_config = Path(__file__).with_name("notification-only.jfc")
-        command(jcmd, str(pid), "JFR.start", "name=notification-baseline", f"settings={jfr_config}")
+        command(jcmd, str(pid), "JFR.start", "name=notification-baseline", f"settings=./{JFR_CONFIG}")
         yield client.base_url, pid, {"runtime": match.group(1), "gradle": gradle}
     finally:
         if process.poll() is None:
@@ -304,7 +312,7 @@ def playlist_body(title):
 
 @contextmanager
 def local_pool_probe(java_home, pid):
-    source = Path(__file__).with_name("PoolProbe.java")
+    source = SCRIPT_DIRECTORY / "PoolProbe.java"
     launch = [java_home / "bin" / "java", "--add-modules", "jdk.attach", source, str(pid)]
     with subprocess.Popen(launch, text=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE) as probe:
         try:
@@ -357,7 +365,7 @@ def timed_workload(sample, owner, prefix, concurrency, requests):
                 status, body, elapsed = client.call("POST", "/api/playlists", body=playlist_body(title))
                 response_id = str(UUID(body["id"])) if status == 201 else None
                 client_error = None
-            except (URLError, TimeoutError, OSError) as error:
+            except (URLError, OSError, IncompleteRead) as error:
                 status, response_id = None, None
                 elapsed = (time.monotonic() - request_started) * 1000
                 client_error = type(error).__name__
@@ -384,65 +392,99 @@ def timed_workload(sample, owner, prefix, concurrency, requests):
     return results, duration, pending_samples, probe_errors
 
 
-def jfr_samples(java_home, work, pid, label):
-    path = work / (label + ".jfr")
-    path.unlink(missing_ok=True)
-    command(java_home / "bin" / "jcmd", str(pid), "JFR.dump", "name=notification-baseline", f"filename={path}")
-    payload = command(java_home / "bin" / "jfr", "print", "--json", "--events", JFR_EVENT, str(path))
-    return [event["values"] for event in json.loads(payload)["recording"]["events"]]
+def time_remaining(deadline):
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("Measurement completion deadline reached")
+    return remaining
 
 
-def committed_playlists(db, prefix):
+def jfr_samples(java_home, checkout, pid, label, deadline):
+    # Keep the last complete recording if the next dump reaches the deadline.
+    relative_dump = JFR_DIRECTORY / f"{label}.pending.jfr"
+    dump = checkout / relative_dump
+    try:
+        command(java_home / "bin" / "jcmd", str(pid), "JFR.dump", "name=notification-baseline",
+                f"filename=./{relative_dump}", timeout=time_remaining(deadline))
+        payload = command(java_home / "bin" / "jfr", "print", "--json", "--events", JFR_EVENT, str(dump),
+                          timeout=time_remaining(deadline))
+        events = json.loads(payload)["recording"]["events"]
+        dump.replace(checkout / JFR_DIRECTORY / f"{label}.jfr")
+    finally:
+        dump.unlink(missing_ok=True)
+    return [event["values"] for event in events]
+
+
+def committed_playlists(db, prefix, *, timeout):
     return json.loads(postgres(db, f"""
         select coalesce(json_object_agg(title, id), '{{}}'::json)
         from playlists where title like '{prefix}%'
-    """))
+    """, timeout=timeout))
 
 
-def collect_completion(db, java_home, work, pid, label, prefix, results):
-    client_unknown = sum(row["httpStatus"] is None for row in results)
-    deadline = time.monotonic() + 30
-    while True:
-        committed = committed_playlists(db, prefix)
-        playlist_ids = set(committed.values())
-        events = [event for event in jfr_samples(java_home, work, pid, label)
-                  if event.get("playlistId") in playlist_ids]
-        unfinished_ids = playlist_ids - {event["playlistId"] for event in events}
-        unknown = sum(row["httpStatus"] is None and row["title"] not in committed for row in results)
-        if not client_unknown or (not unfinished_ids and not unknown) or time.monotonic() >= deadline:
-            return committed, events, len(unfinished_ids), unknown
-        time.sleep(.5)
+def collect_completion(db, java_home, checkout, pid, label, prefix, results):
+    deadline = time.monotonic() + COMPLETION_WAIT_SECONDS
+    no_response = {row["title"] for row in results if row["httpStatus"] is None}
+    committed, events = {}, []
+    try:
+        while True:
+            committed = committed_playlists(db, prefix, timeout=time_remaining(deadline))
+            events = jfr_samples(java_home, checkout, pid, label, deadline)
+            completed_ids = {event["playlistId"] for event in events}
+            if completed_ids.issuperset(committed.values()) and not (no_response - committed.keys()):
+                break
+            time.sleep(min(.5, time_remaining(deadline)))
+    except (TimeoutError, subprocess.TimeoutExpired):
+        settled = False
+    else:
+        settled = True
+
+    playlist_ids = set(committed.values())
+    events = [event for event in events if event["playlistId"] in playlist_ids]
+    incomplete = len(playlist_ids - {event["playlistId"] for event in events})
+    unknown = len(no_response - committed.keys())
+    return committed, events, incomplete, unknown, settled
 
 
-def compare_notifications(db, prefix, name, followers, results, committed):
+def compare_notifications(db, prefix, name, followers, results, committed, completed_ids):
     payload = postgres(db, f"""
         select coalesce(json_agg(json_build_array(receiver_id, content)), '[]'::json)
         from notifications where title = '{NOTIFICATION_TITLE}' and content like '{name}님이 "{prefix}%'
     """)
     actual = Counter(map(tuple, json.loads(payload)))
-    expected = Counter(
-        (follower_id, f'{name}님이 "{row["title"]}" 플레이리스트를 만들었습니다.')
-        for row in results if row["title"] in committed
-        for follower_id in followers
-    )
+    expected = Counter()
+    completed_expected = Counter()
+    for row in results:
+        playlist_id = committed.get(row["title"])
+        if playlist_id is None:
+            continue
+        content = f'{name}님이 "{row["title"]}" 플레이리스트를 만들었습니다.'
+        pairs = [(follower_id, content) for follower_id in followers]
+        expected.update(pairs)
+        if playlist_id in completed_ids:
+            completed_expected.update(pairs)
     return {
         "expected": expected.total(), "savedRows": actual.total(), "matchedRows": (actual & expected).total(),
         "missing": (expected - actual).total(), "unexpectedOrDuplicate": (actual - expected).total(),
+        "missingAfterCompletion": (completed_expected - actual).total(),
     }
 
 
-def run_round(admin, fixture, db, args, work, output, pid, label, sample_pool, *, pool, concurrency, count, warmup, stress=False):
+def run_round(admin, fixture, db, args, checkout, output, pid, label, sample_pool, *, pool, concurrency, count, warmup, stress=False):
     owner, name, followers = fixture
-    tag = work.name.rsplit("-", 1)[-1]
+    tag = checkout.parent.name.rsplit("-", 1)[-1]
     for index in range(1, warmup + 1):
         owner.require("POST", "/api/playlists", 201, body=playlist_body(f"N223 {tag} {label} warmup {index}"))
     prefix = f"N223 {tag} {label} request "
     starting_rows = table_sizes(db)
     before = snapshot(admin)
     results, duration, pool_samples, pool_probe_errors = timed_workload(sample_pool, owner, prefix, concurrency, count)
-    committed, events, incomplete, unknown = collect_completion(db, args.java_home, work, pid, label, prefix, results)
-    saved = compare_notifications(db, prefix, name, followers, results, committed)
-    after = snapshot(admin)
+    committed, events, incomplete, unknown, settled = collect_completion(
+        db, args.java_home, checkout, pid, label, prefix, results
+    )
+    saved = compare_notifications(db, prefix, name, followers, results, committed,
+                                  {event["playlistId"] for event in events})
+    after = snapshot(admin) if settled else None
 
     events_by_id = {}
     for event in events:
@@ -459,14 +501,21 @@ def run_round(admin, fixture, db, args, work, output, pid, label, sample_pool, *
             http_times.append(result["httpMs"])
         if len(observed) == 1 and result["notificationListenerCount"] == len(followers):
             notification_times.append(result["notificationListenerMs"])
-    failures = {stage: after["failures"][stage] - before["failures"][stage] for stage in FAILURE_STAGES}
     success = len(http_times)
-    processing_count = after["processing"].get("COUNT", 0) - before["processing"].get("COUNT", 0)
     jfr_count = sum(event["listenerCount"] for event in events)
-    publish_attempts = after["publishAttempts"] - before["publishAttempts"]
-    saved_counter = after["saved"] - before["saved"]
-    sse = after["ssePublished"] - before["ssePublished"]
-    timeouts = after["hikari"]["timeout"]["COUNT"] - before["hikari"]["timeout"]["COUNT"]
+    if settled:
+        failures = {stage: after["failures"][stage] - before["failures"][stage] for stage in FAILURE_STAGES}
+        processing_count = after["processing"].get("COUNT", 0) - before["processing"].get("COUNT", 0)
+        publish_attempts = after["publishAttempts"] - before["publishAttempts"]
+        saved_counter = after["saved"] - before["saved"]
+        sse = after["ssePublished"] - before["ssePublished"]
+        timeouts = after["hikari"]["timeout"]["COUNT"] - before["hikari"]["timeout"]["COUNT"]
+        acquire_count = after["hikari"]["acquire"]["COUNT"] - before["hikari"]["acquire"]["COUNT"]
+        acquire_time = round(after["hikari"]["acquire"]["TOTAL_TIME"] - before["hikari"]["acquire"]["TOTAL_TIME"], 6)
+    else:
+        failures = dict.fromkeys(FAILURE_STAGES)
+        processing_count = publish_attempts = saved_counter = sse = None
+        timeouts = acquire_count = acquire_time = None
     total_expected = saved["expected"]
     summary = {
         "label": label, "receivers": len(followers), "concurrency": concurrency, "pool": pool,
@@ -487,13 +536,12 @@ def run_round(admin, fixture, db, args, work, output, pid, label, sample_pool, *
             "sampleCount": len(pool_samples), "pendingPeak": max((sample["pending"] for sample in pool_samples), default=None),
             "activePeak": max((sample["active"] for sample in pool_samples), default=None),
             "idleLow": min((sample["idle"] for sample in pool_samples), default=None), "timeouts": timeouts,
-            "acquireCount": after["hikari"]["acquire"]["COUNT"] - before["hikari"]["acquire"]["COUNT"],
-            "acquireTotalSeconds": round(after["hikari"]["acquire"]["TOTAL_TIME"] - before["hikari"]["acquire"]["TOTAL_TIME"], 6),
+            "acquireCount": acquire_count, "acquireTotalSeconds": acquire_time,
         },
     }
     observability_ok = bool(pool_samples) and not pool_probe_errors and before["hikari"]["max"]["VALUE"] == pool
     normal_ok = (
-        success == len(committed) == count
+        settled and success == len(committed) == count
         and all(row["responsePlaylistId"] == row["committedPlaylistId"] for row in results)
         and saved["missing"] == saved["unexpectedOrDuplicate"] == 0
         and publish_attempts == processing_count == jfr_count == saved_counter == saved["savedRows"] == sse == total_expected
@@ -501,13 +549,38 @@ def run_round(admin, fixture, db, args, work, output, pid, label, sample_pool, *
         and incomplete == unknown == timeouts == summary["notifications"]["duplicateCompletionEvents"] == 0
         and not any(failures.values())
     )
-    summary["checks"] = {"observability": observability_ok, "normalScenario": None if stress else normal_ok}
+    summary["checks"] = {"observability": observability_ok, "roundSettled": settled,
+                         "normalScenario": None if stress else normal_ok}
     write_json(output / f"{label}-raw.json", {
         "requests": results, "poolSamples": pool_samples, "poolProbeErrors": pool_probe_errors,
         "before": before, "after": after,
     })
     print(json.dumps(summary, ensure_ascii=False), flush=True)
     return summary
+
+
+def application_environment(connection, java_home, admin_email, admin_password):
+    env = {
+        name: value for name, value in os.environ.items()
+        if not name.startswith(("SPRING_FLYWAY_", "SPRING_CONFIG_", "SPRING_DATASOURCE_"))
+    }
+    for variable in ("SPRING_APPLICATION_JSON", "JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS"):
+        env.pop(variable, None)
+    return env | connection | {
+        "JAVA_HOME": str(java_home), "SPRING_PROFILES_ACTIVE": "dev",
+        "EVERYONE_ADMIN_ENABLED": "true", "EVERYONE_ADMIN_NAME": "Notification Baseline",
+        "EVERYONE_ADMIN_EMAIL": admin_email, "EVERYONE_ADMIN_PASSWORD": admin_password,
+        "EVERYONE_DOCKER_COMPOSE_ENABLED": "false", "EVERYONE_COLLECTION_SCHEDULE_ENABLED": "false",
+        "EVERYONE_SSE_TRANSPORT": "redis", "EVERYONE_SSE_SUBSCRIPTION_ENABLED": "true",
+        "EVERYONE_S3_BUCKET": "local-placeholder", "EVERYONE_TMDB_ACCESS_TOKEN": "local-placeholder",
+        "JWT_SECRET_KEY": base64.b64encode(secrets.token_bytes(48)).decode(),
+        "JWT_REFRESH_COOKIE_SECURE": "false", "JWT_ACCESS_TOKEN_VALIDITY": "3h",
+        "SPRING_DATASOURCE_URL": f"jdbc:postgresql://127.0.0.1:{connection['EVERYONE_DB_PORT']}/loadtest",
+        "SPRING_DATASOURCE_USERNAME": connection["EVERYONE_DB_USERNAME"],
+        "SPRING_DATASOURCE_PASSWORD": connection["EVERYONE_DB_PASSWORD"],
+        "SPRING_FLYWAY_ENABLED": "true",
+        "SPRING_DATA_REDIS_URL": f"redis://127.0.0.1:{connection['EVERYONE_REDIS_PORT']}",
+    }
 
 
 def main(args):
@@ -522,24 +595,7 @@ def main(args):
             tag = secrets.token_hex(4)
             admin_email = "notification223@local.example"
             admin_password = secrets.token_urlsafe(24) + "aA1!"
-            env = os.environ | connection | {
-                "JAVA_HOME": str(args.java_home), "SPRING_PROFILES_ACTIVE": "dev",
-                "EVERYONE_ADMIN_ENABLED": "true", "EVERYONE_ADMIN_NAME": "Notification Baseline",
-                "EVERYONE_ADMIN_EMAIL": admin_email, "EVERYONE_ADMIN_PASSWORD": admin_password,
-                "EVERYONE_DOCKER_COMPOSE_ENABLED": "false", "EVERYONE_COLLECTION_SCHEDULE_ENABLED": "false",
-                "EVERYONE_SSE_TRANSPORT": "redis", "EVERYONE_SSE_SUBSCRIPTION_ENABLED": "true",
-                "EVERYONE_S3_BUCKET": "local-placeholder", "EVERYONE_TMDB_ACCESS_TOKEN": "local-placeholder",
-                "JWT_SECRET_KEY": base64.b64encode(secrets.token_bytes(48)).decode(),
-                "JWT_REFRESH_COOKIE_SECURE": "false", "JWT_ACCESS_TOKEN_VALIDITY": "3h",
-            }
-            env.update({
-                "SPRING_DATASOURCE_URL": f"jdbc:postgresql://127.0.0.1:{connection['EVERYONE_DB_PORT']}/loadtest",
-                "SPRING_DATASOURCE_USERNAME": connection["EVERYONE_DB_USERNAME"],
-                "SPRING_DATASOURCE_PASSWORD": connection["EVERYONE_DB_PASSWORD"],
-                "SPRING_DATA_REDIS_URL": f"redis://127.0.0.1:{connection['EVERYONE_REDIS_PORT']}",
-            })
-            for variable in ("SPRING_APPLICATION_JSON", "JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS"):
-                env.pop(variable, None)
+            env = application_environment(connection, args.java_home, admin_email, admin_password)
             redis_info = command("docker", "exec", redis, "redis-cli", "INFO", "server")
             metadata = {
                 "recordedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -553,8 +609,10 @@ def main(args):
                     "redisImage": command("docker", "inspect", "--format", "{{.Image}}", redis),
                     "profile": "dev", "database": "loadtest", "sseTransport": "redis",
                 },
-                "scenarios": args.groups, "requestTimeoutSeconds": 15, "completionWaitSeconds": 30,
+                "scenarios": args.groups, "requestTimeoutSeconds": 15,
+                "completionWaitSeconds": COMPLETION_WAIT_SECONDS,
                 "hikariProbeIntervalMs": 100, "hikariProbe": "JVM-local Hikari JMX; Actuator snapshots before and after the workload",
+                "hikariAcquisitionScope": HIKARI_ACQUISITION_SCOPE,
                 "percentiles": "nearest-rank",
                 "normalPoolSize": 10, "stressPoolSize": 2, "stressConnectionTimeoutMs": 1000,
                 "normalConnectionTimeoutMs": 30000,
@@ -566,6 +624,7 @@ def main(args):
                 },
             }
             summaries = []
+            stop_reason = None
             for pool, timeout, label in ((10, 30000, "normal"), (2, 1000, "stress")):
                 if label not in args.groups:
                     continue
@@ -591,29 +650,41 @@ def main(args):
                     write_json(output / "conditions.json", metadata)
                     print(f"{label} preflight verified, starting measurements", flush=True)
                     with local_pool_probe(args.java_home, pid) as sample_pool:
+                        cases = (
+                            (("r1c1", one, 1), ("r10c1", ten, 1), ("r10c5", ten, 5))
+                            if label == "normal" else (("r10c5p2", ten, 5),)
+                        )
+                        rounds = [
+                            (f"{scenario}-{number}", fixture, concurrency, 25 if label == "stress" else 100, 10)
+                            for number in range(1, 4) for scenario, fixture, concurrency in cases
+                        ]
                         if label == "normal":
-                            smoke = run_round(admin, one, db, args, work, output, pid, "smoke", sample_pool,
-                                              pool=pool, concurrency=1, count=1, warmup=0)
-                            summaries.append(smoke)
-                            write_json(output / "summary.json", summaries)
-                            if not all(smoke["checks"].values()):
-                                raise RuntimeError("Single-request measurement failed counters or JFR cross-check")
-                        for number in range(1, 4):
-                            cases = (
-                                (("r1c1", one, 1), ("r10c1", ten, 1), ("r10c5", ten, 5))
-                                if label == "normal" else (("r10c5p2", ten, 5),)
+                            rounds.insert(0, ("smoke", one, 1, 1, 0))
+                        for round_label, fixture, concurrency, count, warmup in rounds:
+                            result = run_round(
+                                admin, fixture, db, args, checkout, output, pid, round_label, sample_pool,
+                                pool=pool, concurrency=concurrency, count=count, warmup=warmup,
+                                stress=label == "stress",
                             )
-                            for scenario, fixture, concurrency in cases:
-                                result = run_round(
-                                    admin, fixture, db, args, work, output, pid, f"{scenario}-{number}", sample_pool,
-                                    pool=pool, concurrency=concurrency, count=25 if label == "stress" else 100,
-                                    warmup=10, stress=label == "stress",
-                                )
-                                summaries.append(result)
-                                write_json(output / "summary.json", summaries)
+                            summaries.append(result)
+                            write_json(output / "summary.json", summaries)
+                            if not result["checks"]["roundSettled"]:
+                                stop_reason = f"{round_label} did not settle before the completion deadline"
+                                break
+                            if round_label == "smoke" and not all(result["checks"].values()):
+                                stop_reason = "Single-request measurement failed counters or JFR cross-check"
+                                break
+                if stop_reason:
+                    break
             with ZipFile(output/"raw.zip", "w", compression=ZIP_DEFLATED) as archive:
-                for path in sorted(output.glob("*-raw.json")) + sorted(work.glob("*.jfr")):
-                    archive.write(path, arcname=path.name)
+                for row in summaries:
+                    round_label = row["label"]
+                    archive.write(output / f"{round_label}-raw.json", arcname=f"{round_label}-raw.json")
+                    recording = checkout / JFR_DIRECTORY / f"{round_label}.jfr"
+                    if recording.is_file():
+                        archive.write(recording, arcname=recording.name)
+            if stop_reason:
+                raise SystemExit(f"{stop_reason}. See summary.json and raw.zip")
             if not all(row["checks"]["observability"] and row["checks"]["normalScenario"] is not False for row in summaries):
                 raise SystemExit("A measurement or counter check failed. See summary.json")
 
