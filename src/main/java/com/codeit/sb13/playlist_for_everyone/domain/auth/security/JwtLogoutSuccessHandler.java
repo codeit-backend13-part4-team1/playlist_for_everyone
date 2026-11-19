@@ -24,19 +24,17 @@ import java.util.Map;
 @Slf4j
 public class JwtLogoutSuccessHandler implements LogoutSuccessHandler {
 
-    private static final String REFRESH_COOKIE_NAME = "REFRESH_TOKEN";
-    private static final String REFRESH_COOKIE_PATH = "/api/auth";
+    private final RefreshTokenCookieFactory refreshTokenCookieFactory;
 
 
     private final AuthService authService;
     private final ObjectMapper objectMapper;
-    private final boolean refreshCookieSecure;
 
 
-    public JwtLogoutSuccessHandler(AuthService authService, ObjectMapper objectMapper, boolean refreshCookieSecure) {
+    public JwtLogoutSuccessHandler(AuthService authService, ObjectMapper objectMapper, RefreshTokenCookieFactory refreshTokenCookieFactory) {
         this.authService = authService;
         this.objectMapper = objectMapper;
-        this.refreshCookieSecure = refreshCookieSecure;
+        this.refreshTokenCookieFactory = refreshTokenCookieFactory;
     }
 
 
@@ -51,7 +49,7 @@ public class JwtLogoutSuccessHandler implements LogoutSuccessHandler {
                                 HttpServletResponse response,
                                 @Nullable Authentication authentication) throws IOException, ServletException {
 
-        Cookie refreshCookie = WebUtils.getCookie(request, REFRESH_COOKIE_NAME);
+        Cookie refreshCookie = WebUtils.getCookie(request, RefreshTokenCookieFactory.COOKIE_NAME);
 
         // 쿠키가 없거나 비어 있으면 삭제할 토큰이 없는 상태로 처리한다.
         if (refreshCookie != null && !refreshCookie.getValue().isBlank()) {
@@ -78,19 +76,9 @@ public class JwtLogoutSuccessHandler implements LogoutSuccessHandler {
      * 기존 쿠키와 같은 이름 경로를 사용해 브라우저에서 제거하도록 한다.
      */
     private void expireRefreshCookie(HttpServletResponse response) {
-        ResponseCookie expiredCookie = ResponseCookie
-                .from(REFRESH_COOKIE_NAME, "")
-                .httpOnly(true)
-                .secure(refreshCookieSecure)
-                .sameSite("Lax")
-                .path(REFRESH_COOKIE_PATH)
-                .maxAge(0)
-                .build();
 
-        // 다른 Set-Cookie 응답이 있더라도 덮어쓰지 않는다.
         response.addHeader(
-                HttpHeaders.SET_COOKIE,
-                expiredCookie.toString()
+                HttpHeaders.SET_COOKIE, refreshTokenCookieFactory.expire().toString()
         );
     }
 

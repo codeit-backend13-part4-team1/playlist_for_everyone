@@ -500,7 +500,8 @@ class JwtAuthenticationSuccessHandlerTest {
                 userSessionRepository,
                 eventPublisher,
                 REFRESH_TOKEN_VALIDITY,
-                secure
+                new RefreshTokenCookieFactory(REFRESH_TOKEN_VALIDITY, secure)
         );
     }
+
 }
