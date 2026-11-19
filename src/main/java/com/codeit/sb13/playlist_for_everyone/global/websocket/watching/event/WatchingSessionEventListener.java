@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event;
 
 
 import com.codeit.sb13.playlist_for_everyone.global.service.MatchRule;
+import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.chat.WatchingChatJoinEvent;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.chat.WatchingChatLeaveEvent;
@@ -118,7 +119,7 @@ public class WatchingSessionEventListener {
                 .build();
         UUID contentId = UUID.fromString(UUID_PATTERN.extract(destination).get(0));
 
-        chatService.send(contentId, event.message());
+        chatService.send(contentId, new RedisMessageDto<>(destination,event.message()));
     }
 
     /**

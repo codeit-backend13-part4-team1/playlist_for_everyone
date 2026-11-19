@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.viewing;
 
+import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionRegisterException;
 import com.codeit.sb13.playlist_for_everyone.global.service.lock.Locks;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisTopicRegistry;
@@ -10,6 +11,7 @@ import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repositor
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.viewing.ViewingSessionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.security.core.parameters.P;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -43,8 +45,6 @@ public class ViewingSessionServiceImpl implements ViewingSessionService{
         synchronized (locks.lock(contentId)) {
             ViewingSessionRoom room = viewingSessionRepository.findOrCreate(contentId);
             // 3. 세션 룸에 구독 등록
-            // 로컬
-            room.join(subscription);
             // 글로벌 todo - UUID 등록으로 간편하게 변경되도록 변경.
             viewingSessionPresence.register(
                     subscription.sessionId(),
@@ -57,6 +57,8 @@ public class ViewingSessionServiceImpl implements ViewingSessionService{
                     subscription.sessionId(),
                     subscription.id(),
                     viewSessionMessageListener);
+
+            room.join(subscription);
         }
     }
 
@@ -97,17 +99,21 @@ public class ViewingSessionServiceImpl implements ViewingSessionService{
     public List<WSSubscription> destroy(UUID contentId) {
         List<WSSubscription> res;
         synchronized (locks.lock(contentId)) {
-            ViewingSessionRoom room = getRoomOrException(contentId);
-            // 저장소에서 세션 해지 및, 토픽 등록 해제.
-            viewingSessionPresence.deleteWithContentId(contentId);
-            redisTopicRegistry.disconnectWithContentId(contentId.toString());
-            // 실제 리소스 삭제.
-            viewingSessionRepository.remove(room);
+            try {
+                ViewingSessionRoom room = getRoomOrException(contentId);
+                // 저장소에서 세션 해지 및, 토픽 등록 해제.
+                viewingSessionPresence.deleteWithContentId(contentId);
+                redisTopicRegistry.disconnectWithContentId(contentId.toString());
+                // 실제 리소스 삭제.
+                viewingSessionRepository.remove(room);
 
-            // 반환용 로컬 구독 리스트 사본 생성
-            res = room.getAll();
-            room.clear();
-            return res;
+                // 반환용 로컬 구독 리스트 사본 생성
+                res = room.getAll();
+                room.clear();
+                return res;
+            } catch (WebSocketSessionNotFoundException e) {
+                return List.of();
+            }
         }
     }
 

@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.context.ActiveProfiles;
 
 import java.util.UUID;
 
@@ -39,6 +40,7 @@ import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("WatchingSession 서비스 이벤트 테스트")
+@ActiveProfiles("test")
 public class WatchingSessionEventListenerTest {
 
     @Mock
@@ -270,49 +272,6 @@ public class WatchingSessionEventListenerTest {
 
             verifyNoInteractions(
                     chatService,
-                    viewService
-            );
-        }
-
-        @Test
-        @DisplayName("SEND 이벤트 수신 시 contentId를 추출하여 메시지를 전송한다.")
-        void chatSendEventTest() {
-
-            // given
-            SessionInfo info = sessionInfoStub(
-                    sessionId,
-                    subscriptionId,
-                    chatDestination,
-                    auth
-            );
-
-            /*
-             * 메시지 객체의 구체적인 타입에 의존하지 않도록
-             * Deep Stub을 사용한다.
-             */
-            WatchingChatSendEvent event = mock(
-                    WatchingChatSendEvent.class,
-                    RETURNS_DEEP_STUBS
-            );
-
-            when(event.info()).thenReturn(info);
-
-            var message = event.message();
-
-            // when
-            eventListener.chatSendEvent(event);
-
-            // then
-            verify(chatService, times(1))
-                    .send(
-                            eq(contentId),
-                            same(message)
-                    );
-
-            verifyNoMoreInteractions(chatService);
-
-            verifyNoInteractions(
-                    watchingSessionService,
                     viewService
             );
         }

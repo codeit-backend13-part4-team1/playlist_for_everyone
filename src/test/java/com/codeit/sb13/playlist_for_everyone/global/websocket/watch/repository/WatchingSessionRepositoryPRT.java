@@ -142,7 +142,7 @@ public class WatchingSessionRepositoryPRT {
                     .getWatcherCountWithMultipleContents(List.of(content1,content2));
 
             for (Map.Entry<UUID, Long> entry : result.entrySet()){
-                assertThat(entry.getKey()).isIn(content1,content2);
+                assertThat(entry.getKey()).isIn(UUID.fromString(content1),UUID.fromString(content2));
                 assertThat(entry.getValue()).isEqualTo(3L);
             }
 
