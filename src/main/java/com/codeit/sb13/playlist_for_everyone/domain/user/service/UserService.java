@@ -12,6 +12,7 @@ import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -113,6 +114,7 @@ public class UserService {
      * 본인의 이름과 프로필 이미지를 변경한다.
      * 이미지가 없으면 기존 프로필 이미지를 유지한다.
      */
+    @PreAuthorize("isAuthenticated() and #userId == authentication.principal.userId")
     @Transactional
     public UserDto updateProfile(UUID userId, String name, MultipartFile image) {
         User user = getById(userId);
