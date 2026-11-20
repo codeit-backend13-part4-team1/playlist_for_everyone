@@ -1,0 +1,3 @@
+Label,# Samples,Average,Median,90% Line,95% Line,99% Line,Min,Max,Error %,Throughput,Received KB/sec,Sent KB/sec
+플레이리스트 생성,25,5055,1347,10900,11849,12049,1088,12049,60.000%,.45971,0.27,0.34
+TOTAL,25,5055,1347,10900,11849,12049,1088,12049,60.000%,.45971,0.27,0.34

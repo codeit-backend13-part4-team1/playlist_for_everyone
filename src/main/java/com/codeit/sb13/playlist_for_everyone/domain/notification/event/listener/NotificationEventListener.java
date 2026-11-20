@@ -2,7 +2,9 @@ package com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener
 
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.command.NotificationCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationCreateRequestedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.monitoring.NotificationMetrics;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationService;
+import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -25,6 +27,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
 public class NotificationEventListener {
 
     private final NotificationService service;
+    private final NotificationMetrics metrics;
 
     /**
      * AFTER_COMMIT, fallbackExecution=true로 공통 생성 요청을 처리한다.
@@ -32,15 +35,26 @@ public class NotificationEventListener {
      * <p>트랜잭션에 등록된 요청은 커밋 후 실행하며, 롤백되면 실행하지 않는다.
      * 트랜잭션 없이 발행된 요청은 발행 스레드에서 즉시 처리한다.
      * 두 경로 모두 @Async를 사용하지 않는다.
+     * 처리 시간은 리스너 진입부터 저장 실패 또는 커밋 후 SSE 발행 시도 종료까지 측정한다.
      */
     @TransactionalEventListener(fallbackExecution = true)
     public void handleNotification(NotificationCreateRequestedEvent event){
+        Timer.Sample sample = metrics.startProcessing();
+        try {
+            saveNotification(event);
+        } finally {
+            metrics.recordProcessing(event.source(), sample);
+        }
+    }
+
+    private void saveNotification(NotificationCreateRequestedEvent event) {
         NotificationCommand command = NotificationCommand.from(event);
         try {
             service.save(command);
         }catch (Exception e){
             // 저장 서비스 호출 실패를 기록하여 이미 커밋된 업무와 후속 알림 처리를 분리한다.
             // 예상한 SSE 발행 실패는 NotificationSseEventListener가 따로 처리한다.
+            metrics.recordSaveFailure();
             log.warn("알림 저장 실패. receiverId={}", event.receiverId(), e);
         }
     }

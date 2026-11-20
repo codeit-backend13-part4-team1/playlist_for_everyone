@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event;
 
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.NotificationLevel;
 
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -14,6 +15,16 @@ import java.util.UUID;
  *
  * <p>요청 발행은 저장 결과를 반환하지 않는다. 실제 저장은 NotificationService의
  * 독립 트랜잭션에서 수행하며, 저장 후 SSE 발행에는 별도의 NotificationCreatedEvent를 사용한다.
+ * 출처는 업무 이벤트별 계측에 사용하며 공통 생성 요청을 직접 발행하면 DIRECT_REQUEST로 기록한다.
  */
-public record NotificationCreateRequestedEvent(UUID receiverId, String title, String content, NotificationLevel level) {
+public record NotificationCreateRequestedEvent(
+        UUID receiverId, String title, String content, NotificationLevel level, NotificationSource source
+) {
+    public NotificationCreateRequestedEvent {
+        Objects.requireNonNull(source, "source");
+    }
+
+    public NotificationCreateRequestedEvent(UUID receiverId, String title, String content, NotificationLevel level) {
+        this(receiverId, title, content, level, NotificationSource.DIRECT_REQUEST);
+    }
 }

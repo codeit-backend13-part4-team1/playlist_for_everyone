@@ -1,0 +1,64 @@
+JMeter 샘플러 SAVE MATRICS
+GET http://localhost:8080/actuator/metrics/everyone.notification.saved
+-- before
+HTTP 상태 코드 미기록
+{"availableTags":[],"measurements":[{"statistic":"COUNT","value":211.0}],"name":"everyone.notification.saved"}
+-- after
+HTTP 상태 코드 미기록
+{"availableTags":[],"measurements":[{"statistic":"COUNT","value":1211.0}],"name":"everyone.notification.saved"}
+
+---
+JMeter 샘플러 SSE PUBLISHED MATRICS
+GET http://localhost:8080/actuator/metrics/everyone.notification.sse.published
+-- before
+HTTP 상태 코드 미기록
+{"availableTags":[],"measurements":[{"statistic":"COUNT","value":211.0}],"name":"everyone.notification.sse.published"}
+-- after
+HTTP 상태 코드 미기록
+{"availableTags":[],"measurements":[{"statistic":"COUNT","value":1211.0}],"name":"everyone.notification.sse.published"}
+
+---
+JMeter 샘플러 FAILURES MATRICS
+GET http://localhost:8080/actuator/metrics/everyone.notification.failures
+-- before
+Thread Name:Thread Group 1-1
+Sample Start:2026-11-20 01:51:25 KST
+Load time:65
+Connect Time:0
+Latency:65
+Size in bytes:432
+Sent bytes:777
+Headers size in bytes:432
+Body size in bytes:0
+Sample Count:1
+Error Count:1
+Data type ("text"|"bin"|""):
+Response code:404
+Response message:
+
+
+HTTPSampleResult fields:
+ContentType:
+DataEncoding: null
+
+-- after
+Thread Name:Thread Group 1-1
+Sample Start:2026-11-20 01:55:31 KST
+Load time:8
+Connect Time:0
+Latency:8
+Size in bytes:432
+Sent bytes:777
+Headers size in bytes:432
+Body size in bytes:0
+Sample Count:1
+Error Count:1
+Data type ("text"|"bin"|""):
+Response code:404
+Response message:
+
+
+HTTPSampleResult fields:
+ContentType:
+DataEncoding: null
+
