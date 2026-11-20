@@ -35,9 +35,10 @@ public class NotificationAsyncConfig {
         executor.setThreadNamePrefix("notification-");
         // 포화 시 호출 스레드가 대신 처리하지 않으며, 제출자에게 거부 예외를 전달한다.
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.AbortPolicy());
+        // 전용 실행기에서 작업을 실행할 때 제출 시점의 인증과 MDC를 적용한다.
+        executor.setTaskDecorator(taskDecorator);
         // 종료 이벤트에서 Lifecycle이 먼저 제출을 차단하고 제한 시간까지 대기한다.
         // Spring의 별도 stop 단계가 대기 작업을 멈추지 않도록 하며, 대기 시간은 중복 설정하지 않는다.
-        executor.setTaskDecorator(taskDecorator);
         executor.setWaitForTasksToCompleteOnShutdown(true);
         return executor;
     }

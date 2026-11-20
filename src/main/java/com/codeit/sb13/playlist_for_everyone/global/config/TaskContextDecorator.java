@@ -8,6 +8,11 @@ import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.Map;
 
+/**
+ * 작업을 제출할 때 새 {@link SecurityContext}에 호출 스레드의 인증을 담고 MDC를 복사한다.
+ * MDC에 {@code requestId}가 있으면 워커 로그에서 같은 값으로 요청을 추적할 수 있다.
+ * 작업이 정상 완료되거나 예외로 종료될 때 워커의 이전 인증과 MDC를 복원한다.
+ */
 public class TaskContextDecorator implements TaskDecorator {
 
     @Override
