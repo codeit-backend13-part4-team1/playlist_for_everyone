@@ -16,6 +16,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.review.repository.ReviewRepo
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
 import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionContentDeleteEvent;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionDisconnectEvent;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -498,6 +500,7 @@ public class ContentWriterTest {
         inOrder.verify(fileService).delete(fileId);
 
         verify(eventPublisher).publishEvent(any(ContentSearchCacheEvictEvent.class));
+        verify(eventPublisher).publishEvent(any(WatchingSessionContentDeleteEvent.class));
     }
 
     @Test
@@ -548,6 +551,9 @@ public class ContentWriterTest {
         // then
         verify(contentRepository).delete(content);
         verify(fileService, never()).delete(any());
+
+        verify(eventPublisher).publishEvent(any(ContentSearchCacheEvictEvent.class));
+        verify(eventPublisher).publishEvent(any(WatchingSessionContentDeleteEvent.class));
     }
 
 }
