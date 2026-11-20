@@ -6,11 +6,14 @@ import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.springframework.util.StringUtils;
+
+import java.util.Objects;
 
 /**
  * 사용자와 소셜 제공자 계정의 연결 정보
  *
- * 같은 사용자의 같은 회원 ID는 한 사용자에게만 연결되고,
+ * 같은 제공자의 같은 회원 ID는 한 사용자에게만 연결되고,
  * 한 사용자는 제공자마다 하나의 계정만 연결한다.
  */
 @Entity
@@ -32,7 +35,14 @@ public class SocialAccount extends CreatedAtEntity {
     private String providerUserId;
 
     public static SocialAccount connect(User user, SocialProvider provider, String providerUserId) {
-        throw new UnsupportedOperationException("아직 구현되지 않았습니다.");
+        if (!StringUtils.hasText(providerUserId)) {
+            throw new IllegalArgumentException("소셜 제공자 회원 ID는 필수입니다.");
+        }
+        SocialAccount account = new SocialAccount();
+        account.user = Objects.requireNonNull(user, "연결할 사용자는 필수입니다.");
+        account.provider = Objects.requireNonNull(provider, "소셜 제공자는 필수입니다.");
+        account.providerUserId = providerUserId;
+        return account;
     }
 
 
