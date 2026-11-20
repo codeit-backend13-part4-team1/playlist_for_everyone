@@ -5,13 +5,19 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.support.AbstractBeanDefinition;
 import org.springframework.boot.test.context.assertj.AssertableApplicationContext;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.core.task.TaskRejectedException;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
@@ -150,6 +156,51 @@ class NotificationAsyncConfigTest {
         assertThat(executor).isNotNull();
         assertThatThrownBy(() -> executor.execute(() -> {}))
                 .isInstanceOf(TaskRejectedException.class);
+    }
+
+    @Test
+    @DisplayName("호출 스레드의 컨텍스트가 정리돼도 제출 당시 인증과 요청 ID를 전달한다.")
+    void propagatesCallerContextToQueuedTask(){
+
+        record TaskContext(Authentication authentication, String requestId){
+
+        }
+
+        contextRunner.withPropertyValues("everyone.notification.async.pool-size=1")
+                .run(context ->{
+                    TaskExecutor executor = getExecutor(context);
+                    CountDownLatch started = new CountDownLatch(1);
+                    CountDownLatch release = new CountDownLatch(1);
+
+                    CompletableFuture.runAsync(() -> waitForRelease(started, release), executor);
+                    try {
+                        assertThat(started.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
+                        Authentication authentication = UsernamePasswordAuthenticationToken
+                                .authenticated("notification-test-user", null, List.of());
+                        SecurityContext callerContext = SecurityContextHolder.createEmptyContext();
+                        callerContext.setAuthentication(authentication);
+                        SecurityContextHolder.setContext(callerContext);
+
+                        MDC.put(MDCLoggingInterceptor.REQUEST_ID, "request-123");
+
+                        CompletableFuture<TaskContext> queued = CompletableFuture.supplyAsync(() -> new TaskContext(SecurityContextHolder.getContext().getAuthentication(),
+                                MDC.get(MDCLoggingInterceptor.REQUEST_ID)), executor);
+
+                        callerContext.setAuthentication(null);
+                        SecurityContextHolder.clearContext();
+                        MDC.clear();
+                        release.countDown();
+
+                        TaskContext result = queued.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                        assertThat(result.authentication()).isEqualTo(authentication);
+                        assertThat(result.requestId()).isEqualTo("request-123");
+
+                    } finally {
+                        SecurityContextHolder.clearContext();
+                        MDC.clear();
+                        release.countDown();
+                    }
+                });
     }
 
     private TaskExecutor getExecutor(AssertableApplicationContext context) {
