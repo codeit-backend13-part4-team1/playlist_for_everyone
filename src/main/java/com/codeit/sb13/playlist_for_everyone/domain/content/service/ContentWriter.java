@@ -16,6 +16,8 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNot
 import com.codeit.sb13.playlist_for_everyone.global.exception.file.FileEmptyException;
 import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
 import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionContentDeleteEvent;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionDisconnectEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -153,7 +155,10 @@ public class ContentWriter {
             fileService.delete(fileInfo.getId());
         }
 
-        // DB 커밋 이후 검색 캐시를 무효화하도록 이벤트 발행
+        // 시청 세션 연결 해제 이벤트 발행
+        eventPublisher.publishEvent(new WatchingSessionContentDeleteEvent(contentId));
+
+        // 삭제 시 검색 캐시를 무효화하도록 이벤트 발행
         eventPublisher.publishEvent(new ContentSearchCacheEvictEvent());
 
         log.debug(
