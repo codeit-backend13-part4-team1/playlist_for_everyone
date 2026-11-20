@@ -34,6 +34,7 @@ class SecurityUserTest {
         assertThat(securityUser.getUsername()).isEqualTo("test@gmail.com");
         assertThat(securityUser.getPassword()).isEqualTo("encoded_password");
         assertThat(securityUser.getRole()).isEqualTo(Role.USER);
+        assertThat(securityUser.getLoginSessionId()).isNull();
     }
 
     @ParameterizedTest
