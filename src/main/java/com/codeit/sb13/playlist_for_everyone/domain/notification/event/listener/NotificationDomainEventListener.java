@@ -27,17 +27,18 @@ import java.util.UUID;
 import java.util.function.Consumer;
 
 /**
- * 업무 커밋 후 수신자·문구를 결정하고 공통 비동기 프로세서에 알림 요청 목록을 전달한다.
- * 각 메서드는 기본 AFTER_COMMIT, fallbackExecution=false로 실행하므로 롤백 또는 트랜잭션 없는
- * 업무 이벤트에서는 조회·요청 생성·작업 제출을 하지 않는다.
+ * 업무 이벤트를 받아 수신자를 조회하고 알림 요청을 구성한다.
  *
- * <p>수신자 조회와 요청 생성은 커밋 처리 스레드에서 수행한다. 수신자가 여럿이어도 업무 이벤트당
- * 작업 하나를 제출하며, 빈 목록은 제출하지 않는다. 프로세서가 작업 스레드에서 요청을 순차 발행하고
- * 수신자별 저장(REQUIRES_NEW)과 알림 커밋 후 SSE 발행으로 이어진다. 호출자는 알림 완료를 기다리지 않는다.
+ * <p>트랜잭션 안에서 발행된 이벤트는 커밋 후 처리한다. 트랜잭션 밖에서 발행된 이벤트 중에는
+ * {@link WatchingSessionStartedEvent}만 {@code fallbackExecution = true}에 따라 발행 스레드에서 즉시 처리한다.
+ *
+ * <p>수신자 조회와 요청 구성은 리스너를 실행하는 스레드에서 수행한다. 요청이 있으면 목록 전체를
+ * {@link NotificationAsyncProcessor}에 작업 하나로 제출한다. 프로세서는 작업 스레드에서 요청을 순차 발행하고,
+ * {@link NotificationEventListener}가 이를 받아 저장을 시작한다.
  *
  * <p>조회·생성·제출 실패는 여기서, 개별 재발행 실패는 프로세서에서 처리한다.
  * 업무 식별자와 예외 타입만 기록하며 이름·제목·본문·원본 예외 메시지는 기록하지 않는다.
- * 수신자 중복 제거는 한 이벤트의 목록에만 적용하며, 업무 이벤트 재수신에 대한 중복 방지 계약은 아니다.
+ * 수신자 중복 제거 범위는 한 이벤트의 수신자 목록이다.
  */
 @Component
 @RequiredArgsConstructor
@@ -170,6 +171,10 @@ public class NotificationDomainEventListener {
         }
     }
 
+    /**
+     * 시청자의 팔로워 중 본인을 제외하고 중복 ID를 제거해 {@link NotificationLevel#INFO} 알림 요청을 구성한다.
+     * 이벤트의 시청자 이름에 표시할 텍스트가 없으면 '사용자'를 사용한다.
+     */
     @TransactionalEventListener(fallbackExecution = true)
     public void handleWatchingSessionStarted(WatchingSessionStartedEvent event) {
         Map<String, UUID> ids = Map.of(
