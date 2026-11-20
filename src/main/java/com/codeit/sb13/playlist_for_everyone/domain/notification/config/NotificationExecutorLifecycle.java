@@ -6,10 +6,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.core.Ordered;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
-import java.util.List;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -25,7 +22,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Slf4j
 public class NotificationExecutorLifecycle implements ApplicationListener<ContextClosedEvent>, Ordered {
 
-    private final ThreadPoolTaskExecutor executor;
+    private final NotificationTaskExecutor executor;
     private final NotificationAsyncProperties properties;
     private final ApplicationContext applicationContext;
     private final AtomicBoolean shutdownStarted = new AtomicBoolean();
@@ -53,14 +50,9 @@ public class NotificationExecutorLifecycle implements ApplicationListener<Contex
     private void requestStop(String reason) {
         // 하위 호출이 인터럽트 상태를 해제하더라도 다음 수신자 발행을 중단할 수 있게 유지한다.
         stopRequested = true;
-        List<Runnable> remainingTasks = executor.getThreadPoolExecutor().shutdownNow();
-        for (Runnable task : remainingTasks) {
-            if (task instanceof Future<?> future) {
-                future.cancel(true);
-            }
-        }
+        int cancelledTaskCount = executor.shutdownNowAndCancelPendingTasks();
         log.warn("알림 실행기 중단 요청. reason={}, timeout={}, activeCount={}, cancelledTaskCount={}",
-                reason, properties.shutdownTimeout(), executor.getActiveCount(), remainingTasks.size());
+                reason, properties.shutdownTimeout(), executor.getActiveCount(), cancelledTaskCount);
     }
 
     public boolean isStopRequested() {

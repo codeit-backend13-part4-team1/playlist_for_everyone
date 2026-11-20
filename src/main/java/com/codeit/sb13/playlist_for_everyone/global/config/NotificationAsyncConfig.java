@@ -2,13 +2,13 @@ package com.codeit.sb13.playlist_for_everyone.global.config;
 
 import com.codeit.sb13.playlist_for_everyone.domain.notification.config.NotificationAsyncProperties;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.config.NotificationExecutorLifecycle;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.config.NotificationTaskExecutor;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableAsync;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.concurrent.ThreadPoolExecutor;
 
@@ -24,11 +24,11 @@ public class NotificationAsyncConfig {
 
     /** 명시적으로 이름을 지정한 @Async 알림 작업의 동시 실행 수와 대기열을 제한한다. */
     @Bean(name = "notificationTaskExecutor", defaultCandidate = false)
-    public ThreadPoolTaskExecutor notificationTaskExecutor(
+    public NotificationTaskExecutor notificationTaskExecutor(
             NotificationAsyncProperties properties,
             @Qualifier("notificationTaskContextDecorator")
             TaskContextDecorator taskDecorator) {
-        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        NotificationTaskExecutor executor = new NotificationTaskExecutor();
         executor.setCorePoolSize(properties.poolSize());
         executor.setMaxPoolSize(properties.poolSize());
         executor.setQueueCapacity(properties.queueCapacity());
@@ -44,7 +44,7 @@ public class NotificationAsyncConfig {
 
     @Bean
     public NotificationExecutorLifecycle notificationExecutorLifecycle(
-            @Qualifier("notificationTaskExecutor") ThreadPoolTaskExecutor executor,
+            @Qualifier("notificationTaskExecutor") NotificationTaskExecutor executor,
             NotificationAsyncProperties properties,
             ApplicationContext applicationContext) {
         return new NotificationExecutorLifecycle(executor, properties, applicationContext);
