@@ -9,6 +9,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.request.Dir
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.response.MessageDto;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.event.DirectMessagePublisher;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.DirectMessageDeliveryService;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationFixtureCleanup;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationTaskTracker;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.ApiErrorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
@@ -22,6 +23,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.api.function.Executable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -127,6 +130,9 @@ import static org.mockito.Mockito.mock;
 @DisplayName("DM WebSocket 연결 및 메시지 송수신 통합 테스트")
 public class DirectMessageWebSocketIntegrationTest {
 
+    @RegisterExtension
+    static final NotificationFixtureCleanup FIXTURE_CLEANUP = new NotificationFixtureCleanup();
+
     @Container
     static final PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:16");
 
@@ -196,6 +202,8 @@ public class DirectMessageWebSocketIntegrationTest {
     private String counterpartAccessToken;
     private WebSocketStompClient stompClient;
     private final List<StompSession> stompSessions = new ArrayList<>();
+    private ConfigurableApplicationContext additionalNode;
+    private NotificationTaskTracker additionalNodeTasks;
     private final UUID counterpartId = UUID.randomUUID();
     private final UUID conversationId = UUID.randomUUID();
     private final UUID otherUserId = UUID.randomUUID();
@@ -234,42 +242,46 @@ public class DirectMessageWebSocketIntegrationTest {
 
     @AfterEach
     void cleanUp() {
-        try {
-            assertAll(
-                    stompSessions.stream()
-                            .map(session -> () -> {
-                                if (session.isConnected()) {
-                                    session.disconnect();
-                                }
-                            })
-            );
-        } finally {
-            if (stompClient != null) {
-                stompClient.stop();
-            }
-
-            // WebSocket 수신 완료와 알림 완료는 별개이므로 DB 정리 전에 실제 작업을 기다린다.
-            notificationTasks.close();
-
-            if (loginSessionId != null) {
-                userSessionRepository.endIfCurrent(userId, loginSessionId);
-            }
-            if (counterpartLoginSessionId != null) {
-                userSessionRepository.endIfCurrent(counterpartId, counterpartLoginSessionId);
-            }
-
-            jdbcTemplate.update("DELETE FROM notifications WHERE receiver_id IN (?, ?, ?)",
-                    userId, counterpartId, otherUserId);
-
-            jdbcTemplate.update("DELETE FROM direct_messages WHERE conversation_id IN (? , ?) ",
-                    conversationId, otherConversationId);
-
-            jdbcTemplate.update("DELETE FROM conversations WHERE id IN (? , ?)",
-                    conversationId, otherConversationId);
-
-            jdbcTemplate.update("DELETE FROM users WHERE id IN (?, ?, ?) ",
-                    userId, counterpartId, otherUserId);
+        List<NotificationTaskTracker> trackers = new ArrayList<>();
+        trackers.add(notificationTasks);
+        if (additionalNodeTasks != null) {
+            trackers.add(additionalNodeTasks);
         }
+        List<Executable> closeNodes = additionalNode == null ? List.of() : List.of(additionalNode::close);
+        assertAll(
+                () -> assertAll(stompSessions.stream().map(session -> () -> {
+                    if (session.isConnected()) {
+                        session.disconnect();
+                    }
+                })),
+                () -> {
+                    if (stompClient != null) {
+                        stompClient.stop();
+                    }
+                },
+                () -> FIXTURE_CLEANUP.cleanUp(trackers, closeNodes, this::deleteFixtures)
+        );
+    }
+
+    private void deleteFixtures() {
+        if (loginSessionId != null) {
+            userSessionRepository.endIfCurrent(userId, loginSessionId);
+        }
+        if (counterpartLoginSessionId != null) {
+            userSessionRepository.endIfCurrent(counterpartId, counterpartLoginSessionId);
+        }
+
+        jdbcTemplate.update("DELETE FROM notifications WHERE receiver_id IN (?, ?, ?)",
+                userId, counterpartId, otherUserId);
+
+        jdbcTemplate.update("DELETE FROM direct_messages WHERE conversation_id IN (? , ?) ",
+                conversationId, otherConversationId);
+
+        jdbcTemplate.update("DELETE FROM conversations WHERE id IN (? , ?)",
+                conversationId, otherConversationId);
+
+        jdbcTemplate.update("DELETE FROM users WHERE id IN (?, ?, ?) ",
+                userId, counterpartId, otherUserId);
     }
 
     @Test
@@ -928,61 +940,51 @@ public class DirectMessageWebSocketIntegrationTest {
     @Test
     @DisplayName("서버 A에서 보낸 DM이 서버 A와 B의 실제 구독자에게 한 번씩 전달되고 미읽음 한 건으로 유지된다.")
     void send_deliversAcrossActualServersWithoutDuplicatingMessages() throws Exception {
-        try (ConfigurableApplicationContext nodeB = startAdditionalNode();
-             NotificationTaskTracker nodeBTasks = new NotificationTaskTracker(
-                     nodeB.getBean("notificationTaskExecutor", ThreadPoolTaskExecutor.class),
-                     nodeB.getBean("notificationTaskContextDecorator", TaskDecorator.class)
-             )) {
-            int portB = ((WebServerApplicationContext) nodeB).getWebServer().getPort();
-            SimpleBrokerMessageHandler brokerB = nodeB.getBean(SimpleBrokerMessageHandler.class);
-            assertThat(portB).isNotEqualTo(port);
-            assertThat(brokerB).isNotSameAs(simpleBrokerMessageHandler);
+        additionalNode = startAdditionalNode();
+        additionalNodeTasks = new NotificationTaskTracker(
+                additionalNode.getBean("notificationTaskExecutor", ThreadPoolTaskExecutor.class),
+                additionalNode.getBean("notificationTaskContextDecorator", TaskDecorator.class)
+        );
+        int portB = ((WebServerApplicationContext) additionalNode).getWebServer().getPort();
+        SimpleBrokerMessageHandler brokerB = additionalNode.getBean(SimpleBrokerMessageHandler.class);
+        assertThat(portB).isNotEqualTo(port);
+        assertThat(brokerB).isNotSameAs(simpleBrokerMessageHandler);
 
-            String channel = environment.getRequiredProperty("everyone.dm.websocket.redis.channel");
-            await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
-                var subscriptions = redis.execInContainer("redis-cli", "--raw", "PUBSUB", "NUMSUB", channel);
-                assertThat(subscriptions.getExitCode()).isZero();
-                assertThat(subscriptions.getStdout().lines().map(String::strip).toList())
-                        .containsExactly(channel, "2");
-            });
+        String channel = environment.getRequiredProperty("everyone.dm.websocket.redis.channel");
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
+            var subscriptions = redis.execInContainer("redis-cli", "--raw", "PUBSUB", "NUMSUB", channel);
+            assertThat(subscriptions.getExitCode()).isZero();
+            assertThat(subscriptions.getStdout().lines().map(String::strip).toList())
+                    .containsExactly(channel, "2");
+        });
 
-            // B가 실행 중인 동안 두 클라이언트를 먼저 닫고, 마지막에 B 컨텍스트를 정리한다.
-            try {
-                StompSession sender = connectWithToken(accessToken);
-                StompSession receiver = connectWithToken(portB, counterpartAccessToken,
-                        new StompSessionHandlerAdapter() {});
-                BlockingQueue<MessageDto> messagesOnA = subscribe(sender, conversationId);
-                BlockingQueue<MessageDto> messagesOnB = subscribe(receiver, conversationId, brokerB);
-                String content = "서버 A에서 B로 전달할 메시지";
+        StompSession sender = connectWithToken(accessToken);
+        StompSession receiver = connectWithToken(portB, counterpartAccessToken,
+                new StompSessionHandlerAdapter() {});
+        BlockingQueue<MessageDto> messagesOnA = subscribe(sender, conversationId);
+        BlockingQueue<MessageDto> messagesOnB = subscribe(receiver, conversationId, brokerB);
+        String content = "서버 A에서 B로 전달할 메시지";
 
-                sender.send("/pub/conversations/" + conversationId + "/direct-messages",
-                        new DirectMessageSendRequest(content));
+        sender.send("/pub/conversations/" + conversationId + "/direct-messages",
+                new DirectMessageSendRequest(content));
 
-                MessageDto messageOnA = messagesOnA.poll(10, TimeUnit.SECONDS);
-                MessageDto messageOnB = messagesOnB.poll(10, TimeUnit.SECONDS);
-                assertThat(messageOnA).isNotNull();
-                assertThat(messageOnB).isEqualTo(messageOnA);
-                assertThat(messageOnB.conversationId()).isEqualTo(conversationId);
-                assertThat(messageOnB.content()).isEqualTo(content);
-                assertThat(messageOnB.sender().userId()).isEqualTo(userId);
-                assertThat(messageOnB.receiver().userId()).isEqualTo(counterpartId);
+        MessageDto messageOnA = messagesOnA.poll(10, TimeUnit.SECONDS);
+        MessageDto messageOnB = messagesOnB.poll(10, TimeUnit.SECONDS);
+        assertThat(messageOnA).isNotNull();
+        assertThat(messageOnB).isEqualTo(messageOnA);
+        assertThat(messageOnB.conversationId()).isEqualTo(conversationId);
+        assertThat(messageOnB.content()).isEqualTo(content);
+        assertThat(messageOnB.sender().userId()).isEqualTo(userId);
+        assertThat(messageOnB.receiver().userId()).isEqualTo(counterpartId);
 
-                await().during(Duration.ofSeconds(1)).atMost(Duration.ofSeconds(3))
-                        .untilAsserted(() -> {
-                            assertThat(sender.isConnected()).isTrue();
-                            assertThat(receiver.isConnected()).isTrue();
-                            assertThat(messagesOnA).isEmpty();
-                            assertThat(messagesOnB).isEmpty();
-                        });
-                assertSavedUnreadMessage(messageOnB.id(), content);
-            } finally {
-                assertAll(stompSessions.stream().map(session -> () -> {
-                    if (session.isConnected()) {
-                        session.disconnect();
-                    }
-                }));
-            }
-        }
+        await().during(Duration.ofSeconds(1)).atMost(Duration.ofSeconds(3))
+                .untilAsserted(() -> {
+                    assertThat(sender.isConnected()).isTrue();
+                    assertThat(receiver.isConnected()).isTrue();
+                    assertThat(messagesOnA).isEmpty();
+                    assertThat(messagesOnB).isEmpty();
+                });
+        assertSavedUnreadMessage(messageOnB.id(), content);
     }
 
     @Test

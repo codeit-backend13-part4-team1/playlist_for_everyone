@@ -8,6 +8,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.command.Dir
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.response.MessageDto;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.event.DirectMessageCreatedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.DirectMessageService;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationFixtureCleanup;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationTaskTracker;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.global.exception.sse.SsePublishException;
@@ -21,6 +22,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.function.Executable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -137,6 +139,9 @@ import static org.mockito.Mockito.verify;
 @DisplayName("DM 저장부터 실제 SSE 수신까지 통합 테스트")
 class DirectMessageSseIntegrationTest {
 
+    @RegisterExtension
+    static final NotificationFixtureCleanup FIXTURE_CLEANUP = new NotificationFixtureCleanup();
+
     @Container
     static final PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:16");
 
@@ -224,24 +229,34 @@ class DirectMessageSseIntegrationTest {
     @AfterEach
     void cleanUp() {
         // 일반 시나리오는 여기서 닫는다. try-with-resources로 먼저 닫으면 읽기 중인 스트림의 잠금을 기다릴 수 있다.
-        // 한 정리가 실패해도 나머지 연결·컨텍스트·데이터 정리를 모두 시도한다.
-        List<Executable> cleanups = new ArrayList<>();
-        cleanups.add(sseConnectionService::closeAllLocalConnections);
+        List<Executable> closeConnections = new ArrayList<>();
+        closeConnections.add(sseConnectionService::closeAllLocalConnections);
         additionalNodes.forEach(node ->
-                cleanups.add(() -> node.getBean(SseConnectionService.class).closeAllLocalConnections()));
-        sseClients.forEach(client -> cleanups.add(client::close));
-        stompSessions.forEach(session -> cleanups.add(() -> {
+                closeConnections.add(() -> node.getBean(SseConnectionService.class).closeAllLocalConnections()));
+        sseClients.forEach(client -> closeConnections.add(client::close));
+        stompSessions.forEach(session -> closeConnections.add(() -> {
             if (session.isConnected()) {
                 session.disconnect();
             }
         }));
         if (stompClient != null) {
-            cleanups.add(stompClient::stop);
+            closeConnections.add(stompClient::stop);
         }
-        // 비동기 저장·발행이 끝난 뒤 컨텍스트와 이력·DB 데이터를 정리한다.
-        cleanups.add(notificationTasks::close);
-        additionalNotificationTasks.forEach(tasks -> cleanups.add(tasks::close));
-        additionalNodes.forEach(node -> cleanups.add(node::close));
+
+        List<NotificationTaskTracker> trackers = new ArrayList<>();
+        trackers.add(notificationTasks);
+        trackers.addAll(additionalNotificationTasks);
+        List<Executable> closeNodes = additionalNodes.stream()
+                .<Executable>map(node -> node::close)
+                .toList();
+        assertAll(
+                () -> assertAll(closeConnections),
+                () -> FIXTURE_CLEANUP.cleanUp(trackers, closeNodes, this::deleteFixtures)
+        );
+    }
+
+    private void deleteFixtures() {
+        List<Executable> cleanups = new ArrayList<>();
         loginSessions.forEach((userId, sessionId) ->
                 cleanups.add(() -> userSessionRepository.endIfCurrent(userId, sessionId)));
         cleanups.add(this::deleteTestHistory);

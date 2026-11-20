@@ -15,6 +15,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.Notifica
 import com.codeit.sb13.playlist_for_everyone.domain.notification.event.NotificationCreatedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener.NotificationEventListener;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.repository.NotificationRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationFixtureCleanup;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationTaskTracker;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.global.exception.conversation.DirectMessagePublishException;
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -112,6 +114,9 @@ import static org.mockito.Mockito.when;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @DisplayName("DM 저장 후 SSE 이벤트 연동 통합 테스트")
 class DirectMessageSseEventIntegrationTest {
+
+    @RegisterExtension
+    static final NotificationFixtureCleanup FIXTURE_CLEANUP = new NotificationFixtureCleanup();
 
     @Container
     static final PostgreSQLContainer postgres =
@@ -202,8 +207,14 @@ class DirectMessageSseEventIntegrationTest {
 
     @AfterEach
     void cleanUp() {
-        notificationTasks.close();
-        auditingHandler.setDateTimeProvider(null);
+        try {
+            FIXTURE_CLEANUP.cleanUp(notificationTasks, this::deleteFixtures);
+        } finally {
+            auditingHandler.setDateTimeProvider(null);
+        }
+    }
+
+    private void deleteFixtures() {
         jdbcTemplate.update(
                 "DELETE FROM notifications WHERE receiver_id IN (?, ?)",
                 senderId,

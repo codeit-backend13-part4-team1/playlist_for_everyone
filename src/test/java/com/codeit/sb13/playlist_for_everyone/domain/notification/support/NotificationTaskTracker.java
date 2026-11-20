@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.notification.support;
 import org.springframework.core.task.TaskDecorator;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -19,11 +20,19 @@ public final class NotificationTaskTracker implements AutoCloseable {
 
     private final ThreadPoolTaskExecutor executor;
     private final TaskDecorator contextDecorator;
+    private final Duration completionTimeout;
     private final List<CompletableFuture<Void>> tasks = new CopyOnWriteArrayList<>();
 
     public NotificationTaskTracker(ThreadPoolTaskExecutor executor, TaskDecorator contextDecorator) {
+        this(executor, contextDecorator, Duration.ofSeconds(5));
+    }
+
+    NotificationTaskTracker(
+            ThreadPoolTaskExecutor executor, TaskDecorator contextDecorator, Duration completionTimeout
+    ) {
         this.executor = executor;
         this.contextDecorator = contextDecorator;
+        this.completionTimeout = completionTimeout;
         executor.setTaskDecorator(task -> {
             Runnable decoratedTask = contextDecorator.decorate(task);
             CompletableFuture<Void> completion = new CompletableFuture<>();
@@ -50,12 +59,16 @@ public final class NotificationTaskTracker implements AutoCloseable {
 
     public void awaitCompletion() {
         try {
-            CompletableFuture.allOf(tasks.toArray(CompletableFuture[]::new)).get(5, TimeUnit.SECONDS);
+            CompletableFuture.allOf(tasks.toArray(CompletableFuture[]::new))
+                    .get(completionTimeout.toNanos(), TimeUnit.NANOSECONDS);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw new AssertionError("알림 작업 완료 대기 중 인터럽트가 발생했습니다.", exception);
-        } catch (ExecutionException | TimeoutException exception) {
-            throw new AssertionError("알림 작업이 제한 시간 내에 정상 완료되어야 합니다.", exception);
+            throw new CompletionUnconfirmed("알림 작업 완료 대기 중 인터럽트가 발생했습니다.", exception);
+        } catch (TimeoutException exception) {
+            throw new CompletionUnconfirmed("제한 시간 내에 알림 작업 완료를 확인하지 못했습니다.", exception);
+        } catch (ExecutionException exception) {
+            // allOf는 실패한 작업을 포함해 추적한 작업이 모두 끝난 뒤 완료된다.
+            throw new AssertionError("종료된 알림 작업에서 예외가 발생했습니다.", exception.getCause());
         }
     }
 
@@ -65,6 +78,13 @@ public final class NotificationTaskTracker implements AutoCloseable {
             awaitCompletion();
         } finally {
             executor.setTaskDecorator(contextDecorator);
+        }
+    }
+
+    static final class CompletionUnconfirmed extends AssertionError {
+
+        private CompletionUnconfirmed(String message, Exception cause) {
+            super(message, cause);
         }
     }
 }

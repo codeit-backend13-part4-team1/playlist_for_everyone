@@ -48,7 +48,7 @@ class NotificationAsyncProcessorTest {
         order.verify(eventPublisher).publishEvent(first);
         order.verify(metrics).recordPublishAttempt(second.source());
         order.verify(eventPublisher).publishEvent(second);
-        order.verifyNoMoreInteractions();
+        verifyNoMoreInteractions(metrics, eventPublisher);
     }
 
     @Test
@@ -78,7 +78,7 @@ class NotificationAsyncProcessorTest {
         order.verify(eventPublisher).publishEvent(nextReceiver);
         order.verify(metrics).recordPublishAttempt(nextBusinessEvent.source());
         order.verify(eventPublisher).publishEvent(nextBusinessEvent);
-        order.verifyNoMoreInteractions();
+        verifyNoMoreInteractions(metrics, eventPublisher);
         assertThat(output.getAll())
                 .contains("플레이리스트 생성 알림 재발행 실패.", "playlistId=" + playlistId,
                         "ownerId=" + ownerId, "receiverId=" + failed.receiverId(), "exceptionType=IllegalStateException")

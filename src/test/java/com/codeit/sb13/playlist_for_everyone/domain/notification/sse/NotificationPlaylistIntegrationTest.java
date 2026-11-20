@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.notification.sse;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.Notification;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.repository.NotificationRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationTargetReader;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationFixtureCleanup;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationTaskTracker;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.PlaylistResponse;
@@ -17,6 +18,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.mockito.ArgumentCaptor;
 import org.mockito.stubbing.Answer;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -77,6 +79,9 @@ import static org.mockito.Mockito.*;
 @ExtendWith(OutputCaptureExtension.class)
 @DisplayName("플레이리스트 업무 이벤트 기반 알림 통합 테스트")
 public class NotificationPlaylistIntegrationTest {
+
+    @RegisterExtension
+    static final NotificationFixtureCleanup FIXTURE_CLEANUP = new NotificationFixtureCleanup();
 
     @Container
     static final PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:16");
@@ -142,7 +147,10 @@ public class NotificationPlaylistIntegrationTest {
 
     @AfterEach
     void cleanUp(){
-        notificationTasks.close();
+        FIXTURE_CLEANUP.cleanUp(notificationTasks, this::deleteFixtures);
+    }
+
+    private void deleteFixtures() {
         transactionTemplate.executeWithoutResult(status ->{
             jdbcTemplate.update("""
                   DELETE FROM notifications

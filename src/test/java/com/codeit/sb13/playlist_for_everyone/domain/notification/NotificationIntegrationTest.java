@@ -16,6 +16,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener.
 import com.codeit.sb13.playlist_for_everyone.domain.notification.repository.NotificationRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationService;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationUserReader;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationFixtureCleanup;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationTaskTracker;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistSubscribedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.PlaylistService;
@@ -33,6 +34,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.*;
 import org.mockito.ArgumentCaptor;
@@ -106,6 +108,9 @@ import static org.mockito.Mockito.*;
 @ExtendWith(OutputCaptureExtension.class)
 @DisplayName("알림 공통 생성 통합 테스트")
 class NotificationIntegrationTest {
+
+    @RegisterExtension
+    static final NotificationFixtureCleanup FIXTURE_CLEANUP = new NotificationFixtureCleanup();
 
     // 알림 수신자를 권한 변경 대상과 플레이리스트 소유자로도 사용한다.
     private static final UUID RECEIVER_ID = UUID.randomUUID();
@@ -195,7 +200,10 @@ class NotificationIntegrationTest {
 
     @AfterEach
     void cleanUp() {
-        notificationTasks.close();
+        FIXTURE_CLEANUP.cleanUp(notificationTasks, this::deleteFixtures);
+    }
+
+    private void deleteFixtures() {
         // 사용자를 참조하는 알림·팔로우·구독·플레이리스트를 먼저 지운다.
         // 구독은 플레이리스트도 참조하므로 플레이리스트보다 먼저 삭제한다.
         notificationRepository.deleteAllInBatch();
