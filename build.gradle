@@ -34,9 +34,10 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation "org.springdoc:springdoc-openapi-starter-webmvc-ui:${dependencyVersions.springdoc}"
 
-	// 인증 및 WebSocket 메시지 보안
+	// 인증(JWT·소셜 로그인) 및 WebSocket 메시지 보안
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'org.springframework.security:spring-security-messaging'
+	implementation 'org.springframework.boot:spring-boot-starter-security-oauth2-client'
 	implementation "io.jsonwebtoken:jjwt-api:${dependencyVersions.jjwt}"
 	runtimeOnly "io.jsonwebtoken:jjwt-impl:${dependencyVersions.jjwt}"
 	runtimeOnly "io.jsonwebtoken:jjwt-jackson:${dependencyVersions.jjwt}"
