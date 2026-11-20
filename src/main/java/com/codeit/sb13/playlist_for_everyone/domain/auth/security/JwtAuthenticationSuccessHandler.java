@@ -1,18 +1,11 @@
 package com.codeit.sb13.playlist_for_everyone.domain.auth.security;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.dto.response.JwtDto;
-import com.codeit.sb13.playlist_for_everyone.domain.auth.event.UserSessionRevokedEvent;
-import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
-import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
-import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.SessionStartResult;
-import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseCookie;
@@ -22,7 +15,6 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -31,19 +23,13 @@ import java.util.UUID;
  *
  * 비밀번호 검증은 AuthenticationManager가 수행한다.
  */
-@Slf4j
 public class JwtAuthenticationSuccessHandler implements AuthenticationSuccessHandler {
 
     private final RefreshTokenCookieFactory refreshTokenCookieFactory;
 
-    private final JwtTokenProvider jwtTokenProvider;
+    private final LoginSessionIssuer loginSessionIssuer;
     private final UserService userService;
     private final ObjectMapper objectMapper;
-
-    private final RefreshTokenRepository refreshTokenRepository;
-    private final UserSessionRepository userSessionRepository;
-    private final ApplicationEventPublisher eventPublisher;
-    private final Duration refreshTokenValidity;
 
     /**
      * 로그인 세션 시작, Refresh Token 발급·저장과 쿠키 전달에 필요한 의존성을 전달받는다.
@@ -52,25 +38,13 @@ public class JwtAuthenticationSuccessHandler implements AuthenticationSuccessHan
      * 로그인 세션도 같은 기간 동안 유지된다.
      */
 
-    public JwtAuthenticationSuccessHandler(JwtTokenProvider jwtTokenProvider,
+    public JwtAuthenticationSuccessHandler(LoginSessionIssuer loginSessionIssuer,
                                            UserService userService,
                                            ObjectMapper objectMapper,
-                                           RefreshTokenRepository refreshTokenRepository,
-                                           UserSessionRepository userSessionRepository,
-                                           ApplicationEventPublisher eventPublisher,
-                                           Duration refreshTokenValidity,
                                            RefreshTokenCookieFactory refreshTokenCookieFactory) {
-        this.jwtTokenProvider = Objects.requireNonNull(jwtTokenProvider);
+        this.loginSessionIssuer = Objects.requireNonNull(loginSessionIssuer);
         this.userService = Objects.requireNonNull(userService);
         this.objectMapper = Objects.requireNonNull(objectMapper);
-        this.refreshTokenRepository = Objects.requireNonNull(refreshTokenRepository);
-        this.userSessionRepository = Objects.requireNonNull(userSessionRepository);
-        this.eventPublisher = Objects.requireNonNull(eventPublisher);
-        this.refreshTokenValidity = Objects.requireNonNull(refreshTokenValidity);
-
-        if (refreshTokenValidity.isZero() || refreshTokenValidity.isNegative()) {
-            throw new IllegalArgumentException("Refresh Token 유효기간은 양수여야 합니다.");
-        }
         this.refreshTokenCookieFactory = Objects.requireNonNull(refreshTokenCookieFactory);
     }
 
@@ -85,24 +59,12 @@ public class JwtAuthenticationSuccessHandler implements AuthenticationSuccessHan
         // 여기서 실패하면 기존 로그인 세션을 교체하지 않는다.
         UserDto userDto = userService.getUserDtoById(userId);
 
-        // 새 로그인 세션을 시작한다. 기존 세션이 있으면 이 시점에 교체되어
-        // 이전 로그인에서 발급한 토큰은 더 이상 현재 세션이 아니게 된다.
-        SessionStartResult session = userSessionRepository.start(userId, refreshTokenValidity);
-
-        // 두 토큰에 같은 세션 ID를 넣는다. 재발급할 때도 이 세션 ID를 유지한다.
-        String accessToken = jwtTokenProvider.createAccessToken(userId, session.sessionId());
-        String refreshToken = jwtTokenProvider.createRefreshToken(userId, session.sessionId());
-
-        ResponseCookie refreshCookie = refreshTokenCookieFactory.create(refreshToken);
-
-        refreshTokenRepository.save(userId, refreshToken, refreshTokenValidity);
-
-        // 교체된 이전 로그인이 있으면 알린다.
-        // 로그인 성공 처리는 트랜잭션 밖이므로 바로 발행한다.
-        session.replaced().ifPresent(replacedSessionId -> publishSessionReplaced(userId, replacedSessionId));
+        // 세션 시작, 토큰 발급, Refresh Token 저장, 이전 세션 종료 알림
+        LoginSessionIssuer.LoginTokens tokens = loginSessionIssuer.issue(userId);
+        ResponseCookie refreshCookie = refreshTokenCookieFactory.create(tokens.refreshToken());
 
         // Access Token은 JSON으로, Refresh Token은 HttpOnly 쿠키로 전달한다.
-        JwtDto jwtDto = new JwtDto(userDto, accessToken);
+        JwtDto jwtDto = new JwtDto(userDto, tokens.accessToken());
 
         // Redis 저장 이후에 응답 작성
         response.setStatus(HttpServletResponse.SC_OK);
@@ -112,19 +74,6 @@ public class JwtAuthenticationSuccessHandler implements AuthenticationSuccessHan
 
         // 로그인 성공 응답은 세션이나 리다이렉트 없이 JSON으로 반환한다.
         objectMapper.writeValue(response.getWriter(), jwtDto);
-    }
-
-    private void publishSessionReplaced(UUID userId, UUID replacedSessionId) {
-        try {
-            eventPublisher.publishEvent(new UserSessionRevokedEvent(
-                    userId,
-                    replacedSessionId,
-                    UserSessionRevokedEvent.RevokeReason.DUPLICATE_LOGIN
-            ));
-        } catch (RuntimeException exception) {
-            log.error("이전 로그인 세션 종료 후속 처리에 실패했습니다. userId={}, sessionId={}",
-                    userId, replacedSessionId, exception);
-        }
     }
 
 }
