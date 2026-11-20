@@ -46,7 +46,8 @@ flowchart TD
     U["권한 변경 + UserRoleChangedEvent 발행"] --> C["업무 트랜잭션 커밋"]
     P["구독 저장 + PlaylistSubscribedEvent 발행"] --> C
     C --> D["NotificationDomainEventListener / AFTER_COMMIT"]
-    D --> R["NotificationCreateRequestedEvent 재발행"]
+    D --> T["알림 요청 한 건을 담은 작업 제출"]
+    T --> R["NotificationAsyncProcessor 워커에서 공통 요청 발행"]
     R --> N["NotificationEventListener / fallbackExecution=true"]
     N --> S["NotificationService.save / REQUIRES_NEW 저장·커밋"]
     S --> E["NotificationSseEventListener / AFTER_COMMIT"]
@@ -54,30 +55,30 @@ flowchart TD
 ```
 
 - 업무 이벤트는 `AFTER_COMMIT`, `fallbackExecution=false`로 수신합니다. 업무가 롤백되거나 트랜잭션 없이 발행되면 알림 요청으로 변환하지 않습니다.
-- 변환용 트랜잭션은 열지 않습니다. 커밋 후 재발행한 공통 요청을 즉시 받아 실제 알림 저장에서 `REQUIRES_NEW`를 사용합니다.
-- 현재 리스너에는 `@Async`가 없습니다. 커밋 처리 스레드에서 알림 저장과 SSE 발행 요청까지 실행합니다.
+- 커밋 처리 스레드에서 알림 요청 한 건을 구성해 전용 실행기에 제출합니다.
+- 워커가 트랜잭션 밖에서 공통 요청을 발행하면 `fallbackExecution=true`로 즉시 처리합니다. 저장에는 `REQUIRES_NEW`를 사용하며, 알림 커밋 후 같은 워커에서 SSE 발행을 요청합니다.
 
 두 생산 서비스는 기존 트랜잭션이 있으면 참여합니다. 호출을 감싼 트랜잭션이 있다면 서비스 메서드 반환 시점이 아니라 그 트랜잭션의 커밋 후에 알림을 처리합니다.
 알림 저장 이후의 DTO·공유 이력·Redis·HTTP 전달은 [공통 저장·전송](01-creation-and-delivery.md), 재연결은 [SSE 복구](../sse/10-recovery-and-retry.md)에서 이어서 설명합니다.
 
 ## 실패하면 어떻게 되나요?
 
-변환·재발행 중 `RuntimeException`은 업무 이벤트 리스너가 기록하고 전파하지 않습니다.
-이미 커밋된 권한 변경·구독은 유지하며, 다음 이벤트를 처리할 수 있습니다. 실패한 요청을 자동 재발행하지는 않습니다.
+요청 생성 실패와 작업 제출 거부는 업무 이벤트 리스너가 기록합니다. 워커에서 개별 공통 요청을 발행하다 실패하면 비동기 프로세서가 기록합니다.
+이미 커밋된 권한 변경·구독은 유지되며 이후 이벤트도 처리합니다.
 
-| 변환·재발행 실패 로그 | 남기는 값 |
+| 업무 이벤트 | 실패 로그의 기본 값 |
 | --- | --- |
 | 권한 변경 | `userId`, `exceptionType` |
 | 구독 | `playlistId`, `ownerId`, `subscriberId`, `exceptionType` |
 
-이 로그에는 이름·제목·본문·원본 예외 메시지를 넣지 않습니다.
+제출 거부 로그는 요청 수를, 요청 발행 실패 로그는 수신자 ID를 함께 남깁니다. 이 로그에는 업무 식별과 실패 분류에 필요한 값만 담습니다.
 알림 저장 실패와 SSE 발행 실패는 각각 공통 요청 리스너와 SSE 리스너가 담당하며, 로그와 보존 데이터는 [공통 실패 처리](01-creation-and-delivery.md#실패했을-때-남는-것)를 참고합니다.
 
 업무 커밋과 알림 저장은 별개입니다. 그 사이 프로세스가 종료되면 알림이 누락될 수 있으며, Outbox나 모든 장애 상황의 전달 보장은 구현하지 않았습니다.
 
 ## 테스트와 함께 읽기
 
-1. [NotificationDomainEventListenerTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/notification/event/listener/NotificationDomainEventListenerTest.java)에서 수신자·문구·이름 대체·자기 구독 제외·재발행 실패 후 처리를 확인합니다.
+1. [NotificationDomainEventListenerTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/notification/event/listener/NotificationDomainEventListenerTest.java)에서 수신자·문구·이름 대체·자기 구독 제외와 요청 제출을 확인합니다.
 2. [NotificationIntegrationTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/notification/NotificationIntegrationTest.java)에서 실제 권한 변경·구독의 커밋과 롤백, 알림 저장·SSE 발행 요청을 확인합니다.
 3. [테스트 가이드](02-testing.md)에서 생산 도메인 테스트와의 역할 분담 및 실행 명령을 확인합니다.
 

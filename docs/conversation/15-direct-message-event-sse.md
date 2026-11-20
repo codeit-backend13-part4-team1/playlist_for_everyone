@@ -10,12 +10,13 @@ flowchart TD
     SAVE --> EVENT["트랜잭션 안에서 DirectMessageCreatedEvent 발행"]
     EVENT --> COMMIT["DB 커밋"]
     COMMIT --> LISTENER["AFTER_COMMIT DM SSE 리스너"]
-    COMMIT --> NOTICE["별도 알림 소비자: 공통 요청 → 독립 저장·커밋 → notifications 요청"]
+    COMMIT --> NOTICE["별도 알림 소비자: 요청 구성·작업 제출"]
+    NOTICE --> WORKER["알림 워커: 공통 요청 발행·독립 저장·커밋 → notifications 요청"]
     LISTENER --> READ["Reader: REQUIRED로 저장 측 연결 재사용·상세 조회"]
     READ --> MAP["조회 반환 후 MessageDto·프로필 URL 변환"]
     MAP --> SSE["공통 SSE 발행: 수신자 이력 저장 → Redis 신호"]
     SSE --> RECEIVE["수신자의 모든 SSE 연결: direct-messages"]
-    NOTICE --> NRECEIVE["공유 이력·Redis → 수신자의 SSE 연결: notifications"]
+    WORKER --> NRECEIVE["공유 이력·Redis → 수신자의 SSE 연결: notifications"]
     NOTICE --> RETURN["커밋 후 콜백 처리 종료·Saver 호출 반환"]
     SSE --> RETURN
     LISTENER -. "조회·변환·발행 실패를 기록" .-> RETURN
@@ -23,7 +24,7 @@ flowchart TD
     WS --> ROOM["각 서버의 해당 대화방 STOMP 구독자"]
 ```
 
-두 소비자는 현재 동기식 커밋 후 콜백이며, 그림의 분기가 병렬 실행을 뜻하지는 않습니다. 콜백 처리 이후 송신 서비스가 WebSocket 발행을 진행하지만, 소비자 사이의 실행 순서에 의존하지 않으며 **DM SSE·알림 SSE·WebSocket의 브라우저 도착 순서는 보장하지 않습니다.** DM 저장·알림 저장·공통 SSE 이력 저장과 브로커 발행은 하나의 원자적 트랜잭션이 아닙니다.
+송신 서비스는 DM SSE 콜백과 알림 작업 제출이 끝나면 WebSocket 발행을 진행합니다. 알림 저장과 `notifications` 발행은 워커에서 별도로 이어집니다. **DM SSE·알림 SSE·WebSocket의 브라우저 도착 순서는 보장하지 않습니다.** DM 저장·알림 저장·공통 SSE 이력 저장과 브로커 발행은 각각 완료됩니다.
 
 ## 컴포넌트별 책임과 읽기 순서
 
@@ -67,15 +68,13 @@ flowchart TD
 2. Saver 본문이 반환된 뒤 트랜잭션 프록시가 커밋합니다. 리스너의 `AFTER_COMMIT, fallbackExecution = false`에 따라 커밋에 성공했을 때만 후속 처리를 시작합니다.
 3. 리스너가 Reader를 호출하면 `REQUIRED`로 아직 바인딩된 저장 측 EntityManager·커넥션을 재사용해 메시지·송수신자·프로필을 조회합니다. 메시지를 `refresh`하여 DB에 저장된 생성 시각을 반영합니다. 조회용 두 번째 커넥션을 기다리지 않으며, 미존재 시 `DirectMessageNotFoundException`이 발생합니다.
 4. 상세 조회 후 Mapper가 프로필 URL과 DTO를 만듭니다. **Reader 반환이 저장 커넥션 반환을 뜻하지는 않습니다.** 동기 콜백의 외부 파일 저장소 호출·SSE 발행 동안에도 저장 측 연결이 남을 수 있습니다.
-5. DM SSE와 별도 알림 소비자의 동기 콜백 처리가 끝나면 Saver 호출이 서비스로 반환됩니다. 이후 서비스가 WebSocket용 DTO를 별도로 만들고 발행합니다. 알림 소비자는 요청 변환 후 공통 서비스의 `REQUIRES_NEW`로 알림을 저장합니다.
+5. DM SSE 콜백과 알림 작업 제출이 끝나면 Saver 호출이 서비스로 반환됩니다. 서비스는 WebSocket용 DTO를 만들고 발행합니다. 알림 워커는 공통 요청을 발행하고 `REQUIRES_NEW`로 알림을 저장합니다.
 
 `getById`의 `readOnly = true`는 새 트랜잭션이 필요할 때 적용됩니다. 커밋 후 기존 자원을 재사용하는 호출에서 독립적인 읽기 전용 트랜잭션을 보장하지 않습니다. 이 경로는 조회만 수행하며, 후속 커밋이 필요한 쓰기를 추가하면 별도의 경계를 설계해야 합니다.
 
 상세 쿼리를 실행해도 이미 관리 중인 메시지의 필드는 DB 값으로 덮어써지지 않습니다. Java에서 만든 나노초 생성 시각과 PostgreSQL에 저장된 마이크로초 시각이 다르면 SSE·이력과 REST 조회 값도 달라집니다. 이를 막기 위해 같은 연결에서 해당 메시지를 `EntityManager.refresh()`로 갱신한 뒤 DTO로 변환합니다. 추가 SELECT가 발생하며, 영속성 컨텍스트 전체를 초기화하지 않습니다. 메시지의 메모리 상태를 덮어쓰므로 아직 커밋하지 않은 변경이 있는 메시지의 조회에는 이 메서드를 사용하지 않습니다.
 
-현재 수정은 **저장 연결을 보유한 채 추가 조회 연결을 기다리는 구조**를 제거합니다. 외부 호출 동안의 연결 점유 시간 단축과 Executor·큐·작업 거절 정책은 후속 비동기 전환에서 다룹니다.
-
-위 연결 재사용은 DM 상세 조회에 관한 설명입니다. 알림의 독립 저장 트랜잭션은 별도 연결을 사용하며, 전체 흐름이 한 연결만 사용한다는 뜻은 아닙니다.
+DM 상세 조회는 저장 측 연결을 재사용합니다. 알림의 독립 저장에 필요한 별도 연결은 전용 워커에서 획득합니다. 실행기와 제출 실패 처리의 상세 내용은 [공통 알림 가이드](../notification/01-creation-and-delivery.md#실패했을-때-남는-것)에서 설명합니다.
 
 | 실패·상황 | DB와 SSE 결과 | 이후 처리 |
 | --- | --- | --- |

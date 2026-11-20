@@ -39,7 +39,7 @@
 관계가 없는 경우와 조회 실패 모두 알림을 발행하지 않지만, 실패 여부는 로그로 구분합니다.
 
 [NotificationDomainEventListener](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/notification/event/listener/NotificationDomainEventListener.java)가
-중복 ID와 행위자를 제외한 뒤 수신자별로 요청을 발행합니다. 남은 수신자가 없으면 발행하지 않습니다.
+중복 ID와 행위자를 제외한 뒤 수신자별 요청을 목록으로 만듭니다. 요청이 있으면 전용 실행기에 작업 하나를 제출합니다.
 중복 제거는 이번 조회 목록에만 적용하며, 같은 업무 이벤트의 재발행까지 막는 멱등성 처리는 아닙니다.
 저장 단계의 `NotificationUserReader`는 수신자 한 명을 `User` 연관관계로 연결하는 별도 역할입니다.
 
@@ -51,8 +51,9 @@ flowchart TD
     B --> C["NotificationDomainEventListener / AFTER_COMMIT"]
     C --> D["NotificationTargetReader: 팔로워 또는 구독자 조회"]
     D --> E["중복 ID·행위자 제외"]
-    E --> F["수신자마다 NotificationCreateRequestedEvent 재발행"]
-    F --> G["NotificationEventListener / fallbackExecution=true"]
+    E --> F["요청 목록을 작업 하나로 제출"]
+    F --> W["NotificationAsyncProcessor 워커에서 수신자별 요청 순차 발행"]
+    W --> G["NotificationEventListener / fallbackExecution=true"]
     G --> H["NotificationService.save / REQUIRES_NEW 저장·커밋"]
     H --> I["NotificationSseEventListener / AFTER_COMMIT"]
     I --> J["SseEventPublisher / notifications 발행 요청"]
@@ -61,8 +62,8 @@ flowchart TD
 업무 이벤트는 `AFTER_COMMIT`, `fallbackExecution=false`로 수신합니다. 롤백되거나 트랜잭션 없이 발행되면 처리하지 않습니다.
 서비스 호출을 감싼 트랜잭션이 있다면 그 트랜잭션의 커밋 후에 처리하며, 서비스 본문 종료나 `save` 반환은 커밋 완료가 아닙니다.
 
-변환용 트랜잭션은 열지 않습니다. 커밋 후 재발행한 공통 요청을 받아 **수신자별 독립 트랜잭션**으로 알림을 저장합니다.
-현재 `@Async` 없이 커밋 처리 스레드에서 순차 실행하며, 완료가 브라우저 수신 확인을 의미하지는 않습니다.
+커밋 처리 스레드에서 수신자를 조회하고 요청 목록 전체를 제출합니다. 알림 워커는 공통 요청을 순서대로 발행합니다.
+요청마다 `REQUIRES_NEW`로 알림을 저장하고, 각 알림이 커밋되면 같은 워커가 SSE 발행을 요청합니다.
 DTO·공유 이력·Redis·연결별 전송은 [공통 저장·전송 흐름](01-creation-and-delivery.md)에서 이어집니다.
 
 ## 실패 지점별 담당과 결과
@@ -71,7 +72,8 @@ DTO·공유 이력·Redis·연결별 전송은 [공통 저장·전송 흐름](01
 | --- | --- | --- |
 | 업무 저장·커밋 | 생산 서비스의 트랜잭션 | 롤백 시 커밋 후 소비가 실행되지 않아 알림 요청 없음 |
 | 팔로워·구독자 조회 | 리스너의 조회 헬퍼 | `RuntimeException` 기록 후 빈 목록 반환으로 미발행, 업무 커밋 유지 |
-| 한 수신자의 변환·재발행 | 리스너의 수신자별 발행 헬퍼 | `RuntimeException` 기록 후 나머지 수신자 처리 계속 |
+| 요청 목록 생성·작업 제출 거부 | 업무 이벤트 리스너 | 실패 기록, 해당 요청 목록 미처리, 업무 커밋 유지 |
+| 한 수신자의 공통 요청 발행 | 비동기 프로세서 | 실패한 수신자를 기록하고 같은 작업의 다음 요청 처리 |
 | 한 수신자의 알림 저장 | 공통 요청 리스너·저장 서비스 | 해당 알림 트랜잭션 롤백, 업무 커밋 유지, 후속 수신자 처리 계속 |
 | SSE 발행 요청 | 알림 SSE 리스너 | `SsePublishException` 기록, 이미 커밋된 업무와 DB 알림 유지 |
 
@@ -80,11 +82,11 @@ DTO·공유 이력·Redis·연결별 전송은 [공통 저장·전송 흐름](01
 | 플레이리스트 생성 | `playlistId`, `ownerId` |
 | 콘텐츠 추가 | `playlistId`, `contentId`, `actorId` |
 
-두 조회 로그에 `exceptionType`을 남기며, 개별 변환·재발행 실패 로그에는 `receiverId`도 추가합니다.
-이 로그에는 이름·제목·원본 예외 메시지를 넣지 않습니다. 저장·SSE 실패 로그는 [공통 실패 처리](01-creation-and-delivery.md#실패했을-때-남는-것)를 따릅니다.
+조회·생성·제출·발행 실패 로그에는 업무 식별자와 `exceptionType`을 남깁니다. 제출 거부에는 요청 수를, 개별 요청 발행 실패에는 `receiverId`를 추가합니다.
+저장·SSE 실패 로그는 [공통 실패 처리](01-creation-and-delivery.md#실패했을-때-남는-것)를 따릅니다.
 
 업무 커밋과 알림 저장은 하나의 원자적 작업이 아닙니다. 그 사이 프로세스가 종료되면 알림이 누락될 수 있습니다.
-업무 이벤트의 자동 재발행·Outbox·비동기화·Kafka 전환은 현재 연동에 포함하지 않습니다.
+업무 이벤트 자동 재발행·Outbox·Kafka 전환은 후속 범위입니다.
 
 ---
 
