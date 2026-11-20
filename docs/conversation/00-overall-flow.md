@@ -30,12 +30,13 @@ flowchart TD
     SAVE --> EVENT["트랜잭션 안에서 DM 생성 이벤트 발행"]
     EVENT --> COMMIT["독립 트랜잭션 커밋 완료"]
     COMMIT --> SSE["AFTER_COMMIT: 저장 연결 재사용·상세 조회·DTO 변환·SSE 발행 요청"]
-    COMMIT --> NOTICE["별도 AFTER_COMMIT 소비자: 공통 알림 요청"]
-    NOTICE --> NSAVE["REQUIRES_NEW 알림 저장·커밋 → notifications 발행 요청"]
+    COMMIT --> NOTICE["별도 AFTER_COMMIT 소비자: 알림 요청 구성·작업 제출"]
+    NOTICE --> WORKER["알림 전용 워커: 공통 알림 요청 발행"]
+    WORKER --> NSAVE["REQUIRES_NEW 알림 저장·커밋 → notifications 발행 요청"]
     SSE --> RECEIVER["공유 이력·Redis → B의 모든 SSE 연결: direct-messages"]
     NSAVE --> NRECEIVER["공유 이력·Redis → B의 모든 SSE 연결: notifications"]
     SSE --> DONE["커밋 후 콜백 처리 종료·Saver 반환"]
-    NSAVE --> DONE
+    NOTICE --> DONE
     DONE --> DTO["Service: WebSocket용 DTO·프로필 URL 변환"]
     DTO --> PUB["Publisher: Redis에 JSON 발행"]
     PUB --> REDIS["공유 Redis DM 채널"]
@@ -61,7 +62,7 @@ flowchart TD
 
 `direct-messages` SSE는 수신자 B의 모든 SSE 연결로 전달하고, 발신자 A와 다른 사용자는 제외합니다. 제공된 프론트는 WebSocket으로 말풍선을 추가하고 SSE로 대화방 목록을 갱신하므로, B가 대화방을 구독하고 있어도 SSE를 생략하지 않습니다.
 
-알림 소비자는 B의 접속·구독 여부와 무관하게 알림을 저장하고 `notifications` SSE를 요청합니다. 그림의 두 소비자는 동기 콜백이며 분기는 책임 구분을 뜻합니다. 소비자 실행 순서에 의존하지 않고, DM SSE·알림 SSE·WebSocket의 브라우저 도착 순서도 보장하지 않습니다. 각 경계에서 처리한 실패는 이미 커밋된 DM과 다른 전송 경로를 유지합니다.
+송신 서비스는 DM SSE 콜백과 알림 작업 제출이 끝나면 WebSocket 발행으로 진행합니다. 알림 워커는 B의 접속·구독 여부와 무관하게 별도로 알림을 저장하고 `notifications` SSE를 요청합니다. 세 전송 경로의 브라우저 도착 순서는 보장하지 않습니다. 각 경계의 실패 처리는 이미 커밋된 DM과 다른 전송 경로를 유지합니다. [DM 알림 연동](../notification/11-direct-message-integration.md)
 
 ## 두 종류의 구독을 구분한다
 

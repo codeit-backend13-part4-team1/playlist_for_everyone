@@ -10,7 +10,11 @@
 | 테스트 | 실제로 검증하는 것 | 대체하거나 포함하지 않는 것 |
 | --- | --- | --- |
 | `NotificationCommandTest` | 제목 길이 경계, 말줄임과 이모지의 서로게이트 쌍 보존 | 생성자 직접 호출. Bean Validation·DB 검증 없음 |
-| `NotificationDomainEventListenerTest` | DM을 포함한 여섯 업무 이벤트의 수신자·문구·수준, 이름 대체, 중복·행위자 제외, 조회·재발행 실패 처리 | 발행자·수신자 조회는 Mock, 리스너 직접 호출. Spring 트랜잭션 실행 없음 |
+| `NotificationDomainEventListenerTest` | 여섯 업무 이벤트의 요청 목록 구성·제출, 수신자 조회 실패, 문구·수준·제외 규칙 | 프로세서·수신자 조회는 Mock, 리스너 직접 호출. Spring 트랜잭션 실행 없음 |
+| `NotificationAsyncProcessorTest` | 요청의 순차 발행, 미검증 추가 발행 감지, 개별 발행 실패 격리 | 이벤트 발행자는 Mock. 프로세서 직접 호출로 발행 로직을 검증 |
+| `NotificationAsyncConfigTest` | 전용 실행기 설정과 포화 시 거부, 대기 작업에 제출 당시 인증·요청 ID 전달 | `ApplicationContextRunner`로 실행기 설정을 검증 |
+| `NotificationFixtureCleanupTest` | 작업 완료·실패에 따른 픽스처 정리, 종료 미확인 시 정리 보류 | 실행기는 Mock. 통합 테스트의 정리 규칙을 검증 |
+| `NotificationBusinessAsyncIntegrationTest` | 업무 커밋 반환, 이벤트당 작업 한 건, 전용 워커의 순차 처리, 포화 시 목록 전체 거부 | 실제 트랜잭션과 전용 실행기를 사용하고 공통 요청 리스너는 Mock |
 | `NotificationServiceTest` | 조회한 User 연결, 수신자 미존재 시 저장·발행 미호출, 저장 결과의 DTO·이벤트 구성 | 사용자 조회 컴포넌트·저장소·이벤트 발행자는 Mock. DB·Auditing·트랜잭션 실행 없음 |
 | `NotificationSseEventListenerTest` | ID·수신자·이벤트 이름·DTO 보존, 실패 처리·후속 발행·로그 | 발행자는 Mock, 리스너 직접 호출. AFTER_COMMIT 실행 시점 검증 없음 |
 | `NotificationIntegrationTest` | 실제 팔로우·권한 변경·구독과 알림 저장, PostgreSQL·Flyway, 커밋·롤백·실패 격리 | SSE 발행자는 Mock, 공통 요청 리스너는 Spy. Redis·HTTP 수신 검증 없음 |
@@ -27,8 +31,8 @@
 구독 테스트는 업무 이벤트 생산까지 집중하도록 소비자를 대체하고, 실제 알림 소비는 `NotificationIntegrationTest`에서 확인합니다.
 
 권한 변경 단위 테스트는 `USER → ADMIN`, `ADMIN → USER`의 문구를 각각 확인합니다.
-구독은 소유자 수신·이름 대체·자기 알림 제외를 검증하며, 세 업무 모두 재발행 실패가 다음 이벤트 처리를 막지 않는지 확인합니다.
-로그 필드와 민감 정보 제외는 팔로우뿐 아니라 플레이리스트 생성·콘텐츠 추가의 조회 실패 사례에서도 확인합니다.
+구독은 소유자 수신·이름 대체·자기 알림 제외를 검증합니다. 리스너 단위 테스트는 제출한 목록을 확인하고, 요청 발행 실패 후 다음 수신자를 처리하는 검증은 프로세서 단위 테스트가 담당합니다.
+플레이리스트 생성·콘텐츠 추가의 조회 실패 사례에서는 로그 필드와 민감 정보 제외도 확인합니다.
 두 신규 이벤트의 수신자별 처리와 저장소 Spy 사용 목적은 [플레이리스트 알림 테스트](10-playlist-event-testing.md)에 정리했습니다.
 DM의 변환 규칙·실패 주입과 실제 HTTP 수신 검증은 [DM 알림 테스트](12-direct-message-testing.md)에서 설명합니다. 해당 통합 테스트는 대화방 테스트 패키지에 있습니다.
 
@@ -43,6 +47,7 @@ User 연관관계의 저장·삭제·DTO 변환 검증은 [수신자 연관관�
 직접 이벤트를 발행하는 사례와 실제 권한 변경·구독 사례는 `TransactionTemplate`으로 커밋·롤백을 제어합니다.
 `UserAdministrationService.updateRole`과 `PlaylistService.subscribe`는 이 트랜잭션에 참여합니다.
 실제 `FollowService.follow()` 호출은 내부 `FollowSaver`의 `REQUIRES_NEW` 커밋을 사용합니다.
+업무 커밋 후 제출한 알림 작업은 `NotificationTaskTracker`로 완료를 기다린 다음 저장과 SSE 발행을 확인합니다. 추적기는 실제 인증·MDC 데코레이터를 거친 작업의 완료를 기록합니다.
 
 | 시나리오 | 확인하는 결과 |
 | --- | --- |
@@ -73,7 +78,7 @@ DB 실패 사례는 존재하는 수신자와 정상 본문에 `(char) 0`을 덧
 이는 Java의 `null`이 아닌 **NUL 문자**로, 입력 검증을 통과한 뒤 PostgreSQL 저장이 실패하도록 준비한 값입니다.
 
 업무 이벤트 리스너는 실제 빈입니다. 공통 요청 리스너의 Spy도 기본적으로 실제 동작합니다.
-재발행 실패 사례에서만 공통 요청 수신 시 예외를 던지도록 하며, 팔로우 유지와 도메인 리스너의 실패 로그를 함께 확인합니다.
+재발행 실패 사례에서 공통 요청 수신 시 예외를 던지도록 하며, 팔로우 유지와 워커의 발행 실패 로그를 함께 확인합니다.
 
 알림 저장 트랜잭션의 커밋 전 상태를 검사하는 사례는 저장소와 생성 이벤트를 테스트 트랜잭션 안에서 직접 사용합니다.
 `save` 서비스의 `REQUIRES_NEW`는 반환 시 이미 커밋되므로, 이 방식으로 저장 트랜잭션 내부를 관찰합니다.
@@ -133,6 +138,9 @@ Redis CLI의 PUBLISH만으로는 현재 이력·DB 필터 경로의 알림 수�
 ```bash
 ./gradlew test --tests '*NotificationCommandTest' \
   --tests '*NotificationDomainEventListenerTest' \
+  --tests '*NotificationAsyncProcessorTest' \
+  --tests '*NotificationAsyncConfigTest' \
+  --tests '*NotificationFixtureCleanupTest' \
   --tests '*NotificationServiceTest' \
   --tests '*NotificationSseEventListenerTest' --no-daemon --console=plain
 ```
@@ -142,6 +150,7 @@ Docker를 실행한 뒤 실제 트랜잭션과 Redis·HTTP 통합 테스트를 �
 
 ```bash
 ./gradlew test --tests '*NotificationIntegrationTest' \
+  --tests '*NotificationBusinessAsyncIntegrationTest' \
   --tests '*NotificationPlaylistIntegrationTest' \
   --tests '*NotificationSseIntegrationTest' --no-daemon --console=plain
 ```
@@ -151,9 +160,13 @@ Docker를 실행한 뒤 실제 트랜잭션과 Redis·HTTP 통합 테스트를 �
 ```bash
 ./gradlew test --tests '*NotificationCommandTest' \
   --tests '*NotificationDomainEventListenerTest' \
+  --tests '*NotificationAsyncProcessorTest' \
+  --tests '*NotificationAsyncConfigTest' \
+  --tests '*NotificationFixtureCleanupTest' \
   --tests '*NotificationServiceTest' \
   --tests '*NotificationSseEventListenerTest' \
   --tests '*NotificationIntegrationTest' \
+  --tests '*NotificationBusinessAsyncIntegrationTest' \
   --tests '*NotificationPlaylistIntegrationTest' \
   --tests '*NotificationSseIntegrationTest' --no-daemon --console=plain
 ```

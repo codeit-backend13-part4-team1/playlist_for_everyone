@@ -1,6 +1,6 @@
 # 알림 구현 가이드
 
-**업무 이벤트 → 공통 생성 요청 → 저장·커밋 → SSE 전송 → 목록 조회 → 읽음 처리**를 따라갈 수 있도록 정리한 가이드입니다.
+**업무 커밋 → 알림 작업 제출 → 워커의 저장·커밋과 SSE 발행 요청**을 따라가는 가이드입니다. 목록 조회와 읽음 처리도 함께 설명합니다.
 공통 생성·전송뿐 아니라 [#38 조회·삭제](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/38),
 [#51 SSE 연동](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/51),
 [#53 이력 복구와 알림 필터](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/53),
@@ -9,19 +9,20 @@
 [#155 팔로우 알림 연동](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/155),
 [#156 권한 변경·구독 알림 연동](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/156),
 [#157 플레이리스트 생성·콘텐츠 추가 알림 연동](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/157),
-[#159 DM 알림 연동](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/159)의 현재 코드와 검증 범위를 설명합니다.
+[#159 DM 알림 연동](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/159),
+[#168 알림 비동기 처리](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/168)의 현재 코드와 검증 범위를 설명합니다.
 
 ## 추천 읽기 순서
 
 | 번호 | 문서 | 확인할 내용 |
 | --- | --- | --- |
-| 1 | [알림 생성·저장과 SSE 전송](01-creation-and-delivery.md) | 입력 검증·말줄임, 요청 수신 조건과 저장 커밋, 이벤트 ID·DTO, 실패 처리 |
-| 2 | [알림 생성·전송 테스트](02-testing.md) | Mock과 실제 인프라의 차이, 커밋·롤백 검증, 서버 간 수신 |
+| 1 | [알림 생성·저장과 SSE 전송](01-creation-and-delivery.md) | 전용 실행기와 인증·요청 ID 전달, 입력 검증·저장 커밋, 이벤트 ID·DTO, 실패 처리 |
+| 2 | [알림 생성·전송 테스트](02-testing.md) | 작업 제출·워커 검증, 커밋·롤백, Mock과 실제 인프라의 차이, 서버 간 수신 |
 | 3 | [목록 조회·읽음 처리와 JWT 인증](03-query-and-security.md) | 수신자 결정, 커서 요청·응답, 삭제·오류 정책 |
 | 4 | [조회·인증 테스트와 Swagger 확인](04-query-and-security-testing.md) | MVC·서비스·저장소·통합 테스트의 역할, 실행 명령, CSRF 후속 범위 |
 | 5 | [동시 읽음 처리와 잠금 검증](05-concurrent-deletion-testing.md) | 두 트랜잭션의 순서, 준비·커밋 신호, DB 잠금 대기와 종료 정리 |
 | 6 | [수신자 연관관계와 사용자 조회](06-receiver-association.md) | User 연결, 조회 컴포넌트, 사용자 보존과 DTO 변환 시 SQL 검증 |
-| 7 | [업무 이벤트와 팔로우 알림 연동](07-domain-event-integration.md) | 생산자·소비자 책임, 실제 팔로우 예시, 커밋 후 재발행과 실패 격리 |
+| 7 | [업무 이벤트와 팔로우 알림 연동](07-domain-event-integration.md) | 생산자·소비자 책임, 실제 팔로우 예시, 커밋 후 작업 제출과 실패 격리 |
 | 8 | [권한 변경·플레이리스트 구독 알림 연동](08-role-subscription-integration.md) | 이벤트 발행 조건, 수신자·문구·자기 구독 제외, 커밋 후 공통 경로 연결 |
 | 9 | [플레이리스트 생성·콘텐츠 추가 알림 연동](09-playlist-event-integration.md) | 처리 시점의 수신자 조회, 중복·행위자 제외, 수신자별 실패 처리 |
 | 10 | [플레이리스트 알림 테스트](10-playlist-event-testing.md) | 실제 업무 커밋·롤백, 조회·첫 저장 실패, Spy 사용 목적과 실행 명령 |
@@ -42,7 +43,7 @@ DM 알림은 **11 → 12** 순서로 읽고, 메시지 생산·WebSocket은 [대
 
 | 알림 도메인에서 설명하는 것 | 공통 SSE 가이드에서 설명하는 것 |
 | --- | --- |
-| 업무 이벤트 변환, 공통 요청, 독립 저장·커밋, DTO 스냅샷 | 연결 생성·종료, 다중 탭, 하트비트 |
+| 업무 이벤트 변환과 작업 제출, 공통 요청 발행, 독립 저장·커밋, DTO 스냅샷 | 연결 생성·종료, 다중 탭, 하트비트 |
 | 커밋 후 발행 요청, 삭제된 알림의 수신자별 필터 | 공유 이력 저장·Redis 발행·연결별 복구·재시도 |
 | 알림 생성부터 HTTP 수신까지의 통합 테스트 | 공통 전송 계약과 저장소·설정 테스트 |
 
@@ -53,7 +54,8 @@ HTTP 인증은 공통 JWT 필터가 담당하고, 알림 컨트롤러는 검증�
 ## 현재 구현과 후속 범위
 
 팔로우·권한 변경·플레이리스트 구독·생성·콘텐츠 추가·DM 생성을 공통 알림 생성 경로에 연결합니다.
-업무 커밋 → 공통 생성 요청 재발행 → 알림 저장·커밋 → 공유 이력 저장 → Redis Pub/Sub → 이력 조회·필터 → SSE 응답으로 이어지는 구조입니다.
+업무 커밋 후 수신자를 결정하고 요청 목록을 전용 실행기에 작업 하나로 제출합니다. 워커가 공통 요청을 순서대로 발행하면 수신자별 알림 저장·커밋과 SSE 발행 요청으로 이어집니다.
+공통 SSE 발행기는 이력을 저장하고 Redis로 알립니다. 수신 서버는 이력을 조회·필터링해 연결로 전송합니다.
 실제 업무 서비스부터 SSE 발행 요청까지와 공통 요청부터 HTTP 수신까지는 서로 다른 통합 테스트에서 검증합니다.
 DM은 실제 저장부터 알림 저장·Redis·HTTP SSE 수신까지 연결하는 통합 테스트도 포함하며, 검증 범위는 12번에서 구분합니다.
 저장 시 사용자 조회 컴포넌트로 수신자를 찾아 `User` 연관관계로 연결하며, 요청·응답·이벤트에는 수신자 UUID를 사용합니다.

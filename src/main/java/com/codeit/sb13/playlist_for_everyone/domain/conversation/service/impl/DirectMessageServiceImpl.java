@@ -88,8 +88,8 @@ public class DirectMessageServiceImpl implements DirectMessageService {
     }
 
     /**
-     * 저장 커밋 → 프로필 URL을 포함한 DTO 변환 → 발행 순서를 유지한다.
-     * Saver는 별도 빈의 REQUIRES_NEW 프록시이므로 이 메서드가 결과를 받으면 저장 커밋이 완료된 상태다.
+     * 독립 저장 트랜잭션의 커밋 처리를 마치고 Saver가 반환되면 프로필 URL을 포함한 WebSocket용 DTO를 만들어 발행한다.
+     * 알림 저장과 {@code notifications} SSE 발행은 전용 워커에서 별도로 진행한다.
      * 이후 실패로 이미 커밋한 메시지를 롤백하거나 여기서 자동 재발행하지 않는다.
      */
     @Override
