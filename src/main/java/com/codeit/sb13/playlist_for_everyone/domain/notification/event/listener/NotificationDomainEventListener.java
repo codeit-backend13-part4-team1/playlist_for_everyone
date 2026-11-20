@@ -1,8 +1,11 @@
 package com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener;
 
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.event.DirectMessageCreatedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.event.UserFollowedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationCreateRequestedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationSource;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.NotificationLevel;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.monitoring.NotificationMetrics;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationTargetReader;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistContentAddedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistCreatedEvent;
@@ -19,7 +22,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * 팔로우·권한 변경과 플레이리스트 구독·생성·콘텐츠 추가 이벤트를 공통 알림 생성 요청으로 변환한다.
+ * 팔로우·권한 변경·플레이리스트 구독·생성·콘텐츠 추가·DM 생성 이벤트를 공통 알림 생성 요청으로 변환한다.
  * 생산 도메인은 업무 사실을 전달하고, 이 리스너가 수신자와 알림 문구를 결정한다.
  *
  * <p>DB 업무 이벤트는 기본 AFTER_COMMIT, fallbackExecution=false로 수신한다.
@@ -44,6 +47,8 @@ public class NotificationDomainEventListener {
 
     private final NotificationTargetReader targetReader;
 
+    private final NotificationMetrics metrics;
+
     /**
      * 팔로우받은 사용자(followeeId)에게 INFO 수준의 알림 생성을 요청한다.
      *
@@ -58,8 +63,9 @@ public class NotificationDomainEventListener {
                     event.followeeId(),
                     "새로운 팔로워",
                     "%s님이 회원님을 팔로우했습니다.".formatted(followerName),
-                    NotificationLevel.INFO);
-            eventPublisher.publishEvent(requestedEvent);
+                    NotificationLevel.INFO,
+                    NotificationSource.USER_FOLLOWED);
+            publishNotificationRequest(requestedEvent);
         } catch (RuntimeException e){
             // 이미 커밋된 팔로우와 알림 처리를 분리하기 위해 변환·재발행 실패를 기록하고 종료한다.
             // 사용자 이름이나 원본 예외 메시지 대신 업무 식별자와 예외 타입을 남긴다.
@@ -90,10 +96,11 @@ public class NotificationDomainEventListener {
             NotificationCreateRequestedEvent requestedEvent = new NotificationCreateRequestedEvent(
                     event.userId(), "권한 변경",
                     "회원님의 권한이 %s에서 %s%s 변경되었습니다.".formatted(event.previousRole(), event.newRole(), postposition),
-                    NotificationLevel.INFO
-                );
+                    NotificationLevel.INFO,
+                    NotificationSource.USER_ROLE_CHANGED
+            );
 
-            eventPublisher.publishEvent(requestedEvent);
+            publishNotificationRequest(requestedEvent);
         } catch (RuntimeException e){
             log.warn(
                     "권한 변경 알림 변환·재발행 실패. userId={}, exceptionType={}",
@@ -122,10 +129,12 @@ public class NotificationDomainEventListener {
             String subscriberName = resolveUserName(event.subscriberName());
             NotificationCreateRequestedEvent requestedEvent = new NotificationCreateRequestedEvent(
                     event.ownerId(), "새로운 구독자",
-                    "%s님이 \"%s\" 플레이리스트를 구독했습니다.".formatted(subscriberName, event.playlistTitle())
-                    , NotificationLevel.INFO);
+                    "%s님이 \"%s\" 플레이리스트를 구독했습니다.".formatted(subscriberName, event.playlistTitle()),
+                    NotificationLevel.INFO,
+                    NotificationSource.PLAYLIST_SUBSCRIBED
+            );
 
-            eventPublisher.publishEvent(requestedEvent);
+            publishNotificationRequest(requestedEvent);
         } catch (RuntimeException e){
             log.warn(
                     """
@@ -187,6 +196,45 @@ public class NotificationDomainEventListener {
     }
 
     /**
+     * DM 수신자(receiverId)에게 '새로운 메시지' 제목의 INFO 알림 생성을 요청한다.
+     * 발신자와 수신자가 같으면 자기 알림을 제외하며, SSE 접속이나 대화방 WebSocket 구독 여부는 검사하지 않는다.
+     *
+     * <p>내용은 '{senderName}님이 메시지를 보냈습니다.'로 구성한다. 이름은 사용자를 다시 조회하지 않고
+     * 이벤트 생성 당시의 스냅샷을 사용하며, null·빈 문자열·공백뿐인 값은 '사용자'로 대체한다.
+     * 메시지 본문은 알림 문구와 실패 로그에 포함하지 않는다.
+     *
+     * <p>기본 AFTER_COMMIT, fallbackExecution=false에 따라 DM 커밋에 성공한 경우에만 실행한다.
+     * 변환용 트랜잭션 없이 공통 생성 요청을 재발행하며, fallbackExecution=true인 NotificationEventListener가
+     * 이를 받아 NotificationService.save의 REQUIRES_NEW 트랜잭션으로 저장한다.
+     * 알림 저장이 커밋되면 NotificationSseEventListener가 'notifications' SSE 발행을 요청한다.
+     *
+     * <p>변환·재발행의 RuntimeException은 메시지·대화방·수신자 ID와 예외 타입만 기록하고 전파하지 않는다.
+     * 알림 저장 실패는 공통 요청 리스너가, 알림 SSE의 SsePublishException은 알림 SSE 리스너가 처리한다.
+     * 이 경계에서 처리한 실패는 이미 커밋된 DM을 되돌리거나 DM SSE·WebSocket의 후속 실행을 차단하지 않는다.
+     */
+    @TransactionalEventListener
+    public void handleDirectMessageCreated(DirectMessageCreatedEvent event){
+        try {
+            if (event.senderId().equals(event.receiverId())){
+                return;
+            }
+            String senderName = resolveUserName(event.senderName());
+            NotificationCreateRequestedEvent requestedEvent = new NotificationCreateRequestedEvent(
+                    event.receiverId(),
+                    "새로운 메시지",
+                    "%s님이 메시지를 보냈습니다.".formatted(senderName),
+                    NotificationLevel.INFO,
+                    NotificationSource.DIRECT_MESSAGE_CREATED
+            );
+
+            publishNotificationRequest(requestedEvent);
+        } catch (RuntimeException e){
+            log.warn("DM 알림 변환·재발행 실패. directMessageId={}, conversationId={}, receiverId={}, exceptionType={}",
+                    event.directMessageId(), event.conversationId(), event.receiverId(), e.getClass().getSimpleName());
+        }
+    }
+
+    /**
      * 정상 조회 결과를 그대로 반환하고, RuntimeException 발생 시 로그를 남긴 뒤 빈 목록을 반환한다.
      * 관계가 없는 경우와 조회 실패 모두 발행 대상은 없지만, 실패 여부는 로그로 구분한다.
      */
@@ -194,6 +242,7 @@ public class NotificationDomainEventListener {
         try {
             return targetReader.findFollowerIds(event.ownerId());
         } catch (RuntimeException e){
+            metrics.recordLookupFailure();
             log.warn(
                     "플레이리스트 생성 알림 수신자 조회실패. playlistId={}, ownerId={}, exceptionType={}",
                     event.playlistId(),
@@ -211,12 +260,14 @@ public class NotificationDomainEventListener {
      */
     private void publishPlaylistCreatedNotification(PlaylistCreatedEvent event, UUID receiverId, String ownerName) {
         try {
-            eventPublisher.publishEvent(new NotificationCreateRequestedEvent(
+            NotificationCreateRequestedEvent request = new NotificationCreateRequestedEvent(
                     receiverId,
                     "팔로우한 사용자의 새 플레이리스트",
                     "%s님이 \"%s\" 플레이리스트를 만들었습니다.".formatted(ownerName, event.playlistTitle()),
-                    NotificationLevel.INFO)
+                    NotificationLevel.INFO,
+                    NotificationSource.PLAYLIST_CREATED
             );
+            publishNotificationRequest(request);
         } catch (RuntimeException e){
             log.warn(
                     "플레이리스트 생성 알림 변환·재발행 실패. playlistId={}, ownerId={}, receiverId={}, exceptionType={}",
@@ -236,6 +287,7 @@ public class NotificationDomainEventListener {
         try {
             return targetReader.findSubscriberIds(event.playlistId());
         } catch (RuntimeException e) {
+            metrics.recordLookupFailure();
             log.warn(
                     "콘텐츠 추가 알림 수신자 조회 실패. playlistId={}, contentId={}, actorId={}, exceptionType={}",
                     event.playlistId(),
@@ -254,13 +306,14 @@ public class NotificationDomainEventListener {
      */
     private void publishPlaylistContentAddedNotification(PlaylistContentAddedEvent event, UUID receiverId) {
         try {
-            eventPublisher.publishEvent(
-                    new NotificationCreateRequestedEvent(
-                            receiverId,
-                            "구독한 플레이리스트에 새 콘텐츠",
-                            "\"%s\" 플레이리스트에 \"%s\" 콘텐츠가 추가되었습니다.".formatted(event.playlistTitle(), event.contentTitle()),
-                            NotificationLevel.INFO)
+            NotificationCreateRequestedEvent request = new NotificationCreateRequestedEvent(
+                    receiverId,
+                    "구독한 플레이리스트에 새 콘텐츠",
+                    "\"%s\" 플레이리스트에 \"%s\" 콘텐츠가 추가되었습니다.".formatted(event.playlistTitle(), event.contentTitle()),
+                    NotificationLevel.INFO,
+                    NotificationSource.PLAYLIST_CONTENT_ADDED
             );
+            publishNotificationRequest(request);
         } catch (RuntimeException e){
             log.warn(
                     "콘텐츠 추가 알림 변환·재발행 실패. playlistId={}, contentId={}, actorId={}, receiverId={}, exceptionType={}",
@@ -281,9 +334,18 @@ public class NotificationDomainEventListener {
         return name;
     }
 
-    /** 팔로워·구독자·플레이리스트 소유자의 이름이 없을 때 사용하는 공통 표시명은 '사용자'다. */
+    /** 팔로워·구독자·플레이리스트 소유자·DM 발신자의 이름이 없을 때 사용하는 공통 표시명은 '사용자'다. */
     private String resolveUserName(String name){
        return resolveUserName(name, "사용자");
     }
 
+    private void publishNotificationRequest(NotificationCreateRequestedEvent request) {
+        metrics.recordPublishAttempt(request.source());
+        try {
+            eventPublisher.publishEvent(request);
+        } catch (RuntimeException e) {
+            metrics.recordPublishFailure();
+            throw e;
+        }
+    }
 }

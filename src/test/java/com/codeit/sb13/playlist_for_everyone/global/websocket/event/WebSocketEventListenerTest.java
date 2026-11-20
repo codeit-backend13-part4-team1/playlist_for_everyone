@@ -1,8 +1,8 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.event;
 
 
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSession;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionContentDeleteEvent;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,7 +23,7 @@ public class WebSocketEventListenerTest {
     ApplicationEventPublisher applicationEventPublisher;
 
     @MockitoBean
-    WatchingSession watchingSession;
+    WatchingSessionService watchingSessionService;
 
     @Test
     @DisplayName("컨텐츠 삭제시 이벤트 호출 1회만 발생 하는지 테스트")
@@ -32,7 +32,7 @@ public class WebSocketEventListenerTest {
 
         applicationEventPublisher.publishEvent(event);
 
-        verify(watchingSession, times(1)).disconnectWithContentId(eq(event.contentId()));
+        verify(watchingSessionService, times(1)).cleanUpWithContentId(eq(event.contentId()));
     }
 
 

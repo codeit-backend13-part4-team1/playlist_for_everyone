@@ -1,8 +1,10 @@
 package com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener;
 
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.event.DirectMessageCreatedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.event.UserFollowedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationCreateRequestedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.NotificationLevel;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.monitoring.NotificationMetrics;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationTargetReader;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistContentAddedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistCreatedEvent;
@@ -56,6 +58,9 @@ class NotificationDomainEventListenerTest {
 
     @Mock
     private NotificationTargetReader targetReader;
+
+    @Mock
+    private NotificationMetrics metrics;
 
     @InjectMocks
     private NotificationDomainEventListener listener;
@@ -589,6 +594,133 @@ class NotificationDomainEventListenerTest {
                         "exceptionType=IllegalStateException");
     }
 
+    @Test
+    @DisplayName("DM 생성 이벤트를 수신자의 INFO 알림 생성 요청으로 변환하여 한 번 발행한다.")
+    void publishesNotificationRequestForDirectMessageReceiver(){
+        UUID senderId = UUID.randomUUID();
+        UUID receiverId = UUID.randomUUID();
+
+        DirectMessageCreatedEvent event = new DirectMessageCreatedEvent(
+                UUID.randomUUID(), UUID.randomUUID(), senderId, "홍길동", receiverId);
+
+        listener.handleDirectMessageCreated(event);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        NotificationCreateRequestedEvent request = eventCaptor.getValue();
+
+        assertThat(request.receiverId()).isEqualTo(receiverId);
+        assertThat(request.title()).isEqualTo("새로운 메시지");
+        assertThat(request.content()).isEqualTo("홍길동님이 메시지를 보냈습니다.");
+        assertThat(request.level()).isEqualTo(NotificationLevel.INFO);
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {" ", "\t", "\n"})
+    @DisplayName("DM 발신자 이름이 없거나 공백이면 사용자라는 이름으로 알림을 요청한다.")
+    void usesDefaultDirectMessageSenderNameWhenMissingOrBlank(String senderName){
+        DirectMessageCreatedEvent event = new DirectMessageCreatedEvent(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                senderName,
+                UUID.randomUUID()
+        );
+
+        listener.handleDirectMessageCreated(event);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().content()).isEqualTo("사용자님이 메시지를 보냈습니다.");
+    }
+
+    @Test
+    @DisplayName("DM 발신자와 수신자가 같으면 알림 생성 요청을 발행하지 않는다.")
+    void doesNotPublishDirectMessageNotificationForSender(){
+        UUID userId = UUID.randomUUID();
+
+        DirectMessageCreatedEvent event = new DirectMessageCreatedEvent(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                userId,
+                "홍길동",
+                userId
+        );
+
+        listener.handleDirectMessageCreated(event);
+        verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
+    @ExtendWith(OutputCaptureExtension.class)
+    @DisplayName("DM 알림 요청 발행 실패 시 예외를 전파하지 않고 식별자와 예외 타입을 기록한다.")
+    void handlesAndLogsDirectMessageNotificationRequestPublishFailure(CapturedOutput output){
+        DirectMessageCreatedEvent event = new DirectMessageCreatedEvent(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                "로그에 노출하지 않을 이름",
+                UUID.randomUUID()
+        );
+
+        String failureMessage = "테스트용 발행 실패:" + event.senderName();
+
+        doThrow(new IllegalStateException(failureMessage))
+                .when(eventPublisher)
+                .publishEvent(any(NotificationCreateRequestedEvent.class));
+
+        assertThatCode(() -> listener.handleDirectMessageCreated(event))
+                .doesNotThrowAnyException();
+
+        verify(eventPublisher).publishEvent(any(NotificationCreateRequestedEvent.class));
+        assertThat(output.getAll())
+                .contains(
+                        "DM 알림 변환·재발행 실패.",
+                        "directMessageId=" + event.directMessageId(),
+                        "conversationId=" + event.conversationId(),
+                        "receiverId=" + event.receiverId(),
+                        "exceptionType=IllegalStateException"
+                )
+                .doesNotContain(event.senderName(), failureMessage);
+    }
+
+    @Test
+    @DisplayName("DM 알림 요청 발행에 실패해도 다음 이벤트의 알림 요청을 정상 발행한다.")
+    void publishesNextDirectMessageNotificationRequestAfterFailure(){
+        DirectMessageCreatedEvent failedEvent = new DirectMessageCreatedEvent(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                "첫 사용자",
+                UUID.randomUUID()
+        );
+
+        DirectMessageCreatedEvent nextEvent = new DirectMessageCreatedEvent(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                "다음 사용자",
+                UUID.randomUUID()
+        );
+
+        doThrow(new IllegalStateException("테스트용 알림 요청 발행 실패"))
+                .doNothing()
+                .when(eventPublisher)
+                .publishEvent(any(NotificationCreateRequestedEvent.class));
+
+        assertThatCode(() ->{
+            listener.handleDirectMessageCreated(failedEvent);
+            listener.handleDirectMessageCreated(nextEvent);
+        }).doesNotThrowAnyException();
+
+        verify(eventPublisher, times(2)).publishEvent(eventCaptor.capture());
+
+        assertThat(eventCaptor.getAllValues())
+                .extracting(NotificationCreateRequestedEvent::receiverId)
+                .containsExactly(
+                        failedEvent.receiverId(),
+                        nextEvent.receiverId()
+                );
+        assertThat(eventCaptor.getAllValues().get(1).content())
+                .isEqualTo("다음 사용자님이 메시지를 보냈습니다.");
+    }
 
     private UserFollowedEvent createUserFollowedEvent(String followerName) {
         return new UserFollowedEvent(UUID.randomUUID(), followerName, UUID.randomUUID());

@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatcherScriptConfig.*;
@@ -36,6 +37,7 @@ public class WatchingSessionRepository {
     private final RedisScript<Long> countScript;
     private final RedisScript<Long> deleteFromContentScript;
     private final RedisScript<List> countMultipleContentsScript;
+    private final RedisScript<Long> unregisterAllScript;
 
     @RequiredArgsConstructor
     static public class SetKey{
@@ -63,7 +65,9 @@ public class WatchingSessionRepository {
             @Qualifier("lua-script-delete-with-contentId")
             RedisScript<Long> deleteFromContentScript,
             @Qualifier("lua-count-multiple-contents")
-            RedisScript<List> countMultipleContents
+            RedisScript<List> countMultipleContents,
+            @Qualifier("lua-script-unregister-all")
+            RedisScript<Long> unregisterAllScript
     ){
         this.redis = redis;
         this.registerScript = registerScript;
@@ -73,6 +77,7 @@ public class WatchingSessionRepository {
         this.countScript = countScript;
         this.deleteFromContentScript = deleteFromContentScript;
         this.countMultipleContentsScript = countMultipleContents;
+        this.unregisterAllScript = unregisterAllScript;
     }
 
     /*
@@ -81,7 +86,7 @@ public class WatchingSessionRepository {
     분산 인스턴스 간의 충돌 역시 고려하지 않고 구현한다.
      */
 
-
+    // 세션 등록 매서드
     public void register(
             String session,
             String subscription,
@@ -102,6 +107,7 @@ public class WatchingSessionRepository {
             throw new IllegalStateException("Failed to register watcher.");
     }
 
+    // 세션 등록 취소 매서드
     public void unregister(
             String session,
             String subscription
@@ -119,6 +125,33 @@ public class WatchingSessionRepository {
         if (res == null) throw new IllegalStateException("Failed to unregister watcher.");
     }
 
+    // 세션들 등록 취소 매서드
+    public void unregisterAll(
+            String sessionId,
+            List<String> subscriptionIds,
+            UUID contentId
+    ){
+        String sessionKey = sessionKey(sessionId);
+        String contentKey = contentKey(contentId.toString());
+
+        // ARGV[1] = contentId
+        // ARGV[2] = sessionId
+        // ARGV[3...] = subscriptionIds
+        Object[] args = Stream.concat(
+                Stream.of(contentId.toString(), sessionId),
+                subscriptionIds.stream()
+        ).toArray();
+
+        Long res = redis.execute(unregisterAllScript,
+                List.of(sessionKey, contentKey, DELIMITER),
+                args
+        );
+
+        if (res == null || Long.valueOf(-1).equals(res))
+            throw new IllegalStateException("Failed to register watcher.");
+    }
+
+    // ttl 리프레시 매서드
     public void refresh(String session){
         validate(session);
 
@@ -133,6 +166,7 @@ public class WatchingSessionRepository {
         if (res == null) throw new IllegalStateException("Failed to refresh watcher.");
     }
 
+    @Deprecated
     public void delete(String session){
         validate(session);
 
@@ -173,7 +207,7 @@ public class WatchingSessionRepository {
      * @param contents contentId 리스트
      * @return contentId 가 비어있을 경우, 빈 map 반환.
      */
-    public Map<String, Long> getWatcherCountWithMultipleContents(List<String> contents){
+    public Map<UUID, Long> getWatcherCountWithMultipleContents(List<String> contents){
         Objects.requireNonNull(contents);
 
         if(contents.isEmpty()) return Map.of();
@@ -189,7 +223,7 @@ public class WatchingSessionRepository {
 
         return query.stream().map(item -> (List<?>) item)
                 .collect(Collectors.toMap(
-                        item -> (String) item.get(0),
+                        item -> UUID.fromString((String) item.get(0)),
                         item -> (Long) item.get(1),
                         (existing, replacement) -> existing // 중복 제거용 세 번째 인자.
                 ));

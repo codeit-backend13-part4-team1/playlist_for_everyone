@@ -34,7 +34,9 @@ SEND·SUBSCRIBE 모두 UUID를 파싱한 뒤 소문자 정규 문자열과 정�
 
 ## 동일 출처와 SockJS
 
-`/ws`는 기본 동일 출처 제한을 유지합니다. 프론트는 페이지와 같은 서버의 상대 경로 `/ws`로 연결합니다. 허용되지 않은 Origin은 STOMP CONNECT 이전의 HTTP 단계에서 거절될 수 있습니다.
+프론트는 페이지와 같은 서버의 상대 경로 `/ws`로 연결합니다. 서버가 동일 출처로 판단하는 연결과 `EVERYONE_WEBSOCKET_ALLOWED_ORIGINS`에 명시한 Origin을 허용하며, 그 외 Origin은 STOMP CONNECT 이전의 HTTP 단계에서 거절됩니다. 기본 WebSocket과 SockJS에 같은 허용 목록을 적용합니다.
+
+CloudFront 같은 프록시 뒤에서는 브라우저의 Origin과 서버가 인식하는 호스트·프로토콜이 달라질 수 있습니다. 운영 프론트의 Origin을 환경변수로 명시합니다. dev는 localhost 기본값을 제공하고 prod는 필수값 누락 시 기동에 실패합니다. 값 형식과 설정 예시는 [WebSocket 환경 설정](10-websocket-settings.md#공통-websocket-허용-origin)을 참고합니다.
 
 SockJS의 XHR 요청을 위해 `SecurityConfig`는 `/ws/**`를 CSRF 검사에서 제외합니다. 다른 REST 쓰기 요청에는 기존 CSRF 보호가 적용됩니다. Origin 검사는 JWT 인증을 대신하지 않으며, 헤더를 제어할 수 있는 비브라우저 클라이언트에 대한 인증 수단도 아닙니다.
 
