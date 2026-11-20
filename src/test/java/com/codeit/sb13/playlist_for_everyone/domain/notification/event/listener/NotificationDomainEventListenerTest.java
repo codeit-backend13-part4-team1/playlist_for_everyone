@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.conversation.event.DirectMes
 import com.codeit.sb13.playlist_for_everyone.domain.follow.event.UserFollowedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationCreateRequestedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.NotificationLevel;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.monitoring.NotificationMetrics;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationTargetReader;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistContentAddedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistCreatedEvent;
@@ -57,6 +58,9 @@ class NotificationDomainEventListenerTest {
 
     @Mock
     private NotificationTargetReader targetReader;
+
+    @Mock
+    private NotificationMetrics metrics;
 
     @InjectMocks
     private NotificationDomainEventListener listener;

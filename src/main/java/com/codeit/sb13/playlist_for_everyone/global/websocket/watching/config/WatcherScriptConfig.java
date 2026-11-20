@@ -58,4 +58,11 @@ public class WatcherScriptConfig {
                 List.class
         );
     }
+
+    @Bean("lua-script-unregister-all")
+    public RedisScript<Long> watcherUnregisterAllScript(){
+        return load("scripts/watching/wch_urg_all.lua");
+    }
+
+
 }

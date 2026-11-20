@@ -241,11 +241,11 @@ class DirectMessageWebSocketSessionRevocationIntegrationTest {
             assertThat(List.of(previousConnectionOnA, previousConnectionOnB,
                     newConnectionOnB, counterpartConnectionOnB))
                     .allSatisfy(session -> assertThat(session.isConnected()).isTrue());
-            assertThat(webSocketSessionRegistry.findByUserIdAndSessionId(userId, previousLoginSessionId))
+            assertThat(webSocketSessionRegistry.findByUserIdAndLoginSessionId(userId, previousLoginSessionId))
                     .hasSize(1);
-            assertThat(registryB.findByUserIdAndSessionId(userId, previousLoginSessionId)).hasSize(1);
-            assertThat(registryB.findByUserIdAndSessionId(userId, newLoginSessionId)).hasSize(1);
-            assertThat(registryB.findByUserIdAndSessionId(counterpartId, counterpartLoginSessionId)).hasSize(1);
+            assertThat(registryB.findByUserIdAndLoginSessionId(userId, previousLoginSessionId)).hasSize(1);
+            assertThat(registryB.findByUserIdAndLoginSessionId(userId, newLoginSessionId)).hasSize(1);
+            assertThat(registryB.findByUserIdAndLoginSessionId(counterpartId, counterpartLoginSessionId)).hasSize(1);
         });
 
         // A에서 한 번만 발행하여 실제 Redis 전파로 A와 B의 이전 연결이 함께 종료되게 한다.
@@ -255,16 +255,16 @@ class DirectMessageWebSocketSessionRevocationIntegrationTest {
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
             assertThat(previousConnectionOnA.isConnected()).isFalse();
             assertThat(previousConnectionOnB.isConnected()).isFalse();
-            assertThat(webSocketSessionRegistry.findByUserIdAndSessionId(userId, previousLoginSessionId))
+            assertThat(webSocketSessionRegistry.findByUserIdAndLoginSessionId(userId, previousLoginSessionId))
                     .isEmpty();
-            assertThat(registryB.findByUserIdAndSessionId(userId, previousLoginSessionId)).isEmpty();
+            assertThat(registryB.findByUserIdAndLoginSessionId(userId, previousLoginSessionId)).isEmpty();
         });
 
         await().during(Duration.ofSeconds(1)).atMost(Duration.ofSeconds(3)).untilAsserted(() -> {
             assertThat(newConnectionOnB.isConnected()).isTrue();
             assertThat(counterpartConnectionOnB.isConnected()).isTrue();
-            assertThat(registryB.findByUserIdAndSessionId(userId, newLoginSessionId)).hasSize(1);
-            assertThat(registryB.findByUserIdAndSessionId(counterpartId, counterpartLoginSessionId)).hasSize(1);
+            assertThat(registryB.findByUserIdAndLoginSessionId(userId, newLoginSessionId)).hasSize(1);
+            assertThat(registryB.findByUserIdAndLoginSessionId(counterpartId, counterpartLoginSessionId)).hasSize(1);
             assertThat(userSessionRepository.isCurrent(userId, newLoginSessionId)).isTrue();
             assertThat(userSessionRepository.isCurrent(counterpartId, counterpartLoginSessionId)).isTrue();
         });

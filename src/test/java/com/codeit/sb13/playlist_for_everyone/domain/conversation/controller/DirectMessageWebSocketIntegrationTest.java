@@ -281,7 +281,7 @@ public class DirectMessageWebSocketIntegrationTest {
 
         await().atMost(Duration.ofSeconds(5))
                 .untilAsserted(() ->
-                        assertThat(webSocketSessionRegistry.findByUserIdAndSessionId(userId, loginSessionId))
+                        assertThat(webSocketSessionRegistry.findByUserIdAndLoginSessionId(userId, loginSessionId))
                                 .singleElement()
                                 .satisfies(session -> {
                                     assertThat(session.socket().isOpen()).isTrue();
@@ -312,7 +312,7 @@ public class DirectMessageWebSocketIntegrationTest {
 
         assertThat(session.isConnected()).isTrue();
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
-                assertThat(webSocketSessionRegistry.findByUserIdAndSessionId(userId, loginSessionId))
+                assertThat(webSocketSessionRegistry.findByUserIdAndLoginSessionId(userId, loginSessionId))
                         .singleElement()
                         .satisfies(serverSession -> {
                             // XHR 요청은 이미 반환됐을 수 있으므로 요청 헤더 대신 살아 있는 연결과 전송 경로를 확인한다.
@@ -374,7 +374,7 @@ public class DirectMessageWebSocketIntegrationTest {
                 );
 
         assertThat(webSocketSessionRegistry
-                .findByUserIdAndSessionId(userId, loginSessionId))
+                .findByUserIdAndLoginSessionId(userId, loginSessionId))
                 .isEmpty();
     }
 
@@ -388,7 +388,7 @@ public class DirectMessageWebSocketIntegrationTest {
         await().atMost(Duration.ofSeconds(5))
                 .untilAsserted(() ->
                         assertThat(webSocketSessionRegistry
-                                .findByUserIdAndSessionId(userId, loginSessionId))
+                                .findByUserIdAndLoginSessionId(userId, loginSessionId))
                                 .singleElement()
                                 .satisfies(serverSession -> {
                                     assertThat(serverSession.socket().isOpen()).isTrue();
@@ -403,7 +403,7 @@ public class DirectMessageWebSocketIntegrationTest {
             throws ExecutionException, InterruptedException, TimeoutException, IOException {
         StompSession session = connectOverXhr();
         List<WSSession> serverSessions = webSocketSessionRegistry
-                .findByUserIdAndSessionId(userId, loginSessionId);
+                .findByUserIdAndLoginSessionId(userId, loginSessionId);
         assertThat(serverSessions).hasSize(1);
         WSSession serverSession = serverSessions.get(0);
         URI receiveUri = serverSession.socket().getUri();
@@ -493,7 +493,7 @@ public class DirectMessageWebSocketIntegrationTest {
 
         StompHeaders errorHeaders = receivedError.get(10, TimeUnit.SECONDS);
         assertThat(errorHeaders.getFirst("message")).isNotBlank();
-        assertThat(webSocketSessionRegistry.findByUserIdAndSessionId(userId, loginSessionId))
+        assertThat(webSocketSessionRegistry.findByUserIdAndLoginSessionId(userId, loginSessionId))
                 .isEmpty();
     }
 
@@ -525,7 +525,7 @@ public class DirectMessageWebSocketIntegrationTest {
         StompHeaders errorHeaders = receivedError.get(10, TimeUnit.SECONDS);
         assertThat(errorHeaders.getFirst("message"))
                 .isNotBlank();
-        assertThat(webSocketSessionRegistry.findByUserIdAndSessionId(userId, loginSessionId))
+        assertThat(webSocketSessionRegistry.findByUserIdAndLoginSessionId(userId, loginSessionId))
                 .isEmpty();
     }
 
@@ -548,10 +548,10 @@ public class DirectMessageWebSocketIntegrationTest {
         await().atMost(Duration.ofSeconds(5))
                 .untilAsserted(() -> {
                     assertThat(webSocketSessionRegistry
-                            .findByUserIdAndSessionId(userId, loginSessionId))
+                            .findByUserIdAndLoginSessionId(userId, loginSessionId))
                             .hasSize(2);
                     assertThat(webSocketSessionRegistry
-                            .findByUserIdAndSessionId(
+                            .findByUserIdAndLoginSessionId(
                                     counterpartId, counterpartLoginSessionId))
                             .hasSize(1);
                 });
@@ -574,7 +574,7 @@ public class DirectMessageWebSocketIntegrationTest {
                                     assertThat(connection.isConnected()).isFalse());
 
                     assertThat(webSocketSessionRegistry
-                            .findByUserIdAndSessionId(userId, loginSessionId))
+                            .findByUserIdAndLoginSessionId(userId, loginSessionId))
                             .isEmpty();
                 });
 
@@ -583,7 +583,7 @@ public class DirectMessageWebSocketIntegrationTest {
                 .untilAsserted(() -> {
                     assertThat(counterpartConnection.isConnected()).isTrue();
                     assertThat(webSocketSessionRegistry
-                            .findByUserIdAndSessionId(
+                            .findByUserIdAndLoginSessionId(
                                     counterpartId, counterpartLoginSessionId))
                             .hasSize(1);
                 });
@@ -901,7 +901,7 @@ public class DirectMessageWebSocketIntegrationTest {
         session.disconnect();
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
             assertThat(session.isConnected()).isFalse();
-            assertThat(webSocketSessionRegistry.findByUserIdAndSessionId(userId, loginSessionId)).isEmpty();
+            assertThat(webSocketSessionRegistry.findByUserIdAndLoginSessionId(userId, loginSessionId)).isEmpty();
         });
 
         assertMessageAvailableThroughRest(message.id(), content);
@@ -986,9 +986,9 @@ public class DirectMessageWebSocketIntegrationTest {
                 .untilAsserted(() -> {
                     assertThat(previousConnection.isConnected()).isTrue();
                     assertThat(newConnection.isConnected()).isTrue();
-                    assertThat(webSocketSessionRegistry.findByUserIdAndSessionId(userId, previousLoginSessionId))
+                    assertThat(webSocketSessionRegistry.findByUserIdAndLoginSessionId(userId, previousLoginSessionId))
                             .hasSize(1);
-                    assertThat(webSocketSessionRegistry.findByUserIdAndSessionId(userId, newLoginSessionId))
+                    assertThat(webSocketSessionRegistry.findByUserIdAndLoginSessionId(userId, newLoginSessionId))
                             .hasSize(1);
 
                 });
@@ -1004,7 +1004,7 @@ public class DirectMessageWebSocketIntegrationTest {
         await().atMost(Duration.ofSeconds(5))
                         .untilAsserted(() ->{
                             assertThat(previousConnection.isConnected()).isFalse();
-                            assertThat(webSocketSessionRegistry.findByUserIdAndSessionId(userId, previousLoginSessionId))
+                            assertThat(webSocketSessionRegistry.findByUserIdAndLoginSessionId(userId, previousLoginSessionId))
                                     .isEmpty();
                         });
 
@@ -1012,7 +1012,7 @@ public class DirectMessageWebSocketIntegrationTest {
                 .atMost(Duration.ofSeconds(3))
                 .untilAsserted(() -> {
                     assertThat(newConnection.isConnected()).isTrue();
-                    assertThat(webSocketSessionRegistry.findByUserIdAndSessionId(userId, newLoginSessionId))
+                    assertThat(webSocketSessionRegistry.findByUserIdAndLoginSessionId(userId, newLoginSessionId))
                             .hasSize(1);
                     assertThat(userSessionRepository.isCurrent(userId, newLoginSessionId)).isTrue();
                 });

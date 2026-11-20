@@ -1,11 +1,16 @@
 package com.codeit.sb13.playlist_for_everyone.domain.review.controller;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
+import com.codeit.sb13.playlist_for_everyone.domain.review.dto.condition.ReviewListCondition;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewCreateRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewListRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewUpdateRequest;
+import com.codeit.sb13.playlist_for_everyone.domain.review.dto.response.ReviewAuthorDto;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.response.ReviewDto;
 import com.codeit.sb13.playlist_for_everyone.domain.review.service.ReviewService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
+import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
+import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.exception.review.ReviewNotFoundException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -23,6 +28,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -47,6 +53,7 @@ public class ReviewControllerTest {
     @MockitoBean
     private ReviewService reviewService;
 
+    /** 리뷰 생성 테스트 */
     @Test
     @DisplayName("리뷰 생성 요청 시 201 Created와 리뷰 정보를 반환한다.")
     void createReview() throws Exception {
@@ -76,10 +83,12 @@ public class ReviewControllerTest {
                         securityUser.getAuthorities()
                 );
 
+        ReviewAuthorDto authorDto = mock(ReviewAuthorDto.class);
+
         ReviewDto response = new ReviewDto(
                 reviewId,
                 contentId,
-                null,
+                authorDto,
                 "재미있는 드라마였어요.",
                 4.5
         );
@@ -138,6 +147,159 @@ public class ReviewControllerTest {
                 .andExpect(status().isBadRequest());
     }
 
+    @Test
+    @DisplayName("리뷰 목록 조회 시 커서 조건과 다음 페이지 정보를 반환한다.")
+    void getReviewList() throws Exception {
+        // given
+        UUID contentId = UUID.randomUUID();
+        UUID idAfter = UUID.randomUUID();
+        UUID nextIdAfter = UUID.randomUUID();
+
+        String cursor = "4.0";
+        String nextCursor = "3.0";
+
+        ReviewListRequest request = new ReviewListRequest(
+                cursor,
+                idAfter,
+                10,
+                SortDirection.DESCENDING,
+                "rating"
+        );
+
+        ReviewListCondition condition = request.toCondition();
+
+        ReviewAuthorDto authorDto = mock(ReviewAuthorDto.class);
+
+        ReviewDto review1 = new ReviewDto(
+                UUID.randomUUID(),
+                contentId,
+                authorDto,
+                "정말 재미있었어요.",
+                5.0
+        );
+
+        ReviewDto review2 = new ReviewDto(
+                UUID.randomUUID(),
+                contentId,
+                authorDto,
+                "볼만한 드라마였어요.",
+                4.0
+        );
+
+        ReviewDto review3 = new ReviewDto(
+                UUID.randomUUID(),
+                contentId,
+                authorDto,
+                "조금 아쉬웠어요.",
+                3.0
+        );
+
+        CursorResponse<ReviewDto> response = new CursorResponse<>(
+                List.of(review1, review2, review3),
+                nextCursor,
+                nextIdAfter,
+                true,
+                10L,
+                "rating",
+                SortDirection.DESCENDING
+        );
+
+        given(reviewService.getReviews(eq(contentId), eq(condition)))
+                .willReturn(response);
+
+        // when & then
+        mockMvc.perform(get("/api/reviews")
+                        .param("contentId", contentId.toString())
+                        .param("cursor", cursor)
+                        .param("idAfter", idAfter.toString())
+                        .param("limit", "10")
+                        .param("sortDirection", "DESCENDING")
+                        .param("sortBy", "rating"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data.length()").value(3))
+                .andExpect(jsonPath("$.data[0].id").value(review1.id().toString()))
+                .andExpect(jsonPath("$.data[1].text").value("볼만한 드라마였어요."))
+                .andExpect(jsonPath("$.data[2].rating").value(3.0))
+                .andExpect(jsonPath("$.hasNext").value(true))
+                .andExpect(jsonPath("$.totalCount").value(10))
+                .andExpect(jsonPath("$.nextCursor").value(nextCursor))
+                .andExpect(jsonPath("$.nextIdAfter").value(nextIdAfter.toString()))
+                .andExpect(jsonPath("$.sortBy").value("rating"))
+                .andExpect(jsonPath("$.sortDirection").value("DESCENDING"));
+
+        then(reviewService).should().getReviews(contentId, condition);
+    }
+
+    @Test
+    @DisplayName("콘텐츠 ID가 없으면 400 Bad Request를 반환한다.")
+    void getReviewList_notFoundContentId() throws Exception {
+        // when & then
+        mockMvc.perform(get("/api/reviews")
+                        .param("limit", "10")
+                        .param("sortDirection", "DESCENDING")
+                        .param("sortBy", "createdAt"))
+                .andExpect(status().isBadRequest());
+
+        then(reviewService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("limit이 없으면 400을 반환한다.")
+    void getReviewList_missingLimit() throws Exception {
+        // when & then
+        mockMvc.perform(get("/api/reviews")
+                        .param("contentId", UUID.randomUUID().toString())
+                        .param("sortDirection", "DESCENDING")
+                        .param("sortBy", "createdAt"))
+                .andExpect(status().isBadRequest());
+
+        then(reviewService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("limit이 20을 초과하면 400을 반환한다.")
+    void getReviewList_exceedMaxLimit() throws Exception {
+        // when & then
+        mockMvc.perform(get("/api/reviews")
+                        .param("contentId", UUID.randomUUID().toString())
+                        .param("limit", "21")
+                        .param("sortDirection", "DESCENDING")
+                        .param("sortBy", "createdAt"))
+                .andExpect(status().isBadRequest());
+
+        then(reviewService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("커서만 전달하면 400 Bad Request를 반환한다.")
+    void getReviewList_missingIdAfter() throws Exception {
+        // when & then
+        mockMvc.perform(get("/api/reviews")
+                        .param("contentId", UUID.randomUUID().toString())
+                        .param("cursor", "2026-11-18T10:00:00")
+                        .param("limit", "10")
+                        .param("sortDirection", "ASCENDING")
+                        .param("sortBy", "createdAt"))
+                .andExpect(status().isBadRequest());
+
+        then(reviewService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("정렬 방향이 없으면 400을 반환한다.")
+    void getReviewList_missingSortDirection() throws Exception {
+        // when & then
+        mockMvc.perform(get("/api/reviews")
+                        .param("contentId", UUID.randomUUID().toString())
+                        .param("limit", "10")
+                        .param("sortBy", "createdAt"))
+                .andExpect(status().isBadRequest());
+
+        then(reviewService).shouldHaveNoInteractions();
+    }
+
+    /** 리뷰 수정 테스트 */
     @Test
     @DisplayName("리뷰 수정 시 변경된 리뷰 정보를 반환한다.")
     void updateReview() throws Exception {
@@ -302,6 +464,7 @@ public class ReviewControllerTest {
         then(reviewService).shouldHaveNoInteractions();
     }
 
+    /** 리뷰 삭제 테스트 */
     @Test
     @DisplayName("리뷰 작성자가 삭제 요청 시 204를 반환한다.")
     void deleteReview() throws Exception {

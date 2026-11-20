@@ -53,7 +53,8 @@ public class WatchingSessionRepositoryTest {
                 redisScriptConfig.watcherDeleteScript(),
                 redisScriptConfig.watcherCountScript(),
                 redisScriptConfig.watcherDeleteWithContentIdScript(),
-                redisScriptConfig.watcherCountMultipleContentsScript()
+                redisScriptConfig.watcherCountMultipleContentsScript(),
+                redisScriptConfig.watcherUnregisterAllScript()
         );
 
         // 테스트용 타임아웃 세팅 ( 3초 )
@@ -274,12 +275,12 @@ public class WatchingSessionRepositoryTest {
         @Test
         @DisplayName("컨텐츠 리스트를 받아와서 해당하는 모든 컨텐츠의 시청자를 조회")
         void countWithMultipleContentsTest(){
-            Map<String, Long> result = watchingSessionRepository
+            Map<UUID, Long> result = watchingSessionRepository
                     .getWatcherCountWithMultipleContents(List.of(content1,content2));
 
-            for (Map.Entry<String, Long> entry : result.entrySet()){
+            for (Map.Entry<UUID, Long> entry : result.entrySet()){
                 log.info("[ViewingSessionRepositoryTest] contentId: {}, count: {}", entry.getKey(), entry.getValue());
-                assertThat(entry.getKey()).isIn(content1,content2);
+                assertThat(entry.getKey()).isIn(UUID.fromString(content1), UUID.fromString(content2));
                 assertThat(entry.getValue()).isEqualTo(3L);
             }
 
