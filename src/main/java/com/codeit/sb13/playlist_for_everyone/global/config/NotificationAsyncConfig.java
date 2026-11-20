@@ -17,9 +17,17 @@ import java.util.concurrent.ThreadPoolExecutor;
 @EnableConfigurationProperties(NotificationAsyncProperties.class)
 public class NotificationAsyncConfig {
 
+    @Bean(name = "notificationTaskContextDecorator", defaultCandidate = false)
+    public TaskContextDecorator notificationTaskContextDecorator(){
+        return new TaskContextDecorator();
+    }
+
     /** 명시적으로 이름을 지정한 @Async 알림 작업의 동시 실행 수와 대기열을 제한한다. */
     @Bean(name = "notificationTaskExecutor", defaultCandidate = false)
-    public ThreadPoolTaskExecutor notificationTaskExecutor(NotificationAsyncProperties properties) {
+    public ThreadPoolTaskExecutor notificationTaskExecutor(
+            NotificationAsyncProperties properties,
+            @Qualifier("notificationTaskContextDecorator")
+            TaskContextDecorator taskDecorator) {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         executor.setCorePoolSize(properties.poolSize());
         executor.setMaxPoolSize(properties.poolSize());
@@ -29,6 +37,7 @@ public class NotificationAsyncConfig {
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.AbortPolicy());
         // 종료 이벤트에서 Lifecycle이 먼저 제출을 차단하고 제한 시간까지 대기한다.
         // Spring의 별도 stop 단계가 대기 작업을 멈추지 않도록 하며, 대기 시간은 중복 설정하지 않는다.
+        executor.setTaskDecorator(taskDecorator);
         executor.setWaitForTasksToCompleteOnShutdown(true);
         return executor;
     }

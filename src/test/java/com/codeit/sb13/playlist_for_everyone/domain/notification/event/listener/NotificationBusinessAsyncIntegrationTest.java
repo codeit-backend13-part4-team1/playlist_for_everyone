@@ -25,6 +25,7 @@ import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.task.TaskDecorator;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
@@ -80,6 +81,9 @@ class NotificationBusinessAsyncIntegrationTest {
     @Autowired
     @Qualifier("notificationTaskExecutor")
     private ThreadPoolTaskExecutor executor;
+    @Autowired
+    @Qualifier("notificationTaskContextDecorator")
+    private TaskDecorator notificationTaskContextDecorator;
     @MockitoBean
     private NotificationTargetReader targetReader;
     @MockitoBean
@@ -128,7 +132,7 @@ class NotificationBusinessAsyncIntegrationTest {
             return null;
         }).when(notificationEventListener).handleNotification(any());
 
-        try (NotificationTaskTracker tracker = new NotificationTaskTracker(executor)) {
+        try (NotificationTaskTracker tracker = new NotificationTaskTracker(executor, notificationTaskContextDecorator)) {
             CompletableFuture<Void> committed = track(CompletableFuture.runAsync(() -> {
                 callerThread.set(Thread.currentThread());
                 publishInTransaction(event);

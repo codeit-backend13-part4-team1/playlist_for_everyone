@@ -36,6 +36,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.env.Environment;
+import org.springframework.core.task.TaskDecorator;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -180,6 +181,9 @@ class DirectMessageSseIntegrationTest {
     @Autowired
     @Qualifier("notificationTaskExecutor")
     private ThreadPoolTaskExecutor notificationTaskExecutor;
+    @Autowired
+    @Qualifier("notificationTaskContextDecorator")
+    private TaskDecorator notificationTaskContextDecorator;
     @MockitoSpyBean
     private RedisSseEventPublisher transportPublisher;
     @LocalServerPort
@@ -202,7 +206,7 @@ class DirectMessageSseIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        notificationTasks = new NotificationTaskTracker(notificationTaskExecutor);
+        notificationTasks = new NotificationTaskTracker(notificationTaskExecutor, notificationTaskContextDecorator);
         insertUser(senderId, "발신자");
         insertUser(receiverId, "수신자");
         insertUser(otherUserId, "다른 사용자");
@@ -711,7 +715,9 @@ class DirectMessageSseIntegrationTest {
                 );
         additionalNodes.add(node);
         additionalNotificationTasks.add(new NotificationTaskTracker(
-                node.getBean("notificationTaskExecutor", ThreadPoolTaskExecutor.class)));
+                node.getBean("notificationTaskExecutor", ThreadPoolTaskExecutor.class),
+                node.getBean("notificationTaskContextDecorator", TaskDecorator.class))
+        );
         return node;
     }
 

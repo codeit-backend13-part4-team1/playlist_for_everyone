@@ -24,6 +24,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.core.task.TaskDecorator;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -113,6 +114,9 @@ public class NotificationPlaylistIntegrationTest {
     @Autowired
     @Qualifier("notificationTaskExecutor")
     private ThreadPoolTaskExecutor notificationTaskExecutor;
+    @Autowired
+    @Qualifier("notificationTaskContextDecorator")
+    private TaskDecorator notificationTaskContextDecorator;
 
     private NotificationTaskTracker notificationTasks;
     private TransactionTemplate transactionTemplate;
@@ -125,7 +129,7 @@ public class NotificationPlaylistIntegrationTest {
 
     @BeforeEach
     void setUp(){
-        notificationTasks = new NotificationTaskTracker(notificationTaskExecutor);
+        notificationTasks = new NotificationTaskTracker(notificationTaskExecutor, notificationTaskContextDecorator);
         transactionTemplate = new TransactionTemplate(transactionManager);
 
         // 알림 저장의 독립 트랜잭션에서도 수신자를 조회할 수 있도록 사용자 준비를 먼저 커밋한다.
