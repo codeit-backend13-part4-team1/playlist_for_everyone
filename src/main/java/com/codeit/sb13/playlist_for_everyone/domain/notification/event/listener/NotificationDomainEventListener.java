@@ -24,6 +24,7 @@ import org.springframework.util.StringUtils;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 /**
  * 업무 커밋 후 수신자·문구를 결정하고 공통 비동기 프로세서에 알림 요청 목록을 전달한다.
@@ -52,7 +53,7 @@ public class NotificationDomainEventListener {
     public void handleUserFollowed(UserFollowedEvent event) {
         Map<String, UUID> ids = Map.of("followerId", event.followerId(), "followeeId", event.followeeId());
         try {
-            var request = new NotificationCreateRequestedEvent(event.followeeId(), "새로운 팔로워",
+            NotificationCreateRequestedEvent request = new NotificationCreateRequestedEvent(event.followeeId(), "새로운 팔로워",
                     "%s님이 회원님을 팔로우했습니다.".formatted(resolveUserName(event.followerName())),
                     NotificationLevel.INFO, NotificationSource.USER_FOLLOWED);
             submit("팔로우", ids, List.of(request));
@@ -70,7 +71,7 @@ public class NotificationDomainEventListener {
                 case ADMIN -> "으로";
                 case USER -> "로";
             };
-            var request = new NotificationCreateRequestedEvent(event.userId(), "권한 변경",
+            NotificationCreateRequestedEvent request = new NotificationCreateRequestedEvent(event.userId(), "권한 변경",
                     "회원님의 권한이 %s에서 %s%s 변경되었습니다.".formatted(event.previousRole(), event.newRole(), postposition),
                     NotificationLevel.INFO, NotificationSource.USER_ROLE_CHANGED);
             submit("권한 변경", ids, List.of(request));
@@ -90,7 +91,7 @@ public class NotificationDomainEventListener {
                 "ownerId", event.ownerId(),
                 "subscriberId", event.subscriberId());
         try {
-            var request = new NotificationCreateRequestedEvent(event.ownerId(), "새로운 구독자",
+            NotificationCreateRequestedEvent request = new NotificationCreateRequestedEvent(event.ownerId(), "새로운 구독자",
                     "%s님이 \"%s\" 플레이리스트를 구독했습니다.".formatted(resolveUserName(event.subscriberName()), event.playlistTitle()),
                     NotificationLevel.INFO, NotificationSource.PLAYLIST_SUBSCRIBED);
             submit("플레이리스트 구독", ids, List.of(request));
@@ -108,7 +109,11 @@ public class NotificationDomainEventListener {
         Map<String, UUID> ids = Map.of("playlistId", event.playlistId(), "ownerId", event.ownerId());
         try {
             String ownerName = resolveUserName(event.ownerName());
-            List<NotificationCreateRequestedEvent> requests = getFollowerIdsOrEmpty(event).stream()
+            List<NotificationCreateRequestedEvent> requests =
+                    getFollowerIdsOrEmpty(event.ownerId(), (exceptionType) ->
+                            log.warn("플레이리스트 생성 알림 수신자 조회실패. playlistId={}, ownerId={}, exceptionType={}",
+                                    event.playlistId(), event.ownerId(), exceptionType))
+                    .stream()
                     .distinct()
                     .filter(receiverId -> !event.ownerId().equals(receiverId))
                     .map(receiverId -> new NotificationCreateRequestedEvent(receiverId, "팔로우한 사용자의 새 플레이리스트",
@@ -156,7 +161,7 @@ public class NotificationDomainEventListener {
                 "conversationId", event.conversationId(),
                 "receiverId", event.receiverId());
         try {
-            var request = new NotificationCreateRequestedEvent(event.receiverId(), "새로운 메시지",
+            NotificationCreateRequestedEvent request = new NotificationCreateRequestedEvent(event.receiverId(), "새로운 메시지",
                     "%s님이 메시지를 보냈습니다.".formatted(resolveUserName(event.senderName())),
                     NotificationLevel.INFO, NotificationSource.DIRECT_MESSAGE_CREATED);
             submit("DM", ids, List.of(request));
@@ -167,7 +172,26 @@ public class NotificationDomainEventListener {
 
     @TransactionalEventListener(fallbackExecution = true)
     public void handleWatchingSessionStarted(WatchingSessionStartedEvent event) {
-
+        Map<String, UUID> ids = Map.of(
+                "contentId", event.contentId(),
+                "watcherId", event.watcherId());
+        String watcherName = resolveUserName(event.watcherName());
+        try {
+            List<NotificationCreateRequestedEvent> requests = getFollowerIdsOrEmpty(event.watcherId(),
+                    (exceptionType) -> log.warn("콘텐츠 시청 시작 알림 수신자 조회실패. contentId={}, watcherId={}, exceptionType={}",
+                            event.contentId(), event.watcherId(), exceptionType))
+                    .stream()
+                    .distinct()
+                    .filter(receiverId -> !event.watcherId().equals(receiverId))
+                    .map(receiverId -> new NotificationCreateRequestedEvent(
+                            receiverId, "팔로우한 사용자의 같이 보기 참여", "%s님이 \"%s\" 같이 보기에 참여했습니다."
+                            .formatted(watcherName, event.contentTitle()),
+                            NotificationLevel.INFO, NotificationSource.WATCHING_SESSION_STARTED))
+                    .toList();
+            submit("콘텐츠 시청 시작", ids, requests);
+        }catch (RuntimeException failure) {
+            logCreationFailure("콘텐츠 시청 시작", ids, failure);
+        }
     }
 
 
@@ -190,13 +214,12 @@ public class NotificationDomainEventListener {
     }
 
     /** 정상 조회와 조회 실패를 로그로 구분하되, 실패한 조회에서는 알림을 제출하지 않는다. */
-    private List<UUID> getFollowerIdsOrEmpty(PlaylistCreatedEvent event) {
+    private List<UUID> getFollowerIdsOrEmpty(UUID ownerId, Consumer<String> log) {
         try {
-            return targetReader.findFollowerIds(event.ownerId());
+            return targetReader.findFollowerIds(ownerId);
         } catch (RuntimeException failure) {
             metrics.recordLookupFailure();
-            log.warn("플레이리스트 생성 알림 수신자 조회실패. playlistId={}, ownerId={}, exceptionType={}",
-                    event.playlistId(), event.ownerId(), failure.getClass().getSimpleName());
+            log.accept(failure.getClass().getSimpleName());
             return List.of();
         }
     }
