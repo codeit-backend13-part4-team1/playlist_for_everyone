@@ -13,6 +13,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistConte
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistCreatedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistSubscribedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.user.event.UserRoleChangedEvent;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionStartedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.task.TaskRejectedException;
@@ -163,6 +164,12 @@ public class NotificationDomainEventListener {
             logCreationFailure("DM", ids, failure);
         }
     }
+
+    @TransactionalEventListener(fallbackExecution = true)
+    public void handleWatchingSessionStarted(WatchingSessionStartedEvent event) {
+
+    }
+
 
     /** @Async 프록시에 목록 전체를 한 번 제출한다. 거부 시 호출 스레드에서 대신 실행하거나 재시도하지 않는다. */
     private void submit(String source, Map<String, UUID> ids, List<NotificationCreateRequestedEvent> requests) {

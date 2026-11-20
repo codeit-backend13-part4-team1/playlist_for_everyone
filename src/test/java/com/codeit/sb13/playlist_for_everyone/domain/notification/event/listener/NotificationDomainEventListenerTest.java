@@ -14,6 +14,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistCreat
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistSubscribedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.event.UserRoleChangedEvent;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionStartedEvent;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -478,6 +479,87 @@ class NotificationDomainEventListenerTest {
         listener.handleDirectMessageCreated(event);
         verifyNoInteractions(processor);
     }
+
+
+    @Test
+    @DisplayName("시청 시작 시 본인을 제외한 팔로워별 알림 요청을 한 번 제출한다.")
+    void submitsWatchingSessionNotificationsToDistinctFollowers(){
+        UUID watcherId = UUID.randomUUID();
+        UUID contentId = UUID.randomUUID();
+        UUID firstFollowerId = UUID.randomUUID();
+        UUID secondFollowerId = UUID.randomUUID();
+
+        when(targetReader.findFollowerIds(watcherId))
+                .thenReturn(List.of(firstFollowerId, watcherId, firstFollowerId, secondFollowerId));
+
+        listener.handleWatchingSessionStarted(new WatchingSessionStartedEvent(
+                watcherId, "홍길동", contentId, "인터스텔라"));
+
+        verify(processor).publish(batchCaptor.capture());
+        assertBatchSource("콘텐츠 시청 시작",
+                Map.of("contentId", contentId,"watcherId", watcherId),
+                NotificationSource.WATCHING_SESSION_STARTED);
+        List<NotificationCreateRequestedEvent> requests = batchCaptor.getValue().requests();
+        assertThat(requests).extracting(NotificationCreateRequestedEvent::receiverId)
+                .containsExactlyInAnyOrder(firstFollowerId, secondFollowerId);
+        assertThat(requests).allSatisfy(request ->{
+            assertThat(request.title()).isEqualTo("팔로우한 사용자의 같이 보기 참여");
+            assertThat(request.content()).isEqualTo("홍길동님이 \"인터스텔라\" 같이 보기에 참여했습니다.");
+            assertThat(request.level()).isEqualTo(NotificationLevel.INFO);
+        });
+
+    }
+
+    @Test
+    @DisplayName("팔로워 조회 결과에 시청자 본인만 있으면 알림 작업을 제출하지 않는다.")
+    void doesNotSubmitWatchingSessionNotificationWhenOnlyWatcherRemains(){
+        UUID watcherId = UUID.randomUUID();
+        when(targetReader.findFollowerIds(watcherId)).thenReturn(List.of(watcherId));
+        listener.handleWatchingSessionStarted(new WatchingSessionStartedEvent(
+                watcherId, "홍길동", UUID.randomUUID(), "인터스텔라"));
+        verify(targetReader).findFollowerIds(watcherId);
+        verifyNoInteractions(processor);
+    }
+
+    @Test
+    @DisplayName("시청자 이름이 공백이면 같이 보기 참여 알림에서 사용자로 표시한다.")
+    void usesDefaultWatcherNameWhenBlank(){
+        UUID watcherId = UUID.randomUUID();
+        when(targetReader.findFollowerIds(watcherId)).thenReturn(List.of(UUID.randomUUID()));
+        listener.handleWatchingSessionStarted(new WatchingSessionStartedEvent(
+                watcherId, " ", UUID.randomUUID(), "인터스텔라"));
+
+        verify(processor).publish(batchCaptor.capture());
+        assertThat(batchCaptor.getValue().requests())
+                .extracting(NotificationCreateRequestedEvent::content)
+                .containsExactly("사용자님이 \"인터스텔라\" 같이 보기에 참여했습니다.");
+    }
+
+    @Test
+    @ExtendWith(OutputCaptureExtension.class)
+    @DisplayName("시청 알림의 팔로워 조회 실패를 기록하고 작업을 제출하지 않는다.")
+    void handlesAndLogsWatchingSessionFollowerLookupFailure(CapturedOutput output){
+        UUID watcherId = UUID.randomUUID();
+        UUID contentId = UUID.randomUUID();
+        WatchingSessionStartedEvent event = new WatchingSessionStartedEvent(watcherId, "홍길동", contentId, "인터스텔라");
+        String failureMessage = "테스트용 팔로워 조회 실패";
+
+        when(targetReader.findFollowerIds(watcherId))
+                .thenThrow(new IllegalStateException(failureMessage));
+        assertThatCode(() -> listener.handleWatchingSessionStarted(event))
+                .doesNotThrowAnyException();
+
+        verify(metrics).recordLookupFailure();
+        verifyNoInteractions(processor);
+        assertThat(output.getAll())
+                .contains("contentId=" + contentId,
+                        "watcherId=" + watcherId,
+                        "exceptionType=IllegalStateException")
+                .doesNotContain(event.watcherName(), event.contentTitle(), failureMessage);
+    }
+
+
+
 
     private void assertBatchSource(String source, Map<String, UUID> ids, NotificationSource requestSource) {
         assertThat(batchCaptor.getValue().source()).isEqualTo(source);
