@@ -45,6 +45,6 @@ public interface WebSocketSessionRegistry {
      * @param sessionId 세션 ID
      * @return 해당 인증정보를 가진 세션 리스트
      */
-    List<WSSession> findByUserIdAndSessionId(UUID userId, UUID sessionId);
+    List<WSSession> findByUserIdAndLoginSessionId(UUID userId, UUID sessionId);
 
 }

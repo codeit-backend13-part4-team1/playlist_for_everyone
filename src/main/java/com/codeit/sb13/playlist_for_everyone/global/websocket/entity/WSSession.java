@@ -1,15 +1,12 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.entity;
 
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.WebSocketSubscriptionRegistry;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.WebSocketSubscriptionRegistryImpl;
 import jakarta.annotation.Nullable;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.io.IOException;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Consumer;
+import java.util.*;
 
 
 /**
@@ -20,14 +17,14 @@ public class WSSession {
     private final String id;
     private final WebSocketSession socket;
 
-    // 세션에 대한 구독 정보를 저장하는 Map
-    private final Map<String, WSSubscription> subscriptions = new ConcurrentHashMap<>();
+    // 세션에 대한 구독 정보를 저장하는 저장소
+    private final WebSocketSubscriptionRegistry subscriptions = new WebSocketSubscriptionRegistryImpl();
     private State state;
 
 
     // 세션의 인증 정보
-    private String userId;
-    private String loginSessionId;
+    volatile private String userId;
+    volatile private String loginSessionId;
 
     /*
      * 동시성 시나리오를 위한 상태 클래스
@@ -101,7 +98,27 @@ public class WSSession {
      */
     public Optional<WSSubscription> getSubscription(String subscriptionId){
         if (subscriptionId == null) return Optional.empty();
-        return Optional.ofNullable(subscriptions.get(subscriptionId));
+        return subscriptions.get(subscriptionId);
+    }
+
+    /**
+     * 세션에 등록된 구독을 반환한다.
+     * 인자가 없거나, 등록되지 않았으면, 빈 Optional 을 반환한다.
+     * @param subscriptionUUID 구독 uuid
+     * @return 옵셔넝 구독
+     */
+    public Optional<WSSubscription> getSubscription(UUID subscriptionUUID){
+        if (subscriptionUUID == null) return Optional.empty();
+        return subscriptions.get(subscriptionUUID);
+    }
+
+    /**
+     * 세션에 등록된 구독을 반환한다.
+     * 인자가 없거나, 등록되지 않았으면, 빈 리스트 을 반환한다.
+     * @return 세션에 해당된 모든 구독 리스트
+     */
+    public List<WSSubscription> getAllSubscriptions(){
+        return subscriptions.getAll();
     }
 
 
@@ -109,28 +126,22 @@ public class WSSession {
      * 세션에 새 구독 을 추가하는 로직.
      * 같은 세션 안에 같은 구독 ID 혹은 가 있을 경우, 구독이 추가되지 않는다.
      */
-    public void subscribe(String subscriptionId, String destination, @Nullable Consumer<?> callback){
-        if (state() != State.REGISTER) throw new IllegalStateException("세션에서 구독을 시행할 수 없습니다.");
+    public synchronized WSSubscription subscribe(String subscriptionId, String destination){
+        Objects.requireNonNull(subscriptionId);
+        Objects.requireNonNull(destination);
+        if (state != State.REGISTER) throw new IllegalStateException("세션에서 구독을 시행할 수 없습니다.");
 
-        WSSubscription subscription = new WSSubscription(subscriptionId, destination, callback);
-        subscriptions.compute(subscriptionId, (k, v) -> {
-            if (v == null) return subscription;
-            throw new IllegalStateException("이미 같은 구독 ID 혹은 경로가 존재합니다.");
-        });
+        return subscriptions.add(new WSSubscription(id ,subscriptionId, destination));
     }
 
     /**
      * 인자에 해당하는 구독을 제거하는 로직.
      */
-    public void unsubscribe(String subscriptionId){
-        if (state() != State.REGISTER) throw new IllegalStateException("세션에서 구독을 취소할 수 없습니다.");
+    public synchronized void unsubscribe(WSSubscription subscription){
+        Objects.requireNonNull(subscription);
+        if (state != State.REGISTER) throw new IllegalStateException("세션에서 구독을 취소할 수 없습니다.");
 
-        subscriptions.computeIfPresent(subscriptionId, (k, v) -> {
-
-            v.onUnregister();
-
-            return null;
-        });
+        subscriptions.remove(subscription);
     }
 
     /**
@@ -138,12 +149,13 @@ public class WSSession {
      * 웹 세션이 완전하게 등록되어있다고 판단, 이후 작업을 수행해도 좋다는 상태를 설정하기 위한 매서드
      * 인증정보의 기록 등을 수행한다.
      */
-    public void connect(@Nullable String userId,@Nullable String loginSessionId){
-        if (state() != State.CREATE) throw new IllegalStateException("세션이 이미 등록되었습니다.");
-        state(State.REGISTER);
+    public synchronized void connect(@Nullable String userId,@Nullable String loginSessionId){
+        if (state != State.CREATE) throw new IllegalStateException("세션이 이미 등록되었습니다.");
 
         this.userId = userId;
         this.loginSessionId = loginSessionId;
+
+        state = State.REGISTER;
     }
 
     /*
@@ -154,36 +166,13 @@ public class WSSession {
      * 세션을 종료할 때 실행되는 로직.
      */
     public void disconnect() throws IOException {
-        // 삭제 전 생성, 및 중복 삭제 방어
-        if (state() == State.DESTROY) return;
-        // 원자성 있게 상태 변경.
-        state(State.DESTROY);
-
-        // 현재 구독 리스트를 카피 후, 본 리스트 삭제.
-        for (WSSubscription subscription : Set.copyOf(subscriptions.values())) {
-            try {
-                subscription.onUnregister();
-                subscriptions.remove(subscription.id(), subscription);
-            } catch (RuntimeException e){
-                // 삭제 누락시, 비즈니스 로직에 잔존. 비즈니스 로직 배치 삭제등으로 해결.
-                // 에러가 나오더라도 소켓은 삭제 되어야 함. 별도 에러 던지지 않음.
-            }
-        }
-
-        close();
-    }
-
-
-    private void state(State state){
-        synchronized (this) {
-            this.state = state;
-        }
-    }
-
-    private State state(){
         synchronized (this){
-            return state;
+            if (state == State.DESTROY) return;
+            state = State.DESTROY;
+            // 구독 전부 삭제
+            subscriptions.clear();
         }
+        close();
     }
 
 
