@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.notification.support;
 
+import org.springframework.core.task.TaskDecorator;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.List;
@@ -17,16 +18,19 @@ import java.util.concurrent.TimeoutException;
 public final class NotificationTaskTracker implements AutoCloseable {
 
     private final ThreadPoolTaskExecutor executor;
+    private final TaskDecorator contextDecorator;
     private final List<CompletableFuture<Void>> tasks = new CopyOnWriteArrayList<>();
 
-    public NotificationTaskTracker(ThreadPoolTaskExecutor executor) {
+    public NotificationTaskTracker(ThreadPoolTaskExecutor executor, TaskDecorator contextDecorator) {
         this.executor = executor;
+        this.contextDecorator = contextDecorator;
         executor.setTaskDecorator(task -> {
+            Runnable decoratedTask = contextDecorator.decorate(task);
             CompletableFuture<Void> completion = new CompletableFuture<>();
             tasks.add(completion);
             return () -> {
                 try {
-                    task.run();
+                    decoratedTask.run();
                     completion.complete(null);
                 } catch (RuntimeException | Error failure) {
                     completion.completeExceptionally(failure);
@@ -60,7 +64,7 @@ public final class NotificationTaskTracker implements AutoCloseable {
         try {
             awaitCompletion();
         } finally {
-            executor.setTaskDecorator(null);
+            executor.setTaskDecorator(contextDecorator);
         }
     }
 }

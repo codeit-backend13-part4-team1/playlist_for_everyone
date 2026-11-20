@@ -37,6 +37,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.core.env.Environment;
+import org.springframework.core.task.TaskDecorator;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -173,6 +174,9 @@ public class DirectMessageWebSocketIntegrationTest {
     @Autowired
     @Qualifier("notificationTaskExecutor")
     private ThreadPoolTaskExecutor notificationTaskExecutor;
+    @Autowired
+    @Qualifier("notificationTaskContextDecorator")
+    private TaskDecorator notificationTaskContextDecorator;
 
     private NotificationTaskTracker notificationTasks;
 
@@ -200,7 +204,7 @@ public class DirectMessageWebSocketIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        notificationTasks = new NotificationTaskTracker(notificationTaskExecutor);
+        notificationTasks = new NotificationTaskTracker(notificationTaskExecutor, notificationTaskContextDecorator);
         insertUser(userId, "웹소켓 테스트 사용자");
         insertUser(counterpartId, "대화 상대");
         insertUser(otherUserId, "다른 대화 상대");
@@ -926,7 +930,9 @@ public class DirectMessageWebSocketIntegrationTest {
     void send_deliversAcrossActualServersWithoutDuplicatingMessages() throws Exception {
         try (ConfigurableApplicationContext nodeB = startAdditionalNode();
              NotificationTaskTracker nodeBTasks = new NotificationTaskTracker(
-                     nodeB.getBean("notificationTaskExecutor", ThreadPoolTaskExecutor.class))) {
+                     nodeB.getBean("notificationTaskExecutor", ThreadPoolTaskExecutor.class),
+                     nodeB.getBean("notificationTaskContextDecorator", TaskDecorator.class)
+             )) {
             int portB = ((WebServerApplicationContext) nodeB).getWebServer().getPort();
             SimpleBrokerMessageHandler brokerB = nodeB.getBean(SimpleBrokerMessageHandler.class);
             assertThat(portB).isNotEqualTo(port);

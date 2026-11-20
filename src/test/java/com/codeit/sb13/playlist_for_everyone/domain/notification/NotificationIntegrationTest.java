@@ -42,6 +42,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.core.task.TaskDecorator;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -166,6 +167,9 @@ class NotificationIntegrationTest {
     @Autowired
     @Qualifier("notificationTaskExecutor")
     private ThreadPoolTaskExecutor notificationTaskExecutor;
+    @Autowired
+    @Qualifier("notificationTaskContextDecorator")
+    private TaskDecorator notificationTaskContextDecorator;
 
     private NotificationTaskTracker notificationTasks;
     private TransactionTemplate transactionTemplate;
@@ -175,7 +179,7 @@ class NotificationIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        notificationTasks = new NotificationTaskTracker(notificationTaskExecutor);
+        notificationTasks = new NotificationTaskTracker(notificationTaskExecutor, notificationTaskContextDecorator);
         transactionTemplate = new TransactionTemplate(transactionManager);
         // 업무 이벤트 없이 사용자를 준비하고, 팔로우·알림의 독립 트랜잭션에서도 조회할 수 있도록 먼저 커밋한다.
         jdbcTemplate.update("""

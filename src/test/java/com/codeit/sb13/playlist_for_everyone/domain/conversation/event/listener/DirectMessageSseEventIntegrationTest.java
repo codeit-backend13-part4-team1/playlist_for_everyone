@@ -40,6 +40,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.event.EventListener;
+import org.springframework.core.task.TaskDecorator;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.auditing.AuditingHandler;
@@ -149,6 +150,9 @@ class DirectMessageSseEventIntegrationTest {
     @Autowired
     @Qualifier("notificationTaskExecutor")
     private ThreadPoolTaskExecutor notificationTaskExecutor;
+    @Autowired
+    @Qualifier("notificationTaskContextDecorator")
+    private TaskDecorator notificationTaskContextDecorator;
 
     @Autowired
     private NotificationEventProbe notificationEventProbe;
@@ -182,7 +186,7 @@ class DirectMessageSseEventIntegrationTest {
     @BeforeEach
     void setUp() {
         notificationEventProbe.clear();
-        notificationTasks = new NotificationTaskTracker(notificationTaskExecutor);
+        notificationTasks = new NotificationTaskTracker(notificationTaskExecutor, notificationTaskContextDecorator);
         insertUser(senderId, "발신자");
         insertUser(receiverId, "수신자");
 
