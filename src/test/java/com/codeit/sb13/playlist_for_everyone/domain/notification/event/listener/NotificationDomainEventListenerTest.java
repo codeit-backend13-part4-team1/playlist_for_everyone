@@ -251,8 +251,9 @@ class NotificationDomainEventListenerTest {
         verify(targetReader).findFollowerIds(ownerId);
         verify(processor).publish(batchCaptor.capture());
 
-        assertThat(batchCaptor.getValue().requests().get(0).receiverId())
-                .isEqualTo(followerId);
+        assertThat(batchCaptor.getValue().requests())
+                .extracting(NotificationCreateRequestedEvent::receiverId)
+                .containsExactly(followerId);
     }
 
     @ParameterizedTest
@@ -384,7 +385,9 @@ class NotificationDomainEventListenerTest {
 
         verify(targetReader).findSubscriberIds(playlistId);
         verify(processor).publish(batchCaptor.capture());
-        assertThat(batchCaptor.getValue().requests().get(0).receiverId()).isEqualTo(subscriberId);
+        assertThat(batchCaptor.getValue().requests())
+                .extracting(NotificationCreateRequestedEvent::receiverId)
+                .containsExactly(subscriberId);
     }
 
     @Test
