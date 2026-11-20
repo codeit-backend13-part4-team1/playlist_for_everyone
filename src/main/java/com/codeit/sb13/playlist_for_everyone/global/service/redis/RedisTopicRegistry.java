@@ -111,6 +111,9 @@ public class RedisTopicRegistry {
                 // 등록 실패시 키 삭제.
                 registerMap.get(topic).remove(key);
                 registerIndex.remove(key);
+
+                // todo - 적절한 입력 실패 에러 작성.
+                throw new RuntimeException(e);
             }
         }
     }
@@ -152,6 +155,7 @@ public class RedisTopicRegistry {
     }
 
     // 세션이 삭제되는 도중 같은 세션이 다시 등록되면
+    @Deprecated
     public void disconnect(String sessionId){
         List<KeyPair> registerIndexKeys = registerIndex.keySet().stream()
                 .filter(key -> key.inSession(sessionId))
@@ -162,6 +166,15 @@ public class RedisTopicRegistry {
         }
 
     }
+
+
+    public void unregisterAll(String sessionId, List<String> subscriptionIds){
+        for (String subscriptionId : subscriptionIds){
+            KeyPair key = KeyPair.of(sessionId, subscriptionId);
+            unregister(key);
+        }
+    }
+
 
     public List<String> disconnectWithContentId(String contentId){
         List<String> topics = new ArrayList<>();

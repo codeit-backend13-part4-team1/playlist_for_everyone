@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.response.NotificationDto;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.NotificationLevel;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.event.NotificationCreatedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.monitoring.NotificationMetrics;
 import com.codeit.sb13.playlist_for_everyone.global.exception.sse.SsePublishException;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEventPublisher;
@@ -38,6 +39,9 @@ class NotificationSseEventListenerTest {
 
     @Mock
     private SseEventPublisher sseEventPublisher;
+
+    @Mock
+    private NotificationMetrics metrics;
 
     @InjectMocks
     private NotificationSseEventListener listener;

@@ -21,6 +21,7 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.sse.SsePublishExce
 import com.codeit.sb13.playlist_for_everyone.global.file.storage.FileStorage;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEventPublisher;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -59,10 +60,13 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationMetricReader.processingCount;
+import static com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationMetricReader.publishAttempts;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.assertj.core.api.Assertions.within;
+import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.atLeastOnce;
@@ -119,6 +123,9 @@ class DirectMessageSseEventIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private MeterRegistry meterRegistry;
 
     @Autowired
     private ApplicationEventPublisher eventPublisher;
@@ -200,6 +207,9 @@ class DirectMessageSseEventIntegrationTest {
             return null;
         }).when(sseEventPublisher).publish(argThat(event -> "direct-messages".equals(event.eventName())));
 
+        double attemptsBefore = publishAttempts(meterRegistry, "direct_message_created");
+        long processedBefore = processingCount(meterRegistry, "direct_message_created");
+
         DirectMessage saved = directMessageSaver.save(command("커밋된 메시지"));
 
         assertThat(applicationEvents.stream(DirectMessageCreatedEvent.class).toList())
@@ -255,6 +265,15 @@ class DirectMessageSseEventIntegrationTest {
 
         verify(directMessageRepository).findDetailedById(saved.getId());
         verifyNoInteractions(fileStorage);
+
+        assertSoftly(softly -> {
+            softly.assertThat(publishAttempts(meterRegistry, "direct_message_created") - attemptsBefore)
+                    .as("알림 발행 시도 증가량")
+                    .isEqualTo(1.0);
+            softly.assertThat(processingCount(meterRegistry, "direct_message_created") - processedBefore)
+                    .as("알림 처리 시간 기록 증가량")
+                    .isEqualTo(1L);
+        });
     }
 
     @Test

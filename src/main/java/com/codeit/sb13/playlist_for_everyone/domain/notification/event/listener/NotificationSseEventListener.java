@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener;
 
 import com.codeit.sb13.playlist_for_everyone.domain.notification.event.NotificationCreatedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.monitoring.NotificationMetrics;
 import com.codeit.sb13.playlist_for_everyone.global.exception.sse.SsePublishException;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEventPublisher;
@@ -24,6 +25,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
 public class NotificationSseEventListener {
 
     private final SseEventPublisher sseEventPublisher;
+    private final NotificationMetrics metrics;
 
     /**
      * 기본 AFTER_COMMIT, fallbackExecution=false로 알림 트랜잭션의 성공에만 반응한다.
@@ -32,6 +34,7 @@ public class NotificationSseEventListener {
      */
     @TransactionalEventListener
     public void handleNotificationCreated(NotificationCreatedEvent event){
+        metrics.recordSaved();
         publishNotification(event);
     }
 
@@ -47,8 +50,10 @@ public class NotificationSseEventListener {
                     event.notificationDto().receiverId(),
                     event.notificationDto()
             ));
+            metrics.recordSsePublished();
         } catch (SsePublishException e){
             // 추적용 식별자와 원인 타입만 남긴다. 제목·내용·예외 메시지·스택은 출력하지 않는다.
+            metrics.recordSseFailure();
             Throwable cause = e.getCause() != null ? e.getCause() : e;
 
             log.warn("알림 SSE 발행 실패. notificationId={}, eventId={}, receiverId={}, exceptionType={}",

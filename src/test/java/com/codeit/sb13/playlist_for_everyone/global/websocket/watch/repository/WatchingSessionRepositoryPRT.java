@@ -49,7 +49,8 @@ public class WatchingSessionRepositoryPRT {
                 script.watcherDeleteScript(),
                 script.watcherCountScript(),
                 script.watcherDeleteWithContentIdScript(),
-                script.watcherCountMultipleContentsScript()
+                script.watcherCountMultipleContentsScript(),
+                script.watcherUnregisterAllScript()
         );
 
         register();
@@ -137,11 +138,11 @@ public class WatchingSessionRepositoryPRT {
         @Test
         @DisplayName("컨텐츠 리스트를 받아와서 해당하는 모든 컨텐츠의 시청자를 조회")
         void countWithMultipleContentsTest(){
-            Map<String, Long> result = repository
+            Map<UUID, Long> result = repository
                     .getWatcherCountWithMultipleContents(List.of(content1,content2));
 
-            for (Map.Entry<String, Long> entry : result.entrySet()){
-                assertThat(entry.getKey()).isIn(content1,content2);
+            for (Map.Entry<UUID, Long> entry : result.entrySet()){
+                assertThat(entry.getKey()).isIn(UUID.fromString(content1),UUID.fromString(content2));
                 assertThat(entry.getValue()).isEqualTo(3L);
             }
 

@@ -2,7 +2,6 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.event;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.event.UserSessionRevokedEvent;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.service.WebSocketService;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSession;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;

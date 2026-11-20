@@ -1,11 +1,8 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.entity;
 
-import jakarta.annotation.Nullable;
-
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.function.Consumer;
 
 /**
  * 구독 정보를 구체화 한 클래스.
@@ -13,9 +10,9 @@ import java.util.function.Consumer;
  * 연결 해제를 할 시, 사용할 수 있는 콜백 함수를 저장한다.
  */
 public class WSSubscription {
+    private final String sessionId;
     private final String id;
     private final String destination;
-    private final Consumer<?> callback;
 
     // 객체 고유 정보.
     private final UUID uuid;
@@ -25,12 +22,11 @@ public class WSSubscription {
      * 구독 생성자
      * @param id Spring 에서 생성하는 구독 id.
      * @param destination Spring 에서 생성하는 구독 destination.
-     * @param callback 구독 해제시 트리거 될 콜백 함수.
      */
-    public WSSubscription(String id, String destination, @Nullable Consumer<?> callback) {
+    public WSSubscription(String sessionId, String id, String destination) {
+        this.sessionId = Objects.requireNonNull(sessionId);
         this.id = Objects.requireNonNull(id);
         this.destination = Objects.requireNonNull(destination);
-        this.callback = callback;
         this.uuid = UUID.randomUUID();
         this.ctime = Instant.now();
     }
@@ -39,11 +35,18 @@ public class WSSubscription {
         return this.id;
     }
 
-    /**
-     * 구독을 해제 할 시 트리거 될 콜백 함수.
-     */
-    public void onUnregister(){
-        if (callback != null) callback.accept(null);
+    public String sessionId(){ return this.sessionId; }
+
+    public UUID uuid(){
+        return this.uuid;
+    }
+
+    public Instant createdAt(){
+        return this.ctime;
+    }
+
+    public String destination(){
+        return this.destination;
     }
 
 }
