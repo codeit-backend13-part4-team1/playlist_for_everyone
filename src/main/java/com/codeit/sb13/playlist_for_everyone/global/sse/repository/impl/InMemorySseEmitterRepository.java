@@ -90,7 +90,11 @@ public class InMemorySseEmitterRepository implements SseEmitterRepository {
 
     @Override
     public Map<Connection, SseEmitter> findByUserIdAndLoginSessionId(UUID userId, LoginSession loginSession) {
-        return Map.of();
+        Map<Connection, SseEmitterEntry> connections = sseEmitters.get(userId);
+        if (connections == null) {
+            return Map.of();
+        }
+        return convertToEmitterMap(connections, (sessionId) -> sessionId.equals(loginSession.id()));
     }
 
     private Map<Connection, SseEmitter> convertToEmitterMap(Map<Connection, SseEmitterEntry> connections, Predicate<UUID> loginSessionFilter) {
