@@ -13,13 +13,11 @@ import org.springframework.transaction.event.TransactionalEventListener;
 /**
  * 공통 알림 생성 요청을 받아 독립된 트랜잭션으로 알림을 저장하는 리스너.
  *
- * <p>업무 이벤트의 커밋 여부는 NotificationDomainEventListener가 확인한다.
- * 비동기 프로세서가 업무 커밋 후 작업 스레드에서 재발행한 요청도 처리하도록
- * fallbackExecution=true를 사용한다.
+ * <p>업무 이벤트에서 구성한 요청은 비동기 프로세서가 작업 스레드에서 재발행한다.
+ * 이 요청은 트랜잭션 밖에서 발행되므로 {@code fallbackExecution = true}에 따라 같은 스레드에서 처리한다.
  *
- * <p>별도 Spring 빈인 NotificationService.save를 호출하여 REQUIRES_NEW로 저장한다.
- * 저장 중 발행한 NotificationCreatedEvent는 알림 커밋 후
- * NotificationSseEventListener가 받아 SSE 발행을 요청한다.
+ * <p>{@link NotificationService#save(NotificationCommand)}를 호출해 요청마다 {@code REQUIRES_NEW}로 알림을 저장한다.
+ * 저장 중 발행한 이벤트는 알림 커밋 후 {@link NotificationSseEventListener}가 받아 SSE 발행을 요청한다.
  */
 @Component
 @RequiredArgsConstructor

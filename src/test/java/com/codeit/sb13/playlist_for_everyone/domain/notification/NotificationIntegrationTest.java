@@ -27,6 +27,7 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.sse.SsePublishExce
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEventPublisher;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionStartedEvent;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.validation.ConstraintViolationException;
 import org.junit.jupiter.api.AfterEach;
@@ -886,6 +887,46 @@ class NotificationIntegrationTest {
         verifyNoInteractions(notificationEventListener);
         assertThat(notificationRepository.count()).isZero();
         verifyNoInteractions(sseEventPublisher);
+    }
+
+    @Test
+    @DisplayName("트랜잭션 밖의 시청 시작 이벤트로 팔로워 알림을 저장하고 SSE 발행을 요청한다.")
+    void savesWatchSessionNotificationWithoutTransaction(){
+        UUID watcherId = RECEIVER_ID;
+        UUID followerId = FOLLOWER_ID;
+
+        insertFollow(followerId, watcherId);
+
+        eventPublisher.publishEvent(new WatchingSessionStartedEvent(
+                watcherId, "홍길동", UUID.randomUUID(), "인터스텔라"));
+
+        Notification saved = findOnlyNotification();
+        assertThat(saved.getReceiverId()).isEqualTo(followerId);
+        verify(sseEventPublisher).publish(any());
+    }
+
+    @Test
+    @DisplayName("시청 시작 이벤트를 발행한 트랜잭션이 롤백되면 알림 작업을 제출하지 않는다.")
+    void ignoresWatchingSessionStartedEventWhenTransactionRollsBack(){
+        insertFollow(FOLLOWER_ID, RECEIVER_ID);
+        WatchingSessionStartedEvent event = new WatchingSessionStartedEvent(RECEIVER_ID, "홍길동", UUID.randomUUID(), "인터스텔라");
+
+        transactionTemplate.executeWithoutResult(status ->{
+            eventPublisher.publishEvent(event);
+            assertThat(notificationTasks.hasSubmittedTasks()).isFalse();
+            status.setRollbackOnly();
+        });
+
+        assertThat(notificationTasks.hasSubmittedTasks()).isFalse();
+        assertThat(notificationRepository.count()).isZero();
+        verifyNoInteractions(sseEventPublisher);
+    }
+
+    private void insertFollow(UUID followerId, UUID watcherId) {
+        jdbcTemplate.update("""
+            INSERT INTO follows (id, follower_id, followee_id, created_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        """, UUID.randomUUID(), followerId, watcherId);
     }
 
     private NotificationCreateRequestedEvent event(UUID receiverId, String title, NotificationLevel level) {

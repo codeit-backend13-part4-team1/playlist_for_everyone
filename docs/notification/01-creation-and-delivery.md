@@ -3,14 +3,14 @@
 [#51](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/51)은 **저장이 커밋된 알림을 수신자에게 실시간으로 전달**하는 연결 작업입니다.
 알림 생성 요청부터 읽고, 트랜잭션 경계와 실패 처리를 확인하면 코드를 따라가기 쉽습니다.
 업무 이벤트부터 확인하려면 [팔로우 연동](07-domain-event-integration.md), [권한 변경·구독 연동](08-role-subscription-integration.md),
-[플레이리스트 생성·콘텐츠 추가 연동](09-playlist-event-integration.md), [DM 연동](11-direct-message-integration.md) 중 해당 가이드를 먼저 읽습니다.
+[플레이리스트 생성·콘텐츠 추가 연동](09-playlist-event-integration.md), [DM 연동](11-direct-message-integration.md), [시청 시작 연동](13-watching-session-integration.md) 중 해당 가이드를 먼저 읽습니다.
 연결부터 전달까지는 [SSE 전체 흐름](../sse/00-overall-flow.md), 이력과 복구 정책은 [공유 이력 계약](../sse/09-shared-history.md)을 참고합니다.
 
 ## 역할부터 구분하기
 
 | 역할 | 코드 | 맡은 일 |
 | --- | --- | --- |
-| 업무 이벤트 수신 | `NotificationDomainEventListener` | 업무 커밋 후 수신자를 결정하고 알림 요청 목록을 구성 |
+| 업무 이벤트 수신 | `NotificationDomainEventListener` | 이벤트별 실행 조건에 따라 수신자를 결정하고 알림 요청 목록 구성 |
 | 비동기 발행 | `NotificationAsyncProcessor` | `@Async`로 요청 목록을 작업 하나로 받아 알림 워커에서 순차 발행 |
 | 생성 요청 | `NotificationCreateRequestedEvent` | 수신자·제목·내용·수준으로 알림 저장을 요청 |
 | 공통 요청 수신 | `NotificationEventListener` | 트랜잭션 안의 요청은 커밋 후, 밖의 요청은 즉시 받아 command로 변환하고 저장 서비스 호출 |
@@ -55,8 +55,12 @@ sequenceDiagram
     participant Redis as Redis
     participant C as 수신자 연결 서버
     alt 업무 이벤트로 생성
-        B->>B: 업무 이벤트 발행 후 트랜잭션 커밋
-        B->>D: AFTER_COMMIT 처리
+        alt 트랜잭션 안에서 업무 이벤트 발행
+            B->>B: 업무 이벤트 발행 후 트랜잭션 커밋
+            B->>D: AFTER_COMMIT 처리
+        else 트랜잭션 밖에서 시청 시작 이벤트 발행
+            B->>D: fallbackExecution=true로 즉시 처리
+        end
         D->>D: 수신자 결정 및 알림 요청 목록 구성
         D-)W: 전용 실행기에 작업 하나 제출
         W->>R: NotificationCreateRequestedEvent 발행
@@ -86,11 +90,13 @@ sequenceDiagram
 | `PlaylistCreatedEvent` | `NotificationDomainEventListener` | `false` | 무시 |
 | `PlaylistContentAddedEvent` | `NotificationDomainEventListener` | `false` | 무시 |
 | `DirectMessageCreatedEvent` | `NotificationDomainEventListener` | `false` | 무시 |
+| `WatchingSessionStartedEvent` | `NotificationDomainEventListener` | `true` | 발행 스레드에서 즉시 처리 |
 | `NotificationCreateRequestedEvent` | `NotificationEventListener` | `true` | 즉시 처리 |
 | `NotificationCreatedEvent` | `NotificationSseEventListener` | `false` | 무시 |
 
 트랜잭션에 등록된 이벤트는 커밋 후 처리하고, 롤백되면 처리하지 않습니다.
-업무 이벤트 리스너는 커밋 처리 스레드에서 알림 요청 목록을 구성합니다. 플레이리스트 생성·콘텐츠 추가에 필요한 수신자 조회도 이때 수행합니다.
+업무 이벤트 리스너를 실행하는 스레드에서 수신자를 조회하고 알림 요청 목록을 구성합니다.
+트랜잭션 안에서 발행한 이벤트는 커밋 처리 스레드에서, 트랜잭션 밖에서 발행한 시청 시작 이벤트는 발행 스레드에서 이 작업을 수행합니다.
 요청이 있으면 `NotificationAsyncProcessor`의 `@Async("notificationTaskExecutor")`를 통해 작업 하나를 제출합니다.
 알림 워커는 공통 생성 요청을 트랜잭션 밖에서 순서대로 발행하므로 요청 리스너가 즉시 실행됩니다.
 
@@ -99,7 +105,7 @@ sequenceDiagram
 `save` 반환이나 SQL을 실행하는 `flush` 자체는 커밋 완료를 뜻하지 않으며, 이 경로는 명시적 `flush`를 강제하지 않습니다.
 
 업무 이벤트 경로에서는 알림 워커가 수신자별 `REQUIRES_NEW` 트랜잭션으로 저장하고, 알림 커밋 후 같은 워커에서 SSE 발행을 요청합니다.
-업무 커밋 전에 저장 서비스를 직접 호출하면 알림만 먼저 커밋될 수 있습니다. 업무 이벤트는 저장 트랜잭션 안에서 발행하고 커밋 후 변환합니다.
+업무 커밋 전에 저장 서비스를 직접 호출하면 알림만 먼저 커밋될 수 있습니다. DB 변경에 따른 업무 이벤트는 해당 저장 트랜잭션 안에서 발행하고 커밋 후 변환합니다.
 
 작업을 제출할 때 `TaskContextDecorator`가 호출 스레드의 인증과 MDC를 캡처합니다.
 MDC에 `requestId`가 있으면 알림 워커 로그에서도 같은 값으로 요청을 추적할 수 있습니다. 작업이 끝나면 워커의 이전 인증과 MDC를 복원합니다.
@@ -159,8 +165,8 @@ DB 알림은 조회할 수 있습니다. 공유 이력 저장에 성공한 항�
 발행 실패 후 보관된 이력이 즉시 전송된다고 보장하지 않으며, 이후 조회 신호나 유효한 커서를 가진 재연결이 필요합니다.
 
 공통 생성 요청으로 변환하는 구현과 검증 범위는 [#155 팔로우](07-domain-event-integration.md), [#156 권한 변경·구독](08-role-subscription-integration.md),
-[#157 플레이리스트 생성·콘텐츠 추가](09-playlist-event-integration.md), [#159 DM](11-direct-message-integration.md)에 정리했습니다.
-이 여섯 종류 외의 업무 이벤트는 [#45](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/45)의 후속 연동입니다.
+[#157 플레이리스트 생성·콘텐츠 추가](09-playlist-event-integration.md), [#158 시청 시작](13-watching-session-integration.md), [#159 DM](11-direct-message-integration.md)에 정리했습니다.
+나머지 업무 이벤트 연동은 [#45](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/45)에서 관리합니다.
 DM 본문의 `direct-messages` 전송은 [#62 가이드](../conversation/15-direct-message-event-sse.md), 알림 저장·전송 검증은 [DM 알림 테스트](12-direct-message-testing.md)에서 구분합니다. Kafka 구현체는 별도 범위입니다.
 공유 이력과 재연결 복구의 현재 동작은 [SSE 복구 문서](../sse/10-recovery-and-retry.md)에 정리했습니다.
 이번 기능을 위한 외부 알림 생성 API는 추가하지 않았으며, 실제 저장부터 수신까지의 확인 방법은 다음 문서에 정리합니다.
