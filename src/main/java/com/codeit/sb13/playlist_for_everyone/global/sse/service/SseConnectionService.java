@@ -45,10 +45,11 @@ public class SseConnectionService {
     /**
      * 새 연결을 등록하고 ID 없는 주석과 초기 복구 데이터를 준비한다.
      * 응답 반환 전 복구하므로 조회 실패 시 SSE 응답 대신 JSON 오류를 반환할 수 있다.
-     * 같은 사용자여도 매번 새 연결 ID를 발급한다. 이전 연결 ID를 재연결에 사용하지 않는다.
+     * 같은 로그인 세션에서 탭을 추가하거나 재연결할 때마다 새 연결 ID를 발급한다.
      *
      * @param userId 인증된 사용자 ID
      * @param lastEventId 마지막으로 받은 이벤트 UUID. null이면 과거 재전송 없이 현재 끝 위치에서 시작한다
+     * @param loginSession JWT 인증에서 검증한 로그인 세션 ID
      * @return 이번 연결에서 생성한 emitter
      * @throws UncheckedIOException 초기 주석 또는 복구 이벤트 전송 중 I/O 예외가 발생한 경우
      * @throws IllegalStateException 연결 중복 등록, 초기 전송 상태 또는 이력 해석에 문제가 있는 경우
@@ -139,7 +140,7 @@ public class SseConnectionService {
     }
 
     /**
-     * 해당 연결의 상태·예약·저장소 참조 정리를 조정기에 위임한다. 여기서는 complete를 요청하지 않는다.
+     * 해당 연결의 상태·예약과 저장소의 emitter·세션 매핑 정리를 조정기에 위임한다.
      * 연결 ID를 재사용하지 않으므로 이전 콜백이 반복되어도 새 연결이나 Redis 공유 이력을 삭제하지 않는다.
      */
     private void cleanupConnection(UUID userId, Connection connection){

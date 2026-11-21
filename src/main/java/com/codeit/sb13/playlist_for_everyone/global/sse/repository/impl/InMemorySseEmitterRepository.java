@@ -12,7 +12,8 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 /**
- * 사용자 ID -> 연결 ID -> SseEmitter 구조로 현재 인스턴스의 연결을 보관한다.
+ * 현재 서버의 연결을 사용자 ID → 연결 ID → 로그인 세션 ID와 emitter 구조로 보관한다.
+ * 같은 로그인 세션의 여러 연결을 사용자별 Map에서 세션 ID로 조회한다.
  *
  * <p>실제 HTTP 연결을 가진 emitter는 다른 서버로 복제할 수 있는 메시지가 아니다.
  * Redis/Kafka로 이벤트를 공유하더라도 emitter는 연결이 맺어진 서버의 메모리에서 관리한다.

@@ -6,7 +6,8 @@ SSE는 하나의 HTTP 응답을 열어 두고 서버가 클라이언트에 이�
 
 기준 범위는 [#49 연결 관리](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/49),
 [#50 Redis 전송](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/50),
-[#53 공유 이력·복구](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/53)의 현재 코드입니다.
+[#53 공유 이력·복구](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/53),
+[#236 로그인 세션 매핑](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/236)의 현재 코드입니다.
 Java 17, Spring Boot 4.0.8, Spring MVC를 사용합니다.
 
 ## 먼저 구분할 식별자
@@ -14,6 +15,7 @@ Java 17, Spring Boot 4.0.8, Spring MVC를 사용합니다.
 | 값 | 역할 |
 | --- | --- |
 | 사용자 UUID | 이력 소유자와 수신자 |
+| 로그인 세션 ID(`sid`) | 인증된 로그인 식별자. 같은 로그인으로 연 여러 연결이 공유 |
 | 연결 UUID | 같은 사용자의 탭·재연결 구분 |
 | 이벤트 UUID | SSE 프레임의 id와 lastEventId 쿼리 |
 | 내부 저장 위치 | Redis Stream ID. 연결별 후속 조회 기준 |
@@ -35,7 +37,7 @@ MVC가 비동기 응답을 관리하고, 전송 시 같은 HTTP 응답에 데이
 | 문서 | 답을 얻을 질문 |
 | --- | --- |
 | [전체 흐름](00-overall-flow.md) | 연결·알림 발행·복구·종료가 어떻게 이어지나요? |
-| [1. 연결 생성과 종료](01-connection-lifecycle.md) | 여러 탭과 콜백은 어떻게 구분하나요? |
+| [1. 연결 생성과 종료](01-connection-lifecycle.md) | 로그인 세션과 개별 탭을 어떻게 구분하고 정리하나요? |
 | [2. 전송과 하트비트](02-delivery-heartbeat.md) | 클라이언트 프레임과 오류 처리는 어떻게 되나요? |
 | [3. 저장소와 동시성](03-repository-concurrency.md) | compute와 조회 사본은 왜 필요한가요? |
 | [4. 비동기 응답과 인증](04-async-security.md) | ASYNC 종료 시 인증은 어떻게 유지되나요? |
