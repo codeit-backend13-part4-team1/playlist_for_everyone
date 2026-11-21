@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.repository;
 
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
+import com.codeit.sb13.playlist_for_everyone.global.sse.event.LoginSession;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.Map;
@@ -21,7 +22,7 @@ public interface SseEmitterRepository {
      *
      * @throws IllegalStateException 같은 키가 등록되어 있는 경우. 기존 emitter는 유지한다
      */
-    void save(UUID userId, Connection connection, SseEmitter sseEmitter);
+    void save(UUID userId, Connection connection, SseEmitter sseEmitter, LoginSession loginSession);
 
     /**
      * 지정한 연결의 실제 emitter 참조를 반환하며, 사용자 또는 연결이 없으면 Optional.empty()를 반환한다.
@@ -43,4 +44,8 @@ public interface SseEmitterRepository {
      * 바깥 Map과 사용자별 Map 모두 수정할 수 없으며, 모든 사용자의 동일 시점 상태를 보장하지 않는다.
      */
     Map<UUID,  Map<Connection, SseEmitter>> findAll();
+
+    Map<Connection, SseEmitter> findByUserIdAndLoginSessionId(UUID userId, LoginSession loginSession);
+
+
 }

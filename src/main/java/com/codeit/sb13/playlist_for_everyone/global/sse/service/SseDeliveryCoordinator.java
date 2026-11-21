@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.global.sse.service;
 
 import com.codeit.sb13.playlist_for_everyone.global.sse.config.SseRetryProperties;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
+import com.codeit.sb13.playlist_for_everyone.global.sse.event.LoginSession;
 import com.codeit.sb13.playlist_for_everyone.global.sse.history.SseHistoryPosition;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -65,7 +66,7 @@ public class SseDeliveryCoordinator {
      *
      * @throws IllegalStateException 상태 또는 저장소에 같은 사용자·연결 키가 이미 등록된 경우
      */
-    public void register(UUID userId, Connection connection, SseEmitter emitter){
+    public void register(UUID userId, Connection connection, SseEmitter emitter, LoginSession loginSession){
         ConnectionKey key = new ConnectionKey(userId, connection);
         ConnectionState state = new ConnectionState(retryProperties.initialDelay());
         synchronized (state) {
@@ -73,7 +74,7 @@ public class SseDeliveryCoordinator {
                 throw new IllegalStateException("이미 등록된 SSE 연결입니다.");
             }
             try {
-                emitterRepository.save(userId, connection, emitter);
+                emitterRepository.save(userId, connection, emitter, loginSession);
             } catch (RuntimeException failure) {
                 removeConnectionState(key, state);
                 throw failure;

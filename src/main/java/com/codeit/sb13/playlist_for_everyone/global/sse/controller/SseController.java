@@ -2,12 +2,14 @@ package com.codeit.sb13.playlist_for_everyone.global.sse.controller;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.ApiErrorResponse;
+import com.codeit.sb13.playlist_for_everyone.global.sse.event.LoginSession;
 import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseConnectionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.QueryTimeoutException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -47,7 +49,7 @@ public class SseController {
     @GetMapping(produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter connect(@RequestParam(value = "lastEventId", required = false) UUID lastEventId,
                               @AuthenticationPrincipal SecurityUser user){
-        return sseConnectionService.connect(user.getUserId(), lastEventId);
+        return sseConnectionService.connect(user.getUserId(), lastEventId, new LoginSession(user.getLoginSessionId()));
 
     }
 
