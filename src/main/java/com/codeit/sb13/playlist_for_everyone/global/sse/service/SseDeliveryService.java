@@ -78,8 +78,11 @@ public class SseDeliveryService {
                 );
     }
 
-    public void revoke(UUID userId, LoginSession loginSession) {
-        // 로컬 연결 정리 동작은 후속 커밋에서 연결한다.
+    public void revoke(UUID userId, LoginSession loginSession){
+        sseEmitterRepository.findByUserIdAndLoginSessionId(userId, loginSession)
+                .keySet()
+                .forEach(connection ->
+                        deliveryCoordinator.closeConnection(userId, connection));
     }
 
     private void sendHeartbeat(UUID userId, Connection connection, SseEmitter emitter) {
