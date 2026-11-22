@@ -24,6 +24,11 @@ import java.util.UUID;
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WebSocketUtils.check;
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.UUID_REGEX;
 
+/**
+ * 비즈니스 로직을 호출 하기 위한 이벤트 리스너
+ * 실질적인 세션 연결 밑 끊기 관리는 하지 않고, 구독 관리만 한다.
+ */
+
 @Slf4j
 @Component
 @RequiredArgsConstructor

@@ -96,12 +96,14 @@ public class ChattingSessionServiceImpl implements ChattingSessionService {
 
         }
     }
-    // todo - 메세지의 전송기를 별도로 분리하고, 인스턴스에 따라 redis 구현체와 로컬 구현체를 작성할 것.
+
     @Override
     public void send(UUID contentId, Object payload) {
         ChattingSessionRoom room = getRoomOrException(contentId);
         redisTemplate.convertAndSend(room.topic(), payload);
     }
+
+    // todo - 로컬 인스턴스로 받은 메세지를 전송하는 이벤트 리스너 작성.
 
     private ChattingSessionRoom getRoomOrException(UUID contentId) {
         return chattingSessionRepository.find(contentId)

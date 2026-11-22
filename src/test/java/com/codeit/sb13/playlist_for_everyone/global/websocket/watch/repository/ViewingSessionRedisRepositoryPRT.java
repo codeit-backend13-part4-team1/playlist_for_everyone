@@ -2,7 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.watch.repository;
 
 
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatcherScriptConfig;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.WatchingSessionRepository;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.ViewingSessionRedisRepository;
 import org.junit.jupiter.api.*;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
@@ -20,12 +20,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @Disabled // 스크립트 로그 테스트 용. 필요시 활성화.
 @Import(WatcherScriptConfig.class)
-public class WatchingSessionRepositoryPRT {
+public class ViewingSessionRedisRepositoryPRT {
 
     LettuceConnectionFactory factory;
     StringRedisTemplate template;
 
-    WatchingSessionRepository repository;
+    ViewingSessionRedisRepository repository;
     WatcherScriptConfig script;
 
     @BeforeEach
@@ -41,14 +41,13 @@ public class WatchingSessionRepositoryPRT {
 
         script = new WatcherScriptConfig();
 
-        repository = new WatchingSessionRepository(
+        repository = new ViewingSessionRedisRepository(
                 template,
                 script.watcherRegisterScript(),
                 script.watcherUnregisterScript(),
                 script.watcherRefreshScript(),
                 script.watcherDeleteScript(),
                 script.watcherCountScript(),
-                script.watcherDeleteWithContentIdScript(),
                 script.watcherCountMultipleContentsScript(),
                 script.watcherUnregisterAllScript()
         );
