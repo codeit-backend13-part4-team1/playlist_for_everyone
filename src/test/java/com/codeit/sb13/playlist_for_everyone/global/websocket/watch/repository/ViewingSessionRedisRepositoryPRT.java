@@ -18,7 +18,7 @@ import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.co
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.STORAGE_SESSION_PREFIX;
 import static org.assertj.core.api.Assertions.assertThat;
 
-@Disabled // 스크립트 로그 테스트 용. 필요시 활성화.
+//@Disabled // 스크립트 로그 테스트 용. 필요시 활성화.
 @Import(WatcherScriptConfig.class)
 public class ViewingSessionRedisRepositoryPRT {
 
@@ -46,8 +46,8 @@ public class ViewingSessionRedisRepositoryPRT {
                 script.watcherRegisterScript(),
                 script.watcherUnregisterScript(),
                 script.watcherRefreshScript(),
-                script.watcherDeleteScript(),
                 script.watcherCountScript(),
+                script.watcherDeleteWithContentIdScript(),
                 script.watcherCountMultipleContentsScript(),
                 script.watcherUnregisterAllScript()
         );

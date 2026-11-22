@@ -50,8 +50,8 @@ public class ViewingSessionRedisRepositoryTest {
                 redisScriptConfig.watcherRegisterScript(),
                 redisScriptConfig.watcherUnregisterScript(),
                 redisScriptConfig.watcherRefreshScript(),
-                redisScriptConfig.watcherDeleteScript(),
                 redisScriptConfig.watcherCountScript(),
+                redisScriptConfig.watcherDeleteWithContentIdScript(),
                 redisScriptConfig.watcherCountMultipleContentsScript(),
                 redisScriptConfig.watcherUnregisterAllScript()
         );
