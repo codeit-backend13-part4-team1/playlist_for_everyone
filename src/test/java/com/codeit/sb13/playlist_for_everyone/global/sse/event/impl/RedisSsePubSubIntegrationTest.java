@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.global.config.RedisConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.SseTransportConfig;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisBrokerRegister;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Event;
+import com.codeit.sb13.playlist_for_everyone.global.sse.event.RevokeEvent;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEventPublisher;
 import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseDeliveryService;
@@ -17,6 +18,8 @@ import org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfigurat
 import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.data.redis.connection.Message;
+import org.springframework.data.redis.connection.MessageListener;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -34,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.Mockito.*;
@@ -46,12 +50,14 @@ import static org.mockito.Mockito.*;
                 RedisBrokerRegister.class,
                 RedisSseEventPublisher.class,
                 RedisSseEventSubscriber.class,
-                RedisSseSubscription.class
+                RedisSseSubscription.class,
+                RedisRevokeEventPublisher.class
         },
         properties = {
                 "everyone.sse.transport=redis",
                 "everyone.sse.subscription-enabled=true",
-                "everyone.sse.redis.channel=test:sse:pubsub"
+                "everyone.sse.redis.channel=test:sse:pubsub",
+                "everyone.sse.redis.revoke-channel=" + RedisSsePubSubIntegrationTest.REVOKE_CHANNEL
         }
 )
 @ImportAutoConfiguration({
@@ -62,6 +68,8 @@ import static org.mockito.Mockito.*;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @DisplayName("Redis SSE 발행·구독 통합 테스트")
 public class RedisSsePubSubIntegrationTest {
+
+    static final String REVOKE_CHANNEL = "test:sse:pubsub:revocations";
 
     @Container
     static final GenericContainer<?> redis = new GenericContainer<>(
@@ -78,10 +86,16 @@ public class RedisSsePubSubIntegrationTest {
     private SseEventPublisher publisher;
 
     @Autowired
+    private RedisRevokeEventPublisher revokeEventPublisher;
+
+    @Autowired
     private ObjectMapper objectMapper;
 
     @MockitoBean
     private SseDeliveryService sseDeliveryService;
+
+    @MockitoBean(name = "redisRevokeEventSubscriber")
+    private MessageListener revokeSubscriber;
 
     @Test
     @DisplayName("발행한 이벤트가 Redis를 거쳐 식별자와 이름 및 중첩 JSON 데이터를 보존해 전달된다.")
@@ -159,6 +173,42 @@ public class RedisSsePubSubIntegrationTest {
     }
 
     @Test
+    @DisplayName("A에서 발행한 세션 폐기 이벤트를 A와 B가 전용 Redis 채널에서 받는다.")
+    void deliversRevocationToBothNodes() {
+        createAdditionalNodeRunner().run(contextB -> {
+            assertThat(contextB).hasNotFailed();
+            MessageListener revokeSubscriberOnB =
+                    contextB.getBean("redisRevokeEventSubscriber", MessageListener.class);
+            assertThat(revokeSubscriberOnB).isNotSameAs(revokeSubscriber);
+
+            await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+                var subscriptions = redis.execInContainer(
+                        "redis-cli", "--raw", "PUBSUB", "NUMSUB", "test:sse:pubsub");
+                assertThat(subscriptions.getExitCode()).isZero();
+                assertThat(subscriptions.getStdout().lines().toList())
+                        .containsExactly("test:sse:pubsub", "2");
+            });
+
+            RevokeEvent<?> event = new RevokeEvent<>(UUID.randomUUID(), UUID.randomUUID());
+            revokeEventPublisher.publish(event);
+
+            assertRevocationReceived(revokeSubscriber, event);
+            assertRevocationReceived(revokeSubscriberOnB, event);
+        });
+    }
+
+    private void assertRevocationReceived(MessageListener subscriber, RevokeEvent<?> event) {
+        ArgumentCaptor<Message> messageCaptor = ArgumentCaptor.forClass(Message.class);
+        verify(subscriber, timeout(5_000)).onMessage(messageCaptor.capture(), nullable(byte[].class));
+
+        Message message = messageCaptor.getValue();
+        assertThat(message.getChannel()).isEqualTo(REVOKE_CHANNEL.getBytes(UTF_8));
+        JsonNode payload = objectMapper.readTree(message.getBody());
+        assertThat(payload.path("userId").asString()).isEqualTo(event.userId().toString());
+        assertThat(payload.path("loginSessionId").asString()).isEqualTo(event.loginSessionId().toString());
+    }
+
+    @Test
     @DisplayName("Redis 구독 연결이 끊어져도 자동으로 재구독하여 새 이벤트를 전달한다.")
     void deliversNewEventAfterSubscriptionReconnects() throws IOException, InterruptedException {
         var disconnected = redis.execInContainer("redis-cli", "--raw", "CLIENT", "KILL", "TYPE", "pubsub");
@@ -208,9 +258,12 @@ public class RedisSsePubSubIntegrationTest {
                         "spring.data.redis.port=" + redis.getMappedPort(6379),
                         "everyone.sse.transport=redis",
                         "everyone.sse.subscription-enabled=true",
-                        "everyone.sse.redis.channel=test:sse:pubsub"
+                        "everyone.sse.redis.channel=test:sse:pubsub",
+                        "everyone.sse.redis.revoke-channel=" + REVOKE_CHANNEL
                 ).withBean(SseDeliveryService.class,
-                        ()-> mock(SseDeliveryService.class));
+                        ()-> mock(SseDeliveryService.class))
+                .withBean("redisRevokeEventSubscriber", MessageListener.class,
+                        () -> mock(MessageListener.class));
     }
 
 
