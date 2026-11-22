@@ -40,7 +40,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
         "everyone.sportsdb.base-url=https://sportsdb.test",
         "everyone.sportsdb.api-key=test-key"
 })
-@Import(SportsDbClientConfig.class)
+@Import({SportsDbClientConfig.class, ExternalApiRetry.class})
 @AutoConfigureMockRestServiceServer(enabled = false)
 class SportsDbClientTest {
 
@@ -55,7 +55,7 @@ class SportsDbClientTest {
     void setUp() {
         var builder = configuredRestClient.mutate();
         server = MockRestServiceServer.bindTo(builder).build();
-        sportsDbClient = new SportsDbClient(builder.build());
+        sportsDbClient = new SportsDbClient(builder.build(), new ExternalApiRetry());
     }
 
     @Test

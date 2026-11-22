@@ -52,7 +52,7 @@ class TmdbClientTimeoutTest {
             var restClient = config.tmdbRestClient(
                     RestClient.builder(), properties
             );
-            var client = new TmdbClient(restClient);
+            var client = new TmdbClient(restClient, new ExternalApiRetry());
 
             assertThatThrownBy(() -> client.getPopularMovies(1))
                     .isInstanceOf(ResourceAccessException.class)

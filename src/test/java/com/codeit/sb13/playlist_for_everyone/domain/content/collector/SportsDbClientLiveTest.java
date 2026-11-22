@@ -25,7 +25,7 @@ class SportsDbClientLiveTest {
                 RestClient.builder(),
                 properties
         );
-        var client = new SportsDbClient(restClient);
+        var client = new SportsDbClient(restClient, new ExternalApiRetry());
 
         var response = client.getEventsBySeason("4328", "2014-2015");
 

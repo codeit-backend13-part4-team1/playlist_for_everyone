@@ -15,6 +15,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.client.ExpectedCount;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
@@ -35,7 +36,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
                 "everyone.tmdb.access-token=test-token"
         }
 )
-@Import(TmdbClientConfig.class)
+@Import({TmdbClientConfig.class, ExternalApiRetry.class})
 @AutoConfigureMockRestServiceServer(enabled = false)
 class TmdbClientTest {
 
@@ -51,7 +52,7 @@ class TmdbClientTest {
         var builder = configuredRestClient.mutate();
 
         server = MockRestServiceServer.bindTo(builder).build();
-        tmdbClient = new TmdbClient(builder.build());
+        tmdbClient = new TmdbClient(builder.build(), new ExternalApiRetry());
     }
 
     @Test
@@ -175,12 +176,14 @@ class TmdbClientTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {401, 429, 500})
+    @ValueSource(ints = {401, 403, 429, 500})
     void 영화_조회_API_오류를_예외로_전달한다(int statusCode) {
         // given
-        server.expect(requestTo(
-                        "https://tmdb.test/3/movie/popular?language=ko-KR&page=1"
-                ))
+        server.expect(
+                ExpectedCount.times(statusCode == 500 ? 3 : 1),
+                        requestTo(
+                                "https://tmdb.test/3/movie/popular?language=ko-KR&page=1"
+                        ))
                 .andRespond(withStatus(HttpStatus.valueOf(statusCode)));
 
         // when & then
@@ -195,12 +198,14 @@ class TmdbClientTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {401, 429, 500})
+    @ValueSource(ints = {401, 403, 429, 500})
     void TV_조회_API_오류를_예외로_전달한다(int statusCode) {
         // given
-        server.expect(requestTo(
-                        "https://tmdb.test/3/tv/popular?language=ko-KR&page=1"
-                ))
+        server.expect(
+                ExpectedCount.times(statusCode == 500 ? 3 : 1),
+                        requestTo(
+                                "https://tmdb.test/3/tv/popular?language=ko-KR&page=1"
+                        ))
                 .andRespond(withStatus(HttpStatus.valueOf(statusCode)));
 
         // when & then
@@ -281,4 +286,84 @@ class TmdbClientTest {
 
         server.verify();
     }
+
+
+    @Test
+    void 일시적인_서버_오류_후_재시도하면_영화_목록_조회에_성공한다() {
+        String url = "https://tmdb.test/3/movie/popular"
+                + "?language=ko-KR&page=1";
+
+        // 첫 번째 요청: 일시적인 서버 오류
+        server.expect(requestTo(url))
+                .andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE));
+
+        // 두 번째 요청: 정상 응답
+        server.expect(requestTo(url))
+                .andRespond(withSuccess("""
+                    {
+                      "page": 1,
+                      "results": [],
+                      "total_pages": 1,
+                      "total_results": 0
+                    }
+                    """, MediaType.APPLICATION_JSON));
+
+        var response = tmdbClient.getPopularMovies(1);
+
+        assertThat(response).isNotNull();
+        assertThat(response.results()).isEmpty();
+
+        server.verify();
+    }
+
+
+    @Test
+    void 일시적인_서버_오류_후_재시도하면_TV_목록_조회에_성공한다() {
+        String url = "https://tmdb.test/3/tv/popular"
+                + "?language=ko-KR&page=1";
+
+        // 첫 번째 요청: 일시적인 서버 오류
+        server.expect(requestTo(url))
+                .andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE));
+
+        // 두 번째 요청: 정상 응답
+        server.expect(requestTo(url))
+                .andRespond(withSuccess("""
+                    {
+                      "page": 1,
+                      "results": [],
+                      "total_pages": 1,
+                      "total_results": 0
+                    }
+                    """, MediaType.APPLICATION_JSON));
+
+        var response = tmdbClient.getPopularTvShows(1);
+
+        assertThat(response).isNotNull();
+        assertThat(response.results()).isEmpty();
+
+        server.verify();
+    }
+
+
+    @Test
+    void 일시적인_서버_오류가_계속되면_재시도_횟수_초과로_실패한다() {
+        String url = "https://tmdb.test/3/movie/popular"
+                + "?language=ko-KR&page=1";
+
+        // 최초 요청 + 재시도 2회 모두 503 반환
+        server.expect(ExpectedCount.times(3), requestTo(url))
+                .andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE));
+
+        assertThatThrownBy(() -> tmdbClient.getPopularMovies(1))
+                .isInstanceOfSatisfying(
+                        RestClientResponseException.class,
+                        exception -> assertThat(exception.getStatusCode().value())
+                                .isEqualTo(503)
+                );
+
+        server.verify();
+    }
+
+
 }
