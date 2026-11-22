@@ -25,31 +25,32 @@ public class ExternalApiRetry {
                     .build()
     );
 
+    public <T> T execute(Supplier<T> request) {
+        return retryTemplate.invoke(request);
+    }
+
     private static boolean shouldRetry(Throwable exception) {
         if (exception instanceof RestClientResponseException response) {
             int status = response.getStatusCode().value();
-
-            return status == 500
-                    || status == 502
-                    || status == 503
-                    || status == 504;
+            return status == 500 || status == 502
+                    || status == 503 || status == 504;
         }
 
         if (exception instanceof ResourceAccessException e) {
-            return e.contains(SocketTimeoutException.class)
-                    || e.contains(HttpTimeoutException.class)
-                    || e.contains(ConnectException.class);
+            return e.contains(ConnectException.class)
+                    || isTimeout(e);
         }
 
         if (exception instanceof RestClientException e) {
-            return e.contains(SocketTimeoutException.class)
-                    || e.contains(HttpTimeoutException.class);
+            return isTimeout(e);
         }
 
         return false;
     }
 
-    public <T> T execute(Supplier<T> request) {
-        return retryTemplate.invoke(request);
+    private static boolean isTimeout(RestClientException exception) {
+        return exception.contains(SocketTimeoutException.class)
+                || exception.contains(HttpTimeoutException.class);
     }
+
 }
