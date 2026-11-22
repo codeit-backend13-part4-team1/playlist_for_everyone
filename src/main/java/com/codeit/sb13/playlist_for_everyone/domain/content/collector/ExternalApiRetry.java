@@ -7,10 +7,9 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
+import java.net.ConnectException;
 import java.net.SocketTimeoutException;
-import java.net.UnknownHostException;
 import java.net.http.HttpTimeoutException;
-import java.nio.channels.UnresolvedAddressException;
 import java.time.Duration;
 import java.util.function.Supplier;
 
@@ -26,10 +25,6 @@ public class ExternalApiRetry {
                     .build()
     );
 
-    public <T> T execute(Supplier<T> request) {
-        return retryTemplate.invoke(request);
-    }
-
     private static boolean shouldRetry(Throwable exception) {
         if (exception instanceof RestClientResponseException response) {
             int status = response.getStatusCode().value();
@@ -41,8 +36,9 @@ public class ExternalApiRetry {
         }
 
         if (exception instanceof ResourceAccessException e) {
-            return !e.contains(UnknownHostException.class)
-                    && !e.contains(UnresolvedAddressException.class);
+            return e.contains(SocketTimeoutException.class)
+                    || e.contains(HttpTimeoutException.class)
+                    || e.contains(ConnectException.class);
         }
 
         if (exception instanceof RestClientException e) {
@@ -51,5 +47,9 @@ public class ExternalApiRetry {
         }
 
         return false;
+    }
+
+    public <T> T execute(Supplier<T> request) {
+        return retryTemplate.invoke(request);
     }
 }
