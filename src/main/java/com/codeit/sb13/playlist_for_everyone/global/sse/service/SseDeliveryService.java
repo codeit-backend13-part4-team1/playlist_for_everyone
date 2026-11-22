@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.service;
 
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
+import com.codeit.sb13.playlist_for_everyone.global.sse.event.LoginSession;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
 import lombok.RequiredArgsConstructor;
@@ -75,6 +76,10 @@ public class SseDeliveryService {
                                 sendHeartbeat(userId, connection, emitter)
                         )
                 );
+    }
+
+    public void revoke(UUID userId, LoginSession loginSession) {
+        // 로컬 연결 정리 동작은 후속 커밋에서 연결한다.
     }
 
     private void sendHeartbeat(UUID userId, Connection connection, SseEmitter emitter) {

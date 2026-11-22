@@ -23,14 +23,17 @@ class RedisSseSubscriptionTest {
     @Mock
     private MessageListener subscriber;
 
+    @Mock
+    private MessageListener revokeSubscriber;
+
     private SseSubscription subscription;
 
     @BeforeEach
     void setUp(){
         SseTransportProperties properties = new SseTransportProperties("redis",
-                new SseTransportProperties.Redis("test:sse:events"));
+                new SseTransportProperties.Redis("test:sse:events", "test:sse:revocations"));
 
-        subscription = new RedisSseSubscription(redisBrokerRegister, subscriber, properties);
+        subscription = new RedisSseSubscription(redisBrokerRegister, subscriber, revokeSubscriber, properties);
     }
 
     @Test
