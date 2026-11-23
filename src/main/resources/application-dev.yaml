@@ -51,6 +51,17 @@ everyone:
     secret-key: ${JWT_SECRET_KEY:bG9jYWwtZGV2LW9ubHkta2V5LTMyaXRlbS0wMDAwMDE=}
     refresh-cookie-secure: ${JWT_REFRESH_COOKIE_SECURE:false}
 
+  oauth2:
+    # 값이 없으면 임시값으로 서버는 기동하지만 소셜 로그인은 동작하지 않는다.
+    # 소셜 로그인을 확인하려면 .env.dev에 실제 값을 넣는다.
+    redirect-base-url: ${EVERYONE_OAUTH2_REDIRECT_BASE_URL:http://localhost:${server.port:8080}}
+    google:
+      client-id: ${EVERYONE_OAUTH2_GOOGLE_CLIENT_ID:local-google-client-id}
+      client-secret: ${EVERYONE_OAUTH2_GOOGLE_CLIENT_SECRET:local-google-client-secret}
+    kakao:
+      client-id: ${EVERYONE_OAUTH2_KAKAO_CLIENT_ID:local-kakao-client-id}
+      client-secret: ${EVERYONE_OAUTH2_KAKAO_CLIENT_SECRET:local-kakao-client-secret}
+
   sse:
     history:
       key-prefix: ${EVERYONE_SSE_HISTORY_KEY_PREFIX:everyone:dev:sse:history}

@@ -6,12 +6,14 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.mail.PasswordResetMailS
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.TemporaryPasswordRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
+import com.codeit.sb13.playlist_for_everyone.global.exception.auth.PasswordResetNotAllowedException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.auth.PasswordResetTooManyRequestsException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -24,6 +26,7 @@ import java.util.UUID;
  *
  * 사용자의 기존 비밀번호를 바꾸지 않는다. 임시 비밀번호는 별도로 저장하고, 만료 전까지만 로그인에 사용할 수 있다.
  * 메일 발송이 실패하면 예외로 트랜잭션이 롤백되어 발급도 취소된다.
+ * 비밀번호 없이 소셜 로그인으로 가입한 계정은 초기화 대상이 아니다.
  */
 
 @Service
@@ -49,6 +52,13 @@ public class PasswordResetService {
     public void resetPassword(String email) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(()-> new UserNotFoundException(Map.of("email", email)));
+
+        // 소셜 로그인으로 가입해 비밀번호가 없는 계정은 임시 비밀번호를 발급하지 않는다.
+        // 발급하면 소셜 계정에 이메일·비밀번호 로그인이 열린다.
+        // 상태를 바꾸지 않고 끝나도록 락과 발급 제한 확인보다 먼저 거부한다.
+        if (!StringUtils.hasText(user.getPassword())) {
+            throw new PasswordResetNotAllowedException();
+        }
 
         // 같은 계정의 요처을 한 줄로 세운다. 뒤 요청은 앞 요청이 커밋한 발급 기록을 보고 제한을 판단한다.
         userRepository.findByIdForUpdate(user.getId());

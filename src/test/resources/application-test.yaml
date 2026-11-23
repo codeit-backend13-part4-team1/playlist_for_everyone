@@ -72,3 +72,13 @@ everyone:
   dm:
     websocket:
       subscription-enabled: false
+
+  oauth2:
+    # 실제 Google·Kakao를 호출하지 않는 테스트용 값이다.
+    redirect-base-url: https://everyone.test
+    google:
+      client-id: test-google-client-id
+      client-secret: test-google-client-secret
+    kakao:
+      client-id: test-kakao-client-id
+      client-secret: test-kakao-client-secret
