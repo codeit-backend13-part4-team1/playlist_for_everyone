@@ -19,4 +19,6 @@ public class ChattingSessionRoom extends SessionRoom{
 
     public String topic(){ return messagingPrefix + contentId; }
 
+    public String destination(){ return "/sub/contents/" + contentId + "/chat"; }
+
 }

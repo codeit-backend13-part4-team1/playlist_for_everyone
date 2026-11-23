@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.
 
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionRegisterException;
 import com.codeit.sb13.playlist_for_everyone.global.service.lock.Locks;
+import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageDto;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisTopicRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSubscription;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.ChatSessionMessageListener;
@@ -100,7 +101,8 @@ public class ChattingSessionServiceImpl implements ChattingSessionService {
     @Override
     public void send(UUID contentId, Object payload) {
         ChattingSessionRoom room = getRoomOrException(contentId);
-        redisTemplate.convertAndSend(room.topic(), payload);
+
+        redisTemplate.convertAndSend(room.topic(), new RedisMessageDto<>(room.destination(),payload));
     }
 
     // todo - 로컬 인스턴스로 받은 메세지를 전송하는 이벤트 리스너 작성.
