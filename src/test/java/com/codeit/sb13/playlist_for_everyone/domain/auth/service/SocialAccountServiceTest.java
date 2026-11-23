@@ -164,6 +164,36 @@ class SocialAccountServiceTest {
         assertError(google("test@gmail.com", "테스트", true), SocialLoginError.LOGIN_FAILED);
     }
 
+    @Test
+    @DisplayName("이름이 100자를 넘으면 100자까지만 저장한다.")
+    void 이름이_100자를_넘으면_100자까지만_저장한다() {
+        givenNotConnected(SocialProvider.GOOGLE, "google-sub");
+        given(userRepository.existsByEmail(any())).willReturn(false);
+        givenUserSaved();
+
+        socialAccountService.resolveUserId(new SocialIdentity(
+                SocialProvider.GOOGLE, "google-sub", "user@gmail.com", "가".repeat(150), true));
+
+        assertThat(captureSavedUser().getName()).isEqualTo("가".repeat(100));
+    }
+
+    @Test
+    @DisplayName("이름을 자를 때 이모지처럼 두 글자로 저장되는 문자를 나누지 않는다.")
+    void 이름을_자를_때_이모지처럼_두_글자로_저장되는_문자를_나누지_않는다() {
+        givenNotConnected(SocialProvider.GOOGLE, "google-sub");
+        given(userRepository.existsByEmail(any())).willReturn(false);
+        givenUserSaved();
+        // 100번째 문자가 이모지다. 이모지는 Java String에서 char 2개를 차지한다.
+        String name = "가".repeat(99) + "😀" + "나나";
+
+        socialAccountService.resolveUserId(new SocialIdentity(
+                SocialProvider.GOOGLE, "google-sub", "user@gmail.com", name, true));
+
+        String savedName = captureSavedUser().getName();
+        assertThat(savedName).isEqualTo("가".repeat(99) + "😀");
+        assertThat(savedName.codePointCount(0, savedName.length())).isEqualTo(100);
+    }
+
     private SocialIdentity google(String email, String name, boolean verified) {
         return new SocialIdentity(SocialProvider.GOOGLE, "google-sub", email, name, verified);
     }
