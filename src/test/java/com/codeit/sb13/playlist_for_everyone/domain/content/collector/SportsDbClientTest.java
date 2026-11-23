@@ -4,10 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.collector.config.Spo
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.MethodSource;
-import org.junit.jupiter.params.provider.NullAndEmptySource;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.restclient.test.autoconfigure.AutoConfigureMockRestServiceServer;
@@ -170,10 +167,21 @@ class SportsDbClientTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {401, 429, 500})
-    void API_오류_응답을_예외로_전달한다(int statusCode) {
+    @CsvSource({
+            "400, 1",
+            "401, 1",
+            "403, 1",
+            "404, 1",
+            "429, 1",
+            "500, 3",
+            "501, 1",
+            "502, 3",
+            "503, 3",
+            "504, 3"
+    })
+    void API_오류_응답을_예외로_전달한다(int statusCode, int expectedAttempts) {
         server.expect(
-                        ExpectedCount.times(statusCode == 500 ? 3 : 1),
+                        ExpectedCount.times(expectedAttempts),
                         requestTo(
                                 "https://sportsdb.test/test-key/eventsseason.php"
                                         + "?id=4328&s=2014-2015"

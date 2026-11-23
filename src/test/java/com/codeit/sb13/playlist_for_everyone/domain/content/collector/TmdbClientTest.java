@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.collector.config.Tmd
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -176,11 +177,22 @@ class TmdbClientTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {401, 403, 429, 500})
-    void 영화_조회_API_오류를_예외로_전달한다(int statusCode) {
+    @CsvSource({
+            "400, 1",
+            "401, 1",
+            "403, 1",
+            "404, 1",
+            "429, 1",
+            "500, 3",
+            "501, 1",
+            "502, 3",
+            "503, 3",
+            "504, 3"
+    })
+    void 영화_조회_API_오류를_예외로_전달한다(int statusCode, int expectedAttempts) {
         // given
         server.expect(
-                ExpectedCount.times(statusCode == 500 ? 3 : 1),
+                        ExpectedCount.times(expectedAttempts),
                         requestTo(
                                 "https://tmdb.test/3/movie/popular?language=ko-KR&page=1"
                         ))
@@ -198,11 +210,22 @@ class TmdbClientTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {401, 403, 429, 500})
-    void TV_조회_API_오류를_예외로_전달한다(int statusCode) {
+    @CsvSource({
+            "400, 1",
+            "401, 1",
+            "403, 1",
+            "404, 1",
+            "429, 1",
+            "500, 3",
+            "501, 1",
+            "502, 3",
+            "503, 3",
+            "504, 3"
+    })
+    void TV_조회_API_오류를_예외로_전달한다(int statusCode, int expectedAttempts) {
         // given
         server.expect(
-                ExpectedCount.times(statusCode == 500 ? 3 : 1),
+                        ExpectedCount.times(expectedAttempts),
                         requestTo(
                                 "https://tmdb.test/3/tv/popular?language=ko-KR&page=1"
                         ))
