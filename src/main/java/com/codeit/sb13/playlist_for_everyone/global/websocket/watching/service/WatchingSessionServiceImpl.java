@@ -21,6 +21,7 @@ import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.v
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
@@ -40,6 +41,8 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
     private final ContentService contentService;
 
     private final WatchingSessionMapper mapper;
+
+    private final RedisTemplate<String, Object> redisTemplate;
 
     private final ApplicationEventPublisher eventPublisher;
 
@@ -403,7 +406,6 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
             }
         }
     }
-
 
     /*
      * 공용 편의 매서드

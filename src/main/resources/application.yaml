@@ -74,6 +74,10 @@ spring:
             token-uri: https://kauth.kakao.com/oauth/token
             user-info-uri: https://kapi.kakao.com/v2/user/me
             user-name-attribute: id
+logging:
+  level:
+    # 재시도 원본 예외에 API 키가 포함될 수 있어 DEBUG 출력을 제한한다.
+    org.springframework.core.retry.RetryTemplate: INFO
 
 management:
   endpoints:

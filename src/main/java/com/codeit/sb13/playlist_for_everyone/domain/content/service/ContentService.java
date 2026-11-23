@@ -67,8 +67,6 @@ public class ContentService {
 
     public void deleteById(UUID contentId) {
         contentWriter.deleteById(contentId);
-
-        // TODO: 콘텐츠 삭제 성공 후 WatchingSessionDisconnectEvent 발행 연동
     }
 
     private ContentDto toContentDto(ContentResult<ContentDto> result, Long watcherCount) {

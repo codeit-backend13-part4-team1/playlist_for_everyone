@@ -4,10 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.collector.config.Spo
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.MethodSource;
-import org.junit.jupiter.params.provider.NullAndEmptySource;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.restclient.test.autoconfigure.AutoConfigureMockRestServiceServer;
@@ -18,6 +15,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.client.ExpectedCount;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
@@ -26,6 +24,7 @@ import org.springframework.web.client.RestClientResponseException;
 import java.io.IOException;
 import java.net.ConnectException;
 import java.net.UnknownHostException;
+import java.time.Duration;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -39,7 +38,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
         "everyone.sportsdb.base-url=https://sportsdb.test",
         "everyone.sportsdb.api-key=test-key"
 })
-@Import(SportsDbClientConfig.class)
+@Import({SportsDbClientConfig.class, ExternalApiRetry.class})
 @AutoConfigureMockRestServiceServer(enabled = false)
 class SportsDbClientTest {
 
@@ -50,11 +49,19 @@ class SportsDbClientTest {
     private SportsDbClient sportsDbClient;
     private MockRestServiceServer server;
 
+    private static Stream<Arguments> networkErrors() {
+        return Stream.of(
+                Arguments.of(new UnknownHostException("test-key"), "DNS_ERROR"),
+                Arguments.of(new ConnectException("test-key"), "CONNECTION_ERROR"),
+                Arguments.of(new IOException("test-key"), "NETWORK_ERROR")
+        );
+    }
+
     @BeforeEach
     void setUp() {
         var builder = configuredRestClient.mutate();
         server = MockRestServiceServer.bindTo(builder).build();
-        sportsDbClient = new SportsDbClient(builder.build());
+        sportsDbClient = new SportsDbClient(builder.build(), new ExternalApiRetry(Duration.ZERO));
     }
 
     @Test
@@ -132,16 +139,16 @@ class SportsDbClientTest {
                                 + "?id=4328&s=2014-2015"
                 ))
                 .andRespond(withSuccess("""
-                    {
-                      "events": [
                         {
-                          "idEvent": "441425",
-                          "strEvent": "West Ham vs Tottenham",
-                          "strThumb": null
+                          "events": [
+                            {
+                              "idEvent": "441425",
+                              "strEvent": "West Ham vs Tottenham",
+                              "strThumb": null
+                            }
+                          ]
                         }
-                      ]
-                    }
-                    """, MediaType.APPLICATION_JSON));
+                        """, MediaType.APPLICATION_JSON));
 
         var response = sportsDbClient.getEventsBySeason("4328", "2014-2015");
 
@@ -161,12 +168,26 @@ class SportsDbClientTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {401, 429, 500})
-    void API_오류_응답을_예외로_전달한다(int statusCode) {
-        server.expect(requestTo(
-                        "https://sportsdb.test/test-key/eventsseason.php"
-                                + "?id=4328&s=2014-2015"
-                ))
+    @CsvSource({
+            "400, 1",
+            "401, 1",
+            "403, 1",
+            "404, 1",
+            "429, 1",
+            "500, 3",
+            "501, 1",
+            "502, 3",
+            "503, 3",
+            "504, 3"
+    })
+    void API_오류_응답을_예외로_전달한다(int statusCode, int expectedAttempts) {
+        server.expect(
+                        ExpectedCount.times(expectedAttempts),
+                        requestTo(
+                                "https://sportsdb.test/test-key/eventsseason.php"
+                                        + "?id=4328&s=2014-2015"
+                        )
+                )
                 .andRespond(withStatus(HttpStatus.valueOf(statusCode)));
 
         assertThatThrownBy(
@@ -207,12 +228,17 @@ class SportsDbClientTest {
 
     @ParameterizedTest
     @MethodSource("networkErrors")
-    void 연결_실패_이유는_구분하고_API_키는_노출하지_않는다(
-            IOException error, String expectedCode
-    ) {
-        server.expect(requestTo(
-                "https://sportsdb.test/test-key/eventsseason.php?id=4328&s=2014-2015"
-        )).andRespond(request -> { throw error; });
+    void 연결_실패_이유는_구분하고_API_키는_노출하지_않는다(IOException error, String expectedCode) {
+        int expectedAttempts = error instanceof ConnectException ? 3 : 1;
+
+        server.expect(
+                        ExpectedCount.times(expectedAttempts),
+                        requestTo("https://sportsdb.test/test-key/eventsseason.php"
+                                        + "?id=4328&s=2014-2015")
+                )
+                .andRespond(request -> {
+                    throw error;
+                });
 
         assertThatThrownBy(() -> sportsDbClient.getEventsBySeason("4328", "2014-2015"))
                 .isInstanceOf(ResourceAccessException.class)
@@ -222,11 +248,88 @@ class SportsDbClientTest {
         server.verify();
     }
 
-    private static Stream<Arguments> networkErrors() {
-        return Stream.of(
-                Arguments.of(new UnknownHostException("test-key"), "DNS_ERROR"),
-                Arguments.of(new ConnectException("test-key"), "CONNECTION_ERROR"),
-                Arguments.of(new IOException("test-key"), "NETWORK_ERROR")
+    @Test
+    void 일시적인_서버_오류_후_재시도하면_성공한다() {
+        String url = "https://sportsdb.test/test-key/eventsseason.php"
+                + "?id=4328&s=2014-2015";
+
+        // 첫 번째 요청: 일시적인 서버 오류
+        server.expect(requestTo(url))
+                .andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE));
+
+        // 두 번째 요청: 정상 응답
+        server.expect(requestTo(url))
+                .andRespond(withSuccess("""
+                        {
+                          "events": []
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        var response = sportsDbClient.getEventsBySeason(
+                "4328", "2014-2015"
         );
+
+        assertThat(response).isNotNull();
+        assertThat(response.events()).isEmpty();
+
+        server.verify();
     }
+
+
+    @Test
+    void 일시적인_서버_오류가_계속되면_재시도_횟수_초과로_실패한다() {
+        String url = "https://sportsdb.test/test-key/eventsseason.php"
+                + "?id=4328&s=2014-2015";
+
+        // 최초 요청 + 재시도 2회 모두 503 반환
+        server.expect(ExpectedCount.times(3), requestTo(url))
+                .andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE));
+
+        assertThatThrownBy(
+                () -> sportsDbClient.getEventsBySeason("4328", "2014-2015")
+        )
+                .isInstanceOfSatisfying(
+                        RestClientResponseException.class,
+                        exception -> assertThat(exception.getStatusCode().value())
+                                .isEqualTo(503)
+                );
+
+        server.verify();
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "401, 1",
+            "503, 3"
+    })
+    void HTTP_오류에서도_상태코드는_유지하고_API_키는_노출하지_않는다(int statusCode, int expectedAttempts) {
+        String url = "https://sportsdb.test/test-key/eventsseason.php"
+                + "?id=4328&s=2014-2015";
+
+        server.expect(ExpectedCount.times(expectedAttempts), requestTo(url))
+                .andRespond(
+                        withStatus(HttpStatus.valueOf(statusCode))
+                                .contentType(MediaType.TEXT_PLAIN)
+                                .body("요청 실패: test-key")
+                );
+
+        assertThatThrownBy(
+                () -> sportsDbClient.getEventsBySeason("4328", "2014-2015")
+        )
+                .isInstanceOfSatisfying(
+                        RestClientResponseException.class,
+                        exception -> {
+                            assertThat(exception.getStatusCode().value())
+                                    .isEqualTo(statusCode);
+                            assertThat(exception.getMessage())
+                                    .doesNotContain("test-key");
+                            assertThat(exception.getResponseBodyAsString())
+                                    .doesNotContain("test-key");
+                            assertThat(exception.getCause()).isNull();
+                        }
+                );
+
+        server.verify();
+    }
+
 }
