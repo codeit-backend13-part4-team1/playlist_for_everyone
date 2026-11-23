@@ -149,6 +149,7 @@ class JwtAuthenticationFilterTest {
             assertThat(principal.getUserId()).isEqualTo(USER_ID);
             assertThat(principal.getUsername()).isEqualTo(EMAIL);
             assertThat(principal.getRole()).isEqualTo(Role.ADMIN);
+            assertThat(principal.getLoginSessionId()).isEqualTo(SESSION_ID);
 
             assertThat(authentication.getAuthorities())
                     .extracting(GrantedAuthority::getAuthority)
