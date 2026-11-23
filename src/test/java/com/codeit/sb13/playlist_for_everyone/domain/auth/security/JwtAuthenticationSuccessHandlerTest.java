@@ -493,13 +493,11 @@ class JwtAuthenticationSuccessHandlerTest {
      */
     private JwtAuthenticationSuccessHandler createRefreshSuccessHandler(boolean secure) {
         return new JwtAuthenticationSuccessHandler(
-                jwtTokenProvider,
+                // 실제 발급기에 기존 Mock을 그대로 넣어, 세션·토큰·이벤트 검증을 유지한다.
+                new LoginSessionIssuer(jwtTokenProvider, refreshTokenRepository,
+                        userSessionRepository, eventPublisher, REFRESH_TOKEN_VALIDITY),
                 userService,
                 objectMapper,
-                refreshTokenRepository,
-                userSessionRepository,
-                eventPublisher,
-                REFRESH_TOKEN_VALIDITY,
                 new RefreshTokenCookieFactory(REFRESH_TOKEN_VALIDITY, secure)
         );
     }

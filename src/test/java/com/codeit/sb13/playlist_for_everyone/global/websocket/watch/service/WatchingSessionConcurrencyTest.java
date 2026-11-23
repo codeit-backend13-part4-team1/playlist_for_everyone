@@ -116,7 +116,6 @@ public class WatchingSessionConcurrencyTest {
                 userService,
                 contentService,
                 mapper,
-                redisTemplate,
                 eventPublisher
         );
     }

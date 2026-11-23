@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
+import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketDestinationInvalidException;
@@ -14,6 +15,7 @@ import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSession;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSubscription;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSessionMapper;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.*;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionStartedEvent;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.chatting.ChattingSessionService;
@@ -22,6 +24,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
@@ -41,8 +44,6 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
     private final ContentService contentService;
 
     private final WatchingSessionMapper mapper;
-
-    private final RedisTemplate<String, Object> redisTemplate;
 
     private final ApplicationEventPublisher eventPublisher;
 
@@ -304,6 +305,24 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
             }
 
         }
+    }
+
+    @Async("watchingSessionExecutor")
+    @Override
+    public void sendChatMessage(UUID contentId, UUID userId, String message) {
+        Objects.requireNonNull(contentId);
+        Objects.requireNonNull(userId);
+        Objects.requireNonNull(message);
+
+        User user = userService.getById(userId);
+
+        // 실질적으로 UserSummary 와 같은 필드를 가진 객체.
+        // 기능 검정 후 클래스 교체 및 테스트 코드 변경.
+        Watcher tmp = mapper.toWatcher(user);
+
+        UserSummary sender = new UserSummary(tmp.userId(), tmp.name(), tmp.profileImageUrl());
+
+        chattingSessionService.send(contentId, new ContentChatDto(sender,message));
     }
 
 
