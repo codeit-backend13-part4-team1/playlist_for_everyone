@@ -669,6 +669,10 @@ API 키가 노출되지 않도록 원래 오류 메시지와 응답 본문·헤�
 잘못된 콘텐츠 데이터를 건너뛰는 정책과는 별개입니다.
 실패한 Job 전체를 자동으로 재실행하는 기능은 포함하지 않습니다.
 
+재시도 중 원본 예외에 API 키가 포함될 수 있어
+`org.springframework.core.retry.RetryTemplate` 로거는 INFO로 설정합니다.
+이 로거는 DEBUG나 TRACE로 변경하지 않습니다.
+
 ### 콘텐츠 정기 수집
 
 설정한 시간에 TMDB와 TheSportsDB 수집 배치를 실행합니다.
