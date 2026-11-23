@@ -1,0 +1,16 @@
+조건: 팔로워 10명 · 순차 요청 100건 · 기본 DB 풀
+지표: everyone.notification.processing.duration
+태그: source:playlist_created
+baseUnit: seconds
+
+-- before
+HTTP 404 (지표 미등록)
+평균 계산에는 COUNT와 TOTAL_TIME의 시작값을 0으로 적용했습니다.
+
+-- after
+COUNT: 1,000
+TOTAL_TIME: 11.479258447초
+
+수신자 1명당 평균 알림 처리 시간: 11.48ms
+
+{"availableTags":[],"baseUnit":"seconds","measurements":[{"statistic":"COUNT","value":1000.0},{"statistic":"TOTAL_TIME","value":11.479258447},{"statistic":"MAX","value":0.370014416}],"name":"everyone.notification.processing.duration"}

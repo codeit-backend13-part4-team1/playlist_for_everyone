@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.global.sse.service;
 
 import com.codeit.sb13.playlist_for_everyone.global.sse.config.SseProperties;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
+import com.codeit.sb13.playlist_for_everyone.global.sse.event.LoginSession;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -44,15 +45,16 @@ public class SseConnectionService {
     /**
      * 새 연결을 등록하고 ID 없는 주석과 초기 복구 데이터를 준비한다.
      * 응답 반환 전 복구하므로 조회 실패 시 SSE 응답 대신 JSON 오류를 반환할 수 있다.
-     * 같은 사용자여도 매번 새 연결 ID를 발급한다. 이전 연결 ID를 재연결에 사용하지 않는다.
+     * 같은 로그인 세션에서 탭을 추가하거나 재연결할 때마다 새 연결 ID를 발급한다.
      *
      * @param userId 인증된 사용자 ID
      * @param lastEventId 마지막으로 받은 이벤트 UUID. null이면 과거 재전송 없이 현재 끝 위치에서 시작한다
+     * @param loginSession JWT 인증에서 검증한 로그인 세션 ID
      * @return 이번 연결에서 생성한 emitter
      * @throws UncheckedIOException 초기 주석 또는 복구 이벤트 전송 중 I/O 예외가 발생한 경우
      * @throws IllegalStateException 연결 중복 등록, 초기 전송 상태 또는 이력 해석에 문제가 있는 경우
      */
-    public SseEmitter connect(UUID userId, UUID lastEventId){
+    public SseEmitter connect(UUID userId, UUID lastEventId, LoginSession loginSession){
         Connection connection = Connection.create();
         SseEmitter emitter = new SseEmitter(sseProperties.connectionTimeout().toMillis());
         // 여기서는 콜백을 등록할 뿐 실행하지 않는다. 실제 완료/타임아웃/오류 시 MVC가 호출한다.
@@ -71,7 +73,7 @@ public class SseConnectionService {
 
         // 조정기가 상태 생성과 저장소 등록을 함께 담당한다. 저장 실패 시 자신이 만든 상태만 취소한다.
         // 중복 키의 기존 연결까지 정리하지 않도록 등록은 아래 전송 실패 처리의 try 밖에 둔다.
-        deliveryCoordinator.register(userId, connection, emitter);
+        deliveryCoordinator.register(userId, connection, emitter, loginSession);
         try {
             // 주석은 업무 이벤트가 아니므로 ID를 넣지 않아 클라이언트의 마지막 이벤트 ID를 유지한다.
             // 컨트롤러 반환 전에는 MVC의 전송 handler가 없어 데이터가 버퍼에 보관될 수 있다.
@@ -138,7 +140,7 @@ public class SseConnectionService {
     }
 
     /**
-     * 해당 연결의 상태·예약·저장소 참조 정리를 조정기에 위임한다. 여기서는 complete를 요청하지 않는다.
+     * 해당 연결의 상태·예약과 저장소의 emitter·세션 매핑 정리를 조정기에 위임한다.
      * 연결 ID를 재사용하지 않으므로 이전 콜백이 반복되어도 새 연결이나 Redis 공유 이력을 삭제하지 않는다.
      */
     private void cleanupConnection(UUID userId, Connection connection){

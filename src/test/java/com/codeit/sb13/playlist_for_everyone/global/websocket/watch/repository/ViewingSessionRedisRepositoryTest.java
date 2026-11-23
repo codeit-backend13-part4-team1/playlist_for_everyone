@@ -1,6 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watch.repository;
 
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.WatchingSessionRepository;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.ViewingSessionRedisRepository;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatcherScriptConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.*;
@@ -26,7 +26,7 @@ import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.co
 @Slf4j
 @DisplayName("동시 시청 세션 저장소 테스트")
 @Testcontainers
-public class WatchingSessionRepositoryTest {
+public class ViewingSessionRedisRepositoryTest {
 
     @Container
     static final GenericContainer<?> redis =
@@ -38,19 +38,18 @@ public class WatchingSessionRepositoryTest {
 
     private WatcherScriptConfig redisScriptConfig = new WatcherScriptConfig();
 
-    private WatchingSessionRepository watchingSessionRepository;
+    private ViewingSessionRedisRepository viewingSessionRedisRepository;
 
     @BeforeEach
     void setup(){
         factory = new LettuceConnectionFactory(redis.getHost(), redis.getMappedPort(6379));
         factory.afterPropertiesSet();
         template = new StringRedisTemplate(factory);
-        watchingSessionRepository = new WatchingSessionRepository(
+        viewingSessionRedisRepository = new ViewingSessionRedisRepository(
                 template,
                 redisScriptConfig.watcherRegisterScript(),
                 redisScriptConfig.watcherUnregisterScript(),
                 redisScriptConfig.watcherRefreshScript(),
-                redisScriptConfig.watcherDeleteScript(),
                 redisScriptConfig.watcherCountScript(),
                 redisScriptConfig.watcherDeleteWithContentIdScript(),
                 redisScriptConfig.watcherCountMultipleContentsScript(),
@@ -58,7 +57,7 @@ public class WatchingSessionRepositoryTest {
         );
 
         // 테스트용 타임아웃 세팅 ( 3초 )
-        ReflectionTestUtils.setField(watchingSessionRepository, "TTL", Duration.ofSeconds(3));
+        ReflectionTestUtils.setField(viewingSessionRedisRepository, "TTL", Duration.ofSeconds(3));
 
         log.info("[WatcherRegistryTest] 테스트 세팅 완료");
     }
@@ -114,12 +113,12 @@ public class WatchingSessionRepositoryTest {
         String sessionId = "a56s72D43D";
         String subscriptionId = "sub-1";
 
-        watchingSessionRepository.register(sessionId, subscriptionId, contentId);
+        viewingSessionRedisRepository.register(sessionId, subscriptionId, contentId);
 
         assertThat(checkContainedChannelIdInList(sessionId, contentId)).isTrue();
         assertThat(checkContainedSessionIdInList(contentId, subscriptionKey(sessionId,subscriptionId))).isTrue();
 
-        watchingSessionRepository.unregister(sessionId, subscriptionId);
+        viewingSessionRedisRepository.unregister(sessionId, subscriptionId);
 
         assertThat(checkContainedChannelIdInList(sessionId, contentId)).isFalse();
         assertThat(checkContainedSessionIdInList(contentId, subscriptionKey(sessionId,subscriptionId))).isFalse();
@@ -138,13 +137,13 @@ public class WatchingSessionRepositoryTest {
         String session3 = "af1s72D9eD";
         String subscriptionId3 = "sub-3";
 
-        watchingSessionRepository.register(session1, subscriptionId1, contentId);
-        watchingSessionRepository.register(session2, subscriptionId2, contentId);
-        watchingSessionRepository.register(session3, subscriptionId3, contentId);
+        viewingSessionRedisRepository.register(session1, subscriptionId1, contentId);
+        viewingSessionRedisRepository.register(session2, subscriptionId2, contentId);
+        viewingSessionRedisRepository.register(session3, subscriptionId3, contentId);
 
 
-        log.info("[WatcherRegistryTest] 세션 수 조회 - {}", watchingSessionRepository.getWatcherCount(contentId));
-        assertThat(watchingSessionRepository.getWatcherCount(contentId)).isEqualTo(3L);
+        log.info("[WatcherRegistryTest] 세션 수 조회 - {}", viewingSessionRedisRepository.getWatcherCount(contentId));
+        assertThat(viewingSessionRedisRepository.getWatcherCount(contentId)).isEqualTo(3L);
     }
 
     @Test
@@ -158,8 +157,8 @@ public class WatchingSessionRepositoryTest {
         String session2 = "asdhfjsdfhkw";
         String subscription2 = "sub-2";
 
-        watchingSessionRepository.register(session1, subscription1, content1);
-        watchingSessionRepository.register(session2, subscription2, content2);
+        viewingSessionRedisRepository.register(session1, subscription1, content1);
+        viewingSessionRedisRepository.register(session2, subscription2, content2);
 
         log.info("[WatcherRegistryTest] 세션 등록 완료");
 
@@ -170,7 +169,7 @@ public class WatchingSessionRepositoryTest {
         do {
             try {
                 Thread.sleep(1000);
-                watchingSessionRepository.refresh(session1);
+                viewingSessionRedisRepository.refresh(session1);
                 log.info("[WatcherRegistryTest] 컨텐츠 갱신 완료");
                 now = Instant.now();
                 duration = Duration.between(start, now);
@@ -181,8 +180,8 @@ public class WatchingSessionRepositoryTest {
             }
         } while (duration.toSeconds() < 5);
 
-        assertThat(watchingSessionRepository.getWatcherCount(content1)).isEqualTo(1L);
-        assertThat(watchingSessionRepository.getWatcherCount(content2)).isEqualTo(0L);
+        assertThat(viewingSessionRedisRepository.getWatcherCount(content1)).isEqualTo(1L);
+        assertThat(viewingSessionRedisRepository.getWatcherCount(content2)).isEqualTo(0L);
 
     }
 
@@ -200,31 +199,29 @@ public class WatchingSessionRepositoryTest {
         @BeforeEach
         void setUp(){
             // content 1 에는 session 1,2
-            watchingSessionRepository.register(sessionId1, subscriptionId1, contentId1);
-            watchingSessionRepository.register(sessionId2, subscriptionId1, contentId1);
+            viewingSessionRedisRepository.register(sessionId1, subscriptionId1, contentId1);
+            viewingSessionRedisRepository.register(sessionId2, subscriptionId1, contentId1);
 
             // content 2 에는 session 1 만
-            watchingSessionRepository.register(sessionId1, subscriptionId2, contentId2);
+            viewingSessionRedisRepository.register(sessionId1, subscriptionId2, contentId2);
         }
 
         @Test
-        @DisplayName("세션 구독 전부삭제 테스트")
-        void deleteTest(){
-            watchingSessionRepository.delete(sessionId1);
+        @DisplayName("특정 컨텐트에 속한 특정 세션의 모든 구독을 삭제하는 테스트")
+        void unregisterAllTest(){
+            viewingSessionRedisRepository.unregisterAll(sessionId1,List.of(subscriptionId1, subscriptionId2),UUID.fromString(contentId1));
 
-            assertThat(watchingSessionRepository.getWatcherCount(contentId1)).isEqualTo(1L);
-            assertThat(watchingSessionRepository.getWatcherCount(contentId2)).isEqualTo(0L);
-            assertThat(checkContainedChannelIdInList(sessionId1,contentId1)).isFalse();
-            assertThat(checkContainedChannelIdInList(sessionId2,contentId2)).isFalse();
+            assertThat(viewingSessionRedisRepository.getWatcherCount(contentId1)).isEqualTo(1L);
+            assertThat(viewingSessionRedisRepository.getWatcherCount(contentId2)).isEqualTo(1L);
         }
 
         @Test
         @DisplayName("컨텐츠 id 기반 삭제 테스트")
         void deleteWithContentIdTest(){
-            watchingSessionRepository.deleteWithContentId(UUID.fromString(contentId1));
+            viewingSessionRedisRepository.deleteWithContentId(UUID.fromString(contentId1));
 
-            assertThat(watchingSessionRepository.getWatcherCount(contentId1)).isEqualTo(0L);
-            assertThat(watchingSessionRepository.getWatcherCount(contentId2)).isEqualTo(1L);
+            assertThat(viewingSessionRedisRepository.getWatcherCount(contentId1)).isEqualTo(0L);
+            assertThat(viewingSessionRedisRepository.getWatcherCount(contentId2)).isEqualTo(1L);
             assertThat(checkContainedChannelIdInList(sessionId1,contentId1)).isFalse();
             assertThat(checkContainedChannelIdInList(sessionId2,contentId1)).isFalse();
             assertThat(checkContainedChannelIdInList(sessionId1,contentId2)).isTrue();
@@ -256,17 +253,17 @@ public class WatchingSessionRepositoryTest {
 
             for (String subscription: subscriptionIdList){
                 log.info("[WatchingSessionRepositoryTest] content1: {}, session: {}, subscription: {}", content1, sessionId1, subscription);
-                watchingSessionRepository.register(sessionId1, subscription, content1);
+                viewingSessionRedisRepository.register(sessionId1, subscription, content1);
             }
 
             for (String subscription: subscriptionIdList){
                 log.info("[WatchingSessionRepositoryTest] content2: {}, session: {}, subscription: {}", content2, sessionId2, subscription);
-                watchingSessionRepository.register(sessionId2, subscription, content2);
+                viewingSessionRedisRepository.register(sessionId2, subscription, content2);
             }
 
             for (String subscription: subscriptionIdList){
                 log.info("[WatchingSessionRepositoryTest] content3: {}, session: {}, subscription: {}", content3, sessionId3, subscription);
-                watchingSessionRepository.register(sessionId3, subscription, content3);
+                viewingSessionRedisRepository.register(sessionId3, subscription, content3);
             }
 
 
@@ -275,7 +272,7 @@ public class WatchingSessionRepositoryTest {
         @Test
         @DisplayName("컨텐츠 리스트를 받아와서 해당하는 모든 컨텐츠의 시청자를 조회")
         void countWithMultipleContentsTest(){
-            Map<UUID, Long> result = watchingSessionRepository
+            Map<UUID, Long> result = viewingSessionRedisRepository
                     .getWatcherCountWithMultipleContents(List.of(content1,content2));
 
             for (Map.Entry<UUID, Long> entry : result.entrySet()){

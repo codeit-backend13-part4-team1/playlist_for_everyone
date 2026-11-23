@@ -18,7 +18,7 @@
 | `SseRecoveryServiceTest` | 순서·내용·필터·처리 위치·gap 처리와 실패 전달 |
 | `SseDeliveryCoordinatorTest` | 등록 중복 거부·등록 중 조회 대기, emitter 부재 정리, 연결별 상태·신호 합치기·재시도·실패 종료 위임 |
 | `SseRetryExhaustionTest` | 실제 연결 정리 구성에서 재시도 소진과 complete 실패 |
-| `SseRetryLifecycleTest` | 실제 상태·저장소 정리, 콜백·서버 종료·늦은 예약 작업 |
+| `SseRetryLifecycleTest` | 완료·오류·타임아웃 시 세션 매핑 정리, 같은 세션의 다른 탭·새 연결 보존, 서버 종료·늦은 예약 작업 |
 | `SseStreamingIntegrationTest` | 실제 HTTP 프레임, 초기 조회 실패의 503 JSON 응답 |
 | `NotificationReplayFilterTest` (domain.notification.sse) | 본인에게 남은 알림만 필터링, 잘못된 data.id 제외, 유효 ID가 없으면 DB 미호출 |
 | `NotificationRepositoryTest` (domain.notification.repository) | 실제 DB 수신자 조건과 알림 ID 조회 |

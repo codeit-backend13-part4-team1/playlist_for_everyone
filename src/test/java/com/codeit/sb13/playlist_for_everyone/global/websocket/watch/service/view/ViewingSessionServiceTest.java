@@ -5,7 +5,7 @@ import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisTopicRegi
 import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSubscription;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.ViewSessionMessageListener;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.entity.ViewingSessionRoom;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.WatchingSessionRepository;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.ViewingSessionRedisRepository;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.viewing.ViewingSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.viewing.ViewingSessionServiceImpl;
 
@@ -39,7 +39,7 @@ public class ViewingSessionServiceTest {
     ViewSessionMessageListener viewSessionMessageListener;
 
     @Mock
-    WatchingSessionRepository watchingSessionRepository;
+    ViewingSessionRedisRepository viewingSessionRedisRepository;
 
     @Mock
     RedisTopicRegistry redisTopicRegistry;
@@ -81,7 +81,7 @@ public class ViewingSessionServiceTest {
         viewingSessionService = new ViewingSessionServiceImpl(
                 viewingSessionRepository,
                 viewSessionMessageListener,
-                watchingSessionRepository,
+                viewingSessionRedisRepository,
                 redisTopicRegistry,
                 redisTemplate,
                 locks
@@ -210,7 +210,7 @@ public class ViewingSessionServiceTest {
 
             verifyNoMoreInteractions(
                     viewingSessionRepository,
-                    watchingSessionRepository,
+                    viewingSessionRedisRepository,
                     redisTopicRegistry,
                     room
             );
@@ -297,7 +297,7 @@ public class ViewingSessionServiceTest {
 
             verifyNoMoreInteractions(
                     viewingSessionRepository,
-                    watchingSessionRepository,
+                    viewingSessionRedisRepository,
                     redisTopicRegistry,
                     room
             );
@@ -393,7 +393,7 @@ public class ViewingSessionServiceTest {
 
             verifyNoMoreInteractions(
                     viewingSessionRepository,
-                    watchingSessionRepository,
+                    viewingSessionRedisRepository,
                     redisTopicRegistry,
                     room
             );
@@ -495,7 +495,7 @@ public class ViewingSessionServiceTest {
 
             verifyNoMoreInteractions(
                     viewingSessionRepository,
-                    watchingSessionRepository,
+                    viewingSessionRedisRepository,
                     redisTopicRegistry,
                     room
             );
@@ -620,7 +620,7 @@ public class ViewingSessionServiceTest {
                 // then
                 InOrder inOrder = inOrder(
                         viewingSessionRepository,
-                        watchingSessionRepository,
+                        viewingSessionRedisRepository,
                         redisTopicRegistry,
                         firstRoom,
                         secondRoom
@@ -642,7 +642,7 @@ public class ViewingSessionServiceTest {
 
                 verifyNoMoreInteractions(
                         viewingSessionRepository,
-                        watchingSessionRepository,
+                        viewingSessionRedisRepository,
                         redisTopicRegistry,
                         firstRoom,
                         secondRoom
@@ -692,7 +692,7 @@ public class ViewingSessionServiceTest {
             Answer<Void> answer = lockHeldAnswer(lock);
 
             doAnswer(answer)
-                    .when(watchingSessionRepository)
+                    .when(viewingSessionRedisRepository)
                     .register(
                             "session-1",
                             "sub-1",
@@ -731,7 +731,7 @@ public class ViewingSessionServiceTest {
 
             verifyNoMoreInteractions(
                     viewingSessionRepository,
-                    watchingSessionRepository,
+                    viewingSessionRedisRepository,
                     redisTopicRegistry,
                     room
             );
@@ -761,7 +761,7 @@ public class ViewingSessionServiceTest {
                     .when(room).leave(subscription);
 
             doAnswer(answer)
-                    .when(watchingSessionRepository)
+                    .when(viewingSessionRedisRepository)
                     .unregister("session-1", "sub-1");
 
             doAnswer(answer)
@@ -788,7 +788,7 @@ public class ViewingSessionServiceTest {
 
             verifyNoMoreInteractions(
                     viewingSessionRepository,
-                    watchingSessionRepository,
+                    viewingSessionRedisRepository,
                     redisTopicRegistry,
                     room
             );
@@ -827,7 +827,7 @@ public class ViewingSessionServiceTest {
                     .when(room).leaveAll(subscriptions);
 
             doAnswer(answer)
-                    .when(watchingSessionRepository)
+                    .when(viewingSessionRedisRepository)
                     .unregisterAll(
                             "session-1",
                             subscriptionIds,
@@ -861,7 +861,7 @@ public class ViewingSessionServiceTest {
 
             verifyNoMoreInteractions(
                     viewingSessionRepository,
-                    watchingSessionRepository,
+                    viewingSessionRedisRepository,
                     redisTopicRegistry,
                     room
             );
@@ -888,7 +888,7 @@ public class ViewingSessionServiceTest {
             Answer<Void> answer = lockHeldAnswer(lock);
 
             doAnswer(answer)
-                    .when(watchingSessionRepository)
+                    .when(viewingSessionRedisRepository)
                     .deleteWithContentId(contentId);
 
             doAnswer(answer)
@@ -932,7 +932,7 @@ public class ViewingSessionServiceTest {
 
             verifyNoMoreInteractions(
                     viewingSessionRepository,
-                    watchingSessionRepository,
+                    viewingSessionRedisRepository,
                     redisTopicRegistry,
                     room
             );
@@ -1248,7 +1248,7 @@ public class ViewingSessionServiceTest {
                 verifyNoInteractions(locks);
 
                 verifyNoInteractions(
-                        watchingSessionRepository,
+                        viewingSessionRedisRepository,
                         redisTopicRegistry
                 );
 
@@ -1338,7 +1338,7 @@ public class ViewingSessionServiceTest {
 
         return inOrder(
                 viewingSessionRepository,
-                watchingSessionRepository,
+                viewingSessionRedisRepository,
                 redisTopicRegistry,
                 room
         );
@@ -1362,7 +1362,7 @@ public class ViewingSessionServiceTest {
         inOrder.verify(viewingSessionRepository)
                 .findOrCreate(contentId);
 
-        inOrder.verify(watchingSessionRepository)
+        inOrder.verify(viewingSessionRedisRepository)
                 .register(
                         subscription.sessionId(),
                         subscription.id(),
@@ -1405,7 +1405,7 @@ public class ViewingSessionServiceTest {
         inOrder.verify(targetRoom)
                 .leave(subscription);
 
-        inOrder.verify(watchingSessionRepository)
+        inOrder.verify(viewingSessionRedisRepository)
                 .unregister(
                         subscription.sessionId(),
                         subscription.id()
@@ -1447,7 +1447,7 @@ public class ViewingSessionServiceTest {
         inOrder.verify(targetRoom)
                 .leaveAll(subscriptions);
 
-        inOrder.verify(watchingSessionRepository)
+        inOrder.verify(viewingSessionRedisRepository)
                 .unregisterAll(
                         sessionId,
                         subscriptionIds,
@@ -1480,7 +1480,7 @@ public class ViewingSessionServiceTest {
         inOrder.verify(viewingSessionRepository)
                 .find(contentId);
 
-        inOrder.verify(watchingSessionRepository)
+        inOrder.verify(viewingSessionRedisRepository)
                 .deleteWithContentId(contentId);
 
         inOrder.verify(redisTopicRegistry)

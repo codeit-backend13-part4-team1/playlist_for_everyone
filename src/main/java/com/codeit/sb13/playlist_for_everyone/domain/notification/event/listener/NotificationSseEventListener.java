@@ -30,7 +30,8 @@ public class NotificationSseEventListener {
     /**
      * 기본 AFTER_COMMIT, fallbackExecution=false로 알림 트랜잭션의 성공에만 반응한다.
      * 롤백되거나 트랜잭션 없이 발행된 이벤트는 처리하지 않는다. @Async를 사용하지 않으므로
-     * 이력 저장과 Redis 발행 요청까지 커밋 처리 스레드에서 실행되며, 브라우저 수신 완료를 기다리지는 않는다.
+     * 이력 저장과 Redis 발행 요청까지 알림 커밋 처리 스레드에서 실행한다. 업무 이벤트 연동에서는
+     * NotificationAsyncProcessor의 작업 스레드이며, 브라우저 수신 완료를 기다리지는 않는다.
      */
     @TransactionalEventListener
     public void handleNotificationCreated(NotificationCreatedEvent event){

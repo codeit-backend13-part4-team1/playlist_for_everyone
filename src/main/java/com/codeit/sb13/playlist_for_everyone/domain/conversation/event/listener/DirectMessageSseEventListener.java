@@ -24,8 +24,9 @@ import org.springframework.transaction.event.TransactionalEventListener;
  * <p>같은 생성 이벤트를 받는 NotificationDomainEventListener가 공통 알림 요청을 별도로 구성한다.
  * 이 리스너는 알림을 직접 저장하지 않으며, 알림 저장·커밋 후 'notifications' SSE 발행은 알림 도메인이 담당한다.
  *
- * <p>현재 DM SSE와 알림 소비자는 동기식 커밋 후 콜백이다. 커밋 후 콜백 처리가 끝나면 Saver 호출이 반환되고
- * Service의 WebSocket 발행이 이어진다. 두 소비자 사이의 실행 순서에 의존하지 않으며,
+ * <p>DM SSE는 동기식 커밋 후 콜백으로 처리하고, 알림 소비자는 요청을 만들어 비동기 프로세서에 제출한다.
+ * 콜백이 끝나면 Saver 호출이 반환되고 Service의 WebSocket 발행이 이어지며, 알림 완료는 기다리지 않는다.
+ * 두 소비자 사이의 실행 순서에 의존하지 않으며,
  * DM SSE·알림 SSE·WebSocket의 브라우저 도착 순서는 보장하지 않는다. 이 리스너는 실패한 전송을 자동 재시도하지 않는다.
  */
 @Component

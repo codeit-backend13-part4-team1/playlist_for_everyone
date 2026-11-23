@@ -188,7 +188,7 @@ public class WatchingSessionBasicTest {
             }
 
             @Test
-            @DisplayName("세션에 존재하는 모든 구독을 순회하며 비즈니스 리소스를 해지하고, 세션을 닫는다.")
+            @DisplayName("세션에 존재하는 모든 구독을 순회하며 비즈니스 리소스를 해지한다.")
             void cleanupWithSessionIdTest() throws Exception {
                 sessionStub(sessionId, session);
                 // 세션이 담고있는(sessionContainer) 모든 구독 반환.
@@ -198,7 +198,6 @@ public class WatchingSessionBasicTest {
 
                 watchingSessionService.cleanUpWithSessionId(sessionId);
 
-                verify(session,times(1)).disconnect();
             }
 
         }
