@@ -296,5 +296,39 @@ class SportsDbClientTest {
         server.verify();
     }
 
+    @ParameterizedTest
+    @CsvSource({
+            "401, 1",
+            "503, 3"
+    })
+    void HTTP_오류에서도_상태코드는_유지하고_API_키는_노출하지_않는다(int statusCode, int expectedAttempts) {
+        String url = "https://sportsdb.test/test-key/eventsseason.php"
+                + "?id=4328&s=2014-2015";
+
+        server.expect(ExpectedCount.times(expectedAttempts), requestTo(url))
+                .andRespond(
+                        withStatus(HttpStatus.valueOf(statusCode))
+                                .contentType(MediaType.TEXT_PLAIN)
+                                .body("요청 실패: test-key")
+                );
+
+        assertThatThrownBy(
+                () -> sportsDbClient.getEventsBySeason("4328", "2014-2015")
+        )
+                .isInstanceOfSatisfying(
+                        RestClientResponseException.class,
+                        exception -> {
+                            assertThat(exception.getStatusCode().value())
+                                    .isEqualTo(statusCode);
+                            assertThat(exception.getMessage())
+                                    .doesNotContain("test-key");
+                            assertThat(exception.getResponseBodyAsString())
+                                    .doesNotContain("test-key");
+                            assertThat(exception.getCause()).isNull();
+                        }
+                );
+
+        server.verify();
+    }
 
 }
