@@ -23,6 +23,7 @@ flowchart LR
 | 값 | 역할 |
 | --- | --- |
 | 사용자 UUID | 이력 소유자와 수신자 |
+| 로그인 세션 ID(`sid`) | 같은 로그인으로 열린 로컬 SSE 연결을 조회하는 기준 |
 | 연결 UUID | 사용자의 탭·재연결 구분. 서버별로 관리 |
 | 이벤트 UUID | 브라우저 SSE `id`와 재연결 쿼리 `lastEventId` |
 | Stream ID | Redis 저장 순서와 서버 내부 처리 위치 |

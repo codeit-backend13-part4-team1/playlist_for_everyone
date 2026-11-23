@@ -2,12 +2,14 @@ package com.codeit.sb13.playlist_for_everyone.global.sse.controller;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.ApiErrorResponse;
+import com.codeit.sb13.playlist_for_everyone.global.sse.event.LoginSession;
 import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseConnectionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.QueryTimeoutException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -41,13 +43,13 @@ public class SseController {
      * 생략하거나 본인 이력에서 찾을 수 없으면 기존 이력을 재전송하지 않고 현재 끝 위치를 기준으로 연결한다.
      *
      * @param lastEventId 클라이언트가 마지막으로 받은 이벤트 ID. 최초 연결에서는 생략 가능
-     * @param user 보안 필터에서 인증한 사용자. 요청 파라미터로 수신자를 지정하지 않는다
+     * @param user 보안 필터에서 검증한 사용자 ID와 로그인 세션 ID를 가진 인증 사용자
      * @return Spring MVC가 비동기 응답에 연결할 emitter
      */
     @GetMapping(produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter connect(@RequestParam(value = "lastEventId", required = false) UUID lastEventId,
                               @AuthenticationPrincipal SecurityUser user){
-        return sseConnectionService.connect(user.getUserId(), lastEventId);
+        return sseConnectionService.connect(user.getUserId(), lastEventId, new LoginSession(user.getLoginSessionId()));
 
     }
 

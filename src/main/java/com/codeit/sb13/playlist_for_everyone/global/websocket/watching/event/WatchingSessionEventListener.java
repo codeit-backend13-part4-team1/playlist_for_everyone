@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event;
 
 
+import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionRegisterException;
 import com.codeit.sb13.playlist_for_everyone.global.service.MatchRule;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
@@ -24,6 +25,11 @@ import java.util.UUID;
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WebSocketUtils.check;
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.UUID_REGEX;
 
+/**
+ * 비즈니스 로직을 호출 하기 위한 이벤트 리스너
+ * 실질적인 세션 연결 밑 끊기 관리는 하지 않고, 구독 관리만 한다.
+ */
+
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -38,14 +44,21 @@ public class WatchingSessionEventListener {
      */
     @EventListener
     public void watchJoinEvent(WatchingSessionJoinEvent event){
-        SessionInfo info = Objects.requireNonNull(event.info());
+        try {
+            SessionInfo info = Objects.requireNonNull(event.info());
 
-        watchingSessionService.joinViewerSession(
-                info.session(),
-                info.subscription(),
-                info.destination(),
-                info.user()
-        );
+            watchingSessionService.joinViewerSession(
+                    info.session(),
+                    info.subscription(),
+                    info.destination(),
+                    info.user()
+            );
+        } catch (RuntimeException e) {
+            log.error("[{}] 비즈니스 로직 처리 중 에러 발생",
+                    this.getClass().getSimpleName(),
+                    e);
+            throw new WebSocketSessionRegisterException(e);
+        }
     }
 
     /**
@@ -55,13 +68,19 @@ public class WatchingSessionEventListener {
      */
     @EventListener
     public void watchLeaveEvent(WatchingSessionLeaveEvent event){
-        SessionInfo info = Objects.requireNonNull(event.info());
+        try {
+            SessionInfo info = Objects.requireNonNull(event.info());
 
-        watchingSessionService.leaveViewerSession(
-                info.session(),
-                info.subscription(),
-                info.user()
-        );
+            watchingSessionService.leaveViewerSession(
+                    info.session(),
+                    info.subscription(),
+                    info.user()
+            );
+        } catch (RuntimeException e) {
+            log.error("[{}] 비즈니스 로직 처리 중 에러 발생",
+                    this.getClass().getSimpleName(),
+                    e);
+        }
     }
 
     /**
@@ -70,8 +89,14 @@ public class WatchingSessionEventListener {
      */
     @EventListener
     public void watchRefreshEvent(WatchingSessionRefreshEvent event){
-        SessionInfo info = Objects.requireNonNull(event.info());
-        viewService.refresh(info.session());
+        try {
+            SessionInfo info = Objects.requireNonNull(event.info());
+            viewService.refresh(info.session());
+        } catch (RuntimeException e) {
+            log.error("[{}] 비즈니스 로직 처리 중 에러 발생",
+                    this.getClass().getSimpleName(),
+                    e);
+        }
     }
 
 
@@ -81,13 +106,21 @@ public class WatchingSessionEventListener {
      */
     @EventListener
     public void chatJoinEvent(WatchingChatJoinEvent event){
-        SessionInfo info = Objects.requireNonNull(event.info());
-        watchingSessionService.joinChattingSession(
-                info.session(),
-                info.subscription(),
-                info.destination(),
-                info.user()
-        );
+        try {
+            SessionInfo info = Objects.requireNonNull(event.info());
+            watchingSessionService.joinChattingSession(
+                    info.session(),
+                    info.subscription(),
+                    info.destination(),
+                    info.user()
+            );
+        } catch (RuntimeException e) {
+            log.error("[{}] 비즈니스 로직 처리 중 에러 발생",
+                    this.getClass().getSimpleName(),
+                    e);
+            throw new WebSocketSessionRegisterException(e);
+        }
+
     }
 
     /**
@@ -96,12 +129,18 @@ public class WatchingSessionEventListener {
      */
     @EventListener
     public void chatLeaveEvent(WatchingChatLeaveEvent event){
-        SessionInfo info = Objects.requireNonNull(event.info());
-        watchingSessionService.leaveChattingSession(
-                info.session(),
-                info.subscription(),
-                info.user()
-        );
+        try {
+            SessionInfo info = Objects.requireNonNull(event.info());
+            watchingSessionService.leaveChattingSession(
+                    info.session(),
+                    info.subscription(),
+                    info.user()
+            );
+        } catch (RuntimeException e) {
+            log.error("[{}] 비즈니스 로직 처리 중 에러 발생",
+                    this.getClass().getSimpleName(),
+                    e);
+        }
     }
 
     /**
@@ -110,26 +149,39 @@ public class WatchingSessionEventListener {
      * @param event 세션 정보(info), 메세지(message)
      */
     @EventListener
-    public void chatSendEvent(WatchingChatSendEvent event){
-        SessionInfo info = Objects.requireNonNull(event.info());
-        String destination = Objects.requireNonNull(info.destination());
-        MatchRule UUID_PATTERN = MatchRule
-                .builder()
-                .pattern(UUID_REGEX)
-                .build();
-        UUID contentId = UUID.fromString(UUID_PATTERN.extract(destination).get(0));
+    public void chatSendEvent(WatchingChatSendEvent event) {
+        try {
+            SessionInfo info = Objects.requireNonNull(event.info());
+            String destination = Objects.requireNonNull(info.destination());
+            MatchRule UUID_PATTERN = MatchRule
+                    .builder()
+                    .prefix("/pus/contents")
+                    .pattern(UUID_REGEX)
+                    .postfix("/chat")
+                    .build();
+            UUID contentId = UUID.fromString(UUID_PATTERN.extract(destination).get(0));
 
-        chatService.send(contentId, new RedisMessageDto<>(destination,event.message()));
+            chatService.send(contentId, new RedisMessageDto<>(destination, event.message()));
+        } catch (RuntimeException e) {
+            log.error("[{}] 비즈니스 로직 처리 중 에러 발생",
+                    this.getClass().getSimpleName(),
+                    e);
+        }
     }
-
     /**
      * 세션 연결이 종료되었을 때, 잔존 리소스를 정리하기 위한 이벤트.
      * @param event 세션 정보(sessionId)
      */
     @EventListener
     public void DisconnectEvent(WatchingSessionDisconnectEvent event) {
-        SessionInfo info = check(event.info());
-        watchingSessionService.cleanUpWithSessionId(info.session());
+        try {
+            SessionInfo info = check(event.info());
+            watchingSessionService.cleanUpWithSessionId(info.session());
+        } catch (RuntimeException e) {
+            log.error("[{}] 비즈니스 로직 처리 중 에러 발생",
+                    this.getClass().getSimpleName(),
+                    e);
+        }
     }
 
 }

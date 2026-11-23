@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.global.sse.event.impl;
 import com.codeit.sb13.playlist_for_everyone.global.config.*;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisBrokerRegister;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
+import com.codeit.sb13.playlist_for_everyone.global.sse.event.LoginSession;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Event;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEventPublisher;
@@ -105,6 +106,8 @@ public class RedisSseDeliveryIntegrationTest {
     @Autowired
     private SseDeliveryCoordinator deliveryCoordinator;
 
+    private final LoginSession loginSession = new LoginSession(UUID.randomUUID());
+
     @Test
     @DisplayName("Redis를 거친 이벤트가 ID·이름·데이터를 보존하며 발행 서버의 연결에 중복 없이 전달된다.")
     void deliversPublishedEventToReceiverConnection() throws IOException {
@@ -120,7 +123,7 @@ public class RedisSseDeliveryIntegrationTest {
         );
 
         try {
-            deliveryCoordinator.register(receiverId, connection, emitter);
+            deliveryCoordinator.register(receiverId, connection, emitter, loginSession);
 
             deliveryCoordinator.recover(receiverId, connection, null);
             ArgumentCaptor<SseEmitter.SseEventBuilder> eventCaptor = ArgumentCaptor.captor();
@@ -166,11 +169,11 @@ public class RedisSseDeliveryIntegrationTest {
                 Map.of("message", "여러 연결 전송 테스트"));
 
         try {
-            deliveryCoordinator.register(receiverId, firstConnection, firstEmitter);
+            deliveryCoordinator.register(receiverId, firstConnection, firstEmitter, loginSession);
 
             deliveryCoordinator.recover(receiverId, firstConnection, null);
 
-            deliveryCoordinator.register(receiverId, secondConnection, secondEmitter);
+            deliveryCoordinator.register(receiverId, secondConnection, secondEmitter, loginSession);
 
             deliveryCoordinator.recover(receiverId, secondConnection, null);
 
@@ -203,11 +206,11 @@ public class RedisSseDeliveryIntegrationTest {
                 Map.of("message", "수신자 구분 테스트"));
 
         try {
-            deliveryCoordinator.register(receiverId, receiverConnection, receiverEmitter);
+            deliveryCoordinator.register(receiverId, receiverConnection, receiverEmitter, loginSession);
 
             deliveryCoordinator.recover(receiverId, receiverConnection, null);
 
-            deliveryCoordinator.register(otherUserId, otherConnection, otherEmitter);
+            deliveryCoordinator.register(otherUserId, otherConnection, otherEmitter, loginSession);
 
             deliveryCoordinator.recover(otherUserId, otherConnection, null);
 
@@ -251,11 +254,11 @@ public class RedisSseDeliveryIntegrationTest {
                     Map.of("message", "서버 간 연결 전송 테스트"));
 
             try {
-                deliveryCoordinator.register(receiverId, connectionOnA, emitterOnA);
+                deliveryCoordinator.register(receiverId, connectionOnA, emitterOnA, loginSession);
 
                 deliveryCoordinator.recover(receiverId, connectionOnA, null);
 
-                coordinatorOnB.register(receiverId, connectionOnB, emitterOnB);
+                coordinatorOnB.register(receiverId, connectionOnB, emitterOnB, loginSession);
 
                 coordinatorOnB.recover(receiverId, connectionOnB, null);
 
@@ -293,7 +296,7 @@ public class RedisSseDeliveryIntegrationTest {
             );
 
             try {
-                coordinatorOnB.register(receiverId, connectionOnB, emitterOnB);
+                coordinatorOnB.register(receiverId, connectionOnB, emitterOnB, loginSession);
 
                 coordinatorOnB.recover(receiverId, connectionOnB, null);
 

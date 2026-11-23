@@ -7,14 +7,14 @@
 
 | 위치 | 보관하는 것 | 담당 |
 | --- | --- | --- |
-| 연결을 받은 서버 메모리 | HTTP 응답을 가진 emitter | `SseEmitterRepository` |
+| 연결을 받은 서버 메모리 | 연결 ID별 로그인 세션 ID와 HTTP 응답을 가진 emitter | `SseEmitterRepository` |
 | 같은 서버 메모리 | 연결별 복구 여부·처리 위치·전송 상태·재시도 예약 | `SseDeliveryCoordinator` |
 | 공유 Redis | 사용자별 이벤트 이력·이벤트 UUID와 저장 위치의 매핑 | `SseHistoryStore` |
 | DB | 저장된 알림과 수신자 | 알림 도메인 |
 
 emitter의 보관처는 저장소 한 곳입니다. 조정기는 상태에 emitter를 넣지 않고 사용할 때 저장소에서 조회합니다.
 사용자의 두 탭이 서로 다른 서버에 연결되어도 각 서버는 자기 연결만 관리하고 같은 Redis 이력을 읽습니다.
-사용자·연결·이벤트 UUID와 내부 저장 위치는 [식별자 표](09-shared-history.md#발행-역할과-식별자)에서 구분합니다.
+사용자·로그인 세션·연결·이벤트의 식별자는 [식별자 표](09-shared-history.md#발행-역할과-식별자)에서 구분합니다.
 
 ## 1. 연결과 재연결 준비
 
@@ -25,10 +25,11 @@ sequenceDiagram
     participant D as 전송 조정기
     participant R as emitter 저장소
     participant H as 복구 서비스·공유 이력
-    B->>C: JWT와 lastEventId로 GET /api/sse
+    B->>C: Bearer JWT와 선택적 lastEventId로 GET /api/sse
+    Note over C: JWT 인증으로 검증한 userId와 sid 사용
     C->>C: 새 연결 ID·emitter 생성, 콜백 등록
-    C->>D: 상태·연결 등록 요청
-    D->>R: emitter 저장 (중복 키 거부)
+    C->>D: userId, 연결 ID, emitter, 로그인 세션 전달
+    D->>R: 연결에 sid와 emitter 저장, 중복 키 거부
     C->>C: ID 없는 connected 주석 준비
     C->>D: 초기 복구 요청
     D->>R: 등록된 emitter 조회
@@ -86,7 +87,7 @@ DB에서 삭제된 알림이나 `data.id`가 유효하지 않은 항목은 제�
 | 후속 조회에서 같은 두 예외 | 연결·위치 유지, 제한된 지연 재시도 | [재시도](10-recovery-and-retry.md#실패재시도종료) |
 | 재시도 소진 또는 그 외 후속 전송 RuntimeException | 상태·예약 제거, HTTP 종료 요청과 저장소 정리 | [종료와 정리](01-connection-lifecycle.md#종료-요청과-참조-정리) |
 | 하트비트의 I/O·상태 오류 | 상태·예약·저장소 참조 정리. 여기서 complete를 요청하지 않음 | [하트비트](02-delivery-heartbeat.md#하트비트-동작) |
-| 완료·오류·타임아웃 콜백 | 해당 연결만 정리. 타임아웃은 complete도 요청 | [콜백](01-connection-lifecycle.md#콜백과-여러-탭의-관계) |
+| 완료·오류·타임아웃 콜백 | 해당 연결과 세션 매핑 정리. 타임아웃은 complete도 요청 | [콜백](01-connection-lifecycle.md#콜백과-여러-탭의-관계) |
 | 서버 종료 | 각 emitter 종료 요청 후 finally에서 정리 | [서버 종료](01-connection-lifecycle.md#초기-실패와-서버-종료) |
 
 저장소에서 emitter를 찾지 못하면 조정기에 남은 상태·예약도 정리합니다.

@@ -100,6 +100,13 @@ springdoc:
       enabled: true
 
 everyone:
+  notification:
+    async:
+      # 성능 측정 전 임시값이다. 운영 적정값이 아니며 작업 대기 시간·거부 횟수·DB 연결 대기로 조정한다.
+      pool-size: ${EVERYONE_NOTIFICATION_ASYNC_POOL_SIZE:2}
+      # 대기 중인 작업 수의 상한. 0이면 작업을 대기열에 보관하지 않는다.
+      queue-capacity: ${EVERYONE_NOTIFICATION_ASYNC_QUEUE_CAPACITY:100}
+
   s3:
     bucket: ${EVERYONE_S3_BUCKET}
     region: ${EVERYONE_AWS_REGION:ap-northeast-2}

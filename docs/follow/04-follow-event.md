@@ -56,7 +56,7 @@ sequenceDiagram
     end
 ```
 
-운영 코드의 `NotificationDomainEventListener`가 커밋 후 이벤트를 받아 공통 알림 생성 요청으로 재발행합니다.
+운영 코드의 `NotificationDomainEventListener`가 커밋 후 알림 요청을 구성해 전용 실행기에 작업을 제출합니다. 알림 워커가 공통 생성 요청을 발행합니다.
 팔로우 서비스 통합 테스트는 알림 소비 리스너를 Mock으로 격리하고, 테스트 전용 리스너로 커밋 후 수신을 기록합니다.
 실제 알림 저장까지의 흐름은 [알림 연동 가이드](../notification/07-domain-event-integration.md)에서 확인합니다.
 

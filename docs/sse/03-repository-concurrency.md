@@ -7,29 +7,30 @@
 
 ```text
 사용자 A
-  ├─ 연결 1 → 탭 1의 emitter
-  └─ 연결 2 → 탭 2의 emitter
+  ├─ 연결 1 → 세션 A와 탭 1의 emitter
+  └─ 연결 2 → 세션 A와 탭 2의 emitter
 사용자 B
-  └─ 연결 3 → 탭 1의 emitter
+  └─ 연결 3 → 세션 B와 탭 1의 emitter
 ```
 
-바깥 Map의 키는 사용자 UUID, 안쪽 Map의 키는 `Connection`입니다.
+바깥 Map의 키는 사용자 UUID, 안쪽 Map의 키는 `Connection`입니다. 각 값에는 `LoginSession`과 emitter를 함께 보관합니다.
 `Connection`은 연결 UUID를 담는 record로, 단순 UUID보다 역할을 드러내기 위해 사용합니다.
 사용자 ID만 있으면 모든 탭을 조회하고, 특정 연결을 지우려면 사용자 ID와 연결 식별자가 모두 필요합니다.
 
 | 계약 | 역할 |
 | --- | --- |
-| `save(userId, connection, emitter)` | 사용자 아래에 연결을 등록합니다. 같은 키는 덮어쓰지 않고 거부합니다. |
+| `save(userId, connection, emitter, loginSession)` | 사용자 아래에 emitter와 인증된 로그인 세션 ID를 등록합니다. 같은 키는 덮어쓰지 않고 거부합니다. |
 | `findByUserIdAndConnection(userId, connection)` | 단건을 `Optional<SseEmitter>`로 반환합니다. 없으면 빈 결과입니다. |
 | `findAllByUserId(userId)` | 해당 사용자의 모든 로컬 연결을 조회합니다. |
-| `delete(userId, connection)` | 지정한 연결만 제거합니다. |
+| `findByUserIdAndLoginSessionId(userId, loginSession)` | 사용자와 `sid`가 모두 일치하는 로컬 연결을 조회합니다. 일치하는 연결이 없으면 빈 Map을 반환합니다. |
+| `delete(userId, connection)` | 지정한 연결의 emitter와 세션 매핑을 함께 제거합니다. |
 | `findAll()` | 하트비트·서버 종료 처리에 사용할 로컬 연결들을 조회합니다. |
 
 `SseEmitter`에는 실제 HTTP 응답과 관련된 상태가 있으므로 Redis에 넣어 다른 서버에서 사용하는 대상이 아닙니다.
 서버 간에는 이벤트 데이터를 전달하고, 각 서버가 자신의 emitter를 찾아 전송합니다.
 
 이 저장소의 사용자별 Map과 전송 조정기의 연결별 state는 다른 자료구조입니다.
-전자는 emitter를 보관하고, 후자는 초기 복구·처리 위치·전송 중복·재시도 예약만 관리합니다.
+저장소는 emitter와 로그인 세션 ID를 보관합니다. 조정기는 초기 복구·처리 위치·전송 중복·재시도 예약을 관리합니다.
 조정기는 emitter 필드를 두지 않고 초기 복구와 후속 전송 때 단건 조회합니다.
 조회 시 emitter가 없으면 남은 상태·예약도 정리합니다. 조회 성공이 이후 전송 시점까지 연결 생존을 보장하지는 않습니다.
 전송 조정기의 잠금은 사용자 전체가 아닌 해당 연결의 state에 적용합니다.
@@ -57,8 +58,8 @@
 
 ```java
 sseEmitters.compute(userId, (id, connections) -> {
-    Map<Connection, SseEmitter> userConnections = initializeConnections(connections);
-    if (userConnections.putIfAbsent(connection, sseEmitter) != null) {
+    Map<Connection, SseEmitterEntry> userConnections = initializeConnections(connections);
+    if (userConnections.putIfAbsent(connection, new SseEmitterEntry(loginSession, sseEmitter)) != null) {
         throw new IllegalStateException("이미 등록된 SSE 연결입니다.");
     }
     return userConnections;
@@ -74,12 +75,13 @@ sseEmitters.compute(userId, (id, connections) -> {
 
 ## 조회 결과를 복사하는 이유와 한계
 
-조회 결과는 `Map.copyOf`로 반환하여 호출자가 저장소의 Map 구조를 직접 바꾸지 못하게 합니다.
+연결 목록은 수정할 수 없는 Map 사본으로 반환합니다.
 호출자가 받은 결과는 이후 연결 추가·삭제로 구조가 바뀌지 않습니다. 단, 내부 emitter 객체의 참조는 공유합니다.
 
 | 조회 | 복사 범위 | 동시 변경 시 보장 범위 |
 | --- | --- | --- |
 | `findAllByUserId` | 한 사용자의 연결 Map | `compute` 밖에서 복사하므로, 복사 도중 상태를 한 시점으로 고정하지 않습니다. |
+| `findByUserIdAndLoginSessionId` | 한 사용자의 요청 세션에 해당하는 연결 Map | 사용자별 연결을 `sid`로 거릅니다. 복사 도중의 동시 변경을 허용합니다. |
 | `findAll` | 사용자별 연결 Map과 결과의 바깥 Map | 각 사용자 복사는 `computeIfPresent` 안에서 하지만, 전체 사용자 조회를 하나의 시점으로 고정하지는 않습니다. |
 
 따라서 `findAll()`이 반환한 뒤 새로 생긴 연결이나 조회 중 추가된 사용자는 결과에서 빠질 수 있습니다.
