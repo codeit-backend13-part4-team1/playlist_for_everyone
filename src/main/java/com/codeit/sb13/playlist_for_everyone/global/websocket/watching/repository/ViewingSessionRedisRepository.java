@@ -3,8 +3,15 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.reposito
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.dao.QueryTimeoutException;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
+import org.springframework.retry.RetryContext;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Recover;
+import org.springframework.retry.annotation.Retryable;
+import org.springframework.retry.support.RetrySynchronizationManager;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -25,7 +32,7 @@ import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.We
 
 @Slf4j
 @Component
-public class WatchingSessionRepository {
+public class ViewingSessionRedisRepository {
 
     private final Duration TTL = Duration.ofSeconds(TTL_TIMEOUT);
     private final StringRedisTemplate redis;
@@ -33,7 +40,6 @@ public class WatchingSessionRepository {
     private final RedisScript<Long> registerScript;
     private final RedisScript<Long> unregisterScript;
     private final RedisScript<Long> refreshScript;
-    private final RedisScript<Long> deleteScript;
     private final RedisScript<Long> countScript;
     private final RedisScript<Long> deleteFromContentScript;
     private final RedisScript<List> countMultipleContentsScript;
@@ -50,7 +56,7 @@ public class WatchingSessionRepository {
         }
     }
 
-    public WatchingSessionRepository(
+    public ViewingSessionRedisRepository(
             StringRedisTemplate redis,
             @Qualifier("lua-script-register")
             RedisScript<Long> registerScript,
@@ -58,8 +64,6 @@ public class WatchingSessionRepository {
             RedisScript<Long> unregisterScript,
             @Qualifier("lua-script-refresh")
             RedisScript<Long> refreshScript,
-            @Qualifier("lua-script-delete")
-            RedisScript<Long> deleteScript,
             @Qualifier("lua-script-count")
             RedisScript<Long> countScript,
             @Qualifier("lua-script-delete-with-contentId")
@@ -73,7 +77,6 @@ public class WatchingSessionRepository {
         this.registerScript = registerScript;
         this.unregisterScript = unregisterScript;
         this.refreshScript = refreshScript;
-        this.deleteScript = deleteScript;
         this.countScript = countScript;
         this.deleteFromContentScript = deleteFromContentScript;
         this.countMultipleContentsScript = countMultipleContents;
@@ -86,7 +89,22 @@ public class WatchingSessionRepository {
     분산 인스턴스 간의 충돌 역시 고려하지 않고 구현한다.
      */
 
+    /*
+     * Redis 관련 예외
+     * - IllegalStateException.class
+     * - RedisConnectionFailureException.class
+     * - QueryTimeoutException.class
+     */
+
     // 세션 등록 매서드
+    @Retryable(
+            retryFor = {
+                    IllegalStateException.class,
+                    RedisConnectionFailureException.class,
+                    QueryTimeoutException.class
+            },
+            backoff = @Backoff(delay = 100, multiplier = 3)
+    )
     public void register(
             String session,
             String subscription,
@@ -108,6 +126,14 @@ public class WatchingSessionRepository {
     }
 
     // 세션 등록 취소 매서드
+    @Retryable(
+            retryFor = {
+                    IllegalStateException.class,
+                    RedisConnectionFailureException.class,
+                    QueryTimeoutException.class
+            },
+            backoff = @Backoff(delay = 100, multiplier = 3)
+    )
     public void unregister(
             String session,
             String subscription
@@ -126,6 +152,15 @@ public class WatchingSessionRepository {
     }
 
     // 세션들 등록 취소 매서드
+    // todo - delemeter 을 argv 로 넘겨야 한다.
+    @Retryable(
+            retryFor = {
+                    IllegalStateException.class,
+                    RedisConnectionFailureException.class,
+                    QueryTimeoutException.class
+            },
+            backoff = @Backoff(delay = 100, multiplier = 3)
+    )
     public void unregisterAll(
             String sessionId,
             List<String> subscriptionIds,
@@ -151,7 +186,42 @@ public class WatchingSessionRepository {
             throw new IllegalStateException("Failed to register watcher.");
     }
 
+    @Recover
+    public void failRecover(RuntimeException e) {
+        logRetryFailure(e);
+        throw e;
+    }
+
+    @Recover
+    public Map<UUID, Long> failMapRecover(
+            RuntimeException e,
+            List<String> contents
+    ) {
+        logRetryFailure(e);
+        throw e;
+    }
+
+    private void logRetryFailure(RuntimeException e) {
+        RetryContext context =
+                RetrySynchronizationManager.getContext();
+
+        log.error(
+                "[{}] Redis 작업 최종 실패. attempts={}",
+                getClass().getSimpleName(),
+                context != null ? context.getRetryCount() : -1,
+                e
+        );
+    }
+
     // ttl 리프레시 매서드
+    @Retryable(
+            retryFor = {
+                    IllegalStateException.class,
+                    RedisConnectionFailureException.class,
+                    QueryTimeoutException.class
+            },
+            backoff = @Backoff(delay = 100, multiplier = 2)
+    )
     public void refresh(String session){
         validate(session);
 
@@ -166,20 +236,14 @@ public class WatchingSessionRepository {
         if (res == null) throw new IllegalStateException("Failed to refresh watcher.");
     }
 
-    @Deprecated
-    public void delete(String session){
-        validate(session);
-
-        Long res = redisExecute(deleteScript,
-                List.of(sessionKey(session)),
-                session,
-                STORAGE_CONTENT_PREFIX,
-                DELIMITER
-        );
-
-        if (!Long.valueOf(1).equals(res)) throw new IllegalStateException("Failed to delete watcher.");
-    }
-
+    @Retryable(
+            retryFor = {
+                    IllegalStateException.class,
+                    RedisConnectionFailureException.class,
+                    QueryTimeoutException.class
+            },
+            backoff = @Backoff(delay = 100, multiplier = 2)
+    )
     public void deleteWithContentId(UUID contentId){
         Long res = redisExecute(
                 deleteFromContentScript,
@@ -207,6 +271,14 @@ public class WatchingSessionRepository {
      * @param contents contentId 리스트
      * @return contentId 가 비어있을 경우, 빈 map 반환.
      */
+    @Retryable(
+            retryFor = {
+                    IllegalStateException.class,
+                    RedisConnectionFailureException.class,
+                    QueryTimeoutException.class
+            },
+            backoff = @Backoff(delay = 100, multiplier = 2)
+    )
     public Map<UUID, Long> getWatcherCountWithMultipleContents(List<String> contents){
         Objects.requireNonNull(contents);
 
