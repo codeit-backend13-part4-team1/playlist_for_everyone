@@ -19,6 +19,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.redis.core.RedisTemplate;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -55,6 +56,9 @@ public class WatchingSessionBasicTest {
     @Mock
     WatchingSessionMapper mapper;
 
+    @Mock
+    RedisTemplate<String, Object> redisTemplate;
+
     WatchingSessionService watchingSessionService;
 
     @BeforeEach
@@ -73,6 +77,7 @@ public class WatchingSessionBasicTest {
                 userService,
                 contentService,
                 mapper,
+                redisTemplate,
                 eventPublisher
         );
     }
@@ -145,6 +150,27 @@ public class WatchingSessionBasicTest {
 
             }
 
+        }
+
+        @Nested
+        @DisplayName("콘텐츠 삭제 이벤트 발행 테스트")
+        class ContentDeletePublishTest {
+
+            @Test
+            @DisplayName("콘텐츠 삭제 시 Redis 토픽에 콘텐츠 ID를 발행한다.")
+            void publishContentDelete_success() {
+                // given
+                UUID contentId = UUID.randomUUID();
+
+                // when
+                watchingSessionService.publishContentDelete(contentId);
+
+                // then
+                verify(redisTemplate).convertAndSend(
+                        "websocket:event:watching:delete",
+                        contentId.toString()
+                );
+            }
         }
 
         @Nested

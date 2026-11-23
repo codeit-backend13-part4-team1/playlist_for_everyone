@@ -17,6 +17,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.util.Objects;
 import java.util.UUID;
@@ -130,6 +132,16 @@ public class WatchingSessionEventListener {
     public void DisconnectEvent(WatchingSessionDisconnectEvent event) {
         SessionInfo info = check(event.info());
         watchingSessionService.cleanUpWithSessionId(info.session());
+    }
+
+    /**
+     * 콘텐츠 삭제 시 관련 시청·채팅 리소스를 정리한다.
+     *
+     * @param event 삭제된 콘텐츠 정보
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void contentDeleteEvent(WatchingSessionContentDeleteEvent event) {
+        watchingSessionService.publishContentDelete(event.contentId());
     }
 
 }
