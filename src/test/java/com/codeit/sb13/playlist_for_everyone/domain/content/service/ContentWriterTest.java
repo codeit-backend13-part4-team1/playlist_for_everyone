@@ -16,6 +16,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.review.repository.ReviewRepo
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
 import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.event.WebSocketEventFactory;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionContentDeleteEvent;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionDisconnectEvent;
 import org.junit.jupiter.api.DisplayName;
@@ -58,6 +59,9 @@ public class ContentWriterTest {
 
     @Mock
     private ApplicationEventPublisher eventPublisher;
+
+    @Mock
+    private WebSocketEventFactory webSocketEventFactory;
 
     @Mock
     private ContentMapper contentMapper;
@@ -500,7 +504,7 @@ public class ContentWriterTest {
         inOrder.verify(fileService).delete(fileId);
 
         verify(eventPublisher).publishEvent(any(ContentSearchCacheEvictEvent.class));
-        verify(eventPublisher).publishEvent(any(WatchingSessionContentDeleteEvent.class));
+        verify(webSocketEventFactory).contentDeleteEvent(contentId);
     }
 
     @Test
@@ -553,7 +557,7 @@ public class ContentWriterTest {
         verify(fileService, never()).delete(any());
 
         verify(eventPublisher).publishEvent(any(ContentSearchCacheEvictEvent.class));
-        verify(eventPublisher).publishEvent(any(WatchingSessionContentDeleteEvent.class));
+        verify(webSocketEventFactory).contentDeleteEvent(contentId);
     }
 
 }

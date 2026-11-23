@@ -16,6 +16,7 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNot
 import com.codeit.sb13.playlist_for_everyone.global.exception.file.FileEmptyException;
 import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
 import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.event.WebSocketEventFactory;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionContentDeleteEvent;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionDisconnectEvent;
 import lombok.RequiredArgsConstructor;
@@ -36,6 +37,7 @@ public class ContentWriter {
     private final ReviewRepository reviewRepository;
     private final PlaylistContentRepository playlistContentRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final WebSocketEventFactory webSocketEventFactory;
     private final ContentMapper contentMapper;
     private final FileService fileService;
 
@@ -156,7 +158,7 @@ public class ContentWriter {
         }
 
         // 시청 세션 연결 해제 이벤트 발행
-        eventPublisher.publishEvent(new WatchingSessionContentDeleteEvent(contentId));
+        webSocketEventFactory.contentDeleteEvent(contentId);
 
         // 삭제 시 검색 캐시를 무효화하도록 이벤트 발행
         eventPublisher.publishEvent(new ContentSearchCacheEvictEvent());
