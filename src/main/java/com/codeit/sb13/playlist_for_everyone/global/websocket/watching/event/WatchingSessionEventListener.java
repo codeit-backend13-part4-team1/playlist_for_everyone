@@ -134,14 +134,4 @@ public class WatchingSessionEventListener {
         watchingSessionService.cleanUpWithSessionId(info.session());
     }
 
-    /**
-     * 콘텐츠 삭제 시 관련 시청·채팅 리소스를 정리한다.
-     *
-     * @param event 삭제된 콘텐츠 정보
-     */
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void contentDeleteEvent(WatchingSessionContentDeleteEvent event) {
-        watchingSessionService.publishContentDelete(event.contentId());
-    }
-
 }

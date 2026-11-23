@@ -153,27 +153,6 @@ public class WatchingSessionBasicTest {
         }
 
         @Nested
-        @DisplayName("콘텐츠 삭제 이벤트 발행 테스트")
-        class ContentDeletePublishTest {
-
-            @Test
-            @DisplayName("콘텐츠 삭제 시 Redis 토픽에 콘텐츠 ID를 발행한다.")
-            void publishContentDelete_success() {
-                // given
-                UUID contentId = UUID.randomUUID();
-
-                // when
-                watchingSessionService.publishContentDelete(contentId);
-
-                // then
-                verify(redisTemplate).convertAndSend(
-                        "websocket:event:watching:delete",
-                        contentId.toString()
-                );
-            }
-        }
-
-        @Nested
         @DisplayName("sessionId 관련 시나리오")
         class SessionId {
 

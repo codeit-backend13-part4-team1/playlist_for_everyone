@@ -12,5 +12,4 @@ public interface WatchingSessionService {
     void leaveChattingSession(String sessionId, String subscriptionId, SecurityUser auth);
     void cleanUpWithSessionId(String sessionId);
     void cleanUpWithContentId(UUID contentId);
-    void publishContentDelete(UUID contentId);
 }

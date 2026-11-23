@@ -423,20 +423,6 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
         }
     }
 
-    /**
-     * 콘텐츠 삭제 시 Redis Pub/Sub으로 삭제 이벤트를 발행한다.
-     * 각 서버의 리스너에서 이벤트를 수신하여 관련 시청·채팅 리소스를 정리한다.
-     *
-     * @param contentId 삭제된 콘텐츠 ID
-     */
-    @Override
-    public void publishContentDelete(UUID contentId) {
-        redisTemplate.convertAndSend(
-                "websocket:event:watching:delete",
-                contentId.toString()
-        );
-    }
-
     /*
      * 공용 편의 매서드
      */
