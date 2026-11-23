@@ -39,7 +39,8 @@ docs/loadtest/
 | `sql/explain_list.sql`, `sql/explain_notification.sql` | 느린 쿼리의 실행 계획 확인용 | 포함 |
 | `scenarios/*.jmx` | 도메인별 JMeter 시나리오 (위 표) | 포함 |
 | `scripts/update_csv_200.py` | 현재 DB 기준으로 `data/users.csv`를 생성 (`playlist-smoke.jmx`용) | 포함 |
-| `scripts/update_list_params.py`, `update_follow_params.py`, `update_notification_params.py`, `update_content_params.py`, `update_review_params.py`, `update_plcontent_params.py`, `update_user_params.py`, 캐시 확인용 `check_content_search_cache.py` | 시나리오별 파라미터 CSV 생성 (사용자·대상 ID는 DB마다 달라서 실행 때마다 생성) | 포함 |
+| `scripts/update_list_params.py`, `update_follow_params.py`, `update_notification_params.py`, `update_content_params.py`, `update_plcontent_params.py`, `update_user_params.py` | 시나리오별 파라미터 CSV 생성 (사용자·대상 ID는 DB마다 달라서 실행 때마다 생성) | 포함 |
+| `scripts/update_review_params.py`, `scripts/check_content_search_cache.py` | 리뷰·검색 시나리오의 파라미터 CSV 생성, 캐시 키 생성·삭제 확인 | 제외 (로컬 전용, `.gitignore`) |
 | `data/users.csv`, `data/*_params.csv` | 가상 사용자별 계정·대상 ID | 제외 (생성물) |
 | `jmeter.log`, `results_*.jtl`, `report_*/` | 실행 결과물 (프로젝트 루트에 생김) | 제외 (생성물) |
 
@@ -262,7 +263,7 @@ runc content_burst 200 5
 
 ### 리뷰
 
-생성·삭제가 데이터를 바꾸고 (콘텐츠, 작성자) 중복은 거부되므로 매번 시드를 다시 실행합니다. 리뷰 생성·평점 수정·삭제는 콘텐츠 검색 캐시를 전부 비웁니다.
+생성·삭제가 데이터를 바꾸고 (콘텐츠, 작성자) 중복은 거부되므로 매번 시드를 다시 실행합니다. 리뷰 생성·평점 수정·삭제는 콘텐츠 검색 캐시를 전부 비웁니다. 파라미터 CSV를 만드는 `update_review_params.py`는 저장소에 없는 로컬 전용 스크립트라서, 없으면 `update_content_params.py`처럼 현재 DB에서 사용자·콘텐츠·리뷰 ID를 읽어 `loadtest/data/review_params.csv`를 직접 만들어야 합니다.
 
 ```bash
 runr() { docker compose --env-file .env.dev exec -T postgres psql -U everyone -d loadtest -v ON_ERROR_STOP=1 < loadtest/sql/seed_content.sql && docker compose --env-file .env.dev exec -T postgres psql -U everyone -d loadtest -c "VACUUM FULL ANALYZE contents, reviews;" && python3 loadtest/scripts/update_review_params.py && runj $1 review-scenario.jmx $2 $3; }
@@ -272,24 +273,26 @@ runr review_burst 200 5
 
 ### 콘텐츠 검색과 캐시
 
-캐시 무효화 동작(생성·텍스트만 수정·평점 수정·삭제)은 사용자 1명으로 Redis 키 수를 보며 확인합니다. 시드 직후 상태에서 실행합니다.
+캐시 무효화 동작(생성·텍스트만 수정·평점 수정·삭제)은 사용자 1명으로 Redis 키 수를 보며 확인합니다. 시드 직후 상태에서 실행합니다. 이 스크립트(로컬 전용)가 보는 것은 키가 생기고 지워지는지뿐이고, 캐시 적중 여부는 증명하지 못합니다(재계산 결과도 같은 키를 덮어쓰므로). 적중률 측정은 하지 않았습니다.
 
 ```bash
 python3 loadtest/scripts/check_content_search_cache.py
 ```
 
-검색 부하는 `review_params.csv`의 사용자 목록을 씁니다. 먼저 `update_review_params.py`를 실행해야 합니다.
+검색 부하는 `review_params.csv`의 사용자 목록을 씁니다. 리뷰 시나리오(`review_burst`)가 시드 리뷰를 지우므로, CSV를 만들기 전에 시드를 다시 넣고 테이블을 정리합니다. 실행 때마다 Redis 캐시도 비워, 앞선 실행의 캐시가 다음 실행의 미스를 적중으로 바꾸지 않게 합니다.
 
 ```bash
+clrc() { docker compose --env-file .env.dev exec -T redis sh -c 'redis-cli --scan --pattern "contentSearch::*" | while IFS= read -r k; do redis-cli del "$k" >/dev/null; done'; }
+docker compose --env-file .env.dev exec -T postgres psql -U everyone -d loadtest -v ON_ERROR_STOP=1 < loadtest/sql/seed_content.sql
+docker compose --env-file .env.dev exec -T postgres psql -U everyone -d loadtest -c "VACUUM FULL ANALYZE contents, reviews;"
 python3 loadtest/scripts/update_review_params.py
-runj search_calm content-search-scenario.jmx 200 60
-runj search_burst content-search-scenario.jmx 200 5
+clrc; runj search_calm content-search-scenario.jmx 200 60
+clrc; runj search_burst content-search-scenario.jmx 200 5
 ```
 
 요청끼리 서로 영향을 주지 않는지 보려면 요청별로 켜고 끌 수 있습니다. S1·S2(캐시 적중 경로), S3(사용자마다 다른 키워드, 캐시 미스), S4(시청자수순, 캐시 안 함)입니다. 실행 전에 캐시를 비웁니다.
 
 ```bash
-clrc() { docker compose --env-file .env.dev exec -T redis sh -c 'redis-cli --scan --pattern "contentSearch::*" | while IFS= read -r k; do redis-cli del "$k" >/dev/null; done'; }
 runs() { rm -rf results_$1.jtl report_$1 && jmeter -n -t loadtest/scenarios/content-search-scenario.jmx -Jthreads=$2 -Jramp=$3 -Js1=$4 -Js2=$5 -Js3=$6 -Js4=$7 -l results_$1.jtl -e -o report_$1; }
 clrc; runs search_hit 200 5 true true false false
 clrc; runs search_kw 200 5 false false true false
