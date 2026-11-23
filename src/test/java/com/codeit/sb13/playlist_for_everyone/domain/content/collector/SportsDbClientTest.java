@@ -51,6 +51,14 @@ class SportsDbClientTest {
     private SportsDbClient sportsDbClient;
     private MockRestServiceServer server;
 
+    private static Stream<Arguments> networkErrors() {
+        return Stream.of(
+                Arguments.of(new UnknownHostException("test-key"), "DNS_ERROR"),
+                Arguments.of(new ConnectException("test-key"), "CONNECTION_ERROR"),
+                Arguments.of(new IOException("test-key"), "NETWORK_ERROR")
+        );
+    }
+
     @BeforeEach
     void setUp() {
         var builder = configuredRestClient.mutate();
@@ -133,16 +141,16 @@ class SportsDbClientTest {
                                 + "?id=4328&s=2014-2015"
                 ))
                 .andRespond(withSuccess("""
-                    {
-                      "events": [
                         {
-                          "idEvent": "441425",
-                          "strEvent": "West Ham vs Tottenham",
-                          "strThumb": null
+                          "events": [
+                            {
+                              "idEvent": "441425",
+                              "strEvent": "West Ham vs Tottenham",
+                              "strThumb": null
+                            }
+                          ]
                         }
-                      ]
-                    }
-                    """, MediaType.APPLICATION_JSON));
+                        """, MediaType.APPLICATION_JSON));
 
         var response = sportsDbClient.getEventsBySeason("4328", "2014-2015");
 
@@ -211,24 +219,25 @@ class SportsDbClientTest {
 
     @ParameterizedTest
     @MethodSource("networkErrors")
-    void 연결_실패_이유는_구분하고_API_키는_노출하지_않는다(
-            IOException error, String expectedCode
-    ) {
-        server.expect(ExpectedCount.times(error instanceof UnknownHostException ? 1 : 3),
+    void 연결_실패_이유는_구분하고_API_키는_노출하지_않는다(IOException error, String expectedCode) {
+        int expectedAttempts = error instanceof ConnectException ? 3 : 1;
+
+        server.expect(
+                        ExpectedCount.times(expectedAttempts),
                         requestTo("https://sportsdb.test/test-key/eventsseason.php"
-                                        + "?id=4328&s=2014-2015"))
-                .andRespond(request -> {throw error;});
+                                        + "?id=4328&s=2014-2015")
+                )
+                .andRespond(request -> {
+                    throw error;
+                });
 
+        assertThatThrownBy(() -> sportsDbClient.getEventsBySeason("4328", "2014-2015"))
+                .isInstanceOf(ResourceAccessException.class)
+                .hasMessage("TheSportsDB 요청 실패: " + expectedCode)
+                .hasNoCause();
+
+        server.verify();
     }
-
-    private static Stream<Arguments> networkErrors() {
-        return Stream.of(
-                Arguments.of(new UnknownHostException("test-key"), "DNS_ERROR"),
-                Arguments.of(new ConnectException("test-key"), "CONNECTION_ERROR"),
-                Arguments.of(new IOException("test-key"), "NETWORK_ERROR")
-        );
-    }
-
 
     @Test
     void 일시적인_서버_오류_후_재시도하면_성공한다() {
@@ -242,10 +251,10 @@ class SportsDbClientTest {
         // 두 번째 요청: 정상 응답
         server.expect(requestTo(url))
                 .andRespond(withSuccess("""
-                    {
-                      "events": []
-                    }
-                    """, MediaType.APPLICATION_JSON));
+                        {
+                          "events": []
+                        }
+                        """, MediaType.APPLICATION_JSON));
 
         var response = sportsDbClient.getEventsBySeason(
                 "4328", "2014-2015"
