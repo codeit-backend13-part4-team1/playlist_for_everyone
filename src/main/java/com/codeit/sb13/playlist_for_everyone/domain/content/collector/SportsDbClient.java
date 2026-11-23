@@ -7,6 +7,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.net.ConnectException;
 import java.net.UnknownHostException;
@@ -53,6 +54,17 @@ public class SportsDbClient {
         } catch (ResourceAccessException e) {
             String code = networkErrorCode(e);
             throw new ResourceAccessException("TheSportsDB 요청 실패: " + code);
+
+        } catch (RestClientResponseException e) {
+            // 상태 코드는 유지하고 키가 포함될 수 있는 응답 정보는 제외한다.
+            throw new RestClientResponseException(
+                    "TheSportsDB 요청 실패: HTTP_" + e.getStatusCode().value(),
+                    e.getStatusCode(),
+                    "",
+                    null,
+                    null,
+                    null
+            );
 
         } catch (RestClientException e) {
             if (e.contains(SocketTimeoutException.class)
