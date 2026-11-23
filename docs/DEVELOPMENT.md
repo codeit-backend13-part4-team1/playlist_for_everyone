@@ -426,7 +426,9 @@ SSE Redis 통합 테스트는 별도의 Redis 7.4 컨테이너로 실제 Pub/Sub
 
 CI는 `dev`·`main` 대상 PR과 `main` push에서 빌드·테스트·커버리지를 검사합니다. 실패한 실행에서도 생성된 테스트 보고서는 Actions 아티팩트에서 확인할 수 있습니다.
 
-CI는 성공한 빌드의 JaCoCo XML에서 전체 LINE 수치로 SVG 배지를 생성하고 `coverage-badge` 아티팩트로 보관합니다. 표시값은 소수 둘째 자리까지 버림하며, 검증에는 원래 비율을 사용합니다. README 배지 자동 게시 연결은 후속 작업입니다. 현재 CI 권한은 `contents: read`를 유지합니다.
+CI는 성공한 빌드의 JaCoCo XML에서 전체 LINE 수치로 SVG 배지를 생성하고 `coverage-badge` 아티팩트로 보관합니다. 표시값은 소수 둘째 자리까지 버림하며, 검증에는 원래 비율을 사용합니다.
+
+`main` 빌드가 성공하면 배지를 `coverage-badges` 브랜치에 게시하고, README가 해당 SVG를 표시합니다. 빌드가 실패하면 기존 배지를 유지합니다. 게시 작업에만 `contents: write` 권한을 부여하며, 나머지 CI 작업은 `contents: read`를 사용합니다.
 
 배지 생성 코드는 Java로 작성되어 있으며, 관련 테스트는 전체 빌드에 포함됩니다.
 배지 테스트만 실행하려면 다음 명령어를 사용합니다.
@@ -807,6 +809,5 @@ GET /actuator/metrics/content.collection.items.write?tag=job:sportsDbCollectionJ
 - Redis 기반 캐시·세션 기능 구현과 데이터 보관 정책 결정
 - 배치, S3 등 기능별 구현과 필요한 인프라 추가. DM WebSocket 구현·검증 범위는 [대화방 가이드](conversation/README.md), 연결 유지 중 인증 자연 만료는 #208 참고
 - 팔로우(#155)·권한 변경·구독(#156)·플레이리스트 생성·콘텐츠 추가(#157)·DM(#159) 외 업무 이벤트의 알림 연동(#45), SSE Kafka 구현체, 이력 보관 초기값의 운영 부하 검증, [동시 연결 수 제한·모니터링 #107](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/107)
-- README 배지 자동 게시 방식 확정 및 연결
 - 배포 파이프라인 구성
 
