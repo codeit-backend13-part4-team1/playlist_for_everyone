@@ -19,6 +19,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.redis.core.RedisTemplate;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -55,6 +56,9 @@ public class WatchingSessionBasicTest {
     @Mock
     WatchingSessionMapper mapper;
 
+    @Mock
+    RedisTemplate<String, Object> redisTemplate;
+
     WatchingSessionService watchingSessionService;
 
     @BeforeEach
@@ -73,6 +77,7 @@ public class WatchingSessionBasicTest {
                 userService,
                 contentService,
                 mapper,
+                redisTemplate,
                 eventPublisher
         );
     }

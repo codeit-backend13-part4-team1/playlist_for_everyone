@@ -8,6 +8,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.event.EventListener;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 @Slf4j
 @Component
@@ -18,15 +20,19 @@ public class WatchingSessionGlobalEventLister {
     private final RedisTemplate<String, Object> redisTemplate;
     private final RedisBrokerRegister broker;
     private final WatchingSessionContentDeleteEventListener contentDelete;
+    private final WatchingSessionDeleteEventPublisher publisher;
 
     @PostConstruct
     public void setup(){
         broker.register(contentDelete,contentDelete.topic());
     }
 
-    @EventListener
-    public void onContentsDelete(WatchingSessionContentDeleteEvent event){
-        redisTemplate.convertAndSend(contentDelete.topic(), event.contentId());
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onContentsDelete(WatchingSessionContentDeleteEvent event) {
+        publisher.publish(
+                contentDelete.topic(),
+                event.contentId()
+        );
     }
 
 }
