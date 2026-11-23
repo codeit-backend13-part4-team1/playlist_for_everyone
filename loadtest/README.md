@@ -273,7 +273,7 @@ runr review_burst 200 5
 
 ### 콘텐츠 검색과 캐시
 
-캐시 무효화 동작(생성·텍스트만 수정·평점 수정·삭제)은 사용자 1명으로 Redis 키 수를 보며 확인합니다. 시드 직후 상태에서 실행합니다. 이 스크립트(로컬 전용)가 보는 것은 키가 생기고 지워지는지뿐이고, 캐시 적중 여부는 증명하지 못합니다(재계산 결과도 같은 키를 덮어쓰므로). 적중률 측정은 하지 않았습니다.
+캐시 무효화 동작(생성·텍스트만 수정·평점 수정·삭제)은 사용자 1명으로 Redis 키 수를 보며 확인합니다. 시드 직후 상태에서 실행합니다. 이 스크립트(로컬 전용)가 보는 것은 키가 생기고 지워지는지뿐이고, 캐시 적중 여부는 증명하지 못합니다(재계산 결과도 같은 키를 덮어쓰므로). 적중은 아래 "리뷰 변경 전후 캐시 동작"처럼 DB 조회 횟수로 따로 확인합니다.
 
 ```bash
 python3 loadtest/scripts/check_content_search_cache.py
@@ -288,6 +288,19 @@ docker compose --env-file .env.dev exec -T postgres psql -U everyone -d loadtest
 python3 loadtest/scripts/update_review_params.py
 clrc; runj search_calm content-search-scenario.jmx 200 60
 clrc; runj search_burst content-search-scenario.jmx 200 5
+```
+
+리뷰 변경 전후로 캐시가 비워졌다가 다시 채워지는지는 `contents` 테이블 조회 횟수로 확인합니다. 앱에 캐시 통계가 없어서 정확한 적중률 대신 미스의 대리 지표(조회 횟수)를 씁니다. 조회 횟수가 0이면 모두 적중, 리뷰 변경 후 늘어나면 캐시가 비워진 것입니다. 한 번의 미스가 여러 번 조회할 수 있으므로 `1 − 조회 횟수 ÷ 검색 요청 수`는 적중률의 하한입니다. 리뷰 변경은 같은 DB에서 연달아 하면 중복·대상 없음으로 변경이 안 일어나므로 매번 시드를 다시 넣고 CSV를 만든 뒤 실행합니다.
+
+```bash
+pgs() { sleep 3; docker compose --env-file .env.dev exec -T postgres psql -U everyone -d loadtest -Atc "SELECT seq_scan+COALESCE(idx_scan,0) FROM pg_stat_user_tables WHERE relname='contents';"; }
+reseed() { docker compose --env-file .env.dev exec -T postgres psql -U everyone -d loadtest -v ON_ERROR_STOP=1 < loadtest/sql/seed_content.sql && docker compose --env-file .env.dev exec -T postgres psql -U everyone -d loadtest -c "VACUUM FULL ANALYZE contents, reviews;" && python3 loadtest/scripts/update_review_params.py; }
+reseed; clrc
+a=$(pgs); runs cold 200 5 true true false false; b=$(pgs); echo "cold: $((b-a))"   # 캐시 비움 직후
+a=$(pgs); runs warm 200 5 true true false false; b=$(pgs); echo "warm: $((b-a))"   # 웜 (0이어야 함)
+runj review_one review-scenario.jmx 1 1                                          # 리뷰 변경 (캐시 무효화)
+awk -F, 'NR>1{print $3, $4}' results_review_one.jtl | sort | uniq -c              # R4 201, R5·R6 200, R7 204인지 확인
+a=$(pgs); runs after 200 5 true true false false; b=$(pgs); echo "after: $((b-a))" # 변경 후
 ```
 
 요청끼리 서로 영향을 주지 않는지 보려면 요청별로 켜고 끌 수 있습니다. S1·S2(캐시 적중 경로), S3(사용자마다 다른 키워드, 캐시 미스), S4(시청자수순, 캐시 안 함)입니다. 실행 전에 캐시를 비웁니다.
