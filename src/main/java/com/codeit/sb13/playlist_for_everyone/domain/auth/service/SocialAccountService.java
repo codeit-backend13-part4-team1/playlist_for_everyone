@@ -33,6 +33,8 @@ public class SocialAccountService {
     // Kakao는 이메일을 제공하지 않아 회원 ID로 가상 이메일을 만든다.
     private static final String KAKAO_EMAIL_FORMAT = "kakao_%s@kakao.com";
 
+    private static final int MAX_NAME_LENGTH = 100;
+
     private final SocialAccountRepository socialAccountRepository;
     private final UserRepository userRepository;
 
@@ -104,12 +106,24 @@ public class SocialAccountService {
 
     private String resolveName(SocialIdentity identity) {
         if (StringUtils.hasText(identity.name())) {
-            return identity.name().strip();
+            return truncateName(identity.name().strip());
         }
         return switch (identity.provider()) {
             case GOOGLE -> "Google 사용자";
             case KAKAO -> "카카오 사용자";
         };
+    }
+
+    /**
+     * 제공자 이름이 컬럼 길이를 넘으면 가입이 계속 실패하므로 앞에서부터 잘라 저장한다.
+     * 이모지처럼 char 2개로 이루어진 문자가 잘리지 않도록 코드 포인트 기준으로 자른다.
+     */
+    private String truncateName(String name) {
+        if (name.codePointCount(0, name.length()) <= MAX_NAME_LENGTH) {
+            return name;
+        }
+        int end = name.offsetByCodePoints(0, MAX_NAME_LENGTH);
+        return name.substring(0, end).strip();
     }
 
 }
