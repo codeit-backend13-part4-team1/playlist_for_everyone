@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.service;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.global.sse.config.SseProperties;
 import com.codeit.sb13.playlist_for_everyone.global.sse.config.SseRetryProperties;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
@@ -57,6 +58,9 @@ public class SseRetryLifecycleTest {
     @Mock
     private ScheduledFuture<?> retryFuture;
 
+    @Mock
+    private UserSessionRepository userSessionRepository;
+
     private SseEmitterRepository repository;
     private SseDeliveryCoordinator coordinator;
     private SseConnectionService connectionService;
@@ -81,7 +85,9 @@ public class SseRetryLifecycleTest {
         connectionService = new SseConnectionService(
                 repository,
                 properties,
-                coordinator);
+                coordinator,
+                userSessionRepository);
+        when(userSessionRepository.isCurrent(any(UUID.class), eq(loginSession.id()))).thenReturn(true);
     }
 
     @Test
