@@ -21,12 +21,16 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.context.event.ApplicationEvents;
 import org.springframework.test.context.event.RecordApplicationEvents;
+import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestClient;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -43,6 +47,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 import static org.mockito.Mockito.*;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 @DataJpaTest(properties = {
         "spring.flyway.enabled=true",
@@ -608,6 +615,75 @@ class ContentCollectionServiceTest {
                 .stream(ContentSearchCacheEvictEvent.class)
                 .count())
                 .isZero();
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void API_재시도_후_같은_경기를_저장해도_중복되지_않는다() {
+        String externalId = UUID.randomUUID().toString();
+        String url = "https://sportsdb.test/123/eventsseason.php"
+                + "?id=4328&s=2014-2015";
+
+        var builder = RestClient.builder()
+                .baseUrl("https://sportsdb.test/123");
+        var server = MockRestServiceServer.bindTo(builder).build();
+        var client = new SportsDbClient(builder.build(), new ExternalApiRetry());
+        var mapper = new SportsDbContentMapper();
+
+        String responseBody = """
+            {
+              "events": [{
+                "idEvent": "%s",
+                "strEvent": "West Ham vs Tottenham",
+                "strSport": "Soccer",
+                "strLeague": "English Premier League",
+                "strSeason": "2014-2015",
+                "dateEvent": "2014-08-16"
+              }]
+            }
+            """.formatted(externalId);
+
+        // 첫 수집과 재수집 모두 503 이후 정상 응답
+        for (int i = 0; i < 2; i++) {
+            server.expect(requestTo(url))
+                    .andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE));
+            server.expect(requestTo(url))
+                    .andRespond(withSuccess(responseBody, MediaType.APPLICATION_JSON));
+        }
+
+        var firstResponse = client.getEventsBySeason("4328", "2014-2015");
+        var first = service.saveForBatch(mapper.fromEvent(firstResponse.events().get(0)));
+
+        var secondResponse = client.getEventsBySeason("4328", "2014-2015");
+        var second = service.saveForBatch(mapper.fromEvent(secondResponse.events().get(0)));
+
+        assertThat(first.inserted()).isTrue();
+        assertThat(second.inserted()).isFalse();
+        assertThat(second.content().getId()).isEqualTo(first.content().getId());
+
+        Long count = em.createQuery("""
+                    select count(c) from Content c
+                    where c.provider = :provider
+                      and c.type = :type
+                      and c.providerItemId = :externalId
+                    """, Long.class)
+                .setParameter("provider", ContentSource.THE_SPORTS_DB)
+                .setParameter("type", ContentType.sport)
+                .setParameter("externalId", externalId)
+                .getSingleResult();
+
+        assertThat(count).isEqualTo(1L);
+
+        var tags = em.createQuery("""
+                    select t.tag from ContentTag t
+                    where t.content.id = :contentId
+                    """, String.class)
+                .setParameter("contentId", first.content().getId())
+                .getResultList();
+
+        assertThat(tags).containsExactlyInAnyOrder("Soccer", "English Premier League");
+
+        server.verify();
     }
 
 }
