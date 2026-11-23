@@ -20,9 +20,7 @@ public class WatchingSessionLocalEventListener {
 
     @TransactionalEventListener(
             // 트랜잭션이 정상적으로 커밋된 후에 실행
-            phase = TransactionPhase.AFTER_COMMIT,
-            // 트랜잭션 없이 이벤트가 발행되어도 실행
-            fallbackExecution = true
+            phase = TransactionPhase.AFTER_COMMIT
     )
     public void onContentsDelete(WatchingSessionContentDeleteEvent event){
         UUID contentId = Objects.requireNonNull(event.contentId());

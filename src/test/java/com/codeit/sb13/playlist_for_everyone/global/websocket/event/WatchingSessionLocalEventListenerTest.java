@@ -66,15 +66,18 @@ class WatchingSessionLocalEventListenerTest {
     }
 
     @Test
-    @DisplayName("트랜잭션이 없어도 시청 세션을 정리한다")
+    @DisplayName("트랜잭션 없이 이벤트가 발행되면 시청 세션을 정리하지 않는다")
     void cleanupWithoutTransaction() {
+        // given
         UUID contentId = UUID.randomUUID();
 
+        // when
         eventPublisher.publishEvent(
                 new WatchingSessionContentDeleteEvent(contentId)
         );
 
-        verify(watchingSessionService)
-                .cleanUpWithContentId(contentId);
+        // then
+        verify(watchingSessionService, never()).cleanUpWithContentId(contentId);
     }
+
 }
