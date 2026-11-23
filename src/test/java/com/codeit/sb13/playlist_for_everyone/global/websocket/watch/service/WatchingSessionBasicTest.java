@@ -77,7 +77,6 @@ public class WatchingSessionBasicTest {
                 userService,
                 contentService,
                 mapper,
-                redisTemplate,
                 eventPublisher
         );
     }
