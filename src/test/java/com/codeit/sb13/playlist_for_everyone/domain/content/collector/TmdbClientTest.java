@@ -21,6 +21,8 @@ import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
+import java.time.Duration;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
@@ -53,7 +55,7 @@ class TmdbClientTest {
         var builder = configuredRestClient.mutate();
 
         server = MockRestServiceServer.bindTo(builder).build();
-        tmdbClient = new TmdbClient(builder.build(), new ExternalApiRetry());
+        tmdbClient = new TmdbClient(builder.build(), new ExternalApiRetry(Duration.ZERO));
     }
 
     @Test

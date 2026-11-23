@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.content.collector;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.springframework.util.backoff.BackOffExecution;
 import org.springframework.web.client.ResourceAccessException;
 
 import javax.net.ssl.SSLHandshakeException;
@@ -10,6 +11,7 @@ import java.io.IOException;
 import java.net.ConnectException;
 import java.net.UnknownHostException;
 import java.nio.channels.UnresolvedAddressException;
+import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
@@ -18,7 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ExternalApiRetryTest {
 
-    private final ExternalApiRetry externalApiRetry = new ExternalApiRetry();
+    private final ExternalApiRetry externalApiRetry = new ExternalApiRetry(Duration.ZERO);
 
     @ParameterizedTest
     @MethodSource("nonRetryableNetworkErrors")
@@ -76,5 +78,15 @@ class ExternalApiRetryTest {
                 new UnknownHostException("호스트를 찾을 수 없습니다."),
                 new UnresolvedAddressException()
         );
+    }
+
+    @Test
+    void 재시도_대기_간격은_1초와_2초이고_이후에는_종료한다() {
+        var policy = ExternalApiRetry.createPolicy(Duration.ofSeconds(1));
+        var backOff = policy.getBackOff().start();
+
+        assertThat(backOff.nextBackOff()).isEqualTo(1_000L);
+        assertThat(backOff.nextBackOff()).isEqualTo(2_000L);
+        assertThat(backOff.nextBackOff()).isEqualTo(BackOffExecution.STOP);
     }
 }

@@ -18,14 +18,24 @@ import java.util.function.Supplier;
 @Component
 public class ExternalApiRetry {
 
-    private final RetryTemplate retryTemplate = new RetryTemplate(
-            RetryPolicy.builder()
-                    .maxRetries(2)
-                    .delay(Duration.ofSeconds(1))
-                    .multiplier(2)
-                    .predicate(ExternalApiRetry::shouldRetry)
-                    .build()
-    );
+    private final RetryTemplate retryTemplate;
+
+    public ExternalApiRetry() {
+        this(Duration.ofSeconds(1));
+    }
+
+    ExternalApiRetry(Duration initialDelay) {
+        this.retryTemplate = new RetryTemplate(createPolicy(initialDelay));
+    }
+
+    static RetryPolicy createPolicy(Duration initialDelay) {
+        return RetryPolicy.builder()
+                .maxRetries(2)
+                .delay(initialDelay)
+                .multiplier(2)
+                .predicate(ExternalApiRetry::shouldRetry)
+                .build();
+    }
 
     public <T> T execute(Supplier<T> request) {
         return retryTemplate.invoke(request);

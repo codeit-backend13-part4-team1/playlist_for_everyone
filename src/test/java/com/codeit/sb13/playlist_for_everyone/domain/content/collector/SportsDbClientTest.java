@@ -24,6 +24,7 @@ import org.springframework.web.client.RestClientResponseException;
 import java.io.IOException;
 import java.net.ConnectException;
 import java.net.UnknownHostException;
+import java.time.Duration;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -60,7 +61,7 @@ class SportsDbClientTest {
     void setUp() {
         var builder = configuredRestClient.mutate();
         server = MockRestServiceServer.bindTo(builder).build();
-        sportsDbClient = new SportsDbClient(builder.build(), new ExternalApiRetry());
+        sportsDbClient = new SportsDbClient(builder.build(), new ExternalApiRetry(Duration.ZERO));
     }
 
     @Test

@@ -35,6 +35,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -627,7 +628,7 @@ class ContentCollectionServiceTest {
         var builder = RestClient.builder()
                 .baseUrl("https://sportsdb.test/123");
         var server = MockRestServiceServer.bindTo(builder).build();
-        var client = new SportsDbClient(builder.build(), new ExternalApiRetry());
+        var client = new SportsDbClient(builder.build(), new ExternalApiRetry(Duration.ZERO));
         var mapper = new SportsDbContentMapper();
 
         String responseBody = """

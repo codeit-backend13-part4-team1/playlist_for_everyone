@@ -53,7 +53,7 @@ class SportsDbClientTimeoutTest {
                     RestClient.builder(),
                     properties
             );
-            var client = new SportsDbClient(restClient, new ExternalApiRetry());
+            var client = new SportsDbClient(restClient, new ExternalApiRetry(Duration.ZERO));
 
             assertThatThrownBy(() -> client.getEventsBySeason("4328", "2014-2015"))
                     .isInstanceOf(ResourceAccessException.class)
@@ -116,7 +116,7 @@ class SportsDbClientTimeoutTest {
                     RestClient.builder(),
                     properties
             );
-            var client = new SportsDbClient(restClient, new ExternalApiRetry());
+            var client = new SportsDbClient(restClient, new ExternalApiRetry(Duration.ZERO));
 
             assertThatThrownBy(() -> client.getEventsBySeason("4328", "2014-2015"))
                     .isInstanceOf(ResourceAccessException.class)
