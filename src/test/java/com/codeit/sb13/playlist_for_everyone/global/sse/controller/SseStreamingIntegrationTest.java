@@ -17,6 +17,7 @@ import com.codeit.sb13.playlist_for_everyone.global.dto.response.ApiErrorRespons
 import com.codeit.sb13.playlist_for_everyone.global.exception.sse.SsePublishException;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Event;
+import com.codeit.sb13.playlist_for_everyone.global.sse.event.LoginSession;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEventPublisher;
 import com.codeit.sb13.playlist_for_everyone.global.sse.history.*;
@@ -338,6 +339,44 @@ public class SseStreamingIntegrationTest {
         }
     }
 
+    @Test
+    @DisplayName("JWT 인증 이후 세션이 폐기되면 등록한 연결을 정리하고 SSE 시작 전에 401을 반환한다.")
+    void connectReturns401WhenSessionIsRevokedAfterAuthentication() throws IOException {
+        UUID userId = UUID.randomUUID();
+        String token = "sse-test-token";
+        UUID sessionId = prepareAuthenticatedUser(userId, token);
+        LoginSession loginSession = new LoginSession(sessionId);
+        given(userSessionRepository.isCurrent(userId, sessionId))
+                .willReturn(true)
+                .willAnswer(invocation -> {
+                    assertThat(sseEmitterRepository.findByUserIdAndLoginSessionId(userId, loginSession)).hasSize(1);
+                    return false;
+                });
+        given(historyStore.snapshot(userId, null)).willReturn(new SseHistorySnapshot(null, List.of()));
+
+        assertConnectionRejected(userId, token, 401, "BadCredentialsException");
+
+        assertThat(sseEmitterRepository.findByUserIdAndLoginSessionId(userId, loginSession)).isEmpty();
+        Mockito.verifyNoInteractions(historyStore);
+    }
+
+    @Test
+    @DisplayName("등록 직후 세션 조회에 실패하면 연결을 정리하고 SSE 시작 전에 503을 반환한다.")
+    void connectReturns503WhenSessionRevalidationFails() throws IOException {
+        UUID userId = UUID.randomUUID();
+        String token = "sse-test-token";
+        UUID sessionId = prepareAuthenticatedUser(userId, token);
+        var failure = new DataAccessResourceFailureException("테스트용 로그인 세션 조회 실패");
+        given(userSessionRepository.isCurrent(userId, sessionId)).willReturn(true).willThrow(failure);
+        given(historyStore.snapshot(userId, null)).willReturn(new SseHistorySnapshot(null, List.of()));
+
+        ApiErrorResponse response = assertConnectionRejected(userId, token, 503, failure.getClass().getSimpleName());
+
+        assertThat(response.message()).doesNotContain(failure.getMessage());
+        assertThat(sseEmitterRepository.findByUserIdAndLoginSessionId(userId, new LoginSession(sessionId))).isEmpty();
+        Mockito.verifyNoInteractions(historyStore);
+    }
+
     @ParameterizedTest(name = "{index}: {0}")
     @MethodSource("initialHistoryReadFailures")
     @DisplayName("초기 이력 조회에 실패하면 SSE 시작전에 503과 공통 JSON 오류를 반환하고 연결을 정리한다.")
@@ -349,28 +388,30 @@ public class SseStreamingIntegrationTest {
         given(historyStore.snapshot(userId, null))
                 .willThrow(failure);
 
+        ApiErrorResponse response = assertConnectionRejected(userId, token, 503, failure.getClass().getSimpleName());
+        assertThat(response.message()).doesNotContain(failure.getMessage());
+    }
+
+    private ApiErrorResponse assertConnectionRejected(UUID userId, String token, int status, String exceptionName)
+            throws IOException {
         HttpURLConnection connection = createSseConnection(token);
         try {
-            assertThat(connection.getResponseCode()).isEqualTo(503);
+            assertThat(connection.getResponseCode()).isEqualTo(status);
             MediaType contentType = MediaType.parseMediaType(connection.getContentType());
             assertThat(contentType.isCompatibleWith(MediaType.APPLICATION_JSON)).isTrue();
+            assertThat(sseEmitterRepository.findAllByUserId(userId)).isEmpty();
 
             try (var errorStream = connection.getErrorStream()){
                 assertThat(errorStream).isNotNull();
-                String body = new String(errorStream.readAllBytes(),
-                        StandardCharsets.UTF_8);
+                String body = new String(errorStream.readAllBytes(), StandardCharsets.UTF_8);
 
-                assertThat(body)
-                        .doesNotContain(":connected")
-                        .doesNotContain(failure.getMessage());
+                assertThat(body).doesNotContain(":connected");
                 ApiErrorResponse response = objectMapper.readValue(body, ApiErrorResponse.class);
-                assertThat(response.exceptionName())
-                        .isEqualTo(failure.getClass().getSimpleName());
+                assertThat(response.exceptionName()).isEqualTo(exceptionName);
                 assertThat(response.message()).isNotBlank();
                 assertThat(response.details()).isEmpty();
+                return response;
             }
-            assertThat(sseEmitterRepository.findAllByUserId(userId)).isEmpty();
-
         } finally {
             try {
                 sseConnectionService.closeAllLocalConnections();
@@ -407,7 +448,7 @@ public class SseStreamingIntegrationTest {
      * 토큰 해석 결과와 사용자 조회 결과를 준비한다. 실제 요청은 여전히 JWT 필터와 보안 체인을 통과한다.
      * 이 테스트의 목적은 JWT 서명 검증이 아니라 인증된 HTTP 스트림의 전송 동작이다.
      */
-    private void prepareAuthenticatedUser(UUID userId, String token) {
+    private UUID prepareAuthenticatedUser(UUID userId, String token) {
         User user = Mockito.mock(User.class);
 
         given(user.getId()).willReturn(userId);
@@ -420,6 +461,7 @@ public class SseStreamingIntegrationTest {
                 .willReturn(new AccessTokenClaims(userId, sessionId));
         given(userSessionRepository.isCurrent(userId, sessionId)).willReturn(true);
         given(userService.getById(userId)).willReturn(user);
+        return sessionId;
     }
 
     private static Stream<DataAccessException> initialHistoryReadFailures(){
