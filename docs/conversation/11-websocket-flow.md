@@ -23,6 +23,7 @@ sequenceDiagram
     participant A as 서버 A의 클라이언트
     participant C as Controller·Service
     participant S as Saver·DB
+    participant W as 알림 전용 워커
     participant P as Publisher
     participant R as Redis Pub/Sub
     participant L as 각 서버의 Subscriber·DeliveryService
@@ -30,8 +31,10 @@ sequenceDiagram
     A->>C: SEND (채널 참여 인가 통과)
     C->>S: save(command)
     S->>S: 상세 조회·참여 검증·미읽음 저장
-    S->>S: 생성 이벤트 발행 → 커밋 → DM SSE·알림 소비자 처리
-    S-->>C: REQUIRES_NEW 커밋 후 반환
+    S->>S: 생성 이벤트 발행 → 커밋 → DM SSE 콜백·알림 작업 제출
+    S-)W: 알림 작업 전달
+    Note right of W: 작업 실행 시 알림 저장·커밋과 notifications 발행 요청
+    S-->>C: 커밋 후 콜백 종료·Saver 반환
     C->>C: MessageDto·프로필 URL 변환
     C->>P: publish(dto)
     P->>R: JSON 발행
@@ -49,7 +52,8 @@ sequenceDiagram
 | `DirectMessageService` | 저장 → DTO 변환 → 발행 순서 조정 |
 | `DirectMessageSaver` | 독립 쓰기 트랜잭션에서 참여 검증·한 건 저장·생성 이벤트 발행 |
 | `DirectMessageSseEventListener` | 커밋 후 저장 측 연결을 재사용한 상세 조회·DTO 변환·수신자 SSE 발행. 실패를 기록하여 WebSocket 경로와 격리 |
-| `NotificationDomainEventListener` | 같은 생성 이벤트를 수신자 알림 요청으로 변환. 공통 독립 저장·notifications SSE 경로 연결 |
+| `NotificationDomainEventListener` | 같은 생성 이벤트로 수신자 알림 요청을 구성하여 전용 실행기에 제출 |
+| `NotificationAsyncProcessor` | 워커에서 공통 요청을 발행해 독립 저장과 `notifications` SSE로 연결 |
 | `ConversationReader` | 검증용 일반 조회와 참여자·프로필을 함께 로딩하는 상세 조회 구분 |
 | `DirectMessagePublisher` | 서버 간 전송 계약. 현재 Redis 구현체 사용 |
 | `DirectMessageSubscription` | 서버 단위 브로커 구독의 시작·종료. 브라우저 STOMP 구독과 별개 |
@@ -62,13 +66,9 @@ sequenceDiagram
 
 Saver는 별도 빈의 `REQUIRES_NEW`를 사용합니다. 서비스가 저장 결과를 받는 시점에는 해당 저장 트랜잭션의 커밋이 완료됩니다. 커밋 중 실패하면 DTO 변환·발행으로 진행하지 않습니다. 명시적 flush로 발행 순서를 보장하는 구조가 아닙니다.
 
-현재 생성 이벤트의 SSE 리스너는 동기식 `AFTER_COMMIT` 콜백으로 실행됩니다. Reader는 `REQUIRED`로 아직 바인딩된 저장 측 연결을 재사용하여 상세 조회하고, 이후 SSE용 URL·DTO를 변환합니다. 저장 연결을 보유한 채 조회용 두 번째 연결을 기다리지 않도록 한 구조입니다. 이 처리가 끝나야 Saver 호출이 반환되며, SSE 처리 실패는 리스너에서 기록하여 뒤따르는 WebSocket 발행을 차단하지 않습니다.
+`direct-messages`를 발행하는 DM SSE 리스너는 동기식 `AFTER_COMMIT` 콜백으로 실행됩니다. Reader는 `REQUIRED`로 아직 바인딩된 저장 측 연결을 재사용하여 상세 조회하고, 이후 SSE용 URL·DTO를 변환합니다. 저장 연결을 보유한 채 조회용 두 번째 연결을 기다리지 않도록 한 구조입니다. 이 처리가 끝나야 Saver 호출이 반환되며, SSE 처리 실패는 리스너에서 기록하여 뒤따르는 WebSocket 발행을 차단하지 않습니다.
 
-알림 소비자도 같은 이벤트를 동기로 처리하되, 공통 요청을 재발행하여 `REQUIRES_NEW`로 알림을 저장합니다. 조회용 연결 재사용 설명은 DM Reader의 경계이며, 독립 알림 저장에는 별도 트랜잭션·연결이 필요합니다. 두 소비자의 콜백 처리가 끝난 뒤 WebSocket 단계로 이어집니다.
-
-커밋 완료와 커넥션 반환은 같은 시점이 아닙니다. DM 저장 측 연결이 남아 있는 동안 알림 저장용 추가 연결을 기다릴 수 있습니다. 동시 요청으로 연결 풀이 부족해지면 알림 저장이 대기 시간 초과로 실패하고 WebSocket 발행도 지연될 수 있습니다. 이미 커밋한 DM은 유지되지만, 실패한 알림의 자동 재시도는 없습니다.
-
-DM 알림 생성 경로의 전용 실행기 분리와 연결 풀 검증은 [#168](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/168)에서 운영 반영 전에 진행합니다. 이 이슈에는 DM의 `direct-messages` SSE 처리와 WebSocket 발행 자체의 비동기 전환은 포함하지 않습니다.
+같은 이벤트를 받는 알림 소비자는 커밋 후 요청을 구성하고 작업을 제출합니다. DM SSE 콜백과 알림 제출이 끝나면 Saver가 반환되고 WebSocket 발행으로 이어집니다. 알림 워커는 별도 연결과 `REQUIRES_NEW` 트랜잭션을 사용해 알림을 저장합니다. 실행기 포화에 따른 제출 거부나 워커의 저장 실패는 이미 커밋된 DM과 WebSocket 경로를 유지합니다. [알림 처리 흐름](../notification/11-direct-message-integration.md)
 
 현재 동기 콜백의 프로필 URL 생성·SSE 발행 중에도 저장 측 연결이 남을 수 있습니다. 커밋 후 기존 연결을 재사용하는 조회 경로에는 쓰기를 추가하지 않습니다.
 

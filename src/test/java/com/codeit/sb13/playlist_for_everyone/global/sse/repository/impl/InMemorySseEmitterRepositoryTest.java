@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.repository.impl;
 
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
+import com.codeit.sb13.playlist_for_everyone.global.sse.event.LoginSession;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -21,6 +22,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @DisplayName("메모리 SSE 연결 저장소")
 class InMemorySseEmitterRepositoryTest {
 
+    private final LoginSession loginSession = new LoginSession(UUID.randomUUID());
+
     @Test
     @DisplayName("연결을 등록하면 해당 사용자의 연결 목록에서 조회된다.")
     void saveAndFindAllByUserId(){
@@ -30,7 +33,7 @@ class InMemorySseEmitterRepositoryTest {
         Connection connection = Connection.create();
 
         SseEmitter emitter = new SseEmitter();
-        repository.save(userId, connection, emitter);
+        repository.save(userId, connection, emitter, loginSession);
 
         assertThat(repository.findAllByUserId(userId))
                 .containsEntry(connection, emitter);
@@ -49,8 +52,8 @@ class InMemorySseEmitterRepositoryTest {
         SseEmitter firstEmitter = new SseEmitter();
         SseEmitter secondEmitter = new SseEmitter();
 
-        repository.save(userId, firstConnection, firstEmitter);
-        repository.save(userId, secondConnection, secondEmitter);
+        repository.save(userId, firstConnection, firstEmitter, loginSession);
+        repository.save(userId, secondConnection, secondEmitter, loginSession);
 
         assertThat(repository.findAllByUserId(userId))
                 .hasSize(2)
@@ -73,8 +76,8 @@ class InMemorySseEmitterRepositoryTest {
         SseEmitter firstEmitter = new SseEmitter();
         SseEmitter secondEmitter = new SseEmitter();
 
-        repository.save(firstUserId, firstConnection, firstEmitter);
-        repository.save(secondUserId, secondConnection, secondEmitter);
+        repository.save(firstUserId, firstConnection, firstEmitter, loginSession);
+        repository.save(secondUserId, secondConnection, secondEmitter, loginSession);
 
         assertThat(repository.findAllByUserId(firstUserId))
                 .hasSize(1)
@@ -96,9 +99,44 @@ class InMemorySseEmitterRepositoryTest {
         Connection connection = Connection.create();
         SseEmitter emitter = new SseEmitter();
 
-        repository.save(connectedUserId, connection, emitter);
+        repository.save(connectedUserId, connection, emitter, loginSession);
 
         assertThat(repository.findAllByUserId(unconnectedUserId)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("사용자 ID와 로그인 세션 ID가 모두 일치하는 연결만 조회한다.")
+    void findByUserIdAndLoginSessionIdReturnsOnlyMatchingConnections() {
+        SseEmitterRepository repository = new InMemorySseEmitterRepository();
+        UUID userId = UUID.randomUUID();
+        UUID otherUserId = UUID.randomUUID();
+        LoginSession otherSession = new LoginSession(UUID.randomUUID());
+        Connection firstConnection = Connection.create();
+        Connection secondConnection = Connection.create();
+        SseEmitter firstEmitter = new SseEmitter();
+        SseEmitter secondEmitter = new SseEmitter();
+
+        repository.save(userId, firstConnection, firstEmitter, loginSession);
+        repository.save(userId, secondConnection, secondEmitter, loginSession);
+        repository.save(userId, Connection.create(), new SseEmitter(), otherSession);
+        repository.save(otherUserId, Connection.create(), new SseEmitter(), loginSession);
+
+        assertThat(repository.findByUserIdAndLoginSessionId(userId, loginSession))
+                .containsExactlyInAnyOrderEntriesOf(Map.of(
+                        firstConnection, firstEmitter,
+                        secondConnection, secondEmitter
+                ));
+    }
+
+    @Test
+    @DisplayName("사용자의 연결이 있어도 로그인 세션 ID가 일치하지 않으면 빈 결과를 반환한다.")
+    void findByUserIdAndLoginSessionIdReturnsEmptyMapWhenSessionDoesNotMatch() {
+        SseEmitterRepository repository = new InMemorySseEmitterRepository();
+        UUID userId = UUID.randomUUID();
+        LoginSession unregisteredSession = new LoginSession(UUID.randomUUID());
+        repository.save(userId, Connection.create(), new SseEmitter(), loginSession);
+
+        assertThat(repository.findByUserIdAndLoginSessionId(userId, unregisteredSession)).isEmpty();
     }
 
     @Test
@@ -113,8 +151,8 @@ class InMemorySseEmitterRepositoryTest {
         SseEmitter firstEmitter = new SseEmitter();
         SseEmitter secondEmitter = new SseEmitter();
 
-        repository.save(userId, firstConnection, firstEmitter);
-        repository.save(userId,secondConnection, secondEmitter);
+        repository.save(userId, firstConnection, firstEmitter, loginSession);
+        repository.save(userId,secondConnection, secondEmitter, loginSession);
 
         repository.delete(userId, firstConnection);
 
@@ -132,7 +170,7 @@ class InMemorySseEmitterRepositoryTest {
         UUID userId = UUID.randomUUID();
         Connection connection = Connection.create();
         SseEmitter emitter = new SseEmitter();
-        repository.save(userId, connection, emitter);
+        repository.save(userId, connection, emitter, loginSession);
 
         assertThat(repository.findByUserIdAndConnection(userId, connection)).containsSame(emitter);
         assertThat(repository.findByUserIdAndConnection(userId, Connection.create())).isEmpty();
@@ -148,12 +186,12 @@ class InMemorySseEmitterRepositoryTest {
         UUID userId = UUID.randomUUID();
         Connection connection = Connection.create();
         SseEmitter emitter = new SseEmitter();
-        repository.save(userId, connection, emitter);
+        repository.save(userId, connection, emitter, loginSession);
 
-        assertThatThrownBy(() -> repository.save(userId, connection, emitter))
+        assertThatThrownBy(() -> repository.save(userId, connection, emitter, loginSession))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("이미 등록된 SSE 연결입니다.");
-        assertThatThrownBy(() -> repository.save(userId, connection, new SseEmitter()))
+        assertThatThrownBy(() -> repository.save(userId, connection, new SseEmitter(), loginSession))
                 .isInstanceOf(IllegalStateException.class);
         assertThat(repository.findByUserIdAndConnection(userId, connection)).containsSame(emitter);
     }
@@ -170,7 +208,7 @@ class InMemorySseEmitterRepositoryTest {
             SseEmitter emitter = new SseEmitter();
             barrier.await(3, TimeUnit.SECONDS);
             try {
-                repository.save(userId, connection, emitter);
+                repository.save(userId, connection, emitter, loginSession);
                 return emitter;
             } catch (IllegalStateException duplicate) {
                 return null;
@@ -199,7 +237,7 @@ class InMemorySseEmitterRepositoryTest {
         Connection connection = Connection.create();
         SseEmitter emitter = new SseEmitter();
 
-        repository.save(userId, connection, emitter);
+        repository.save(userId, connection, emitter, loginSession);
 
         repository.delete(userId, connection);
 
@@ -218,8 +256,8 @@ class InMemorySseEmitterRepositoryTest {
         SseEmitter firstEmitter = new SseEmitter();
         SseEmitter secondEmitter = new SseEmitter();
 
-        repository.save(userId, firstConnection, firstEmitter);
-        repository.save(userId, secondConnection, secondEmitter);
+        repository.save(userId, firstConnection, firstEmitter, loginSession);
+        repository.save(userId, secondConnection, secondEmitter, loginSession);
 
         repository.delete(userId, firstConnection);
         repository.delete(userId, firstConnection);
@@ -242,7 +280,7 @@ class InMemorySseEmitterRepositoryTest {
         Connection connection = Connection.create();
         SseEmitter emitter = new SseEmitter();
 
-        repository.save(connectedUserId, connection, emitter);
+        repository.save(connectedUserId, connection, emitter, loginSession);
 
         repository.delete(unconnectedUserId, connection);
 
@@ -266,8 +304,8 @@ class InMemorySseEmitterRepositoryTest {
         SseEmitter firstEmitter = new SseEmitter();
         SseEmitter secondEmitter = new SseEmitter();
 
-        repository.save(firstUserId, firstConnection, firstEmitter);
-        repository.save(secondUserId, secondConnection, secondEmitter);
+        repository.save(firstUserId, firstConnection, firstEmitter, loginSession);
+        repository.save(secondUserId, secondConnection, secondEmitter, loginSession);
 
         Map<UUID, Map<Connection, SseEmitter>> result = repository.findAll();
 
@@ -286,7 +324,7 @@ class InMemorySseEmitterRepositoryTest {
         Connection connection = Connection.create();
         SseEmitter emitter = new SseEmitter();
 
-        repository.save(userId, connection, emitter);
+        repository.save(userId, connection, emitter, loginSession);
 
         Map<UUID, Map<Connection, SseEmitter>> result = repository.findAll();
 
@@ -312,13 +350,13 @@ class InMemorySseEmitterRepositoryTest {
         SseEmitter firstEmitter = new SseEmitter();
         SseEmitter secondEmitter = new SseEmitter();
 
-        repository.save(userId, firstConnection, firstEmitter);
+        repository.save(userId, firstConnection, firstEmitter, loginSession);
 
         // 조회 후 저장소를 바꿔도 이미 받은 Map 구조가 그대로인지 확인한다.
         // emitter 내부 상태의 복제나 전체 사용자의 동일 시점 조회를 검증하는 테스트는 아니다.
         Map<UUID, Map<Connection, SseEmitter>> snapshot = repository.findAll();
 
-        repository.save(userId, secondConnection, secondEmitter);
+        repository.save(userId, secondConnection, secondEmitter, loginSession);
         repository.delete(userId, firstConnection);
 
         assertThat(snapshot.get(userId))
@@ -350,7 +388,7 @@ class InMemorySseEmitterRepositoryTest {
         SseEmitter oldEmitter = new SseEmitter();
         SseEmitter newEmitter = new SseEmitter();
 
-        repository.save(userId, oldConnection, oldEmitter);
+        repository.save(userId, oldConnection, oldEmitter, loginSession);
         ExecutorService executor = Executors.newFixedThreadPool(2);
 
         // 두 작업이 모두 준비된 뒤 출발하도록 맞춘다. 어느 작업이 먼저 Map을 변경할지는 강제하지 않는다.
@@ -366,7 +404,7 @@ class InMemorySseEmitterRepositoryTest {
 
             Future<?> saveFuture = executor.submit(() -> {
                 barrier.await(5, TimeUnit.SECONDS);
-                repository.save(userId, newConnection, newEmitter);
+                repository.save(userId, newConnection, newEmitter, loginSession);
                 return null;
             });
 

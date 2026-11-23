@@ -35,7 +35,8 @@ public class DirectMessageSaver {
      *
      * <p>송수신 방향은 정렬된 대화방의 userA/userB 위치가 아니라 인증된 요청자 기준으로 결정한다.
      * 저장 결과에서 이벤트 값을 추출하여 메시지와 이벤트의 ID·송수신자가 일치하도록 한다.
-     * 메서드 본문의 return 이후 트랜잭션 프록시가 커밋과 동기식 후속 처리를 마쳐야 호출자에게 반환된다.
+     * 메서드 본문이 끝나면 트랜잭션 프록시가 커밋한다. 커밋 후 DM 본문의 SSE 콜백과 알림 작업 제출이 끝나면
+     * Saver 호출이 반환된다.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public DirectMessage save(DirectMessageSendCommand command){

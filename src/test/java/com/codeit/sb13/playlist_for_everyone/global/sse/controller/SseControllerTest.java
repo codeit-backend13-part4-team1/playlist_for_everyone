@@ -12,6 +12,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.config.MDCLoggingInterceptor;
 import com.codeit.sb13.playlist_for_everyone.global.config.SecurityConfig;
 import com.codeit.sb13.playlist_for_everyone.global.exception.ApiErrorCode;
+import com.codeit.sb13.playlist_for_everyone.global.sse.event.LoginSession;
 import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseConnectionService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -81,17 +82,19 @@ class SseControllerTest {
     private UserSessionRepository userSessionRepository;
 
     @Test
-    @DisplayName("최초 연결은 마지막 이벤트 ID를 null로 전달하고 캐시가 금지된 SSE 스트림을 반환한다.")
+    @DisplayName("최초 연결은 인증된 사용자 ID와 세션 ID를 전달하고 마지막 이벤트 ID는 null로 전달한다.")
     void connectPassesNullLastEventIdWhenOmitted() throws Exception {
         UUID userId = UUID.randomUUID();
-        SecurityUser principal = getPrincipal(userId, "sse-test@example.com");
+        UUID loginSessionId = UUID.randomUUID();
+        LoginSession loginSession = new LoginSession(loginSessionId);
+        SecurityUser principal = getPrincipal(userId, "sse-test@example.com", loginSessionId);
 
         SseEmitter emitter = new SseEmitter(30_000L);
 
         // MVC 초기화 전 send는 버퍼에 보관된다. 컨트롤러가 반환한 뒤 최초 주석 응답이 시작된다.
         emitter.send(SseEmitter.event().comment("connected"));
 
-        given(sseConnectionService.connect(userId, null)).willReturn(emitter);
+        given(sseConnectionService.connect(userId, null, loginSession)).willReturn(emitter);
 
         try {
 
@@ -105,7 +108,7 @@ class SseControllerTest {
                     .andExpect(header().string(HttpHeaders.CACHE_CONTROL, containsString("no-store")))
             ;
 
-            verify(sseConnectionService).connect(userId, null);
+            verify(sseConnectionService).connect(userId, null, loginSession);
         }finally {
 
             emitter.complete();
@@ -126,7 +129,8 @@ class SseControllerTest {
     @Test
     @DisplayName("잘못된 lastEventId로 SSE 연결을 요청하면 400과 공통 JSON 오류 응답을 반환한다.")
     void connectRejectsInvalidLastEventId() throws Exception {
-        SecurityUser principal = getPrincipal(UUID.randomUUID(), "see-test@example.com");
+        UUID loginSessionId = UUID.randomUUID();
+        SecurityUser principal = getPrincipal(UUID.randomUUID(), "see-test@example.com", loginSessionId);
         mockMvc.perform(get("/api/sse")
                         .with(user(principal))
                         .param("lastEventId","not-a-uuid")
@@ -146,19 +150,21 @@ class SseControllerTest {
     }
 
     @Test
-    @DisplayName("재연결을 요청하면 인증된 사용자 ID와 마지막 이벤트 ID를 연결 서비스에 전달한다.")
+    @DisplayName("재연결은 인증된 사용자 ID와 세션 ID, 요청의 마지막 이벤트 ID를 전달한다.")
     void connectPassesLastEventIdToService() throws Exception {
 
         UUID userId = UUID.randomUUID();
         UUID lastEventId = UUID.randomUUID();
+        UUID loginSessionId = UUID.randomUUID();
+        LoginSession loginSession = new LoginSession(loginSessionId);
 
-        SecurityUser principal = getPrincipal(userId, "sse-test@example.com");
+        SecurityUser principal = getPrincipal(userId, "sse-test@example.com", loginSessionId);
 
         SseEmitter emitter = new SseEmitter(30_000L);
 
         emitter.send(SseEmitter.event().comment("connected"));
 
-        given(sseConnectionService.connect(userId, lastEventId)).willReturn(emitter);
+        given(sseConnectionService.connect(userId, lastEventId, loginSession)).willReturn(emitter);
 
         try {
             mockMvc.perform(get("/api/sse")
@@ -169,7 +175,7 @@ class SseControllerTest {
                     .andExpect(request().asyncStarted())
                     .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM));
 
-            verify(sseConnectionService).connect(userId, lastEventId);
+            verify(sseConnectionService).connect(userId, lastEventId, loginSession);
         } finally {
             emitter.complete();
         }
@@ -180,14 +186,16 @@ class SseControllerTest {
     void connectUsesAuthenticatedUserInsteadOfQueryUserId() throws Exception {
         UUID userId = UUID.randomUUID();
         UUID otherUserId = UUID.randomUUID();
+        UUID loginSessionId = UUID.randomUUID();
+        LoginSession loginSession = new LoginSession(loginSessionId);
 
-        SecurityUser principal = getPrincipal(userId, "sse-test@example.com");
+        SecurityUser principal = getPrincipal(userId, "sse-test@example.com", loginSessionId);
 
         SseEmitter emitter = new SseEmitter(30_000L);
 
         emitter.send(SseEmitter.event().comment("connected"));
 
-        given(sseConnectionService.connect(userId, null)).willReturn(emitter);
+        given(sseConnectionService.connect(userId, null, loginSession)).willReturn(emitter);
 
         try{
             mockMvc.perform(get("/api/sse")
@@ -198,8 +206,8 @@ class SseControllerTest {
                     .andExpect(request().asyncStarted())
                     .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM));
 
-            verify(sseConnectionService).connect(userId, null);
-            verify(sseConnectionService, never()).connect(otherUserId, null);
+            verify(sseConnectionService).connect(userId, null, loginSession);
+            verify(sseConnectionService, never()).connect(otherUserId, null, loginSession);
         } finally {
             emitter.complete();
         }
@@ -210,6 +218,8 @@ class SseControllerTest {
     void completeStreamAllowsAsyncDispatchForAuthenticatedUser() throws Exception {
         UUID userId = UUID.randomUUID();
         String token = "sse-test-token";
+        UUID loginSessionId = UUID.randomUUID();
+        LoginSession loginSession = new LoginSession(loginSessionId);
 
         User user = mock(User.class);
 
@@ -218,16 +228,15 @@ class SseControllerTest {
         given(user.getRole()).willReturn(Role.USER);
         given(user.isLocked()).willReturn(false);
 
-        UUID sessionId = UUID.randomUUID();
         given(jwtTokenProvider.parseAccess(token))
-                .willReturn(new AccessTokenClaims(userId, sessionId));
-        given(userSessionRepository.isCurrent(userId, sessionId)).willReturn(true);
+                .willReturn(new AccessTokenClaims(userId, loginSessionId));
+        given(userSessionRepository.isCurrent(userId, loginSessionId)).willReturn(true);
         given(userService.getById(userId)).willReturn(user);
 
         SseEmitter emitter = new SseEmitter(30_000L);
 
         emitter.send(SseEmitter.event().comment("connected"));
-        given(sseConnectionService.connect(userId, null)).willReturn(emitter);
+        given(sseConnectionService.connect(userId, null, loginSession)).willReturn(emitter);
 
         try {
             MvcResult result = mockMvc.perform(get("/api/sse")
@@ -242,13 +251,13 @@ class SseControllerTest {
             mockMvc.perform(asyncDispatch(result))
                     .andExpect(status().isOk())
                     .andExpect(request().asyncNotStarted());
-            verify(sseConnectionService).connect(userId, null);
+            verify(sseConnectionService).connect(userId, null, loginSession);
         } finally {
             emitter.complete();
         }
     }
 
-    private SecurityUser getPrincipal(UUID userId, String mail) {
-        return new SecurityUser(userId, mail, "", Role.USER, false);
+    private SecurityUser getPrincipal(UUID userId, String mail, UUID loginSessionId) {
+        return new SecurityUser(userId, mail, "", Role.USER, false, loginSessionId);
     }
 }

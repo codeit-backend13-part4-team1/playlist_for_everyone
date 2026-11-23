@@ -8,13 +8,13 @@
 | 테스트 | 현재 검증 대상 |
 | --- | --- |
 | SsePropertiesTest | 연결·하트비트 설정값의 정상값·경계값·실패 |
-| InMemorySseEmitterRepositoryTest | 실제 저장소 등록·중복 거부·단건 조회·삭제·조회 사본·동시 변경 |
-| SseConnectionServiceTest | 새 연결 ID, 콜백, 조정기에 등록·복구·정리 위임, 등록 실패 시 기존 연결 보존을 위한 호출 계약 |
+| InMemorySseEmitterRepositoryTest | 사용자·로그인 세션별 조회, 등록·중복 거부·단건 조회·삭제·조회 사본·동시 변경 |
+| SseConnectionServiceTest | 같은 로그인 세션의 연결 ID 구분, 등록·복구·정리 위임, 등록 실패 시 기존 연결 보존 |
 | SseDeliveryServiceTest | 수신자별 연결의 조정기 호출, 일반 실패의 종료 위임과 하트비트 실패의 정리 위임 |
 | SseConnectionLifecycleTest | 실제 컨텍스트 종료 이벤트에서 emitter 종료 요청과 조정기 정리 위임 |
 | SseHeartbeatSchedulerTest / SseHeartbeatSchedulingTest | 하트비트 요청과 지정 실행기 등록 |
 | SchedulerConfigTest | 실제 하트비트 실행기 스레드·종료·취소 |
-| SseControllerTest | 인증 사용자·쿼리·응답·ASYNC 종료 계약 |
+| SseControllerTest | 최초 연결·재연결에서 인증된 사용자 ID와 `sid` 전달, 쿼리·응답·ASYNC 종료 계약 |
 | SseStreamingIntegrationTest | 실제 HTTP 프레임과 초기 조회 실패의 503 응답 |
 
 소스: [SSE 테스트](../../src/test/java/com/codeit/sb13/playlist_for_everyone/global/sse),

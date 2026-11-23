@@ -23,10 +23,10 @@
 | 공통 보안 | JWT 필터와 경로별 인증·인가 적용. 팔로우·알림 API는 인증 필요, 쿠키 기반 CSRF 보호 활성화 |
 | SSE | 다중 연결·하트비트·종료 정리, 공유 이력 저장·재연결 복구, 연결별 후속 조회·제한된 재시도. [SSE 구현 가이드](sse/README.md) 참고 |
 | 알림 전송 | 공통 생성 요청 → 독립 저장·커밋 → 공유 이력 → Pub/Sub → 이력 조회·삭제 필터 → SSE 수신. [알림 전송 흐름](notification/01-creation-and-delivery.md) 참고 |
-| 업무 이벤트 알림 | [#155 팔로우](notification/07-domain-event-integration.md)·[#156 권한 변경·구독](notification/08-role-subscription-integration.md)·[#157 플레이리스트](notification/09-playlist-event-integration.md)·[#159 DM](notification/11-direct-message-integration.md)의 업무 커밋 후 공통 요청·독립 저장 연결. DM은 실제 저장부터 알림 HTTP SSE 수신까지 검증 |
+| 업무 이벤트 알림 | [#155 팔로우](notification/07-domain-event-integration.md)·[#156 권한 변경·구독](notification/08-role-subscription-integration.md)·[#157 플레이리스트](notification/09-playlist-event-integration.md)·[#159 DM](notification/11-direct-message-integration.md)은 업무 커밋 후 알림 처리. [#158 시청 시작](notification/13-watching-session-integration.md)은 트랜잭션 밖에서도 이벤트 처리 |
 | 알림 수신자 | 사용자 조회 컴포넌트를 통해 User 연관관계로 저장. 요청·응답의 수신자 UUID 계약 유지. [연관관계와 검증](notification/06-receiver-association.md) 참고 |
 | 알림 조회·읽음 | JWT 사용자를 수신자 조건으로 사용하여 목록·전체 개수를 조회하고 알림 삭제로 읽음 처리. [조회·인증 흐름](notification/03-query-and-security.md) 참고 |
-| SSE·알림 후속 | 위 여섯 업무 이벤트 외의 알림 연동(#45), Kafka·연결 수 제한·보관 초기값의 운영 부하 검증. DM 본문 SSE는 #62, DM 알림은 #159에서 구현 |
+| SSE·알림 후속 | 나머지 업무 이벤트 알림 연동(#45), Kafka·연결 수 제한·보관 초기값의 운영 부하 검증. DM 본문 SSE는 #62, DM 알림은 #159에서 구현 |
 | 후속 기능 | 팔로우 CSRF 연동·검증은 #114, 알림 CSRF 연동·검증은 #124. 다른 기능의 진행 상태는 개별 이슈 참고 |
 
 라이브러리 의존성과 로컬 인프라를 준비한 상태와 기능 구현 완료를 구분합니다. Redis 서비스는 Compose에 포함되어 있으며, 이를 사용하는 캐시·세션 기능은 구현 전입니다. Kafka와 Elasticsearch는 현재 Compose에 포함되어 있지 않습니다.
@@ -446,7 +446,8 @@ CI는 성공한 빌드의 JaCoCo XML에서 전체 LINE 수치로 SVG 배지를 �
 - 테스트 클래스와 메서드에 한글 `@DisplayName`으로 대상과 기대 결과를 설명합니다. 파라미터화 테스트는 개별 사례도 구분할 수 있게 이름을 지정합니다.
 - 공통 예외 테스트에는 [TestEveryOneException](../src/test/java/com/codeit/sb13/testsupport/exception/TestEveryOneException.java)을 사용합니다. 도메인 예외 예시의 변경이 공통 동작 테스트에 영향을 주지 않도록 분리합니다.
 - 기존 테스트는 애플리케이션 컨텍스트, 예외 응답, 검증 오류, MDC, JPA Auditing, Querydsl 조회, 비밀번호 인코더, OpenAPI 설정을 확인합니다.
-- 알림 테스트는 제목 말줄임·입력 검증, 업무 커밋 후 저장, 알림 커밋 후 SSE 발행, 롤백·트랜잭션 외 발행 시 미처리를 확인합니다. `NotificationIntegrationTest`는 실제 PostgreSQL과 `TransactionTemplate`을 사용하고, SSE 발행자는 Mock으로 대체하여 저장·전송 실패 격리를 검증합니다.
+- 알림 테스트는 제목 말줄임·입력 검증, 업무 커밋 후 저장, 알림 커밋 후 SSE 발행, 이벤트별 롤백·트랜잭션 밖 발행 동작을 확인합니다. `NotificationIntegrationTest`는 실제 PostgreSQL과 `TransactionTemplate`을 사용하고, SSE 발행자는 Mock으로 대체하여 저장·전송 실패 격리를 검증합니다.
+- [시청 시작 알림](notification/13-watching-session-integration.md#테스트가-확인하는-범위)은 이벤트 직접 발행부터 저장·SSE 발행 요청까지 검증합니다. [DM 알림](notification/12-direct-message-testing.md)은 실제 DM 저장부터 HTTP SSE 수신까지도 검증합니다.
 - 플레이리스트 알림은 수신자 중복·행위자 제외를 단위 테스트로, 처리 시점의 관계 조회와 업무 커밋 후 독립 저장을 통합 테스트로 확인합니다. 첫 저장 실패는 Spy로 유도하며, 검증 범위는 [플레이리스트 알림 테스트](notification/10-playlist-event-testing.md)에 정리했습니다.
 - DM 알림은 문구 변환·실제 트랜잭션·Redis/HTTP 수신으로 나눕니다. 접속·구독 여부에 따른 알림 생략 없이 단건 생성하고, 각 전송 경로의 실패가 다른 경로를 차단하지 않는지 [DM 알림 테스트](notification/12-direct-message-testing.md)에서 확인합니다.
 - 알림 조회·삭제는 MVC·서비스 단위·저장소·서비스 통합·JWT 통합 테스트로 나눕니다. 서비스 단위 테스트는 소유자별 삭제 여부, 저장소 테스트는 목록·개수·커서 조회, `NotificationServiceIntegrationTest`는 실제 잠금 대기와 삭제 커밋을 확인합니다. [검증 범위와 실행 명령](notification/04-query-and-security-testing.md)을 참고합니다.

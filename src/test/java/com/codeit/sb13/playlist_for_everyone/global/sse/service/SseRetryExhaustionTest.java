@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.global.sse.service;
 import com.codeit.sb13.playlist_for_everyone.global.sse.config.SseProperties;
 import com.codeit.sb13.playlist_for_everyone.global.sse.config.SseRetryProperties;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
+import com.codeit.sb13.playlist_for_everyone.global.sse.event.LoginSession;
 import com.codeit.sb13.playlist_for_everyone.global.sse.history.SseHistoryPosition;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.impl.InMemorySseEmitterRepository;
@@ -38,6 +39,8 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 @DisplayName("SSE 재시도 소진 시 연결 서비스와 조정기의 정리")
 class SseRetryExhaustionTest {
+
+    private final LoginSession loginSession = new LoginSession(UUID.randomUUID());
 
     @Mock
     private SseRecoveryService recoveryService;
@@ -77,7 +80,7 @@ class SseRetryExhaustionTest {
         )).thenReturn(upperBound);
 
         try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
-            SseEmitter emitter = service.connect(userId, lastEventId);
+            SseEmitter emitter = service.connect(userId, lastEventId, loginSession);
             Map<Connection, SseEmitter> connections = repository.findAllByUserId(userId);
             assertThat(connections).hasSize(1);
             Connection connection = connections.keySet().iterator().next();

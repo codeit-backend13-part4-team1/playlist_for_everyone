@@ -1,18 +1,19 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.repository.impl;
 
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
+import com.codeit.sb13.playlist_for_everyone.global.sse.event.LoginSession;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
 import org.springframework.stereotype.Repository;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 /**
- * 사용자 ID -> 연결 ID -> SseEmitter 구조로 현재 인스턴스의 연결을 보관한다.
+ * 현재 서버의 연결을 사용자 ID → 연결 ID → 로그인 세션 ID와 emitter 구조로 보관한다.
+ * 같은 로그인 세션의 여러 연결을 사용자별 Map에서 세션 ID로 조회한다.
  *
  * <p>실제 HTTP 연결을 가진 emitter는 다른 서버로 복제할 수 있는 메시지가 아니다.
  * Redis/Kafka로 이벤트를 공유하더라도 emitter는 연결이 맺어진 서버의 메모리에서 관리한다.
@@ -21,16 +22,23 @@ import java.util.concurrent.ConcurrentHashMap;
 public class InMemorySseEmitterRepository implements SseEmitterRepository {
 
     // 바깥 Map은 사용자별 등록·삭제를 묶고, 안쪽 Map은 개별 조회 중의 동시 변경에도 대응한다.
-    private final Map<UUID, Map<Connection, SseEmitter>> sseEmitters = new ConcurrentHashMap<>();
+    private final Map<UUID, Map<Connection, SseEmitterEntry>> sseEmitters = new ConcurrentHashMap<>();
+
+    private record SseEmitterEntry(LoginSession loginSession, SseEmitter sseEmitter){
+        public SseEmitterEntry{
+            Objects.requireNonNull(sseEmitter);
+            Objects.requireNonNull(loginSession);
+        }
+    }
 
     @Override
-    public void save(UUID userId, Connection connection, SseEmitter sseEmitter) {
+    public void save(UUID userId, Connection connection, SseEmitter sseEmitter, LoginSession loginSession) {
       // 사용자 Map 생성과 연결 추가를 같은 compute 안에서 수행한다.
       // 마지막 연결 삭제가 사용자 Map을 제거하는 순간, 별도로 추가한 새 연결이 함께 유실되는 경합을 막는다.
       sseEmitters.compute(userId, (id, connections)->{
-          Map<Connection, SseEmitter> userConnections = initializeConnections(connections);
+          Map<Connection, SseEmitterEntry> userConnections = initializeConnections(connections);
           // 기존 연결 객체를 교체하면 늦은 콜백이 새 연결을 지울 수 있으므로 덮어쓰기를 거부한다.
-          if (userConnections.putIfAbsent(connection, sseEmitter) != null) {
+          if (userConnections.putIfAbsent(connection, new SseEmitterEntry(loginSession, sseEmitter)) != null) {
               throw new IllegalStateException("이미 등록된 SSE 연결입니다.");
           }
           return userConnections;
@@ -39,15 +47,19 @@ public class InMemorySseEmitterRepository implements SseEmitterRepository {
 
     @Override
     public Optional<SseEmitter> findByUserIdAndConnection(UUID userId, Connection connection) {
-        Map<Connection, SseEmitter> connections = sseEmitters.get(userId);
-        return connections == null ? Optional.empty() : Optional.ofNullable(connections.get(connection));
+        Map<Connection, SseEmitterEntry> connections = sseEmitters.get(userId);
+        if (connections == null) return Optional.empty();
+
+        SseEmitterEntry entry = connections.get(connection);
+        return entry == null ? Optional.empty() : Optional.ofNullable(entry.sseEmitter);
     }
 
     @Override
     public Map<Connection, SseEmitter> findAllByUserId(UUID userId) {
         // 호출자가 저장소의 Map을 직접 변경하지 못하게 구조만 복사한다. emitter 참조는 공유한다.
         // 이 조회는 compute로 묶지 않으므로 복사 중의 동시 변경 전체를 한 시점의 상태로 보장하지 않는다.
-        return Map.copyOf(sseEmitters.getOrDefault(userId, Map.of()));
+
+        return convertToEmitterMap(sseEmitters.getOrDefault(userId, Map.of()), (sessionId) -> true);
     }
 
     @Override
@@ -67,14 +79,34 @@ public class InMemorySseEmitterRepository implements SseEmitterRepository {
         sseEmitters.keySet()
                 .forEach(userId -> sseEmitters.computeIfPresent(userId,
                         (id, connections) -> {
-                    result.put(userId, Map.copyOf(connections));
-                    return connections;
+                            Map<Connection, SseEmitter> collect = convertToEmitterMap(connections, (sessionId) -> true);
+                            if (!collect.isEmpty()) {
+                                result.put(userId, collect);
+                            }
+                            return connections;
                 }));
 
         return Map.copyOf(result);
     }
 
-    private Map<Connection, SseEmitter> removeEmptyConnections(Map<Connection, SseEmitter> connections) {
+    @Override
+    public Map<Connection, SseEmitter> findByUserIdAndLoginSessionId(UUID userId, LoginSession loginSession) {
+        Map<Connection, SseEmitterEntry> connections = sseEmitters.get(userId);
+        if (connections == null) {
+            return Map.of();
+        }
+        return convertToEmitterMap(connections, (sessionId) -> sessionId.equals(loginSession.id()));
+    }
+
+    private Map<Connection, SseEmitter> convertToEmitterMap(Map<Connection, SseEmitterEntry> connections, Predicate<UUID> loginSessionFilter) {
+        return connections.entrySet()
+                .stream()
+                .filter(entry -> loginSessionFilter.test(entry.getValue().loginSession().id()))
+                .collect(Collectors.toUnmodifiableMap(Map.Entry::getKey,
+                        entry -> entry.getValue().sseEmitter()));
+    }
+
+    private Map<Connection, SseEmitterEntry> removeEmptyConnections(Map<Connection, SseEmitterEntry> connections) {
         if (connections == null || connections.isEmpty()){
             // ConcurrentHashMap.compute에서 null 반환은 해당 사용자 키를 제거한다는 뜻이다.
             return null;
@@ -82,7 +114,7 @@ public class InMemorySseEmitterRepository implements SseEmitterRepository {
         return connections;
     }
 
-    private Map<Connection, SseEmitter> initializeConnections(Map<Connection, SseEmitter> connections) {
+    private Map<Connection, SseEmitterEntry> initializeConnections(Map<Connection, SseEmitterEntry> connections) {
         if (connections == null){
             return new ConcurrentHashMap<>();
         }

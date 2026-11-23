@@ -24,7 +24,6 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
-import java.io.IOException;
 import java.util.*;
 
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
@@ -146,7 +145,6 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
              * 지금은 취소된 구독 개별로 연결을 종료할 수 없기 때문에, 세션에서 구독을 취소하는건 작용이 없는 매서드이다.
              * 비즈니스 로직에서 구독이 취소되는 로직은 실제 구독과 동기화 되는 게 아닌, send 메세지를 막는 역할만 한다.
              */
-            // todo - 재시도 로직 작성이 필요하다.
             try {
                 // 1. 구독 등록 취소
                 viewingSessionService.leave(subscription, contentId);
@@ -179,7 +177,6 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
         // 3. 메세지 전송 객체 조립
         // 메세지가 전송 실패한다고 해도, 구독이 해제되어선 안된다.
         // 지금은 별도 메서드에 발신이 실패해도 조용히 넘기는 것으로 우선 둔다.
-        // todo - 추후 메세지 발신 재시도 로직 필요.
         WatchingSessionChange change = null;
 
         try {
@@ -292,7 +289,6 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
              * 지금은 취소된 구독 개별로 연결을 종료할 수 없기 때문에, 세션에서 구독을 취소하는건 작용이 없는 매서드이다.
              * 비즈니스 로직에서 구독이 취소되는 로직은 실제 구독과 동기화 되는 게 아닌, send 메세지를 막는 역할만 한다.
              */
-            // todo - 재시도 로직 작성이 필요하다.
             try {
                 chattingSessionService.leave(subscription, contentId);
             } catch (RuntimeException e) {
@@ -377,15 +373,6 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
                     // 실패시 기록과 함께 다음 작업
                 }
             }
-
-
-            // 실제 세션 닫기
-            try {
-                session.disconnect();
-            } catch (IOException e) {
-                log.error("[{}] ({}) 세션 닫기 실패", this.getClass().getSimpleName(), sessionId, e);
-                throw new WebSocketSessionRegisterException(e);
-            }
         }
     }
 
@@ -409,16 +396,13 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
         for (WSSubscription subscription : unregisteredSubscriptionList) {
             try {
                 WSSession session = getSessionOrExcept(subscription.sessionId());
-                synchronized (session) {
-                    session.unsubscribe(subscription);
-                }
+                session.unsubscribe(subscription);
             } catch (RuntimeException e) {
                 log.error("[{}] 구독 해제 실패 - sessionId : {}, subscriptionId : {}",
                         this.getClass().getSimpleName(),
                         subscription.sessionId(),
                         subscription.id(),
                         e);
-                // 구독 해제 실패 시, 재시도 로직 추후 추가
             }
         }
     }
