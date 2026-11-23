@@ -3,14 +3,12 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
-import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketDestinationInvalidException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionRegisterException;
-import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
 import com.codeit.sb13.playlist_for_everyone.global.service.MatchRule;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSession;
@@ -26,6 +24,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
@@ -45,8 +44,6 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
     private final ContentService contentService;
 
     private final WatchingSessionMapper mapper;
-
-    private final RedisTemplate<String, Object> redisTemplate;
 
     private final ApplicationEventPublisher eventPublisher;
 
@@ -310,6 +307,7 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
         }
     }
 
+    @Async("watchingSessionExecutor")
     @Override
     public void sendChatMessage(UUID contentId, UUID userId, String message) {
         Objects.requireNonNull(contentId);
@@ -325,7 +323,6 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
         UserSummary sender = new UserSummary(tmp.userId(), tmp.name(), tmp.profileImageUrl());
 
         chattingSessionService.send(contentId, new ContentChatDto(sender,message));
-        log.info("Chat message sent to contentId: {}, message: {}", contentId, message);
     }
 
 
