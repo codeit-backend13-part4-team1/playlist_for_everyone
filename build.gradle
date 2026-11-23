@@ -38,6 +38,7 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'org.springframework.security:spring-security-messaging'
 	implementation 'org.springframework.boot:spring-boot-starter-security-oauth2-client'
+	implementation 'org.springframework.session:spring-session-data-redis'
 	implementation "io.jsonwebtoken:jjwt-api:${dependencyVersions.jjwt}"
 	runtimeOnly "io.jsonwebtoken:jjwt-impl:${dependencyVersions.jjwt}"
 	runtimeOnly "io.jsonwebtoken:jjwt-jackson:${dependencyVersions.jjwt}"

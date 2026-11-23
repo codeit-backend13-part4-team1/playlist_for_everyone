@@ -50,6 +50,31 @@ spring:
       mail.smtp.timeout: 5000
       mail.smtp.writetimeout: 5000
 
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${everyone.oauth2.google.client-id}
+            client-secret: ${everyone.oauth2.google.client-secret}
+            scope: openid, profile, email
+            # CloudFront를 거치면 요청 Host가 ALB 주소로 바뀌므로 콜백 주소를 설정값으로 고정한다.
+            redirect-uri: ${everyone.oauth2.redirect-base-url}/login/oauth2/code/{registrationId}
+          kakao:
+            client-id: ${everyone.oauth2.kakao.client-id}
+            client-secret: ${everyone.oauth2.kakao.client-secret}
+            client-name: Kakao
+            client-authentication-method: client_secret_post
+            authorization-grant-type: authorization_code
+            scope: profile_nickname
+            redirect-uri: ${everyone.oauth2.redirect-base-url}/login/oauth2/code/{registrationId}
+        provider:
+          kakao:
+            authorization-uri: https://kauth.kakao.com/oauth/authorize
+            token-uri: https://kauth.kakao.com/oauth/token
+            user-info-uri: https://kapi.kakao.com/v2/user/me
+            user-name-attribute: id
+
 management:
   endpoints:
     web:
