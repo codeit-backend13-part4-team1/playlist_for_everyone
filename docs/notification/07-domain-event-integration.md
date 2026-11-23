@@ -48,7 +48,7 @@ sequenceDiagram
     S->>P: notifications 이벤트 발행 요청
 ```
 
-업무 이벤트 리스너는 `AFTER_COMMIT`, `fallbackExecution=false`입니다.
+`UserFollowedEvent`는 `AFTER_COMMIT`, `fallbackExecution=false`로 수신합니다.
 팔로우 저장이 롤백되거나 트랜잭션 없이 `UserFollowedEvent`를 발행하면 알림 요청을 만들지 않습니다.
 팔로우 커밋을 처리하는 스레드에서 알림 요청 한 건을 구성하고 전용 실행기에 제출합니다.
 
