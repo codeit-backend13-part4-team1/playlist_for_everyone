@@ -49,6 +49,8 @@ public class SocialAccountService {
     public UUID resolveUserId(SocialIdentity identity) {
         Objects.requireNonNull(identity, "소셜 사용자 정보는 필수입니다.");
 
+        // 연결된 계정은 제공자 회원 ID(Google sub, Kakao 회원번호)로 찾으므로 이메일 상태와 무관하다.
+        // 이메일 검증은 이메일을 회원 이메일로 저장하는 최초 가입(signUp)에서만 한다.
         return socialAccountRepository
                 .findByProviderAndProviderUserId(identity.provider() ,identity.providerUserId())
                 .map(SocialAccount::getUser)
