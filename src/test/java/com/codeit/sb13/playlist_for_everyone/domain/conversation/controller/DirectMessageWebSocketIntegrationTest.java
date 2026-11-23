@@ -9,6 +9,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.request.Dir
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.response.MessageDto;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.event.DirectMessagePublisher;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.service.DirectMessageDeliveryService;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationFixtureCleanup;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationTaskTracker;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.ApiErrorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.exception.ApiErrorCode;
@@ -21,9 +23,13 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.api.function.Executable;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -34,6 +40,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.core.env.Environment;
+import org.springframework.core.task.TaskDecorator;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -51,6 +58,7 @@ import org.springframework.messaging.simp.broker.SimpleBrokerMessageHandler;
 import org.springframework.messaging.simp.stomp.*;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -111,6 +119,7 @@ import static org.mockito.Mockito.mock;
                 "spring.jpa.hibernate.ddl-auto=validate",
                 "spring.jpa.open-in-view=false",
                 "spring.docker.compose.enabled=false",
+                "everyone.websocket.allowed-origins=https://frontend.example:443,http://second.example:80",
                 "everyone.dm.websocket.transport=redis",
                 "everyone.dm.websocket.subscription-enabled=true",
                 "everyone.dm.websocket.redis.channel=test:dm:websocket:integration"
@@ -120,6 +129,9 @@ import static org.mockito.Mockito.mock;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @DisplayName("DM WebSocket 연결 및 메시지 송수신 통합 테스트")
 public class DirectMessageWebSocketIntegrationTest {
+
+    @RegisterExtension
+    static final NotificationFixtureCleanup FIXTURE_CLEANUP = new NotificationFixtureCleanup();
 
     @Container
     static final PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:16");
@@ -165,6 +177,15 @@ public class DirectMessageWebSocketIntegrationTest {
     @Autowired
     private Environment environment;
 
+    @Autowired
+    @Qualifier("notificationTaskExecutor")
+    private ThreadPoolTaskExecutor notificationTaskExecutor;
+    @Autowired
+    @Qualifier("notificationTaskContextDecorator")
+    private TaskDecorator notificationTaskContextDecorator;
+
+    private NotificationTaskTracker notificationTasks;
+
     @MockitoSpyBean
     private DirectMessagePublisher directMessagePublisher;
 
@@ -181,6 +202,8 @@ public class DirectMessageWebSocketIntegrationTest {
     private String counterpartAccessToken;
     private WebSocketStompClient stompClient;
     private final List<StompSession> stompSessions = new ArrayList<>();
+    private ConfigurableApplicationContext additionalNode;
+    private NotificationTaskTracker additionalNodeTasks;
     private final UUID counterpartId = UUID.randomUUID();
     private final UUID conversationId = UUID.randomUUID();
     private final UUID otherUserId = UUID.randomUUID();
@@ -189,6 +212,7 @@ public class DirectMessageWebSocketIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        notificationTasks = new NotificationTaskTracker(notificationTaskExecutor, notificationTaskContextDecorator);
         insertUser(userId, "웹소켓 테스트 사용자");
         insertUser(counterpartId, "대화 상대");
         insertUser(otherUserId, "다른 대화 상대");
@@ -218,36 +242,46 @@ public class DirectMessageWebSocketIntegrationTest {
 
     @AfterEach
     void cleanUp() {
-        try {
-            assertAll(
-                    stompSessions.stream()
-                            .map(session -> () -> {
-                                if (session.isConnected()) {
-                                    session.disconnect();
-                                }
-                            })
-            );
-        } finally {
-            if (stompClient != null) {
-                stompClient.stop();
-            }
-
-            if (loginSessionId != null) {
-                userSessionRepository.endIfCurrent(userId, loginSessionId);
-            }
-            if (counterpartLoginSessionId != null) {
-                userSessionRepository.endIfCurrent(counterpartId, counterpartLoginSessionId);
-            }
-
-            jdbcTemplate.update("DELETE FROM direct_messages WHERE conversation_id IN (? , ?) ",
-                    conversationId, otherConversationId);
-
-            jdbcTemplate.update("DELETE FROM conversations WHERE id IN (? , ?)",
-                    conversationId, otherConversationId);
-
-            jdbcTemplate.update("DELETE FROM users WHERE id IN (?, ?, ?) ",
-                    userId, counterpartId, otherUserId);
+        List<NotificationTaskTracker> trackers = new ArrayList<>();
+        trackers.add(notificationTasks);
+        if (additionalNodeTasks != null) {
+            trackers.add(additionalNodeTasks);
         }
+        List<Executable> closeNodes = additionalNode == null ? List.of() : List.of(additionalNode::close);
+        assertAll(
+                () -> assertAll(stompSessions.stream().map(session -> () -> {
+                    if (session.isConnected()) {
+                        session.disconnect();
+                    }
+                })),
+                () -> {
+                    if (stompClient != null) {
+                        stompClient.stop();
+                    }
+                },
+                () -> FIXTURE_CLEANUP.cleanUp(trackers, closeNodes, this::deleteFixtures)
+        );
+    }
+
+    private void deleteFixtures() {
+        if (loginSessionId != null) {
+            userSessionRepository.endIfCurrent(userId, loginSessionId);
+        }
+        if (counterpartLoginSessionId != null) {
+            userSessionRepository.endIfCurrent(counterpartId, counterpartLoginSessionId);
+        }
+
+        jdbcTemplate.update("DELETE FROM notifications WHERE receiver_id IN (?, ?, ?)",
+                userId, counterpartId, otherUserId);
+
+        jdbcTemplate.update("DELETE FROM direct_messages WHERE conversation_id IN (? , ?) ",
+                conversationId, otherConversationId);
+
+        jdbcTemplate.update("DELETE FROM conversations WHERE id IN (? , ?)",
+                conversationId, otherConversationId);
+
+        jdbcTemplate.update("DELETE FROM users WHERE id IN (?, ?, ?) ",
+                userId, counterpartId, otherUserId);
     }
 
     @Test
@@ -276,7 +310,7 @@ public class DirectMessageWebSocketIntegrationTest {
 
         await().atMost(Duration.ofSeconds(5))
                 .untilAsserted(() ->
-                        assertThat(webSocketSessionRegistry.findByUserIdAndSessionId(userId, loginSessionId))
+                        assertThat(webSocketSessionRegistry.findByUserIdAndLoginSessionId(userId, loginSessionId))
                                 .singleElement()
                                 .satisfies(session -> {
                                     assertThat(session.socket().isOpen()).isTrue();
@@ -286,8 +320,65 @@ public class DirectMessageWebSocketIntegrationTest {
 
     }
 
+    @ParameterizedTest(name = "전송 방식={0}")
+    @ValueSource(strings = {"websocket", "xhr"})
+    @DisplayName("허용 Origin에 기본 포트를 명시해도 포트 없는 SockJS·XHR 요청은 JWT로 인증된다.")
+    void connect_authenticatesAllowedOrigin(String transport)
+            throws ExecutionException, InterruptedException, TimeoutException {
+        String origin = "https://frontend.example";
+        StompSession session;
+        if ("xhr".equals(transport)) {
+            session = connectOverXhr(origin);
+        } else {
+            WebSocketHttpHeaders handshakeHeaders = new WebSocketHttpHeaders();
+            handshakeHeaders.setOrigin(origin);
+            StompHeaders connectHeaders = new StompHeaders();
+            connectHeaders.add(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken);
+            session = awaitConnection(stompClient.connectAsync(
+                    "http://localhost:" + port + "/ws", handshakeHeaders, connectHeaders,
+                    new StompSessionHandlerAdapter() {}));
+        }
+
+        assertThat(session.isConnected()).isTrue();
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
+                assertThat(webSocketSessionRegistry.findByUserIdAndLoginSessionId(userId, loginSessionId))
+                        .singleElement()
+                        .satisfies(serverSession -> {
+                            // XHR 요청은 이미 반환됐을 수 있으므로 요청 헤더 대신 살아 있는 연결과 전송 경로를 확인한다.
+                            assertThat(serverSession.socket().isOpen()).isTrue();
+                            assertThat(serverSession.socket().getUri()).isNotNull();
+                            assertThat(serverSession.socket().getUri().getPath())
+                                    .endsWith("/" + transport);
+                        }));
+    }
+
+    @ParameterizedTest(name = "Origin={0}, 경로={1}")
+    @CsvSource({
+            "https://frontend.example, /ws",
+            "http://second.example, /ws",
+            "https://frontend.example, /ws/000/{sessionId}/websocket",
+            "http://second.example, /ws/000/{sessionId}/websocket"
+    })
+    @DisplayName("기본 WebSocket과 SockJS는 허용 Origin의 기본 포트를 생략한 연결도 허용한다.")
+    void handshake_allowsConfiguredOrigins(String origin, String path) throws Exception {
+        String destination = path.replace("{sessionId}", UUID.randomUUID().toString());
+        HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+        CompletableFuture<WebSocket> connection = client.newWebSocketBuilder()
+                .connectTimeout(Duration.ofSeconds(5))
+                .header(HttpHeaders.ORIGIN, origin)
+                .buildAsync(URI.create("ws://localhost:" + port + destination), new WebSocket.Listener() {});
+
+        try {
+            WebSocket socket = connection.get(10, TimeUnit.SECONDS);
+            assertThat(socket.isInputClosed()).isFalse();
+        } finally {
+            // 늦게 완료되는 연결까지 정리하며 STOMP 업무 메시지는 보내지 않는다.
+            connection.thenAccept(WebSocket::abort);
+        }
+    }
+
     @Test
-    @DisplayName("다른 출처의 SockJS 연결은 HTTP 403으로 거절되고 인증된 연결이 등록되지 않는다.")
+    @DisplayName("허용 목록에 없는 출처의 SockJS 연결은 HTTP 403으로 거절되고 인증된 연결이 등록되지 않는다.")
     void connect_rejectsDifferentOriginBeforeStompConnect() {
         WebSocketHttpHeaders handshakeHeaders = new WebSocketHttpHeaders();
         handshakeHeaders.setOrigin("https://other.example");
@@ -312,7 +403,7 @@ public class DirectMessageWebSocketIntegrationTest {
                 );
 
         assertThat(webSocketSessionRegistry
-                .findByUserIdAndSessionId(userId, loginSessionId))
+                .findByUserIdAndLoginSessionId(userId, loginSessionId))
                 .isEmpty();
     }
 
@@ -326,7 +417,7 @@ public class DirectMessageWebSocketIntegrationTest {
         await().atMost(Duration.ofSeconds(5))
                 .untilAsserted(() ->
                         assertThat(webSocketSessionRegistry
-                                .findByUserIdAndSessionId(userId, loginSessionId))
+                                .findByUserIdAndLoginSessionId(userId, loginSessionId))
                                 .singleElement()
                                 .satisfies(serverSession -> {
                                     assertThat(serverSession.socket().isOpen()).isTrue();
@@ -336,12 +427,12 @@ public class DirectMessageWebSocketIntegrationTest {
     }
 
     @Test
-    @DisplayName("다른 출처의 XHR 전송은 403으로 거절되고 기존 연결과 메시지 데이터는 유지된다.")
+    @DisplayName("허용 목록에 없는 출처의 XHR 전송은 403으로 거절되고 기존 연결과 메시지 데이터는 유지된다.")
     void xhrSend_rejectsDifferentOriginForExistingSession()
             throws ExecutionException, InterruptedException, TimeoutException, IOException {
         StompSession session = connectOverXhr();
         List<WSSession> serverSessions = webSocketSessionRegistry
-                .findByUserIdAndSessionId(userId, loginSessionId);
+                .findByUserIdAndLoginSessionId(userId, loginSessionId);
         assertThat(serverSessions).hasSize(1);
         WSSession serverSession = serverSessions.get(0);
         URI receiveUri = serverSession.socket().getUri();
@@ -385,7 +476,7 @@ public class DirectMessageWebSocketIntegrationTest {
 
     @ParameterizedTest(name = "다른 출처의 직접 연결 경로: {0}")
     @ValueSource(strings = {"/ws", "/ws/000/{sessionId}/websocket"})
-    @DisplayName("WebSocket 전송 경로에 직접 접속해도 다른 출처의 연결은 403으로 거절된다.")
+    @DisplayName("WebSocket 전송 경로에 직접 접속해도 허용 목록에 없는 출처의 연결은 403으로 거절된다.")
     void handshake_rejectsDifferentOrigin(String path) {
         String destination = path.replace("{sessionId}", UUID.randomUUID().toString());
         HttpClient client = HttpClient.newBuilder()
@@ -431,7 +522,7 @@ public class DirectMessageWebSocketIntegrationTest {
 
         StompHeaders errorHeaders = receivedError.get(10, TimeUnit.SECONDS);
         assertThat(errorHeaders.getFirst("message")).isNotBlank();
-        assertThat(webSocketSessionRegistry.findByUserIdAndSessionId(userId, loginSessionId))
+        assertThat(webSocketSessionRegistry.findByUserIdAndLoginSessionId(userId, loginSessionId))
                 .isEmpty();
     }
 
@@ -463,7 +554,7 @@ public class DirectMessageWebSocketIntegrationTest {
         StompHeaders errorHeaders = receivedError.get(10, TimeUnit.SECONDS);
         assertThat(errorHeaders.getFirst("message"))
                 .isNotBlank();
-        assertThat(webSocketSessionRegistry.findByUserIdAndSessionId(userId, loginSessionId))
+        assertThat(webSocketSessionRegistry.findByUserIdAndLoginSessionId(userId, loginSessionId))
                 .isEmpty();
     }
 
@@ -486,10 +577,10 @@ public class DirectMessageWebSocketIntegrationTest {
         await().atMost(Duration.ofSeconds(5))
                 .untilAsserted(() -> {
                     assertThat(webSocketSessionRegistry
-                            .findByUserIdAndSessionId(userId, loginSessionId))
+                            .findByUserIdAndLoginSessionId(userId, loginSessionId))
                             .hasSize(2);
                     assertThat(webSocketSessionRegistry
-                            .findByUserIdAndSessionId(
+                            .findByUserIdAndLoginSessionId(
                                     counterpartId, counterpartLoginSessionId))
                             .hasSize(1);
                 });
@@ -512,7 +603,7 @@ public class DirectMessageWebSocketIntegrationTest {
                                     assertThat(connection.isConnected()).isFalse());
 
                     assertThat(webSocketSessionRegistry
-                            .findByUserIdAndSessionId(userId, loginSessionId))
+                            .findByUserIdAndLoginSessionId(userId, loginSessionId))
                             .isEmpty();
                 });
 
@@ -521,7 +612,7 @@ public class DirectMessageWebSocketIntegrationTest {
                 .untilAsserted(() -> {
                     assertThat(counterpartConnection.isConnected()).isTrue();
                     assertThat(webSocketSessionRegistry
-                            .findByUserIdAndSessionId(
+                            .findByUserIdAndLoginSessionId(
                                     counterpartId, counterpartLoginSessionId))
                             .hasSize(1);
                 });
@@ -839,7 +930,7 @@ public class DirectMessageWebSocketIntegrationTest {
         session.disconnect();
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
             assertThat(session.isConnected()).isFalse();
-            assertThat(webSocketSessionRegistry.findByUserIdAndSessionId(userId, loginSessionId)).isEmpty();
+            assertThat(webSocketSessionRegistry.findByUserIdAndLoginSessionId(userId, loginSessionId)).isEmpty();
         });
 
         assertMessageAvailableThroughRest(message.id(), content);
@@ -849,57 +940,51 @@ public class DirectMessageWebSocketIntegrationTest {
     @Test
     @DisplayName("서버 A에서 보낸 DM이 서버 A와 B의 실제 구독자에게 한 번씩 전달되고 미읽음 한 건으로 유지된다.")
     void send_deliversAcrossActualServersWithoutDuplicatingMessages() throws Exception {
-        try (ConfigurableApplicationContext nodeB = startAdditionalNode()) {
-            int portB = ((WebServerApplicationContext) nodeB).getWebServer().getPort();
-            SimpleBrokerMessageHandler brokerB = nodeB.getBean(SimpleBrokerMessageHandler.class);
-            assertThat(portB).isNotEqualTo(port);
-            assertThat(brokerB).isNotSameAs(simpleBrokerMessageHandler);
+        additionalNode = startAdditionalNode();
+        additionalNodeTasks = new NotificationTaskTracker(
+                additionalNode.getBean("notificationTaskExecutor", ThreadPoolTaskExecutor.class),
+                additionalNode.getBean("notificationTaskContextDecorator", TaskDecorator.class)
+        );
+        int portB = ((WebServerApplicationContext) additionalNode).getWebServer().getPort();
+        SimpleBrokerMessageHandler brokerB = additionalNode.getBean(SimpleBrokerMessageHandler.class);
+        assertThat(portB).isNotEqualTo(port);
+        assertThat(brokerB).isNotSameAs(simpleBrokerMessageHandler);
 
-            String channel = environment.getRequiredProperty("everyone.dm.websocket.redis.channel");
-            await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
-                var subscriptions = redis.execInContainer("redis-cli", "--raw", "PUBSUB", "NUMSUB", channel);
-                assertThat(subscriptions.getExitCode()).isZero();
-                assertThat(subscriptions.getStdout().lines().map(String::strip).toList())
-                        .containsExactly(channel, "2");
-            });
+        String channel = environment.getRequiredProperty("everyone.dm.websocket.redis.channel");
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
+            var subscriptions = redis.execInContainer("redis-cli", "--raw", "PUBSUB", "NUMSUB", channel);
+            assertThat(subscriptions.getExitCode()).isZero();
+            assertThat(subscriptions.getStdout().lines().map(String::strip).toList())
+                    .containsExactly(channel, "2");
+        });
 
-            // B가 실행 중인 동안 두 클라이언트를 먼저 닫고, 마지막에 B 컨텍스트를 정리한다.
-            try {
-                StompSession sender = connectWithToken(accessToken);
-                StompSession receiver = connectWithToken(portB, counterpartAccessToken,
-                        new StompSessionHandlerAdapter() {});
-                BlockingQueue<MessageDto> messagesOnA = subscribe(sender, conversationId);
-                BlockingQueue<MessageDto> messagesOnB = subscribe(receiver, conversationId, brokerB);
-                String content = "서버 A에서 B로 전달할 메시지";
+        StompSession sender = connectWithToken(accessToken);
+        StompSession receiver = connectWithToken(portB, counterpartAccessToken,
+                new StompSessionHandlerAdapter() {});
+        BlockingQueue<MessageDto> messagesOnA = subscribe(sender, conversationId);
+        BlockingQueue<MessageDto> messagesOnB = subscribe(receiver, conversationId, brokerB);
+        String content = "서버 A에서 B로 전달할 메시지";
 
-                sender.send("/pub/conversations/" + conversationId + "/direct-messages",
-                        new DirectMessageSendRequest(content));
+        sender.send("/pub/conversations/" + conversationId + "/direct-messages",
+                new DirectMessageSendRequest(content));
 
-                MessageDto messageOnA = messagesOnA.poll(10, TimeUnit.SECONDS);
-                MessageDto messageOnB = messagesOnB.poll(10, TimeUnit.SECONDS);
-                assertThat(messageOnA).isNotNull();
-                assertThat(messageOnB).isEqualTo(messageOnA);
-                assertThat(messageOnB.conversationId()).isEqualTo(conversationId);
-                assertThat(messageOnB.content()).isEqualTo(content);
-                assertThat(messageOnB.sender().userId()).isEqualTo(userId);
-                assertThat(messageOnB.receiver().userId()).isEqualTo(counterpartId);
+        MessageDto messageOnA = messagesOnA.poll(10, TimeUnit.SECONDS);
+        MessageDto messageOnB = messagesOnB.poll(10, TimeUnit.SECONDS);
+        assertThat(messageOnA).isNotNull();
+        assertThat(messageOnB).isEqualTo(messageOnA);
+        assertThat(messageOnB.conversationId()).isEqualTo(conversationId);
+        assertThat(messageOnB.content()).isEqualTo(content);
+        assertThat(messageOnB.sender().userId()).isEqualTo(userId);
+        assertThat(messageOnB.receiver().userId()).isEqualTo(counterpartId);
 
-                await().during(Duration.ofSeconds(1)).atMost(Duration.ofSeconds(3))
-                        .untilAsserted(() -> {
-                            assertThat(sender.isConnected()).isTrue();
-                            assertThat(receiver.isConnected()).isTrue();
-                            assertThat(messagesOnA).isEmpty();
-                            assertThat(messagesOnB).isEmpty();
-                        });
-                assertSavedUnreadMessage(messageOnB.id(), content);
-            } finally {
-                assertAll(stompSessions.stream().map(session -> () -> {
-                    if (session.isConnected()) {
-                        session.disconnect();
-                    }
-                }));
-            }
-        }
+        await().during(Duration.ofSeconds(1)).atMost(Duration.ofSeconds(3))
+                .untilAsserted(() -> {
+                    assertThat(sender.isConnected()).isTrue();
+                    assertThat(receiver.isConnected()).isTrue();
+                    assertThat(messagesOnA).isEmpty();
+                    assertThat(messagesOnB).isEmpty();
+                });
+        assertSavedUnreadMessage(messageOnB.id(), content);
     }
 
     @Test
@@ -924,9 +1009,9 @@ public class DirectMessageWebSocketIntegrationTest {
                 .untilAsserted(() -> {
                     assertThat(previousConnection.isConnected()).isTrue();
                     assertThat(newConnection.isConnected()).isTrue();
-                    assertThat(webSocketSessionRegistry.findByUserIdAndSessionId(userId, previousLoginSessionId))
+                    assertThat(webSocketSessionRegistry.findByUserIdAndLoginSessionId(userId, previousLoginSessionId))
                             .hasSize(1);
-                    assertThat(webSocketSessionRegistry.findByUserIdAndSessionId(userId, newLoginSessionId))
+                    assertThat(webSocketSessionRegistry.findByUserIdAndLoginSessionId(userId, newLoginSessionId))
                             .hasSize(1);
 
                 });
@@ -942,7 +1027,7 @@ public class DirectMessageWebSocketIntegrationTest {
         await().atMost(Duration.ofSeconds(5))
                         .untilAsserted(() ->{
                             assertThat(previousConnection.isConnected()).isFalse();
-                            assertThat(webSocketSessionRegistry.findByUserIdAndSessionId(userId, previousLoginSessionId))
+                            assertThat(webSocketSessionRegistry.findByUserIdAndLoginSessionId(userId, previousLoginSessionId))
                                     .isEmpty();
                         });
 
@@ -950,7 +1035,7 @@ public class DirectMessageWebSocketIntegrationTest {
                 .atMost(Duration.ofSeconds(3))
                 .untilAsserted(() -> {
                     assertThat(newConnection.isConnected()).isTrue();
-                    assertThat(webSocketSessionRegistry.findByUserIdAndSessionId(userId, newLoginSessionId))
+                    assertThat(webSocketSessionRegistry.findByUserIdAndLoginSessionId(userId, newLoginSessionId))
                             .hasSize(1);
                     assertThat(userSessionRepository.isCurrent(userId, newLoginSessionId)).isTrue();
                 });
@@ -1140,6 +1225,11 @@ public class DirectMessageWebSocketIntegrationTest {
 
     private StompSession connectOverXhr()
             throws ExecutionException, InterruptedException, TimeoutException {
+        return connectOverXhr("http://localhost:" + port);
+    }
+
+    private StompSession connectOverXhr(String origin)
+            throws ExecutionException, InterruptedException, TimeoutException {
         stompClient.stop();
 
         JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(
@@ -1154,14 +1244,13 @@ public class DirectMessageWebSocketIntegrationTest {
         stompClient.setMessageConverter(new JacksonJsonMessageConverter());
         stompClient.start();
 
-        String origin = "http://localhost:" + port;
         WebSocketHttpHeaders handshakeHeaders = new WebSocketHttpHeaders();
         handshakeHeaders.setOrigin(origin);
         StompHeaders connectHeaders = new StompHeaders();
         connectHeaders.add(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken);
 
         return awaitConnection(stompClient.connectAsync(
-                origin + "/ws",
+                "http://localhost:" + port + "/ws",
                 handshakeHeaders,
                 connectHeaders,
                 new StompSessionHandlerAdapter() {}

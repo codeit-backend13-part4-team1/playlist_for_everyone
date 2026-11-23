@@ -1,8 +1,14 @@
 package com.codeit.sb13.playlist_for_everyone.global.service.redis;
 
+import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionRegisterException;
 import com.codeit.sb13.playlist_for_everyone.global.service.lock.Locks;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.retry.RetryContext;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Recover;
+import org.springframework.retry.annotation.Retryable;
+import org.springframework.retry.support.RetrySynchronizationManager;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -65,6 +71,12 @@ public class RedisTopicRegistry {
         }
     }
 
+
+    @Retryable(
+            retryFor = WebSocketSessionRegisterException.class,
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 100, multiplier = 2)
+    )
     public void register(
             String topic,
             String sessionId,
@@ -111,9 +123,25 @@ public class RedisTopicRegistry {
                 // 등록 실패시 키 삭제.
                 registerMap.get(topic).remove(key);
                 registerIndex.remove(key);
+
+                throw new WebSocketSessionRegisterException(e);
             }
         }
     }
+
+    @Recover
+    public void failRecover(WebSocketSessionRegisterException e){
+        RetryContext context = RetrySynchronizationManager.getContext();
+
+        log.error(
+                "[{}] 세션 작업 최종 실패. retryCount={}",
+                this.getClass().getSimpleName(),
+                context != null ? context.getRetryCount() : -1,
+                e
+        );
+        throw e;
+    }
+
 
     public void unregister(String sessionId, String subscriptionId){
         KeyPair key = KeyPair.of(sessionId, subscriptionId);
@@ -142,7 +170,6 @@ public class RedisTopicRegistry {
                         topic,
                         e);
 
-                // 삭제 실패시 삭제 대기열 등록
                 unregisterFailureSet.add(topic);
             }
             // 등록값이 비어있으면 삭제.
@@ -151,37 +178,34 @@ public class RedisTopicRegistry {
         }
     }
 
-    // 세션이 삭제되는 도중 같은 세션이 다시 등록되면
-    public void disconnect(String sessionId){
-        List<KeyPair> registerIndexKeys = registerIndex.keySet().stream()
-                .filter(key -> key.inSession(sessionId))
-                .toList();
-
-        for (KeyPair key : registerIndexKeys){
+    public void unregisterAll(String sessionId, List<String> subscriptionIds){
+        for (String subscriptionId : subscriptionIds){
+            KeyPair key = KeyPair.of(sessionId, subscriptionId);
             unregister(key);
         }
-
     }
 
-    public List<String> disconnectWithContentId(String contentId){
-        List<String> topics = new ArrayList<>();
-        if (registerMap.get(contentId) == null)
-            return topics;
-
-        Set<KeyPair> keyset = registerMap.get(contentId);
-        for (KeyPair topic : keyset){
-            unregister(topic);
-            topics.add(topic.session());
+    public void disconnectWithContentId(String topic){
+        synchronized (locks.lock(topic)){
+            Set<KeyPair> keyset = registerMap.get(topic);
+            if (keyset == null)
+                return;
+            for (KeyPair key : keyset){
+                unregister(key);
+            }
         }
-        return topics;
     }
 
+
+    /*
+     * 배치 작업으로 잔존 자료형을 반환하는 매서드
+     */
     @Scheduled(fixedDelay = 60000) // 60초마다 체크
     public void gc(){
         for(String topic : unregisterFailureSet) {
             synchronized (locks.lock(topic)){
                 if (registerMap.get(topic) != null){
-                    if (registerMap.get(topic).isEmpty()){
+                    if (!registerMap.get(topic).isEmpty()){
                         unregisterFailureSet.remove(topic);
                         continue;
                     }
@@ -201,6 +225,19 @@ public class RedisTopicRegistry {
     }
 
 
+    // 세션이 삭제되는 도중 같은 세션이 다시 등록되면
+    @Deprecated
+    public void disconnect(String sessionId){
+        List<KeyPair> registerIndexKeys = registerIndex.keySet().stream()
+                .filter(key -> key.inSession(sessionId))
+                .toList();
+
+        for (KeyPair key : registerIndexKeys){
+            unregister(key);
+        }
+
+    }
+
     /*
     편의 매서드
      */
@@ -210,9 +247,12 @@ public class RedisTopicRegistry {
         Set<KeyPair> keyList = registerMap.get(topic);
         if (!keyList.isEmpty()) {
             listenerMap.compute(topic, (k, v) -> {
-                if (listener.equals(listenerMap.get(k)))
-                    // 이미 존재하는 리스너가 있고, 어떤 게 연결이 끊긴건지 분간할 수 없음.
-                    throw new RuntimeException();
+                if (v != null) {
+                    if(listener.equals(v)) return v; // 이미 등록된 동일 리스너
+                    else
+                        throw new WebSocketSessionRegisterException();  // 중복되지 않는 리스너.
+
+                }
                 redisBroker.register(listener, topic);
                 return listener;
             });

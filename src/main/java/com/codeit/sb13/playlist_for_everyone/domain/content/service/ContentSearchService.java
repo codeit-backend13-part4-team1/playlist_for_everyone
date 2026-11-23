@@ -6,7 +6,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.Content
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.viewing.ViewingSessionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -19,7 +19,7 @@ import java.util.UUID;
 public class ContentSearchService {
 
     private final ContentSearchCacheService cacheService;
-    private final WatchingSessionService watchingSessionService;
+    private final ViewingSessionService viewingSessionService;
     private final FileService fileService;
     private final ContentMapper contentMapper;
 
@@ -33,9 +33,9 @@ public class ContentSearchService {
                 .toList();
 
         // 시청자 수 정렬은 기존 조회 값을 사용하고, 다른 정렬은 최신 값 조회
-        Map<String, Long> viewerCounts = sortByWatcherCount || contentIds.isEmpty()
+        Map<UUID, Long> viewerCounts = sortByWatcherCount || contentIds.isEmpty()
                 ? Map.of()
-                : watchingSessionService.getCurrentViewerCountWithContents(contentIds);
+                : viewingSessionService.getCurrentViewerCountWithContents(contentIds);
 
         List<ContentDto> contents = response.data().stream()
                 .map(result -> {
@@ -47,7 +47,7 @@ public class ContentSearchService {
 
                     long watcherCount = sortByWatcherCount
                             ? dto.watcherCount()
-                            : viewerCounts.getOrDefault(dto.id().toString(), 0L);
+                            : viewerCounts.getOrDefault(dto.id(), 0L);
 
                     return contentMapper.toContentDto(
                             result.dto(),

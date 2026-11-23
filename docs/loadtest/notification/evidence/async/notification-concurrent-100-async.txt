@@ -1,0 +1,26 @@
+JMeter 샘플러 SAVE MATRICS
+GET http://localhost:8080/actuator/metrics/everyone.notification.saved
+-- before
+HTTP 200
+{"availableTags":[],"measurements":[{"statistic":"COUNT","value":100.0}],"name":"everyone.notification.saved"}
+-- after
+HTTP 200
+{"availableTags":[],"measurements":[{"statistic":"COUNT","value":200.0}],"name":"everyone.notification.saved"}
+
+---
+JMeter 샘플러 SSE PUBLISHED MATRICS
+GET http://localhost:8080/actuator/metrics/everyone.notification.sse.published
+-- before
+HTTP 200
+{"availableTags":[],"measurements":[{"statistic":"COUNT","value":100.0}],"name":"everyone.notification.sse.published"}
+-- after
+HTTP 200
+{"availableTags":[],"measurements":[{"statistic":"COUNT","value":200.0}],"name":"everyone.notification.sse.published"}
+
+---
+JMeter 샘플러 FAILURES MATRICS
+GET http://localhost:8080/actuator/metrics/everyone.notification.failures
+-- before
+HTTP 404 (원본 요약 기록)
+-- after
+HTTP 404 (원본 요약 기록)

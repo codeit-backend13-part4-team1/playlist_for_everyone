@@ -51,6 +51,21 @@ public record SseEvent<T>(
         );
     }
 
+    /**
+     * 기존 이벤트 ID와 payload를 유지하면서 이벤트 이름을 direct-messages로 지정한다.
+     * DM 소비자는 저장된 메시지 ID·실제 수신자 ID·MessageDto를 넘기며, 브라우저 data에는 DTO만 전달한다.
+     * 이 팩토리는 새 ID 생성·JSON 변환·이력 저장·연결별 전송을 수행하지 않는다.
+     * 제네릭 payload를 사용하여 공통 SSE 타입이 DM 도메인에 의존하지 않게 한다.
+     */
+    public static <T> SseEvent<T> createDirectMessageEvent(UUID eventId, UUID receiverId, T data){
+        return new SseEvent<>(
+                eventId,
+                receiverId,
+                Event.DIRECT_MESSAGES.getName(),
+                data
+        );
+    }
+
     /** 저장용 JSON 데이터로 바꾸되 이벤트 ID·수신자·이름은 그대로 유지한다. */
     public SseEvent<JsonNode> toHistoryData(JsonNode data){
         return new SseEvent<>(eventId, receiverId, eventName, data);

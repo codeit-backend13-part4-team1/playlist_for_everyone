@@ -13,8 +13,8 @@ sequenceDiagram
     participant R as 복구 서비스
     participant H as 공유 이력
     participant E as SSE emitter
-    C->>D: register(userId, connection, emitter)
-    D->>L: 상태 잠금 안에서 emitter 저장
+    C->>D: register(userId, connection, emitter, loginSession)
+    D->>L: 상태 잠금 안에서 로그인 세션과 emitter 저장
     C->>E: connected 주석 준비
     C->>D: recover(userId, connection, lastEventId)
     D->>L: 현재 emitter 조회

@@ -44,7 +44,7 @@ public class WebSocketSessionRegistryImpl implements WebSocketSessionRegistry {
     }
 
     @Override
-    public List<WSSession> findByUserIdAndSessionId(UUID userId, UUID sessionId){
+    public List<WSSession> findByUserIdAndLoginSessionId(UUID userId, UUID sessionId){
         return data.values().stream()
                 .filter(
                         session -> checkSessionUser(session,userId.toString())

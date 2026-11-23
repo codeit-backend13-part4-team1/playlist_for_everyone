@@ -1,15 +1,20 @@
 package com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener;
 
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.event.DirectMessageCreatedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.event.UserFollowedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationCreateRequestedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationPublishBatch;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationSource;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.NotificationLevel;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.event.NotificationAsyncProcessor;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.monitoring.NotificationMetrics;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationTargetReader;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistContentAddedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistCreatedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistSubscribedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.event.UserRoleChangedEvent;
-import lombok.extern.slf4j.Slf4j;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionStartedEvent;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -24,56 +29,52 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
-import org.springframework.context.ApplicationEventPublisher;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 /**
- * 팔로우·권한 변경과 플레이리스트 구독·생성·콘텐츠 추가 이벤트의 알림 변환 규칙을 검증한다.
- * 발행자와 수신자 조회 컴포넌트를 Mock으로 대체하여 수신자·문구·수준과 이름 보정 규칙을 확인한다.
- *
- * <p>플레이리스트 생성·콘텐츠 추가에서는 조회 결과의 중복과 행위자를 제외하는지,
- * 조회 실패 시 발행을 중단하고 개별 발행 실패 시 나머지 수신자를 처리하는지 확인한다.
- * 실패 로그의 업무 식별자·예외 타입과 조회 실패 로그의 이름·제목·원본 메시지 제외도 검증한다.
- *
- * <p>리스너 메서드를 직접 호출하므로 Spring의 AFTER_COMMIT 실행 시점은 검증하지 않는다.
- * 실제 업무 커밋부터 알림 저장·SSE 발행 요청까지의 연동은 NotificationIntegrationTest와
- * NotificationPlaylistIntegrationTest가 담당한다.
+ * 업무 이벤트별 수신자·문구·수준과 중복·자기 알림 제외 규칙을 검증한다.
+ * 프로세서는 Mock으로 분리하고 한 업무 이벤트에서 완성한 요청 목록·업무 식별자를 확인한다.
+ * 조회 실패는 이 리스너가 처리하며, 개별 재발행 실패는 NotificationAsyncProcessorTest에서 검증한다.
+ * 실제 비동기 실행·제출 거부·업무 커밋은 별도 통합 테스트가 담당한다.
  */
-@Slf4j
 @ExtendWith(MockitoExtension.class)
 @DisplayName("업무 이벤트 기반 알림 변환 리스너")
 class NotificationDomainEventListenerTest {
 
     @Mock
-    private ApplicationEventPublisher eventPublisher;
+    private NotificationAsyncProcessor processor;
 
     @Mock
     private NotificationTargetReader targetReader;
+
+    @Mock
+    private NotificationMetrics metrics;
 
     @InjectMocks
     private NotificationDomainEventListener listener;
 
     @Captor
-    private ArgumentCaptor<NotificationCreateRequestedEvent> eventCaptor;
+    private ArgumentCaptor<NotificationPublishBatch> batchCaptor;
 
     @Test
-    @DisplayName("팔로우 이벤트를 팔로우받은 사용자의 알림 생성 요청으로 한 번 발행한다.")
-    void publishesNotificationRequestForFollowee(){
+    @DisplayName("팔로우 이벤트를 팔로우받은 사용자의 알림 생성 요청 목록으로 한 번 제출한다.")
+    void submitsNotificationRequestForFollowee(){
         UUID followerId = UUID.randomUUID();
         UUID followeeId = UUID.randomUUID();
 
         UserFollowedEvent event = new UserFollowedEvent(followerId, "홍길동", followeeId);
         listener.handleUserFollowed(event);
 
-        verify(eventPublisher).publishEvent(eventCaptor.capture());
-        NotificationCreateRequestedEvent request = eventCaptor.getValue();
+        verify(processor).publish(batchCaptor.capture());
+        assertBatchSource("팔로우", Map.of("followerId", followerId, "followeeId", followeeId), NotificationSource.USER_FOLLOWED);
+        NotificationCreateRequestedEvent request = batchCaptor.getValue().requests().get(0);
 
         assertThat(request.receiverId()).isEqualTo(followeeId);
         assertThat(request.title()).isEqualTo("새로운 팔로워");
@@ -92,61 +93,8 @@ class NotificationDomainEventListenerTest {
 
         listener.handleUserFollowed(event);
 
-        verify(eventPublisher).publishEvent(eventCaptor.capture());
-        assertThat(eventCaptor.getValue().content()).isEqualTo("사용자님이 회원님을 팔로우했습니다.");
-    }
-
-    @Test
-    @DisplayName("알림 요청 발행이 실패해도 다음 이벤트의 알림 요청을 정상 발행한다.")
-    void publishesNextNotificationRequestAfterFailure(){
-        UserFollowedEvent failedEvent = createUserFollowedEvent("첫 사용자");
-        UserFollowedEvent nextEvent = createUserFollowedEvent("다음 사용자");
-
-        doThrow(new IllegalStateException("테스트용 알림 요청 발행 실패"))
-                .doNothing()
-                .when(eventPublisher)
-                .publishEvent(any(NotificationCreateRequestedEvent.class));
-
-        assertThatCode(() ->{
-            listener.handleUserFollowed(failedEvent);
-            listener.handleUserFollowed(nextEvent);
-        }).doesNotThrowAnyException();
-
-        verify(eventPublisher, times(2))
-                .publishEvent(eventCaptor.capture());
-
-        assertThat(eventCaptor.getAllValues())
-                .extracting(NotificationCreateRequestedEvent::receiverId)
-                .containsExactly(failedEvent.followeeId(), nextEvent.followeeId());
-        assertThat(eventCaptor.getAllValues().get(1).content())
-                .isEqualTo("다음 사용자님이 회원님을 팔로우했습니다.");
-    }
-
-    @Test
-    @ExtendWith(OutputCaptureExtension.class)
-    @DisplayName("알림 요청 발행 실패 시 예외를 전파 하지 않고 식별자와 예외 타입을 기록한다.")
-    void handlesAndLogsNotificationRequestPublishFailure(CapturedOutput output){
-        UserFollowedEvent event = createUserFollowedEvent("로그에 노출하지 않을 이름");
-
-        String failureMessage = "테스트용 발행 실패:" + event.followerName();
-
-        doThrow(new IllegalStateException(failureMessage))
-                .when(eventPublisher)
-                .publishEvent(any(NotificationCreateRequestedEvent.class));
-
-        assertThatCode(() -> listener.handleUserFollowed(event))
-                .doesNotThrowAnyException();
-
-        verify(eventPublisher)
-                .publishEvent(any(NotificationCreateRequestedEvent.class));
-
-        assertThat(output.getAll())
-                .contains(
-                        "팔로우 알림 변환·재발행 실패.",
-                        "followerId=" + event.followerId(),
-                        "followeeId=" + event.followeeId(),
-                        "exceptionType=IllegalStateException"
-                ).doesNotContain(event.followerName(),failureMessage);
+        verify(processor).publish(batchCaptor.capture());
+        assertThat(batchCaptor.getValue().requests().get(0).content()).isEqualTo("사용자님이 회원님을 팔로우했습니다.");
     }
 
     @ParameterizedTest(name = "{0} → {1}")
@@ -154,16 +102,17 @@ class NotificationDomainEventListenerTest {
             "USER, ADMIN, 회원님의 권한이 USER에서 ADMIN으로 변경되었습니다.",
             "ADMIN, USER, 회원님의 권한이 ADMIN에서 USER로 변경되었습니다."
     })
-    @DisplayName("권한 변경 이벤트를 변경 대상 사용자의 INFO 알림 요청으로 한 번 발행한다.")
-    void publishesNotificationRequestForRoleChangedUser(Role previousRole, Role newRole, String expectedContent){
+    @DisplayName("권한 변경 이벤트를 변경 대상 사용자의 INFO 알림 요청으로 한 번 제출한다.")
+    void submitsNotificationRequestForRoleChangedUser(Role previousRole, Role newRole, String expectedContent){
         UUID userId = UUID.randomUUID();
         UserRoleChangedEvent event = new UserRoleChangedEvent(userId, previousRole, newRole);
 
         listener.handleUserRoleChanged(event);
 
-        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        verify(processor).publish(batchCaptor.capture());
+        assertBatchSource("권한 변경", Map.of("userId", userId), NotificationSource.USER_ROLE_CHANGED);
 
-        NotificationCreateRequestedEvent request = eventCaptor.getValue();
+        NotificationCreateRequestedEvent request = batchCaptor.getValue().requests().get(0);
         assertThat(request.receiverId()).isEqualTo(userId);
         assertThat(request.title()).isEqualTo("권한 변경");
         assertThat(request.content()).isEqualTo(expectedContent);
@@ -171,8 +120,8 @@ class NotificationDomainEventListenerTest {
     }
 
     @Test
-    @DisplayName("구독 이벤트의 이름과 제목으로 소유자에게 INFO 알림 요청을 한 번 발행한다.")
-    void publishesNotificationRequestForPlaylistOwner(){
+    @DisplayName("구독 이벤트의 이름과 제목으로 소유자에게 INFO 알림 요청을 한 번 제출한다.")
+    void submitsNotificationRequestForPlaylistOwner(){
         UUID playListId = UUID.randomUUID();
         UUID ownerId = UUID.randomUUID();
         UUID subscriberId = UUID.randomUUID();
@@ -181,8 +130,10 @@ class NotificationDomainEventListenerTest {
 
         listener.handlePlaylistSubscribed(event);
 
-        verify(eventPublisher).publishEvent(eventCaptor.capture());
-        NotificationCreateRequestedEvent request = eventCaptor.getValue();
+        verify(processor).publish(batchCaptor.capture());
+        assertBatchSource("플레이리스트 구독", Map.of("playlistId", playListId, "ownerId", ownerId, "subscriberId", subscriberId),
+                NotificationSource.PLAYLIST_SUBSCRIBED);
+        NotificationCreateRequestedEvent request = batchCaptor.getValue().requests().get(0);
 
         assertThat(request.receiverId()).isEqualTo(ownerId);
         assertThat(request.title()).isEqualTo("새로운 구독자");
@@ -201,76 +152,24 @@ class NotificationDomainEventListenerTest {
         PlaylistSubscribedEvent event = new PlaylistSubscribedEvent(UUID.randomUUID(), "퇴근 후 영화", UUID.randomUUID(), UUID.randomUUID(), subscriberName);
         listener.handlePlaylistSubscribed(event);
 
-        verify(eventPublisher).publishEvent(eventCaptor.capture());
-        assertThat(eventCaptor.getValue().content())
+        verify(processor).publish(batchCaptor.capture());
+        assertThat(batchCaptor.getValue().requests().get(0).content())
                 .isEqualTo("사용자님이 \"퇴근 후 영화\" 플레이리스트를 구독했습니다.");
     }
 
     @Test
-    @DisplayName("플레이리스트 소유자와 구독자가 같으면 알림 요청을 발행하지 않는다.")
-    void doesNotPublishNotificationForOwnPlaylistSubscription(){
+    @DisplayName("플레이리스트 소유자와 구독자가 같으면 알림 요청을 제출하지 않는다.")
+    void doesNotSubmitNotificationForOwnPlaylistSubscription(){
         // 구독 서비스의 자기 구독 거부와 별개로, 소비자가 같은 사용자에게 알림을 만들지 않는 규칙을 확인한다.
         UUID userId = UUID.randomUUID();
         PlaylistSubscribedEvent event = new PlaylistSubscribedEvent(UUID.randomUUID(), "퇴근 후 영화", userId, userId, "홍길동");
         listener.handlePlaylistSubscribed(event);
-        verifyNoInteractions(eventPublisher);
-    }
-
-    @Test
-    @DisplayName("권한 변경 알림 요청 발행이 실패해도 예외를 전파하지 않고 다음 이벤트를 처리한다.")
-    void publishesNextRoleChangeNotificationRequestAfterFailure(){
-        UserRoleChangedEvent failedEvent = new UserRoleChangedEvent(UUID.randomUUID(), Role.USER, Role.ADMIN);
-        UserRoleChangedEvent nextEvent = new UserRoleChangedEvent(UUID.randomUUID(), Role.ADMIN, Role.USER);
-
-        doThrow(new IllegalStateException("테스트용 권한 변경 알림 발행 실패"))
-                .doNothing()
-                .when(eventPublisher)
-                .publishEvent(any(NotificationCreateRequestedEvent.class));
-
-        assertThatCode(() -> {
-            listener.handleUserRoleChanged(failedEvent);
-            listener.handleUserRoleChanged(nextEvent);
-        }).doesNotThrowAnyException();
-
-        verify(eventPublisher, times(2))
-                .publishEvent(eventCaptor.capture());
-
-        assertThat(eventCaptor.getAllValues())
-                .extracting(NotificationCreateRequestedEvent::receiverId)
-                .containsExactly(failedEvent.userId(), nextEvent.userId());
-        assertThat(eventCaptor.getAllValues().get(1).content())
-                .isEqualTo("회원님의 권한이 ADMIN에서 USER로 변경되었습니다.");
-
-    }
-
-    @Test
-    @DisplayName("구독 알림 요청 발행이 실패해도 예외를 전파하지 않고 다음 이벤트를 처리한다.")
-    void publishesNextSubscriptionNotificationRequestAfterFailure(){
-        PlaylistSubscribedEvent failedEvent = new PlaylistSubscribedEvent(UUID.randomUUID(), "퇴근 후 영화", UUID.randomUUID(), UUID.randomUUID(), "첫 구독자");
-        PlaylistSubscribedEvent nextEvent = new PlaylistSubscribedEvent(UUID.randomUUID(), "주말 영화", UUID.randomUUID(), UUID.randomUUID(), "다음 구독자");
-
-        doThrow(new IllegalStateException("테스트용 구독 알림 발행 실패"))
-                .doNothing()
-                .when(eventPublisher)
-                .publishEvent(any(NotificationCreateRequestedEvent.class));
-
-        assertThatCode(() -> {
-            listener.handlePlaylistSubscribed(failedEvent);
-            listener.handlePlaylistSubscribed(nextEvent);
-        }).doesNotThrowAnyException();
-
-        verify(eventPublisher, times(2)).publishEvent(eventCaptor.capture());
-        assertThat(eventCaptor.getAllValues())
-                .extracting(NotificationCreateRequestedEvent::receiverId)
-                .containsExactly(failedEvent.ownerId(), nextEvent.ownerId());
-
-        assertThat(eventCaptor.getAllValues().get(1).content())
-                .isEqualTo("다음 구독자님이 \"주말 영화\" 플레이리스트를 구독했습니다.");
+        verifyNoInteractions(processor);
     }
 
     @Test
     @DisplayName("플레이리스트 생성 시 소유자의 각 팔로워에게 이벤트의 이름과 제목으로 INFO 알림 생성을 요청한다.")
-    void publishesPlaylistCreatedNotificationRequestsToFollowers(){
+    void submitsPlaylistCreatedNotificationRequestsToFollowers(){
         UUID playlistId = UUID.randomUUID();
         UUID ownerId = UUID.randomUUID();
         UUID firstFollowerId = UUID.randomUUID();
@@ -283,12 +182,13 @@ class NotificationDomainEventListenerTest {
         listener.handlePlaylistCreated(event);
 
         verify(targetReader).findFollowerIds(ownerId);
-        verify(eventPublisher, times(2)).publishEvent(eventCaptor.capture());
+        verify(processor).publish(batchCaptor.capture());
+        assertBatchSource("플레이리스트 생성", Map.of("playlistId", playlistId, "ownerId", ownerId), NotificationSource.PLAYLIST_CREATED);
 
-        assertThat(eventCaptor.getAllValues())
+        assertThat(batchCaptor.getValue().requests())
                 .extracting(NotificationCreateRequestedEvent::receiverId)
                 .containsExactlyInAnyOrder(firstFollowerId, secondFollowerId);
-        assertThat(eventCaptor.getAllValues()).allSatisfy(request ->{
+        assertThat(batchCaptor.getValue().requests()).allSatisfy(request ->{
             assertThat(request.title())
                     .isEqualTo("팔로우한 사용자의 새 플레이리스트");
             assertThat(request.content())
@@ -298,8 +198,8 @@ class NotificationDomainEventListenerTest {
     }
 
     @Test
-    @DisplayName("플레이리스트 생성 시 소유자의 팔로워가 없으면 알림 생성 요청을 발행하지 않는다.")
-    void doesNotPublishPlaylistCreatedNotificationWhenNoFollowers(){
+    @DisplayName("플레이리스트 생성 시 소유자의 팔로워가 없으면 알림 생성 요청을 제출하지 않는다.")
+    void doesNotSubmitPlaylistCreatedNotificationWhenNoFollowers(){
         UUID ownerId = UUID.randomUUID();
 
         PlaylistCreatedEvent event = new PlaylistCreatedEvent(UUID.randomUUID(), "퇴근 후 영화", ownerId, "홍길동");
@@ -310,12 +210,12 @@ class NotificationDomainEventListenerTest {
         listener.handlePlaylistCreated(event);
 
         verify(targetReader).findFollowerIds(ownerId);
-        verifyNoInteractions(eventPublisher);
+        verifyNoInteractions(processor);
     }
 
     @Test
     @DisplayName("플레이리스트 생성 시 팔로워 ID가 중복되어도 각 사용자에게 알림 생성 요청을 한 번만 발행한다.")
-    void publishesPlaylistCreatedNotificationOncePerDistinctFollower(){
+    void submitsPlaylistCreatedNotificationOncePerDistinctFollower(){
         UUID ownerId = UUID.randomUUID();
         UUID firstFollowerId = UUID.randomUUID();
         UUID secondFollowerId = UUID.randomUUID();
@@ -327,10 +227,10 @@ class NotificationDomainEventListenerTest {
         listener.handlePlaylistCreated(event);
 
         verify(targetReader).findFollowerIds(ownerId);
-        verify(eventPublisher, times(2))
-                .publishEvent(eventCaptor.capture());
+        verify(processor)
+                .publish(batchCaptor.capture());
 
-        assertThat(eventCaptor.getAllValues())
+        assertThat(batchCaptor.getValue().requests())
                 .extracting(NotificationCreateRequestedEvent::receiverId)
                 .containsExactlyInAnyOrder(firstFollowerId, secondFollowerId);
 
@@ -350,10 +250,11 @@ class NotificationDomainEventListenerTest {
         listener.handlePlaylistCreated(event);
 
         verify(targetReader).findFollowerIds(ownerId);
-        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        verify(processor).publish(batchCaptor.capture());
 
-        assertThat(eventCaptor.getValue().receiverId())
-                .isEqualTo(followerId);
+        assertThat(batchCaptor.getValue().requests())
+                .extracting(NotificationCreateRequestedEvent::receiverId)
+                .containsExactly(followerId);
     }
 
     @ParameterizedTest
@@ -370,8 +271,8 @@ class NotificationDomainEventListenerTest {
         listener.handlePlaylistCreated(event);
 
         verify(targetReader).findFollowerIds(ownerId);
-        verify(eventPublisher).publishEvent(eventCaptor.capture());
-        assertThat(eventCaptor.getValue().content())
+        verify(processor).publish(batchCaptor.capture());
+        assertThat(batchCaptor.getValue().requests().get(0).content())
                 .isEqualTo("사용자님이 \"퇴근 후 영화\" 플레이리스트를 만들었습니다.");
     }
 
@@ -389,7 +290,8 @@ class NotificationDomainEventListenerTest {
                 .doesNotThrowAnyException();
 
         verify(targetReader).findFollowerIds(event.ownerId());
-        verifyNoInteractions(eventPublisher);
+        verify(metrics).recordLookupFailure();
+        verifyNoInteractions(processor);
 
         assertThat(output.getAll())
                 .contains("playlistId="+ event.playlistId(),
@@ -403,44 +305,8 @@ class NotificationDomainEventListenerTest {
     }
 
     @Test
-    @ExtendWith(OutputCaptureExtension.class)
-    @DisplayName("플레이리스트 생성 알림 요청의 첫 발행이 실패해도 실패를 기록하고 나머지 수신자에게 발행한다.")
-    void continuesPlaylistCreatedNotificationsAfterPublishFailure(CapturedOutput output){
-        UUID ownerId = UUID.randomUUID();
-        UUID firstFollowerId = UUID.randomUUID();
-        UUID secondFollowerId = UUID.randomUUID();
-
-        PlaylistCreatedEvent event = new PlaylistCreatedEvent(UUID.randomUUID(), "퇴근 후 영화", ownerId, "홍길동");
-        when(targetReader.findFollowerIds(ownerId))
-                .thenReturn(List.of(firstFollowerId, secondFollowerId));
-
-        doThrow(new IllegalStateException("테스트용 알림 요청 발행 실패"))
-                .doNothing()
-                .when(eventPublisher)
-                .publishEvent(any(NotificationCreateRequestedEvent.class));
-
-        assertThatCode(() -> listener.handlePlaylistCreated(event))
-                .doesNotThrowAnyException();
-
-        verify(targetReader).findFollowerIds(ownerId);
-        verify(eventPublisher, times(2))
-                .publishEvent(eventCaptor.capture());
-
-        assertThat(eventCaptor.getAllValues())
-                .extracting(NotificationCreateRequestedEvent::receiverId)
-                .containsExactlyInAnyOrder(firstFollowerId, secondFollowerId);
-
-        UUID failedReceiverId = eventCaptor.getAllValues().get(0).receiverId();
-        assertThat(output.getAll())
-                .contains("playlistId=" + event.playlistId(),
-                        "ownerId=" + ownerId,
-                        "receiverId=" + failedReceiverId,
-                        "exceptionType=IllegalStateException");
-    }
-
-    @Test
     @DisplayName("콘텐츠 추가 시 각 구독자에게 이벤트의 플레이리스트 제목과 콘텐츠 제목으로 INFO 알림을 요청한다.")
-    void publishesPlaylistContentAddedNotificationRequestsToSubscribers(){
+    void submitsPlaylistContentAddedNotificationRequestsToSubscribers(){
         UUID playlistId = UUID.randomUUID();
         UUID actorId = UUID.randomUUID();
         UUID firstSubscriberId = UUID.randomUUID();
@@ -453,11 +319,13 @@ class NotificationDomainEventListenerTest {
         listener.handlePlaylistContentAdded(event);
 
         verify(targetReader).findSubscriberIds(playlistId);
-        verify(eventPublisher, times(2)).publishEvent(eventCaptor.capture());
-        assertThat(eventCaptor.getAllValues())
+        verify(processor).publish(batchCaptor.capture());
+        assertBatchSource("콘텐츠 추가", Map.of("playlistId", playlistId, "contentId", event.contentId(), "actorId", actorId),
+                NotificationSource.PLAYLIST_CONTENT_ADDED);
+        assertThat(batchCaptor.getValue().requests())
                 .extracting(NotificationCreateRequestedEvent::receiverId)
                 .containsExactlyInAnyOrder(firstSubscriberId, secondSubscriberId);
-        assertThat(eventCaptor.getAllValues())
+        assertThat(batchCaptor.getValue().requests())
                 .allSatisfy(request ->{
                     assertThat(request.title())
                             .isEqualTo("구독한 플레이리스트에 새 콘텐츠");
@@ -468,8 +336,8 @@ class NotificationDomainEventListenerTest {
     }
 
     @Test
-    @DisplayName("콘텐츠 추가 시 플레이리스트의 구독자가 없으면 알림 생성 요청을 발행하지 않는다.")
-    void doesNotPublishPlaylistContentAddedNotificationWhenNoSubscribers(){
+    @DisplayName("콘텐츠 추가 시 플레이리스트의 구독자가 없으면 알림 생성 요청을 제출하지 않는다.")
+    void doesNotSubmitPlaylistContentAddedNotificationWhenNoSubscribers(){
         UUID playlistId = UUID.randomUUID();
         PlaylistContentAddedEvent event = new PlaylistContentAddedEvent(playlistId, "퇴근 후 영화", UUID.randomUUID(), "인셉션", UUID.randomUUID());
 
@@ -479,13 +347,13 @@ class NotificationDomainEventListenerTest {
         listener.handlePlaylistContentAdded(event);
 
         verify(targetReader).findSubscriberIds(playlistId);
-        verifyNoInteractions(eventPublisher);
+        verifyNoInteractions(processor);
 
     }
 
     @Test
     @DisplayName("콘텐츠 추가 시 구독자 ID가 중복되어도 각 사용자에게 알림 생성 요청을 한 번만 발행한다.")
-    void publishesPlaylistContentAddedNotificationOncePerDistinctSubscriber(){
+    void submitsPlaylistContentAddedNotificationOncePerDistinctSubscriber(){
         UUID playlistId = UUID.randomUUID();
         UUID firstSubscriberId = UUID.randomUUID();
         UUID secondSubscriberId = UUID.randomUUID();
@@ -497,8 +365,8 @@ class NotificationDomainEventListenerTest {
         listener.handlePlaylistContentAdded(event);
 
         verify(targetReader).findSubscriberIds(playlistId);
-        verify(eventPublisher, times(2)).publishEvent(eventCaptor.capture());
-        assertThat(eventCaptor.getAllValues())
+        verify(processor).publish(batchCaptor.capture());
+        assertThat(batchCaptor.getValue().requests())
                 .extracting(NotificationCreateRequestedEvent::receiverId)
                 .containsExactlyInAnyOrder(firstSubscriberId, secondSubscriberId);
     }
@@ -517,8 +385,10 @@ class NotificationDomainEventListenerTest {
         listener.handlePlaylistContentAdded(event);
 
         verify(targetReader).findSubscriberIds(playlistId);
-        verify(eventPublisher).publishEvent(eventCaptor.capture());
-        assertThat(eventCaptor.getValue().receiverId()).isEqualTo(subscriberId);
+        verify(processor).publish(batchCaptor.capture());
+        assertThat(batchCaptor.getValue().requests())
+                .extracting(NotificationCreateRequestedEvent::receiverId)
+                .containsExactly(subscriberId);
     }
 
     @Test
@@ -538,7 +408,8 @@ class NotificationDomainEventListenerTest {
                 .doesNotThrowAnyException();
 
         verify(targetReader).findSubscriberIds(event.playlistId());
-        verifyNoInteractions(eventPublisher);
+        verify(metrics).recordLookupFailure();
+        verifyNoInteractions(processor);
 
         assertThat(output.getAll())
                 .contains(
@@ -554,41 +425,147 @@ class NotificationDomainEventListenerTest {
     }
 
     @Test
-    @ExtendWith(OutputCaptureExtension.class)
-    @DisplayName("콘텐츠 추가 알림 요청의 첫 발행이 실패해도 실패를 기록하고 나머지 구독자에게 발행한다.")
-    void continuesPlaylistContentAddedNotificationsAfterPublishFailure(CapturedOutput output){
-        UUID playlistId = UUID.randomUUID();
-        UUID firstSubscriberId = UUID.randomUUID();
-        UUID secondSubscriberId = UUID.randomUUID();
+    @DisplayName("DM 생성 이벤트를 수신자의 INFO 알림 생성 요청으로 변환하여 한 번 제출한다.")
+    void submitsNotificationRequestForDirectMessageReceiver(){
+        UUID senderId = UUID.randomUUID();
+        UUID receiverId = UUID.randomUUID();
 
-        PlaylistContentAddedEvent event = new PlaylistContentAddedEvent(playlistId, "퇴근 후 영화", UUID.randomUUID(), "인셉션", UUID.randomUUID());
+        DirectMessageCreatedEvent event = new DirectMessageCreatedEvent(
+                UUID.randomUUID(), UUID.randomUUID(), senderId, "홍길동", receiverId);
 
-        when(targetReader.findSubscriberIds(playlistId))
-                .thenReturn(List.of(firstSubscriberId, secondSubscriberId));
+        listener.handleDirectMessageCreated(event);
+        verify(processor).publish(batchCaptor.capture());
+        assertBatchSource("DM", Map.of("directMessageId", event.directMessageId(), "conversationId", event.conversationId(), "receiverId", receiverId),
+                NotificationSource.DIRECT_MESSAGE_CREATED);
+        NotificationCreateRequestedEvent request = batchCaptor.getValue().requests().get(0);
 
-        doThrow(new IllegalStateException("테스트용 알림 요청 발행 실패"))
-                .doNothing()
-                .when(eventPublisher)
-                .publishEvent(any(NotificationCreateRequestedEvent.class));
-
-        assertThatCode(() -> listener.handlePlaylistContentAdded(event))
-                .doesNotThrowAnyException();
-
-        verify(targetReader).findSubscriberIds(playlistId);
-        verify(eventPublisher, times(2)).publishEvent(eventCaptor.capture());
-        assertThat(eventCaptor.getAllValues())
-                .extracting(NotificationCreateRequestedEvent::receiverId)
-                .containsExactlyInAnyOrder(firstSubscriberId, secondSubscriberId);
-
-        UUID failedReceiverId = eventCaptor.getAllValues().get(0).receiverId();
-        assertThat(output.getAll())
-                .contains("playlistId=" + event.playlistId(),
-                        "contentId=" + event.contentId(),
-                        "actorId=" + event.actorId(),
-                        "receiverId=" + failedReceiverId,
-                        "exceptionType=IllegalStateException");
+        assertThat(request.receiverId()).isEqualTo(receiverId);
+        assertThat(request.title()).isEqualTo("새로운 메시지");
+        assertThat(request.content()).isEqualTo("홍길동님이 메시지를 보냈습니다.");
+        assertThat(request.level()).isEqualTo(NotificationLevel.INFO);
     }
 
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {" ", "\t", "\n"})
+    @DisplayName("DM 발신자 이름이 없거나 공백이면 사용자라는 이름으로 알림을 요청한다.")
+    void usesDefaultDirectMessageSenderNameWhenMissingOrBlank(String senderName){
+        DirectMessageCreatedEvent event = new DirectMessageCreatedEvent(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                senderName,
+                UUID.randomUUID()
+        );
+
+        listener.handleDirectMessageCreated(event);
+        verify(processor).publish(batchCaptor.capture());
+        assertThat(batchCaptor.getValue().requests().get(0).content()).isEqualTo("사용자님이 메시지를 보냈습니다.");
+    }
+
+    @Test
+    @DisplayName("DM 발신자와 수신자가 같으면 알림 생성 요청을 제출하지 않는다.")
+    void doesNotSubmitDirectMessageNotificationForSender(){
+        UUID userId = UUID.randomUUID();
+
+        DirectMessageCreatedEvent event = new DirectMessageCreatedEvent(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                userId,
+                "홍길동",
+                userId
+        );
+
+        listener.handleDirectMessageCreated(event);
+        verifyNoInteractions(processor);
+    }
+
+
+    @Test
+    @DisplayName("시청 시작 시 본인을 제외한 팔로워별 알림 요청을 한 번 제출한다.")
+    void submitsWatchingSessionNotificationsToDistinctFollowers(){
+        UUID watcherId = UUID.randomUUID();
+        UUID contentId = UUID.randomUUID();
+        UUID firstFollowerId = UUID.randomUUID();
+        UUID secondFollowerId = UUID.randomUUID();
+
+        when(targetReader.findFollowerIds(watcherId))
+                .thenReturn(List.of(firstFollowerId, watcherId, firstFollowerId, secondFollowerId));
+
+        listener.handleWatchingSessionStarted(new WatchingSessionStartedEvent(
+                watcherId, "홍길동", contentId, "인터스텔라"));
+
+        verify(processor).publish(batchCaptor.capture());
+        assertBatchSource("콘텐츠 시청 시작",
+                Map.of("contentId", contentId,"watcherId", watcherId),
+                NotificationSource.WATCHING_SESSION_STARTED);
+        List<NotificationCreateRequestedEvent> requests = batchCaptor.getValue().requests();
+        assertThat(requests).extracting(NotificationCreateRequestedEvent::receiverId)
+                .containsExactlyInAnyOrder(firstFollowerId, secondFollowerId);
+        assertThat(requests).allSatisfy(request ->{
+            assertThat(request.title()).isEqualTo("팔로우한 사용자의 같이 보기 참여");
+            assertThat(request.content()).isEqualTo("홍길동님이 \"인터스텔라\" 같이 보기에 참여했습니다.");
+            assertThat(request.level()).isEqualTo(NotificationLevel.INFO);
+        });
+
+    }
+
+    @Test
+    @DisplayName("팔로워 조회 결과에 시청자 본인만 있으면 알림 작업을 제출하지 않는다.")
+    void doesNotSubmitWatchingSessionNotificationWhenOnlyWatcherRemains(){
+        UUID watcherId = UUID.randomUUID();
+        when(targetReader.findFollowerIds(watcherId)).thenReturn(List.of(watcherId));
+        listener.handleWatchingSessionStarted(new WatchingSessionStartedEvent(
+                watcherId, "홍길동", UUID.randomUUID(), "인터스텔라"));
+        verify(targetReader).findFollowerIds(watcherId);
+        verifyNoInteractions(processor);
+    }
+
+    @Test
+    @DisplayName("시청자 이름이 공백이면 같이 보기 참여 알림에서 사용자로 표시한다.")
+    void usesDefaultWatcherNameWhenBlank(){
+        UUID watcherId = UUID.randomUUID();
+        when(targetReader.findFollowerIds(watcherId)).thenReturn(List.of(UUID.randomUUID()));
+        listener.handleWatchingSessionStarted(new WatchingSessionStartedEvent(
+                watcherId, " ", UUID.randomUUID(), "인터스텔라"));
+
+        verify(processor).publish(batchCaptor.capture());
+        assertThat(batchCaptor.getValue().requests())
+                .extracting(NotificationCreateRequestedEvent::content)
+                .containsExactly("사용자님이 \"인터스텔라\" 같이 보기에 참여했습니다.");
+    }
+
+    @Test
+    @ExtendWith(OutputCaptureExtension.class)
+    @DisplayName("시청 알림의 팔로워 조회 실패를 기록하고 작업을 제출하지 않는다.")
+    void handlesAndLogsWatchingSessionFollowerLookupFailure(CapturedOutput output){
+        UUID watcherId = UUID.randomUUID();
+        UUID contentId = UUID.randomUUID();
+        WatchingSessionStartedEvent event = new WatchingSessionStartedEvent(watcherId, "홍길동", contentId, "인터스텔라");
+        String failureMessage = "테스트용 팔로워 조회 실패";
+
+        when(targetReader.findFollowerIds(watcherId))
+                .thenThrow(new IllegalStateException(failureMessage));
+        assertThatCode(() -> listener.handleWatchingSessionStarted(event))
+                .doesNotThrowAnyException();
+
+        verify(metrics).recordLookupFailure();
+        verifyNoInteractions(processor);
+        assertThat(output.getAll())
+                .contains("contentId=" + contentId,
+                        "watcherId=" + watcherId,
+                        "exceptionType=IllegalStateException")
+                .doesNotContain(event.watcherName(), event.contentTitle(), failureMessage);
+    }
+
+
+
+
+    private void assertBatchSource(String source, Map<String, UUID> ids, NotificationSource requestSource) {
+        assertThat(batchCaptor.getValue().source()).isEqualTo(source);
+        assertThat(batchCaptor.getValue().sourceIds()).containsExactlyInAnyOrderEntriesOf(ids);
+        assertThat(batchCaptor.getValue().requests()).allSatisfy(request -> assertThat(request.source()).isEqualTo(requestSource));
+    }
 
     private UserFollowedEvent createUserFollowedEvent(String followerName) {
         return new UserFollowedEvent(UUID.randomUUID(), followerName, UUID.randomUUID());

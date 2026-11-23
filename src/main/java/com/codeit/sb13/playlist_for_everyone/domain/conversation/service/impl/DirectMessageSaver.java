@@ -4,8 +4,10 @@ import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.command.Dir
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.dto.command.DirectMessageSendCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.entity.Conversation;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.entity.DirectMessage;
+import com.codeit.sb13.playlist_for_everyone.domain.conversation.event.DirectMessageCreatedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.conversation.repository.DirectMessageRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,17 +26,23 @@ public class DirectMessageSaver {
 
     private final DirectMessageRepository directMessageRepository;
     private final ConversationReader conversationReader;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * 채널 인가와 별개로 저장 시점에도 참여 여부를 확인한다. 서비스의 직접 호출에도 같은 저장 규칙을 적용한다.
-     * 명시적 flush 없이 트랜잭션 종료 시 저장을 확정하며, 커밋 실패는 호출자에게 전달되어 발행을 막는다.
+     * 저장 트랜잭션 안에서 메시지 생성 이벤트를 발행하고, 명시적 flush 없이 트랜잭션 종료 시 저장을 확정한다.
+     * 커밋 실패는 호출자에게 전달되며, AFTER_COMMIT 후속 처리는 실행되지 않는다.
+     *
+     * <p>송수신 방향은 정렬된 대화방의 userA/userB 위치가 아니라 인증된 요청자 기준으로 결정한다.
+     * 저장 결과에서 이벤트 값을 추출하여 메시지와 이벤트의 ID·송수신자가 일치하도록 한다.
+     * 메서드 본문이 끝나면 트랜잭션 프록시가 커밋한다. 커밋 후 DM 본문의 SSE 콜백과 알림 작업 제출이 끝나면
+     * Saver 호출이 반환된다.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public DirectMessage save(DirectMessageSendCommand command){
         UUID requesterId = command.requesterId();
         Conversation conversation = conversationReader.getForParticipant(command.conversationId(), requesterId);
-
-        return directMessageRepository.save(
+        DirectMessage saved = directMessageRepository.save(
                 new DirectMessage(
                         new DirectMessageCommand(
                                 conversation,
@@ -43,5 +51,15 @@ public class DirectMessageSaver {
                                 command.content())
                 ));
 
+        // 이벤트 등록과 DB 커밋은 별개다. SSE 전달은 리스너의 AFTER_COMMIT 경계에서 시작한다.
+        eventPublisher.publishEvent(new DirectMessageCreatedEvent(
+                saved.getId(),
+                saved.getConversationId(),
+                saved.getSenderId(),
+                saved.getSenderName(),
+                saved.getReceiverId()
+        ));
+
+        return saved;
     }
 }

@@ -11,7 +11,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
-public interface ReviewRepository extends JpaRepository<Review, UUID> {
+public interface ReviewRepository extends JpaRepository<Review, UUID>, ReviewListRepository {
 
     @Query("""
             SELECT COALESCE(AVG(r.rating), 0.0)

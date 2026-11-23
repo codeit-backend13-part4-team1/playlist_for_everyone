@@ -9,10 +9,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.service.lock.SpreadLock;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSession;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.DestinationMatcher;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.matcher.SessionMatcher;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistry;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.subscription.SubscriptionRegistry;
 import io.jsonwebtoken.JwtException;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.*;
@@ -29,7 +27,6 @@ import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 

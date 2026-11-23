@@ -1,6 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event;
 
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSession;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.event.EventListener;
@@ -14,11 +14,11 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class WatchingSessionLocalEventListener {
 
-    private final WatchingSession watchingSession;
+    private final WatchingSessionService watchingSessionService;
 
     @EventListener
     public void onContentsDelete(WatchingSessionContentDeleteEvent event){
         UUID contentId = Objects.requireNonNull(event.contentId());
-        watchingSession.disconnectWithContentId(contentId);
+        watchingSessionService.cleanUpWithContentId(contentId);
     }
 }

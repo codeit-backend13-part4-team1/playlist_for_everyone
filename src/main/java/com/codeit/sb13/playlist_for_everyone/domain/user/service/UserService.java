@@ -12,9 +12,11 @@ import com.codeit.sb13.playlist_for_everyone.global.file.service.FileService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Map;
 import java.util.UUID;
@@ -93,8 +95,6 @@ public class UserService {
 
     }
 
-
-
     /**
      * 사용자 ID로 조회하는 공통 메서드
      *
@@ -110,8 +110,32 @@ public class UserService {
         return owner;
     }
 
+    /**
+     * 본인의 이름과 프로필 이미지를 변경한다.
+     * 이미지가 없으면 기존 프로필 이미지를 유지한다.
+     */
+    @PreAuthorize("isAuthenticated() and #userId == authentication.principal.userId")
+    @Transactional
+    public UserDto updateProfile(UUID userId, String name, MultipartFile image) {
+        User user = getById(userId);
 
+        user.updateName(name);
 
+        if (image != null && !image.isEmpty()) {
+            FileInfo oldImage = user.getProfileImage();
 
+            // 업로드 후 트랜잭션이 롤백되면 FileService가 올린 파일을 정리한다.
+            FileInfo newImage = fileService.upload(image);
+            user.updateProfileImage(newImage);
 
+            userRepository.flush();
+
+            if (oldImage != null) {
+                fileService.delete(oldImage.getId());
+            }
+        }
+        log.info("[USER] 프로필 변경 완료 userId - {}", userId);
+
+        return toUserDto(user);
+    }
 }

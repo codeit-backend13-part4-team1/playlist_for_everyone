@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener;
 
 import com.codeit.sb13.playlist_for_everyone.domain.notification.event.NotificationCreatedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.monitoring.NotificationMetrics;
 import com.codeit.sb13.playlist_for_everyone.global.exception.sse.SsePublishException;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEventPublisher;
@@ -24,14 +25,17 @@ import org.springframework.transaction.event.TransactionalEventListener;
 public class NotificationSseEventListener {
 
     private final SseEventPublisher sseEventPublisher;
+    private final NotificationMetrics metrics;
 
     /**
      * 기본 AFTER_COMMIT, fallbackExecution=false로 알림 트랜잭션의 성공에만 반응한다.
      * 롤백되거나 트랜잭션 없이 발행된 이벤트는 처리하지 않는다. @Async를 사용하지 않으므로
-     * 이력 저장과 Redis 발행 요청까지 커밋 처리 스레드에서 실행되며, 브라우저 수신 완료를 기다리지는 않는다.
+     * 이력 저장과 Redis 발행 요청까지 알림 커밋 처리 스레드에서 실행한다. 업무 이벤트 연동에서는
+     * NotificationAsyncProcessor의 작업 스레드이며, 브라우저 수신 완료를 기다리지는 않는다.
      */
     @TransactionalEventListener
     public void handleNotificationCreated(NotificationCreatedEvent event){
+        metrics.recordSaved();
         publishNotification(event);
     }
 
@@ -47,8 +51,10 @@ public class NotificationSseEventListener {
                     event.notificationDto().receiverId(),
                     event.notificationDto()
             ));
+            metrics.recordSsePublished();
         } catch (SsePublishException e){
             // 추적용 식별자와 원인 타입만 남긴다. 제목·내용·예외 메시지·스택은 출력하지 않는다.
+            metrics.recordSseFailure();
             Throwable cause = e.getCause() != null ? e.getCause() : e;
 
             log.warn("알림 SSE 발행 실패. notificationId={}, eventId={}, receiverId={}, exceptionType={}",

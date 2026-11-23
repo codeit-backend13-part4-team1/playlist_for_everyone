@@ -30,6 +30,12 @@ logging:
     org.hibernate.orm.jdbc.bind: off
 
 everyone:
+  notification:
+    async:
+      # 외부 환경변수와 무관하게 테스트 실행기의 크기를 고정한다.
+      pool-size: 2
+      queue-capacity: 100
+
   s3:
     bucket: everyone-test-backup
     region: ap-northeast-2
@@ -57,6 +63,8 @@ everyone:
       key-prefix: everyone:test:sse:history
 
   websocket:
+    # 운영 환경변수 없이 테스트한다. 임의 포트로 실행되는 서버의 동일 출처 연결도 허용된다.
+    allowed-origins: http://localhost:8080
     event:
       # 이벤트 리스너의 구현체를 선택. 테스트에서만 명시적으로 true 를 덮어쓴다.
       multiple: false

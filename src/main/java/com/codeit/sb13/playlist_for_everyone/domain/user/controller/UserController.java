@@ -9,8 +9,10 @@ import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.UUID;
 
@@ -55,6 +57,17 @@ public class UserController {
         return ResponseEntity.ok(response);
     }
 
+    /**
+     * 프로필 변경
+     */
+    @PatchMapping(value = "/{userId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<UserDto> updateProfile(@PathVariable("userId") UUID userId, @Valid @RequestPart("request") UserUpdateRequest request,
+                                                 @RequestPart(value = "image", required = false) MultipartFile image) {
+        UserDto response = userService.updateProfile(userId, request.name(), image);
+
+        return ResponseEntity.ok(response);
+    }
+
     @PatchMapping("/{userId}/role")
     public ResponseEntity<Void> updateRole(@PathVariable("userId") UUID userId,
                                             @Valid @RequestBody UserRoleUpdateRequest request) {
@@ -79,7 +92,5 @@ public class UserController {
 
         return ResponseEntity.noContent().build();
     }
-
-
 
 }

@@ -7,6 +7,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.follow.repository.FollowRepo
 import com.codeit.sb13.playlist_for_everyone.domain.follow.service.FollowService;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.command.NotificationCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationCreateRequestedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationSource;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.response.NotificationDto;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.Notification;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.NotificationLevel;
@@ -15,6 +16,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener.
 import com.codeit.sb13.playlist_for_everyone.domain.notification.repository.NotificationRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationService;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationUserReader;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationFixtureCleanup;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationTaskTracker;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistSubscribedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.PlaylistService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
@@ -24,22 +27,28 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.sse.SsePublishExce
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEventPublisher;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionStartedEvent;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.validation.ConstraintViolationException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.*;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.core.task.TaskDecorator;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -59,7 +68,13 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Stream;
 
+import static com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationMetricReader.failureCount;
+import static com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationMetricReader.processingCount;
+import static com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationMetricReader.publishAttempts;
+import static com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationMetricReader.savedCount;
+import static com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationMetricReader.ssePublishedCount;
 import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.mockito.Mockito.*;
 
 /**
@@ -76,7 +91,9 @@ import static org.mockito.Mockito.*;
  * 테스트 전체를 @Transactional로 감싸지 않으며, 직접 발행 사례의 닉네임 변경은 업무 대역이다.
  *
  * <p>ApplicationEvents에는 롤백된 업무의 발행 기록도 남는다. 이 기록만으로 커밋 후 소비를 판단하지 않고,
- * 공통 알림 요청·저장 결과·SSE 발행 요청을 함께 확인한다.
+ * 공통 알림 요청은 실제 리스너 Spy로 관찰하고, 작업 완료 후 저장 결과·SSE 발행 요청을 함께 확인한다.
+ * 작업 스레드의 이벤트를 테스트 스레드의 ApplicationEvents에 의존하여 검증하지 않는다.
+ * 데이터 정리도 작업 완료 뒤 수행하여 사용자 삭제와 알림 저장이 경합하지 않게 한다.
  *
  * <p>입력 검증·사용자 조회·DB 저장의 실패 지점은 실제 저장 서비스를 통해 구분한다.
  * 각 실패가 업무 커밋을 보존하고, 후속 정상 알림의 저장·SSE 발행을 막지 않는지 확인한다.
@@ -92,6 +109,9 @@ import static org.mockito.Mockito.*;
 @ExtendWith(OutputCaptureExtension.class)
 @DisplayName("알림 공통 생성 통합 테스트")
 class NotificationIntegrationTest {
+
+    @RegisterExtension
+    static final NotificationFixtureCleanup FIXTURE_CLEANUP = new NotificationFixtureCleanup();
 
     // 알림 수신자를 권한 변경 대상과 플레이리스트 소유자로도 사용한다.
     private static final UUID RECEIVER_ID = UUID.randomUUID();
@@ -139,6 +159,9 @@ class NotificationIntegrationTest {
     @Autowired
     private PlaylistService playlistService;
 
+    @Autowired
+    private MeterRegistry meterRegistry;
+
     // 외부 전송 경계의 호출 횟수·데이터·실패를 제어하며 Redis나 브라우저로는 전송하지 않는다.
     @MockitoBean
     private SseEventPublisher sseEventPublisher;
@@ -147,6 +170,14 @@ class NotificationIntegrationTest {
     @MockitoSpyBean
     private NotificationEventListener notificationEventListener;
 
+    @Autowired
+    @Qualifier("notificationTaskExecutor")
+    private ThreadPoolTaskExecutor notificationTaskExecutor;
+    @Autowired
+    @Qualifier("notificationTaskContextDecorator")
+    private TaskDecorator notificationTaskContextDecorator;
+
+    private NotificationTaskTracker notificationTasks;
     private TransactionTemplate transactionTemplate;
     // 팔로워 사용자는 구독 사례에서 subscriberId로 재사용한다.
     private static final UUID FOLLOWER_ID = UUID.randomUUID();
@@ -154,6 +185,7 @@ class NotificationIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        notificationTasks = new NotificationTaskTracker(notificationTaskExecutor, notificationTaskContextDecorator);
         transactionTemplate = new TransactionTemplate(transactionManager);
         // 업무 이벤트 없이 사용자를 준비하고, 팔로우·알림의 독립 트랜잭션에서도 조회할 수 있도록 먼저 커밋한다.
         jdbcTemplate.update("""
@@ -169,6 +201,10 @@ class NotificationIntegrationTest {
 
     @AfterEach
     void cleanUp() {
+        FIXTURE_CLEANUP.cleanUp(notificationTasks, this::deleteFixtures);
+    }
+
+    private void deleteFixtures() {
         // 사용자를 참조하는 알림·팔로우·구독·플레이리스트를 먼저 지운다.
         // 구독은 플레이리스트도 참조하므로 플레이리스트보다 먼저 삭제한다.
         notificationRepository.deleteAllInBatch();
@@ -244,26 +280,28 @@ class NotificationIntegrationTest {
 
     @Test
     @DisplayName("팔로우 이벤트를 발행한 트랜잭션의 커밋 후 알림을 저장한다.")
-    void savesNotificationFromFollowEventAfterBusinessCommit(ApplicationEvents applicationEvents) {
+    void savesNotificationFromFollowEventAfterBusinessCommit() {
         // 이벤트를 직접 발행해 커밋 전후의 소비 시점을 관찰한다. 실제 팔로우 등록은 별도 사례로 검증한다.
         UserFollowedEvent event = new UserFollowedEvent(UUID.randomUUID(), "홍길동", RECEIVER_ID);
         NotificationCreateRequestedEvent expectedRequest = new NotificationCreateRequestedEvent(
                 RECEIVER_ID,
                 "새로운 팔로워",
                 "홍길동님이 회원님을 팔로우했습니다.",
-                NotificationLevel.INFO
+                NotificationLevel.INFO,
+                NotificationSource.USER_FOLLOWED
         );
 
         transactionTemplate.executeWithoutResult(status -> {
             eventPublisher.publishEvent(event);
 
-            assertThat(applicationEvents.stream(NotificationCreateRequestedEvent.class)).isEmpty();
+            assertThat(notificationTasks.hasSubmittedTasks()).isFalse();
+            verifyNoInteractions(notificationEventListener);
             assertThat(notificationRepository.count()).isZero();
             verifyNoInteractions(sseEventPublisher);
         });
 
-        assertThat(applicationEvents.stream(NotificationCreateRequestedEvent.class))
-                .containsExactly(expectedRequest);
+        notificationTasks.awaitCompletion();
+        verify(notificationEventListener).handleNotification(expectedRequest);
 
         Notification saved = findOnlyNotification();
         assertThat(saved.getReceiverId()).isEqualTo(expectedRequest.receiverId());
@@ -401,6 +439,12 @@ class NotificationIntegrationTest {
         doThrow(failure)
                 .doNothing()
                 .when(sseEventPublisher).publish(any());
+        double savedBefore = savedCount(meterRegistry);
+        double ssePublishedBefore = ssePublishedCount(meterRegistry);
+        double sseFailedBefore = failureCount(meterRegistry, "sse");
+        double saveFailedBefore = failureCount(meterRegistry, "save");
+
+        long processedBefore = processingCount(meterRegistry, "direct_request");
 
         assertThatCode(()-> transactionTemplate.executeWithoutResult(status ->{
             changeReceiverNickname();
@@ -416,6 +460,26 @@ class NotificationIntegrationTest {
                 .contains("알림 SSE 발행 실패.", "notificationId=" + saved.getId())
                 .doesNotContain("알림 저장 실패.");
 
+        assertSoftly(softly ->{
+            softly.assertThat(processingCount(meterRegistry, "direct_request") - processedBefore)
+                    .as("실패한 알림의 처리 시간 기록 증가량")
+                    .isEqualTo(1L);
+            softly.assertThat(savedCount(meterRegistry) - savedBefore)
+                    .as("알림 저장 성공 증가량")
+                    .isEqualTo(1.0);
+
+            softly.assertThat(ssePublishedCount(meterRegistry) - ssePublishedBefore)
+                    .as("SSE 발행 성공 증가량")
+                    .isZero();
+
+            softly.assertThat(failureCount(meterRegistry, "sse") - sseFailedBefore)
+                    .as("SSE 발행 실패 증가량")
+                    .isEqualTo(1.0);
+
+            softly.assertThat(failureCount(meterRegistry, "save") - saveFailedBefore)
+                    .as("알림 저장 실패 증가량")
+                    .isZero();
+        });
         String nextTitle = "후속 알림";
         publishAndCommit(event(RECEIVER_ID, nextTitle, NotificationLevel.INFO));
 
@@ -440,6 +504,9 @@ class NotificationIntegrationTest {
     void publishesSseOnlyAfterNotificationTransactionCommits(){
         // 서비스의 REQUIRES_NEW는 반환 시 이미 커밋된다. 여기서는 저장 트랜잭션을 직접 열어
         // 내부의 미발행과 커밋 후 발행을 각각 관찰한다. 공통 생성 경로는 위 통합 사례에서 검증한다.
+        double savedBefore = savedCount(meterRegistry);
+        double ssePublishedBefore = ssePublishedCount(meterRegistry);
+
         transactionTemplate.executeWithoutResult(status ->{
             NotificationCommand command = new NotificationCommand(RECEIVER_ID, TITLE, CONTENT, NotificationLevel.INFO);
 
@@ -447,17 +514,32 @@ class NotificationIntegrationTest {
             eventPublisher.publishEvent(new NotificationCreatedEvent(UUID.randomUUID(), NotificationDto.from(saved)));
 
             verifyNoInteractions(sseEventPublisher);
+            assertThat(savedCount(meterRegistry) - savedBefore)
+                    .as("커밋 전 알림 저장 성공 증가량")
+                    .isZero();
+            assertThat(ssePublishedCount(meterRegistry) - ssePublishedBefore)
+                    .as("커밋 전 SSE 발행 성공 증가량")
+                    .isZero();
         });
 
         assertThat(findOnlyNotification().getReceiverId())
                 .isEqualTo(RECEIVER_ID);
         verify(sseEventPublisher).publish(any());
+        assertThat(savedCount(meterRegistry) - savedBefore)
+                .as("커밋 후 알림 저장 성공 증가량")
+                .isEqualTo(1.0);
+        assertThat(ssePublishedCount(meterRegistry) - ssePublishedBefore)
+                .as("커밋 후 SSE 발행 성공 증가량")
+                .isEqualTo(1.0);
     }
 
     @Test
     @DisplayName("알림 저장 트랜잭션이 롤백되면 알림이 남지 않고 SSE를 발행하지 않는다.")
     void doesNotPublishSseWhenNotificationTransactionRollsBack(){
         // 생성 이벤트가 등록되었더라도 저장 트랜잭션을 롤백하면 AFTER_COMMIT은 실행되지 않는다.
+        double savedBefore = savedCount(meterRegistry);
+        double ssePublishedBefore = ssePublishedCount(meterRegistry);
+
         transactionTemplate.executeWithoutResult(status ->{
             NotificationCommand command = new NotificationCommand(RECEIVER_ID, TITLE, CONTENT, NotificationLevel.INFO);
             Notification saved = notificationRepository.save(new Notification(command, notificationUserReader.getById(RECEIVER_ID)));
@@ -468,6 +550,12 @@ class NotificationIntegrationTest {
 
         assertThat(notificationRepository.count()).isZero();
         verifyNoInteractions(sseEventPublisher);
+        assertThat(savedCount(meterRegistry) - savedBefore)
+                .as("롤백 후 알림 저장 성공 증가량")
+                .isZero();
+        assertThat(ssePublishedCount(meterRegistry) - ssePublishedBefore)
+                .as("롤백 후 SSE 발행 성공 증가량")
+                .isZero();
     }
 
     @Test
@@ -476,6 +564,12 @@ class NotificationIntegrationTest {
         // Java null이 아닌 NUL 문자를 정상 본문에 덧붙여 입력 검증은 통과하고 PostgreSQL 저장은 실패하게 한다.
         // 수신자 미존재로 저장 전에 종료되는 사례와 별도로 실제 DB 실패의 격리를 확인한다.
         String invalidContent = CONTENT + (char) 0;
+
+        double saveFailedBefore = failureCount(meterRegistry, "save");
+        double savedBefore = savedCount(meterRegistry);
+        double ssePublishedBefore = ssePublishedCount(meterRegistry);
+        double sseFailedBefore = failureCount(meterRegistry, "sse");
+        long processedBefore = processingCount(meterRegistry, "direct_request");
 
         assertThatCode(()->
                 transactionTemplate.executeWithoutResult(status ->{
@@ -494,6 +588,26 @@ class NotificationIntegrationTest {
         assertThat(receiverNickname()).isEqualTo("변경 후");
         assertThat(notificationRepository.count()).isZero();
         verifyNoInteractions(sseEventPublisher);
+        assertSoftly(softly ->{
+            softly.assertThat(processingCount(meterRegistry, "direct_request") - processedBefore)
+                    .as("실패한 알림의 처리 시간 기록 증가량")
+                    .isEqualTo(1L);
+            softly.assertThat(failureCount(meterRegistry, "save") - saveFailedBefore)
+                    .as("알림 저장 실패 증가량")
+                    .isEqualTo(1.0);
+
+            softly.assertThat(savedCount(meterRegistry) - savedBefore)
+                    .as("알림 저장 성공 증가량")
+                    .isZero();
+
+            softly.assertThat(ssePublishedCount(meterRegistry) - ssePublishedBefore)
+                    .as("SSE 발행 성공 증가량")
+                    .isZero();
+
+            softly.assertThat(failureCount(meterRegistry, "sse") - sseFailedBefore)
+                    .as("SSE 발행 실패 증가량")
+                    .isZero();
+        });
 
         publishAndCommit(event(RECEIVER_ID, TITLE, NotificationLevel.INFO));
         Notification saved = findOnlyNotification();
@@ -524,6 +638,9 @@ class NotificationIntegrationTest {
     void doesNotCreateNotificationWhenFollowEventTransactionRollsBack(ApplicationEvents applicationEvents){
         // 닉네임 변경과 이벤트 발행을 같은 트랜잭션에 넣어 생산 업무의 롤백을 재현한다.
         UserFollowedEvent event = new UserFollowedEvent(UUID.randomUUID(), "홍길동", RECEIVER_ID);
+        double attemptsBefore = publishAttempts(meterRegistry, "user_followed");
+        long processedBefore = processingCount(meterRegistry, "user_followed");
+
         transactionTemplate.executeWithoutResult(status ->{
             changeReceiverNickname();
             eventPublisher.publishEvent(event);
@@ -532,12 +649,14 @@ class NotificationIntegrationTest {
 
         assertThat(applicationEvents.stream(UserFollowedEvent.class))
                 .containsExactly(event);
-        assertThat(applicationEvents.stream(NotificationCreateRequestedEvent.class))
-                .isEmpty();
+        assertThat(notificationTasks.hasSubmittedTasks()).isFalse();
+        verifyNoInteractions(notificationEventListener);
         assertThat(receiverNickname()).isEqualTo("변경 전");
         assertThat(notificationRepository.count()).isZero();
         verifyNoInteractions(sseEventPublisher);
 
+        assertThat(publishAttempts(meterRegistry, "user_followed") - attemptsBefore).isZero();
+        assertThat(processingCount(meterRegistry, "user_followed") - processedBefore).isZero();
     }
 
     @Test
@@ -548,8 +667,8 @@ class NotificationIntegrationTest {
         eventPublisher.publishEvent(event);
         assertThat(applicationEvents.stream(UserFollowedEvent.class))
                 .containsExactly(event);
-        assertThat(applicationEvents.stream(NotificationCreateRequestedEvent.class))
-                .isEmpty();
+        assertThat(notificationTasks.hasSubmittedTasks()).isFalse();
+        verifyNoInteractions(notificationEventListener);
         assertThat(notificationRepository.count()).isZero();
         verifyNoInteractions(sseEventPublisher);
     }
@@ -558,6 +677,9 @@ class NotificationIntegrationTest {
     @DisplayName("실제 팔로우 등록이 커밋되면 대상 사용자에게 알림을 저장하고 SSE 발행을 한 번 요청한다.")
     void savesNotificationAfterActualFollowRegistrationCommits(){
         FollowCommand command = new FollowCommand(RECEIVER_ID, FOLLOWER_ID);
+
+        double attemptsBefore = publishAttempts(meterRegistry, "user_followed");
+        long processedBefore = processingCount(meterRegistry, "user_followed");
 
         // FollowSaver의 독립 트랜잭션이 커밋된 뒤 반환되므로 별도 TransactionTemplate으로 감싸지 않는다.
         FollowResult result = followService.follow(command);
@@ -571,34 +693,76 @@ class NotificationIntegrationTest {
         assertThat(saved.getContent()).isEqualTo("홍길동님이 회원님을 팔로우했습니다.");
         assertThat(saved.getLevel()).isEqualTo(NotificationLevel.INFO);
         verify(sseEventPublisher).publish(any());
+
+        assertSoftly(softly -> {
+            softly.assertThat(publishAttempts(meterRegistry, "user_followed") - attemptsBefore)
+                    .as("알림 발행 시도 증가량")
+                    .isEqualTo(1.0);
+            softly.assertThat(processingCount(meterRegistry, "user_followed") - processedBefore)
+                    .as("알림 처리 시간 기록 증가량")
+                    .isEqualTo(1L);
+        });
     }
 
     @Test
     @DisplayName("알림 요청 재발행이 실패해도 커밋된 팔로우를 유지하고 실패를 기록한다.")
     void keepsFollowWhenNotificationRequestPublishFails(CapturedOutput output){
-        // 공통 요청을 수신하는 쪽에서 예외를 던져 실제 업무 이벤트 리스너의 재발행 실패 처리를 확인한다.
+        // 공통 요청을 수신하는 쪽에서 예외를 던져 실제 비동기 프로세서의 재발행 실패 처리를 확인한다.
         doThrow(new IllegalStateException("테스트용 알림 요청 재발행 실패"))
                 .when(notificationEventListener)
                 .handleNotification(any(NotificationCreateRequestedEvent.class));
+
+        double publishFailedBefore = failureCount(meterRegistry, "publish");
+        double saveFailedBefore = failureCount(meterRegistry, "save");
+        double sseFailedBefore = failureCount(meterRegistry, "sse");
+        double savedBefore = savedCount(meterRegistry);
+        double ssePublishedBefore = ssePublishedCount(meterRegistry);
+
+        double attemptsBefore = publishAttempts(meterRegistry, "user_followed");
+        long processedBefore = processingCount(meterRegistry, "user_followed");
 
         FollowResult result = followService.follow(new FollowCommand(RECEIVER_ID, FOLLOWER_ID));
         assertThat(result.created()).isTrue();
         assertThat(followRepository.existsById(result.followDto().id())).isTrue();
         assertThat(followRepository.count()).isEqualTo(1L);
 
+        notificationTasks.awaitCompletion();
         verify(notificationEventListener)
                 .handleNotification(any(NotificationCreateRequestedEvent.class));
         assertThat(notificationRepository.count()).isZero();
 
         verifyNoInteractions(sseEventPublisher);
-        // 팔로우 유지와 함께 도메인 리스너가 예외를 처리하고 기록한 사실까지 확인한다.
+        // 팔로우 유지와 함께 비동기 프로세서가 예외를 처리하고 기록한 사실까지 확인한다.
         assertThat(output.getOut()).contains(
-                "팔로우 알림 변환·재발행 실패.",
+                "팔로우 알림 재발행 실패.",
                 "followerId=" + FOLLOWER_ID,
                 "followeeId=" + RECEIVER_ID,
                 "exceptionType=IllegalStateException"
         );
 
+        assertSoftly(softly -> {
+            softly.assertThat(publishAttempts(meterRegistry, "user_followed") - attemptsBefore)
+                    .as("재발행에 실패한 알림의 발행 시도 증가량")
+                    .isEqualTo(1.0);
+            softly.assertThat(processingCount(meterRegistry, "user_followed") - processedBefore)
+                    .as("공통 요청 처리가 시작되지 않은 알림의 처리 시간 기록 증가량")
+                    .isZero();
+            softly.assertThat(failureCount(meterRegistry, "publish") - publishFailedBefore)
+                    .as("알림 요청 재발행 실패 증가량")
+                    .isEqualTo(1.0);
+            softly.assertThat(failureCount(meterRegistry, "save") - saveFailedBefore)
+                    .as("알림 저장 실패 증가량")
+                    .isZero();
+            softly.assertThat(failureCount(meterRegistry, "sse") - sseFailedBefore)
+                    .as("SSE 발행 실패 증가량")
+                    .isZero();
+            softly.assertThat(savedCount(meterRegistry) - savedBefore)
+                    .as("알림 저장 성공 증가량")
+                    .isZero();
+            softly.assertThat(ssePublishedCount(meterRegistry) - ssePublishedBefore)
+                    .as("SSE 발행 성공 증가량")
+                    .isZero();
+        });
     }
 
     @ParameterizedTest(name = "{0} → {1}")
@@ -610,6 +774,9 @@ class NotificationIntegrationTest {
     void savesNotificationAfterActualRoleChangeCommits(Role previousRole, Role newRole){
         // 초기 권한은 JDBC로 준비하여 검증 대상 변경 외에 권한 변경 이벤트가 발생하지 않게 한다.
         jdbcTemplate.update("UPDATE users SET role = ? WHERE id = ?",previousRole.name(), RECEIVER_ID);
+
+        double attemptsBefore = publishAttempts(meterRegistry, "user_role_changed");
+        long processedBefore = processingCount(meterRegistry, "user_role_changed");
 
         transactionTemplate.executeWithoutResult(status ->{
             userAdministrationService.updateRole(RECEIVER_ID, newRole);
@@ -624,6 +791,15 @@ class NotificationIntegrationTest {
         assertThat(saved.getReceiverId()).isEqualTo(RECEIVER_ID);
         assertThat(saved.getTitle()).isEqualTo("권한 변경");
         verify(sseEventPublisher).publish(any());
+
+        assertSoftly(softly -> {
+            softly.assertThat(publishAttempts(meterRegistry, "user_role_changed") - attemptsBefore)
+                    .as("알림 발행 시도 증가량")
+                    .isEqualTo(1.0);
+            softly.assertThat(processingCount(meterRegistry, "user_role_changed") - processedBefore)
+                    .as("알림 처리 시간 기록 증가량")
+                    .isEqualTo(1L);
+        });
     }
 
     @Test
@@ -631,6 +807,9 @@ class NotificationIntegrationTest {
     void savesNotificationAfterActualPlaylistSubscriptionCommits(){
         insertPlaylist();
         UUID subscriberId = FOLLOWER_ID;
+
+        double attemptsBefore = publishAttempts(meterRegistry, "playlist_subscribed");
+        long processedBefore = processingCount(meterRegistry, "playlist_subscribed");
 
         transactionTemplate.executeWithoutResult(status ->{
             playlistService.subscribe(PLAYLIST_ID, subscriberId);
@@ -649,6 +828,15 @@ class NotificationIntegrationTest {
         assertThat(saved.getReceiverId()).isEqualTo(RECEIVER_ID);
         assertThat(saved.getTitle()).isEqualTo("새로운 구독자");
         verify(sseEventPublisher).publish(any());
+
+        assertSoftly(softly -> {
+            softly.assertThat(publishAttempts(meterRegistry, "playlist_subscribed") - attemptsBefore)
+                    .as("알림 발행 시도 증가량")
+                    .isEqualTo(1.0);
+            softly.assertThat(processingCount(meterRegistry, "playlist_subscribed") - processedBefore)
+                    .as("알림 처리 시간 기록 증가량")
+                    .isEqualTo(1L);
+        });
     }
 
     @Test
@@ -665,8 +853,8 @@ class NotificationIntegrationTest {
 
         assertThat(applicationEvents.stream(UserRoleChangedEvent.class))
                 .containsExactly(new UserRoleChangedEvent(RECEIVER_ID, Role.USER, Role.ADMIN));
-        assertThat(applicationEvents.stream(NotificationCreateRequestedEvent.class))
-                .isEmpty();
+        assertThat(notificationTasks.hasSubmittedTasks()).isFalse();
+        verifyNoInteractions(notificationEventListener);
         assertThat(notificationRepository.count()).isZero();
         verifyNoInteractions(sseEventPublisher);
     }
@@ -695,10 +883,50 @@ class NotificationIntegrationTest {
 
         assertThat(applicationEvents.stream(PlaylistSubscribedEvent.class))
                 .containsExactly(new PlaylistSubscribedEvent(PLAYLIST_ID, "퇴근 후 영화", RECEIVER_ID, subscriberId, "홍길동"));
-        assertThat(applicationEvents.stream(NotificationCreateRequestedEvent.class))
-                .isEmpty();
+        assertThat(notificationTasks.hasSubmittedTasks()).isFalse();
+        verifyNoInteractions(notificationEventListener);
         assertThat(notificationRepository.count()).isZero();
         verifyNoInteractions(sseEventPublisher);
+    }
+
+    @Test
+    @DisplayName("트랜잭션 밖의 시청 시작 이벤트로 팔로워 알림을 저장하고 SSE 발행을 요청한다.")
+    void savesWatchSessionNotificationWithoutTransaction(){
+        UUID watcherId = RECEIVER_ID;
+        UUID followerId = FOLLOWER_ID;
+
+        insertFollow(followerId, watcherId);
+
+        eventPublisher.publishEvent(new WatchingSessionStartedEvent(
+                watcherId, "홍길동", UUID.randomUUID(), "인터스텔라"));
+
+        Notification saved = findOnlyNotification();
+        assertThat(saved.getReceiverId()).isEqualTo(followerId);
+        verify(sseEventPublisher).publish(any());
+    }
+
+    @Test
+    @DisplayName("시청 시작 이벤트를 발행한 트랜잭션이 롤백되면 알림 작업을 제출하지 않는다.")
+    void ignoresWatchingSessionStartedEventWhenTransactionRollsBack(){
+        insertFollow(FOLLOWER_ID, RECEIVER_ID);
+        WatchingSessionStartedEvent event = new WatchingSessionStartedEvent(RECEIVER_ID, "홍길동", UUID.randomUUID(), "인터스텔라");
+
+        transactionTemplate.executeWithoutResult(status ->{
+            eventPublisher.publishEvent(event);
+            assertThat(notificationTasks.hasSubmittedTasks()).isFalse();
+            status.setRollbackOnly();
+        });
+
+        assertThat(notificationTasks.hasSubmittedTasks()).isFalse();
+        assertThat(notificationRepository.count()).isZero();
+        verifyNoInteractions(sseEventPublisher);
+    }
+
+    private void insertFollow(UUID followerId, UUID watcherId) {
+        jdbcTemplate.update("""
+            INSERT INTO follows (id, follower_id, followee_id, created_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        """, UUID.randomUUID(), followerId, watcherId);
     }
 
     private NotificationCreateRequestedEvent event(UUID receiverId, String title, NotificationLevel level) {
@@ -711,6 +939,7 @@ class NotificationIntegrationTest {
     }
 
     private Notification findOnlyNotification() {
+        notificationTasks.awaitCompletion();
         // 테스트 전체를 감싸는 영속성 컨텍스트 없이 커밋된 데이터를 다시 조회한다.
         List<Notification> notifications = notificationRepository.findAll();
         assertThat(notifications).hasSize(1);
@@ -736,5 +965,4 @@ class NotificationIntegrationTest {
             VALUES (?, ?, '퇴근 후 영화', '알림 연동 테스트', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         """, PLAYLIST_ID, RECEIVER_ID);
     }
-
 }

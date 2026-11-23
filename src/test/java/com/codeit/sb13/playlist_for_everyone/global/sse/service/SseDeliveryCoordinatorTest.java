@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.global.sse.service;
 
 import com.codeit.sb13.playlist_for_everyone.global.sse.config.SseRetryProperties;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
+import com.codeit.sb13.playlist_for_everyone.global.sse.event.LoginSession;
 import com.codeit.sb13.playlist_for_everyone.global.sse.history.SseHistoryPosition;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.impl.InMemorySseEmitterRepository;
@@ -48,6 +49,8 @@ import static org.mockito.Mockito.*;
 @DisplayName("SSE 복구·실시간 전송 조정")
 class SseDeliveryCoordinatorTest {
 
+    private final LoginSession loginSession = new LoginSession(UUID.randomUUID());
+
     @Mock
     private SseRecoveryService recoveryService;
 
@@ -86,7 +89,7 @@ class SseDeliveryCoordinatorTest {
     @Test
     @DisplayName("등록한 연결의 에미터와 사용자·마지막 이벤트 ID로 복구를 요청한다.")
     void recoverDelegatesWithRegisteredEmitterAndLastEventId(){
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         coordinator.recover(userId, connection, lastEventId);
 
         verify(recoveryService).recover(eq(userId), same(emitter), eq(lastEventId));
@@ -95,7 +98,7 @@ class SseDeliveryCoordinatorTest {
     @Test
     @DisplayName("마지막 이벤트 ID가 없어도 등록한 연결의 복구를 요청한다.")
     void recoverDelegatesWithoutLastEventId(){
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         coordinator.recover(userId, connection, null);
 
         verify(recoveryService)
@@ -109,8 +112,8 @@ class SseDeliveryCoordinatorTest {
         SseEmitter secondEmitter = mock(SseEmitter.class);
         UUID secondLastEventId = UUID.randomUUID();
 
-        coordinator.register(userId, connection, emitter);
-        coordinator.register(userId, secondConnection, secondEmitter);
+        coordinator.register(userId, connection, emitter, loginSession);
+        coordinator.register(userId, secondConnection, secondEmitter, loginSession);
 
         coordinator.recover(userId, connection, lastEventId);
         coordinator.recover(userId, secondConnection, secondLastEventId);
@@ -128,8 +131,8 @@ class SseDeliveryCoordinatorTest {
         SseEmitter secondEmitter = mock(SseEmitter.class);
         UUID secondLastEventId = UUID.randomUUID();
 
-        coordinator.register(userId, connection, emitter);
-        coordinator.register(userId, secondConnection, secondEmitter);
+        coordinator.register(userId, connection, emitter, loginSession);
+        coordinator.register(userId, secondConnection, secondEmitter, loginSession);
 
         coordinator.cleanupConnection(userId, connection);
         coordinator.recover(userId, connection, lastEventId);
@@ -152,7 +155,7 @@ class SseDeliveryCoordinatorTest {
         when(recoveryService.recover(userId, emitter, lastEventId))
                 .thenReturn(upperBound);
 
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         coordinator.recover(userId, connection, lastEventId);
         coordinator.requestDelivery(userId, connection);
 
@@ -165,7 +168,7 @@ class SseDeliveryCoordinatorTest {
         when(recoveryService.recover(userId, emitter, lastEventId))
                 .thenReturn(null);
 
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         coordinator.recover(userId, connection, lastEventId);
         coordinator.requestDelivery(userId, connection);
 
@@ -188,7 +191,7 @@ class SseDeliveryCoordinatorTest {
         when(recoveryService.recoverAfter(userId, connection, emitter, nextPosition))
                 .thenReturn(nextPosition);
 
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         coordinator.recover(userId, connection, lastEventId);
 
         coordinator.requestDelivery(userId, connection);
@@ -227,8 +230,8 @@ class SseDeliveryCoordinatorTest {
         when(recoveryService.recoverAfter(userId, secondConnection, secondEmitter, secondPosition))
                 .thenReturn(secondPosition);
 
-        coordinator.register(userId, connection, emitter);
-        coordinator.register(userId, secondConnection, secondEmitter);
+        coordinator.register(userId, connection, emitter, loginSession);
+        coordinator.register(userId, secondConnection, secondEmitter, loginSession);
 
         coordinator.recover(userId, connection,lastEventId);
         coordinator.recover(userId, secondConnection, secondLastEventId);
@@ -244,7 +247,7 @@ class SseDeliveryCoordinatorTest {
     @Test
     @DisplayName("연결 등록 후 복구를 시작하기 전에는 후속 전송을 즉시 실행하지 않는다.")
     void doesNotDeliverBeforeRecoveryStarts(){
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         coordinator.requestDelivery(userId, connection);
 
         verifyNoInteractions(recoveryService);
@@ -269,8 +272,8 @@ class SseDeliveryCoordinatorTest {
         when(recoveryService.recoverAfter(userId, secondConnection, secondEmitter, secondPosition))
                 .thenReturn(secondPosition);
 
-        coordinator.register(userId, connection, emitter);
-        coordinator.register(userId, secondConnection, secondEmitter);
+        coordinator.register(userId, connection, emitter, loginSession);
+        coordinator.register(userId, secondConnection, secondEmitter, loginSession);
 
         coordinator.recover(userId, connection, lastEventId);
         coordinator.recover(userId, secondConnection, secondLastEventId);
@@ -300,7 +303,7 @@ class SseDeliveryCoordinatorTest {
         when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
                 .thenReturn(upperBound);
 
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         coordinator.requestDelivery(userId, connection);
 
         verifyNoInteractions(recoveryService);
@@ -321,7 +324,7 @@ class SseDeliveryCoordinatorTest {
         when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
                 .thenReturn(upperBound);
 
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
 
         coordinator.requestDelivery(userId, connection);
         coordinator.requestDelivery(userId, connection);
@@ -352,7 +355,7 @@ class SseDeliveryCoordinatorTest {
         when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
                 .thenReturn(upperBound);
 
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         coordinator.recover(userId, connection, lastEventId);
 
         verify(recoveryService)
@@ -367,7 +370,7 @@ class SseDeliveryCoordinatorTest {
         when(recoveryService.recover(userId, emitter, lastEventId))
                 .thenThrow(failure);
 
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         coordinator.requestDelivery(userId, connection);
 
         assertThatThrownBy(() -> coordinator.recover(userId, connection, lastEventId))
@@ -399,7 +402,7 @@ class SseDeliveryCoordinatorTest {
         when(recoveryService.recoverAfter(userId, connection, emitter, nextPosition))
                 .thenReturn(nextPosition);
 
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         coordinator.recover(userId, connection, lastEventId);
         coordinator.requestDelivery(userId, connection);
         ArgumentCaptor<SseHistoryPosition> positionCaptor = ArgumentCaptor.forClass(SseHistoryPosition.class);
@@ -432,7 +435,7 @@ class SseDeliveryCoordinatorTest {
         when(recoveryService. recoverAfter(userId, connection, emitter, nextPosition))
                 .thenReturn(nextPosition);
 
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         coordinator.recover(userId, connection, lastEventId);
         coordinator.requestDelivery(userId, connection);
 
@@ -461,7 +464,7 @@ class SseDeliveryCoordinatorTest {
                 })
                 .thenReturn(upperBound);
 
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         coordinator.recover(userId, connection, lastEventId);
 
         assertThatThrownBy(() -> coordinator.requestDelivery(userId, connection))
@@ -495,7 +498,7 @@ class SseDeliveryCoordinatorTest {
                 .thenThrow(historyFailure)
                 .thenThrow(failure);
 
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         coordinator.recover(userId, connection, lastEventId);
 
         assertThatCode(() -> coordinator.requestDelivery(userId, connection))
@@ -536,7 +539,7 @@ class SseDeliveryCoordinatorTest {
                     return nextPosition;
                 });
 
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         coordinator.recover(userId, connection, lastEventId);
         coordinator.requestDelivery(userId, connection);
         coordinator.requestDelivery(userId, connection);
@@ -562,7 +565,7 @@ class SseDeliveryCoordinatorTest {
                     return upperBound;
                 });
 
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         coordinator.recover(userId, connection, lastEventId);
         coordinator.requestDelivery(userId, connection);
 
@@ -598,7 +601,7 @@ class SseDeliveryCoordinatorTest {
         when(recoveryService.recoverAfter(userId, connection, emitter, nextPosition))
                 .thenReturn(nextPosition);
 
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         coordinator.recover(userId, connection, lastEventId);
 
         ExecutorService executor = Executors.newFixedThreadPool(2);
@@ -652,7 +655,7 @@ class SseDeliveryCoordinatorTest {
 
         when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
                 .thenReturn(upperBound);
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
 
         ExecutorService executor = Executors.newFixedThreadPool(2);
 
@@ -717,8 +720,8 @@ class SseDeliveryCoordinatorTest {
         when(recoveryService.recoverAfter(userId, secondConnection, secondEmitter, secondPosition))
                 .thenReturn(secondPosition);
 
-        coordinator.register(userId, connection, emitter);
-        coordinator.register(userId, secondConnection, secondEmitter);
+        coordinator.register(userId, connection, emitter, loginSession);
+        coordinator.register(userId, secondConnection, secondEmitter, loginSession);
         coordinator.recover(userId, connection, lastEventId);
         coordinator.recover(userId, secondConnection, secondLastEventId);
 
@@ -777,7 +780,7 @@ class SseDeliveryCoordinatorTest {
                     return nextPosition;
                 });
 
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         coordinator.recover(userId, connection, lastEventId);
 
         ExecutorService executor = Executors.newFixedThreadPool(2);
@@ -836,7 +839,7 @@ class SseDeliveryCoordinatorTest {
         when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
                 .thenThrow(failure);
 
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         coordinator.recover(userId, connection, lastEventId);
 
         assertThatCode(() -> coordinator.requestDelivery(userId, connection))
@@ -873,7 +876,7 @@ class SseDeliveryCoordinatorTest {
         when(recoveryService.recoverAfter(userId, connection, emitter, nextPosition))
                 .thenReturn(nextPosition);
 
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         coordinator.recover(userId, connection, lastEventId);
 
         assertThatCode(() -> coordinator.requestDelivery(userId, connection))
@@ -923,7 +926,7 @@ class SseDeliveryCoordinatorTest {
         when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
                 .thenThrow(failure);
 
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         coordinator.recover(userId, connection, lastEventId);
 
         assertThatCode(() -> coordinator.requestDelivery(userId, connection))
@@ -989,7 +992,7 @@ class SseDeliveryCoordinatorTest {
         when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
                 .thenThrow(failure);
 
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         coordinator.recover(userId, connection, lastEventId);
 
         assertThatCode(() -> coordinator.requestDelivery(userId, connection))
@@ -1049,7 +1052,7 @@ class SseDeliveryCoordinatorTest {
         when(recoveryService.recoverAfter(userId, connection, emitter, nextPosition))
                 .thenThrow(failure);
 
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         coordinator.recover(userId, connection, lastEventId);
 
         assertThatCode(() -> coordinator.requestDelivery(userId, connection))
@@ -1108,7 +1111,7 @@ class SseDeliveryCoordinatorTest {
         when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
                 .thenThrow(failure);
 
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         coordinator.recover(userId, connection, lastEventId);
 
         assertThatCode(() -> {
@@ -1152,7 +1155,7 @@ class SseDeliveryCoordinatorTest {
         when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
                 .thenThrow(failure);
 
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         coordinator.recover(userId, connection, lastEventId);
 
         assertThatCode(() -> coordinator.requestDelivery(userId, connection))
@@ -1215,8 +1218,8 @@ class SseDeliveryCoordinatorTest {
                 userId, secondConnection, secondEmitter, secondPosition
         )).thenReturn(secondPosition);
 
-        coordinator.register(userId, connection, emitter);
-        coordinator.register(userId, secondConnection, secondEmitter);
+        coordinator.register(userId, connection, emitter, loginSession);
+        coordinator.register(userId, secondConnection, secondEmitter, loginSession);
 
         coordinator.recover(userId, connection, lastEventId);
         coordinator.recover(userId, secondConnection, secondLastEventId);
@@ -1275,7 +1278,7 @@ class SseDeliveryCoordinatorTest {
         when(recoveryService.recoverAfter(userId, connection, emitter, upperBound))
                 .thenThrow(failure);
 
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         coordinator.recover(userId, connection, lastEventId);
 
         assertThatCode(() -> coordinator.requestDelivery(userId, connection))
@@ -1348,7 +1351,7 @@ class SseDeliveryCoordinatorTest {
                 .thenThrow(failure)
                 .thenReturn(finalPosition);
 
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         coordinator.recover(userId, connection, lastEventId);
 
         assertThatCode(() -> coordinator.requestDelivery(userId, connection))
@@ -1416,8 +1419,8 @@ class SseDeliveryCoordinatorTest {
         when(recoveryService.recoverAfter(userId, secondConnection, secondEmitter, nextPosition))
                 .thenReturn(nextPosition);
 
-        coordinator.register(userId, connection, emitter);
-        coordinator.register(userId, secondConnection, secondEmitter);
+        coordinator.register(userId, connection, emitter, loginSession);
+        coordinator.register(userId, secondConnection, secondEmitter, loginSession);
         coordinator.recover(userId, connection, lastEventId);
         coordinator.recover(userId, secondConnection, secondLastEventId);
 
@@ -1454,7 +1457,7 @@ class SseDeliveryCoordinatorTest {
     @Test
     @DisplayName("연결 종료를 요청하면 종료 처리를 위임하고 이후 복구와 전송을 수행하지 않는다.")
     void closeConnectionDelegatesClosureAndPreventsFurtherDelivery(){
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
 
         coordinator.closeConnection(userId, connection);
 
@@ -1472,9 +1475,9 @@ class SseDeliveryCoordinatorTest {
         SseHistoryPosition position = createHistoryPosition();
         when(recoveryService.recover(userId, emitter, lastEventId)).thenReturn(position);
 
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         coordinator.recover(userId, connection, lastEventId);
-        assertThatThrownBy(() -> coordinator.register(userId, connection, replacementEmitter))
+        assertThatThrownBy(() -> coordinator.register(userId, connection, replacementEmitter, loginSession))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("이미 등록된 SSE 연결입니다.");
 
@@ -1487,7 +1490,7 @@ class SseDeliveryCoordinatorTest {
     @Test
     @DisplayName("연결을 정리하면 HTTP 종료 요청 없이 저장소 정리를 위임하고 이후 복구와 전송을 수행하지 않는다.")
     void cleanupConnectionPreventsFurtherDeliveryWithoutClosingEmitter(){
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         coordinator.cleanupConnection(userId, connection);
 
         coordinator.recover(userId, connection, lastEventId);
@@ -1502,7 +1505,7 @@ class SseDeliveryCoordinatorTest {
     @Test
     @DisplayName("조정기 등록은 저장소에 emitter를 공개하고 저장소의 객체로 초기 복구한다.")
     void registrationPublishesEmitterAndRecoveryUsesRepository(){
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         assertThat(repository.findByUserIdAndConnection(userId, connection)).containsSame(emitter);
         coordinator.recover(userId, connection, lastEventId);
         verify(recoveryService).recover(userId, emitter, lastEventId);
@@ -1511,7 +1514,7 @@ class SseDeliveryCoordinatorTest {
     @Test
     @DisplayName("초기 복구 전에 저장소 연결이 사라지면 이력 조회를 수행하지 않는다.")
     void missingEmitterPreventsInitialRecovery(){
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         repository.delete(userId, connection);
         coordinator.recover(userId, connection, lastEventId);
         coordinator.requestDelivery(userId, connection);
@@ -1521,7 +1524,7 @@ class SseDeliveryCoordinatorTest {
     @Test
     @DisplayName("후속 전송 전에 저장소 연결이 사라지면 이력 조회를 수행하지 않는다.")
     void missingEmitterPreventsSubsequentDelivery(){
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         coordinator.recover(userId, connection, lastEventId);
         repository.delete(userId, connection);
         coordinator.requestDelivery(userId, connection);
@@ -1534,8 +1537,8 @@ class SseDeliveryCoordinatorTest {
     @DisplayName("저장소 등록 실패 시 새 상태를 취소하고 기존 저장소 연결은 유지한다.")
     void failedRepositoryRegistrationRemovesOnlyNewState(){
         SseEmitter existingEmitter = mock(SseEmitter.class);
-        repository.save(userId, connection, existingEmitter);
-        assertThatThrownBy(() -> coordinator.register(userId, connection, emitter))
+        repository.save(userId, connection, existingEmitter, loginSession);
+        assertThatThrownBy(() -> coordinator.register(userId, connection, emitter, loginSession))
                 .isInstanceOf(IllegalStateException.class);
         coordinator.recover(userId, connection, lastEventId);
         coordinator.requestDelivery(userId, connection);
@@ -1553,7 +1556,7 @@ class SseDeliveryCoordinatorTest {
                 .thenThrow(new DataAccessResourceFailureException("테스트용 조회 실패"));
         when(retryTaskScheduler.getClock()).thenReturn(Clock.systemUTC());
         doReturn(retryFuture).when(retryTaskScheduler).schedule(any(Runnable.class), any(Instant.class));
-        coordinator.register(userId, connection, emitter);
+        coordinator.register(userId, connection, emitter, loginSession);
         coordinator.recover(userId, connection, lastEventId);
         coordinator.requestDelivery(userId, connection);
         ArgumentCaptor<Runnable> taskCaptor = ArgumentCaptor.forClass(Runnable.class);
@@ -1593,10 +1596,10 @@ class SseDeliveryCoordinatorTest {
             registrationStarted.countDown();
             assertThat(allowRegistration.await(5, TimeUnit.SECONDS)).isTrue();
             return invocation.callRealMethod();
-        }).when(slowRepository).save(userId, connection, emitter);
+        }).when(slowRepository).save(userId, connection, emitter, loginSession);
         ExecutorService executor = Executors.newFixedThreadPool(2);
         try {
-            Future<?> registration = executor.submit(() -> registeringCoordinator.register(userId, connection, emitter));
+            Future<?> registration = executor.submit(() -> registeringCoordinator.register(userId, connection, emitter, loginSession));
             assertThat(registrationStarted.await(5, TimeUnit.SECONDS)).isTrue();
             Future<?> recovery = executor.submit(() -> {
                 recoveryRequested.countDown();
@@ -1622,7 +1625,7 @@ class SseDeliveryCoordinatorTest {
     @Test
     @DisplayName("조정기 상태가 이미 없어도 저장소에 남은 일치하는 연결의 정리를 위임한다.")
     void cleanupWithoutStateStillDelegatesRepositoryCleanup(){
-        repository.save(userId, connection, emitter);
+        repository.save(userId, connection, emitter, loginSession);
         coordinator.cleanupConnection(userId, connection);
         verify(connectionCloser).cleanUp(userId, connection);
         verifyNoInteractions(recoveryService, retryTaskScheduler);

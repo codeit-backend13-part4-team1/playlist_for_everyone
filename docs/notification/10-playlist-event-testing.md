@@ -7,7 +7,8 @@
 
 | 테스트 | 실제로 검증하는 것 | 대체하거나 포함하지 않는 것 |
 | --- | --- | --- |
-| [NotificationDomainEventListenerTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/notification/event/listener/NotificationDomainEventListenerTest.java) | 수신자·문구·수준, 중복·행위자 제외, 조회·재발행 실패 처리 | 발행자와 수신자 조회는 Mock. 리스너 직접 호출이므로 트랜잭션 실행 없음 |
+| [NotificationDomainEventListenerTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/notification/event/listener/NotificationDomainEventListenerTest.java) | 수신자·문구·수준, 중복·행위자 제외, 조회 실패, 요청 목록 한 번 제출 | 프로세서와 수신자 조회는 Mock. 리스너 직접 호출이므로 트랜잭션 실행 없음 |
+| [NotificationAsyncProcessorTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/notification/event/NotificationAsyncProcessorTest.java) | 첫 요청 발행 실패를 기록하고 다음 요청을 순서대로 발행 | 이벤트 발행자는 Mock. 프로세서의 발행 로직을 직접 검증 |
 | [NotificationPlaylistIntegrationTest](../../src/test/java/com/codeit/sb13/playlist_for_everyone/domain/notification/sse/NotificationPlaylistIntegrationTest.java) | 실제 서비스·PostgreSQL·Flyway, 업무 커밋·롤백, 알림 저장·커밋 후 SSE 발행 요청 | SSE 발행자는 Mock. 수신자 조회·알림 저장소는 Spy. Redis·HTTP 수신 검증 없음 |
 
 통합 테스트의 Spy는 기본적으로 실제 서비스를 조회하고 실제 DB에 저장합니다. 실패 사례에서만 예외를 유도합니다.
@@ -18,22 +19,21 @@
 
 | 시나리오 | 기대 결과 |
 | --- | --- |
-| 정상 수신자 조회 | 각 수신자에게 이벤트의 이름·제목을 사용한 INFO 알림 요청 |
-| 수신자 없음 | 요청 미발행 |
-| 중복 ID | 같은 조회 목록에서 한 수신자에게 한 번만 발행 |
+| 정상 수신자 조회 | 이벤트의 이름·제목을 사용한 수신자별 INFO 요청을 목록으로 만들어 한 번 제출 |
+| 수신자 없음 | 작업 미제출 |
+| 중복 ID | 같은 목록에 수신자별 요청 한 건만 포함 |
 | 행위자 포함 | 생성은 소유자, 콘텐츠 추가는 `actorId` 제외 |
 | 소유자 이름이 null·빈 문자열·공백 | 생성 알림의 이름을 `사용자`로 대체 |
-| 수신자 조회 실패 | 예외 미전파·발행 없음, 식별자·예외 타입 기록, 이름·제목·원본 메시지 제외 |
-| 첫 수신자의 재발행 실패 | 실패한 수신자를 기록하고 다음 수신자에게 계속 발행 |
+| 수신자 조회 실패 | 작업 미제출, 업무 식별자·예외 타입 기록 |
 
 단위 테스트는 기존 팔로우·권한 변경·구독 사례도 함께 포함합니다. 각 메서드의 한글 `DisplayName`으로 범위를 확인합니다.
-조회 실패 테스트도 리스너 메서드를 호출하여 로그와 미발행을 검증합니다.
-빈 목록으로 처리된 조회 실패도 식별자·예외 타입 로그가 남는지 함께 확인합니다.
+조회 실패 테스트는 리스너를 직접 호출해 작업이 제출되지 않는 것과 식별자·예외 타입 로그를 확인합니다.
 
 ## 실제 트랜잭션 검증 읽기
 
 테스트 전체에 `@Transactional`을 붙이지 않습니다. 커밋·롤백을 관찰하는 사례는 `TransactionTemplate`으로 업무 경계를 제어합니다.
 실패 처리 사례는 서비스 자체의 트랜잭션을 사용하며, 알림은 `REQUIRES_NEW`로 저장됩니다.
+저장·SSE 발행 결과는 `NotificationTaskTracker`로 알림 워커의 작업 완료를 기다린 뒤 확인합니다. 목록 전체가 거부되는 경우의 업무 커밋 보존은 [비동기 발행 계약 테스트](02-testing.md#테스트별-책임)에서 확인합니다.
 콘텐츠 추가 사례의 `@WithMockUser`는 기존 메서드 보안을 통과하기 위한 설정이며, 로그인 API나 JWT 검증은 수행하지 않습니다.
 
 | 두 업무에 공통으로 적용한 시나리오 | 기대 결과 |
@@ -62,14 +62,16 @@
 프로젝트 루트에서 단위 테스트만 실행합니다. Docker는 필요하지 않습니다.
 
 ```bash
-./gradlew test --tests '*NotificationDomainEventListenerTest' --no-daemon --console=plain
+./gradlew test --tests '*NotificationDomainEventListenerTest' \
+  --tests '*NotificationAsyncProcessorTest' --no-daemon --console=plain
 ```
 
-Docker를 실행한 뒤 두 테스트를 함께 확인합니다. 통합 테스트는 PostgreSQL 16 Testcontainers를 사용합니다.
+Docker를 실행한 뒤 단위 테스트와 실제 저장 검증을 함께 실행합니다. 통합 테스트는 PostgreSQL 16 Testcontainers를 사용합니다.
 로컬 DB·Redis·`.env.dev`는 필요하지 않으며, 최초 실행에는 이미지 다운로드가 필요할 수 있습니다.
 
 ```bash
 ./gradlew test --tests '*NotificationDomainEventListenerTest' \
+  --tests '*NotificationAsyncProcessorTest' \
   --tests '*NotificationPlaylistIntegrationTest' --no-daemon --console=plain
 ```
 
@@ -79,4 +81,4 @@ Docker를 실행한 뒤 두 테스트를 함께 확인합니다. 통합 테스�
 
 ---
 
-[← 이전: 플레이리스트 생성·콘텐츠 추가 알림](09-playlist-event-integration.md) · [알림 목차](README.md) · [공통 생성·전송 테스트](02-testing.md)
+[← 이전: 플레이리스트 생성·콘텐츠 추가 알림](09-playlist-event-integration.md) · [알림 목차](README.md) · [공통 생성·전송 테스트](02-testing.md) · [다음: DM 알림 연동 →](11-direct-message-integration.md)

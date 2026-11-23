@@ -258,6 +258,38 @@ class UserProfileImageIntegrationTest {
         assertThat(filesTable).isEqualTo("file_infos");
     }
 
+    @Test
+    @DisplayName("이름만 바꿔 저장해도 다른 곳에서 바꾼 잠금·권한·비밀번호를 덮어쓰지 않는다")
+    void 이름만_바꿔_저장해도_다른_곳에서_바꾼_잠금_권한_비밀번호를_덮어쓰지_않는다() {
+        User saved = userRepository.saveAndFlush(User.builder()
+                .email("concurrent@example.com")
+                .name("기존 이름")
+                .password("old-password")
+                .role(Role.ADMIN)
+                .build());
+        UUID userId = saved.getId();
+        entityManager.clear();
+
+        // 프로필 변경 트랜잭션이 사용자를 읽어 둔 상태
+        User loaded = userRepository.findWithProfileImageById(userId).orElseThrow();
+
+        // 그사이 관리자 잠금·권한 변경과 비밀번호 변경이 반영된 상황
+        jdbcTemplate.update(
+                "UPDATE users SET enabled = false, role = 'USER', password = 'new-password' WHERE id = ?",
+                userId
+        );
+
+        loaded.updateName("새 이름");
+        entityManager.flush();
+        entityManager.clear();
+
+        User result = userRepository.findById(userId).orElseThrow();
+        assertThat(result.getName()).isEqualTo("새 이름");
+        assertThat(result.isLocked()).isTrue();
+        assertThat(result.getRole()).isEqualTo(Role.USER);
+        assertThat(result.getPassword()).isEqualTo("new-password");
+    }
+
     private User createUser(String email) {
         return User.builder()
                 .email(email)

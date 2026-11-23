@@ -8,7 +8,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.WatchingSessionService;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.viewing.ViewingSessionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -35,7 +35,7 @@ class ContentSearchQueryServiceTest {
     private ContentRepository contentRepository;
 
     @Mock
-    private WatchingSessionService watchingSessionService;
+    private ViewingSessionService viewingSessionService;
 
     @Mock
     private ContentMapper contentMapper;
@@ -111,7 +111,7 @@ class ContentSearchQueryServiceTest {
 
         // then
         verify(contentRepository).searchByDatabase(condition);
-        verifyNoInteractions(watchingSessionService);
+        verifyNoInteractions(viewingSessionService);
     }
 
     @Test
@@ -144,11 +144,11 @@ class ContentSearchQueryServiceTest {
                         new ContentSearchResult(content3, 3.0, 1)
                 ));
 
-        given(watchingSessionService.getCurrentViewerCountWithContents(anyList()))
+        given(viewingSessionService.getCurrentViewerCountWithContents(anyList()))
                 .willReturn(Map.of(
-                        content1.getId().toString(), 5L,
-                        content2.getId().toString(), 30L,
-                        content3.getId().toString(), 15L
+                        content1.getId(), 5L,
+                        content2.getId(), 30L,
+                        content3.getId(), 15L
                 ));
 
         // when
