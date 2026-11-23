@@ -12,11 +12,14 @@ import org.springframework.web.client.RestClient;
 public class TmdbClient {
 
     private final RestClient restClient;
+    private final ExternalApiRetry externalApiRetry;
 
     public TmdbClient(
-            @Qualifier("tmdbRestClient") RestClient restClient
+            @Qualifier("tmdbRestClient") RestClient restClient,
+            ExternalApiRetry externalApiRetry
     ) {
         this.restClient = restClient;
+        this.externalApiRetry = externalApiRetry;
     }
 
     /** 인기 영화 목록을 페이지별로 조회합니다. */
@@ -25,7 +28,7 @@ public class TmdbClient {
             throw new IllegalArgumentException("페이지 번호는 1 이상이어야 합니다.");
         }
 
-        return restClient.get()
+        return externalApiRetry.execute(() -> restClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path("/movie/popular")
                         .queryParam("language", "ko-KR")
@@ -33,7 +36,7 @@ public class TmdbClient {
                         .build())
                 .retrieve()
                 .body(new ParameterizedTypeReference<
-                        TmdbPageResponse<TmdbMovieResponse>>() {});
+                        TmdbPageResponse<TmdbMovieResponse>>() {}));
     }
 
     /** 인기 TV 프로그램 목록을 페이지별로 조회합니다. */
@@ -42,7 +45,7 @@ public class TmdbClient {
             throw new IllegalArgumentException("페이지 번호는 1 이상이어야 합니다.");
         }
 
-        return restClient.get()
+        return externalApiRetry.execute(() -> restClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path("/tv/popular")
                         .queryParam("language", "ko-KR")
@@ -50,6 +53,7 @@ public class TmdbClient {
                         .build())
                 .retrieve()
                 .body(new ParameterizedTypeReference<
-                        TmdbPageResponse<TmdbTvResponse>>() {});
+                        TmdbPageResponse<TmdbTvResponse>>() {}));
     }
+
 }

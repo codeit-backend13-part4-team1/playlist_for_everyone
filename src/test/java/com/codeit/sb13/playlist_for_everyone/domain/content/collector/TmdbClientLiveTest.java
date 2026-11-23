@@ -28,7 +28,7 @@ class TmdbClientLiveTest {
         var restClient = config.tmdbRestClient(
                 RestClient.builder(), properties
         );
-        var client = new TmdbClient(restClient);
+        var client = new TmdbClient(restClient, new ExternalApiRetry());
 
         // 실제 영화 조회
         var movies = client.getPopularMovies(1);

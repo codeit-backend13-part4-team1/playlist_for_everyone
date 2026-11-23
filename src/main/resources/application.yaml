@@ -50,6 +50,11 @@ spring:
       mail.smtp.timeout: 5000
       mail.smtp.writetimeout: 5000
 
+logging:
+  level:
+    # 재시도 원본 예외에 API 키가 포함될 수 있어 DEBUG 출력을 제한한다.
+    org.springframework.core.retry.RetryTemplate: INFO
+
 management:
   endpoints:
     web:

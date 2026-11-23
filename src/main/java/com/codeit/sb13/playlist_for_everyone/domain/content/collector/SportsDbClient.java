@@ -7,6 +7,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.net.ConnectException;
 import java.net.UnknownHostException;
@@ -18,11 +19,14 @@ import java.nio.channels.UnresolvedAddressException;
 public class SportsDbClient {
 
     private final RestClient restClient;
+    private final ExternalApiRetry externalApiRetry;
 
     public SportsDbClient(
-            @Qualifier("sportsDbRestClient") RestClient restClient
+            @Qualifier("sportsDbRestClient") RestClient restClient,
+            ExternalApiRetry externalApiRetry
     ) {
         this.restClient = restClient;
+        this.externalApiRetry = externalApiRetry;
     }
 
     /** 리그와 시즌에 해당하는 경기 목록 조회 */
@@ -39,17 +43,29 @@ public class SportsDbClient {
         }
 
         try {
-            return restClient.get()
+            return externalApiRetry.execute(() -> restClient.get()
                     .uri(uriBuilder -> uriBuilder.path("/eventsseason.php")
                             .queryParam("id", leagueId)
                             .queryParam("s", season)
                             .build())
                     .retrieve()
-                    .body(SportsDbEventsResponse.class);
+                    .body(SportsDbEventsResponse.class));
 
         } catch (ResourceAccessException e) {
             String code = networkErrorCode(e);
             throw new ResourceAccessException("TheSportsDB 요청 실패: " + code);
+
+        } catch (RestClientResponseException e) {
+            // 상태 코드는 유지하고 키가 포함될 수 있는 응답 정보는 제외한다.
+            throw new RestClientResponseException(
+                    "TheSportsDB 요청 실패: HTTP_" + e.getStatusCode().value(),
+                    e.getStatusCode(),
+                    "",
+                    null,
+                    null,
+                    null
+            );
+
         } catch (RestClientException e) {
             if (e.contains(SocketTimeoutException.class)
                     || e.contains(HttpTimeoutException.class)) {
@@ -57,9 +73,9 @@ public class SportsDbClient {
                         "TheSportsDB 요청 실패: TIMEOUT"
                 );
             }
-
             throw e;
         }
+
     }
 
     private String networkErrorCode(ResourceAccessException e) {
