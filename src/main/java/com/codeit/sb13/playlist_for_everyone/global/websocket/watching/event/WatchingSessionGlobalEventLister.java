@@ -20,6 +20,7 @@ public class WatchingSessionGlobalEventLister {
     private final RedisTemplate<String, Object> redisTemplate;
     private final RedisBrokerRegister broker;
     private final WatchingSessionContentDeleteEventListener contentDelete;
+    private final WatchingSessionDeleteEventPublisher publisher;
 
     @PostConstruct
     public void setup(){
@@ -28,9 +29,9 @@ public class WatchingSessionGlobalEventLister {
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onContentsDelete(WatchingSessionContentDeleteEvent event) {
-        redisTemplate.convertAndSend(
+        publisher.publish(
                 contentDelete.topic(),
-                event.contentId().toString()
+                event.contentId()
         );
     }
 
