@@ -12,6 +12,7 @@ public enum ApiErrorCode {
 
     //AUTH A
     PASSWORD_RESET_TOO_MANY_REQUESTS("A_001", HttpStatus.TOO_MANY_REQUESTS, "비밀번호 초기화 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."),
+    PASSWORD_RESET_NOT_ALLOWED("A_002", HttpStatus.BAD_REQUEST, "소셜 로그인으로 가입한 계정은 비밀번호를 초기화할 수 없습니다."),
 
     //CONTENT C
     CONTENT_NOT_FOUND("C_001", HttpStatus.NOT_FOUND, "콘텐츠를 찾을 수 없습니다."),
