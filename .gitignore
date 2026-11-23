@@ -50,3 +50,5 @@ report/
 report_*/
 *.jtl
 loadtest/data/
+loadtest/scripts/update_review_params.py
+loadtest/scripts/check_content_search_cache.py
