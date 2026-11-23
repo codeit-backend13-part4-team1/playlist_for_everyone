@@ -10,6 +10,7 @@ public interface WatchingSessionService {
     void leaveViewerSession(String sessionId, String subscriptionId, SecurityUser auth);
     void joinChattingSession(String sessionId, String subscriptionId, String destination, SecurityUser auth);
     void leaveChattingSession(String sessionId, String subscriptionId, SecurityUser auth);
+    void sendChatMessage(UUID contentId, UUID userId, String message);
     void cleanUpWithSessionId(String sessionId);
     void cleanUpWithContentId(UUID contentId);
 }

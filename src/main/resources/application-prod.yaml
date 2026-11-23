@@ -45,6 +45,16 @@ everyone:
   jwt:
     refresh-cookie-secure: true
 
+  oauth2:
+    # 제공자 콘솔에 등록한 운영 주소. 마지막 / 없이 지정하며 누락되면 기동에 실패한다.
+    redirect-base-url: ${EVERYONE_OAUTH2_REDIRECT_BASE_URL}
+    google:
+      client-id: ${EVERYONE_OAUTH2_GOOGLE_CLIENT_ID}
+      client-secret: ${EVERYONE_OAUTH2_GOOGLE_CLIENT_SECRET}
+    kakao:
+      client-id: ${EVERYONE_OAUTH2_KAKAO_CLIENT_ID}
+      client-secret: ${EVERYONE_OAUTH2_KAKAO_CLIENT_SECRET}
+
   sse:
     history:
       key-prefix: ${EVERYONE_SSE_HISTORY_KEY_PREFIX:everyone:prod:sse:history}

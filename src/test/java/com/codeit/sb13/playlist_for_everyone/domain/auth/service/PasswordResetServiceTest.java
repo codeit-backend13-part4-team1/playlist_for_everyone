@@ -8,6 +8,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.TemporaryPas
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
+import com.codeit.sb13.playlist_for_everyone.global.exception.auth.PasswordResetNotAllowedException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.auth.PasswordResetTooManyRequestsException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import org.junit.jupiter.api.DisplayName;
@@ -239,6 +240,20 @@ class PasswordResetServiceTest {
                                 .isBetween(2990L, 3000L));
     }
 
+    @Test
+    @DisplayName("비밀번호가 없는 소셜 가입 계정이면 거부하고 아무것도 발급하지 않는다.")
+    void 비밀번호가_없는_소셜_가입_계정이면_거부하고_아무것도_발급하지_않는다() {
+        givenSocialUserExists();
+
+        assertThatThrownBy(() -> passwordResetService.resetPassword(EMAIL))
+                .isInstanceOf(PasswordResetNotAllowedException.class);
+
+        // 락을 잡거나 발급 제한을 확인하기 전에 끝나야 한다.
+        verify(userRepository, never()).findByIdForUpdate(any());
+        verifyNoInteractions(temporaryPasswordRepository, temporaryPasswordGenerator,
+                passwordEncoder, passwordResetMailSender);
+    }
+
 
     private void givenUserExists() {
         User user = User.builder()
@@ -263,6 +278,17 @@ class PasswordResetServiceTest {
         given(temporaryPasswordRepository
                 .findTop5ByUserIdAndCreatedAtAfterOrderByCreatedAtDesc(eq(USER_ID), any(LocalDateTime.class)))
                 .willReturn(issues);
+    }
+
+    private void givenSocialUserExists() {
+        User user = User.builder()
+                .email(EMAIL)
+                .name("소셜 사용자")
+                .password(null)
+                .role(Role.USER)
+                .build();
+        ReflectionTestUtils.setField(user, "id", USER_ID);
+        given(userRepository.findByEmail(EMAIL)).willReturn(Optional.of(user));
     }
 
 }

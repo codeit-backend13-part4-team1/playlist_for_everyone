@@ -5,10 +5,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtProperties;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
-import com.codeit.sb13.playlist_for_everyone.domain.auth.security.JwtAuthenticationFailureHandler;
-import com.codeit.sb13.playlist_for_everyone.domain.auth.security.JwtAuthenticationSuccessHandler;
-import com.codeit.sb13.playlist_for_everyone.domain.auth.security.JwtLogoutSuccessHandler;
-import com.codeit.sb13.playlist_for_everyone.domain.auth.security.RefreshTokenCookieFactory;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.security.*;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.AuthService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.ApiErrorResponse;
@@ -52,11 +49,10 @@ public class SecurityConfig {
                                                    AuthenticationManager authenticationManager,
                                                    ObjectMapper objectMapper,
                                                    Environment environment,
-                                                   RefreshTokenRepository refreshTokenRepository,
                                                    JwtProperties jwtProperties,
                                                    AuthService authService,
                                                    UserSessionRepository userSessionRepository,
-                                                   ApplicationEventPublisher eventPublisher,
+                                                   LoginSessionIssuer loginSessionIssuer,
                                                    RefreshTokenCookieFactory refreshTokenCookieFactory) throws Exception{
 
         // 인증 정보가 없거나 JWT 검증에 실패한 경우의 응답이다.
@@ -95,13 +91,10 @@ public class SecurityConfig {
         JwtAuthenticationFilter jwtAuthenticationFilter =
                 new JwtAuthenticationFilter(jwtTokenProvider, userService, userSessionRepository, authenticationEntryPoint);
 
-        // JWT 발급, Redis 저장 TTL, 쿠키 보관 기간에 같은 유효기간을 사용한다.
-        // Secure 여부는 실행 환경의 설정으로 결정한다.
+        // 로그인 세션 시작은 공통 발급기가, 응답 작성은 핸들러가 담당한다.
         JwtAuthenticationSuccessHandler successHandler =
-                new JwtAuthenticationSuccessHandler(jwtTokenProvider, userService, objectMapper,
-                        refreshTokenRepository,userSessionRepository, eventPublisher,
-                        jwtProperties.refreshTokenValidity(), refreshTokenCookieFactory
-                );
+                new JwtAuthenticationSuccessHandler(loginSessionIssuer, userService, objectMapper,
+                        refreshTokenCookieFactory);
 
         // Refresh Token 삭제와 쿠키 만료, 로그아웃 응답을 담당한다.
         // 쿠키 삭제 시에도 로그인 때와 동일한 Secure 설정을 사용한다.
@@ -233,6 +226,20 @@ public class SecurityConfig {
     public RefreshTokenCookieFactory refreshTokenCookieFactory(JwtProperties jwtProperties,
                                                                @Value("${everyone.jwt.refresh-cookie-secure:true}") boolean refreshCookieSecure) {
         return new RefreshTokenCookieFactory(jwtProperties.refreshTokenValidity(), refreshCookieSecure);
+    }
+
+    /**
+     * 일반 로그인과 소셜 로그인이 같은 규칙으로 로그인 세션을 시작한다.
+     * 로그인 세션은 Refresh Token과 같은 기간 동안 유지된다.
+     */
+    @Bean
+    public LoginSessionIssuer loginSessionIssuer(JwtTokenProvider jwtTokenProvider,
+                                                 RefreshTokenRepository refreshTokenRepository,
+                                                 UserSessionRepository userSessionRepository,
+                                                 ApplicationEventPublisher eventPublisher,
+                                                 JwtProperties jwtProperties) {
+        return new LoginSessionIssuer(jwtTokenProvider, refreshTokenRepository,
+                userSessionRepository, eventPublisher, jwtProperties.refreshTokenValidity());
     }
 
 }
