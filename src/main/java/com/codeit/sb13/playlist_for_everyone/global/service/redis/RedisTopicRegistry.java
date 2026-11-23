@@ -188,6 +188,8 @@ public class RedisTopicRegistry {
     public void disconnectWithContentId(String topic){
         synchronized (locks.lock(topic)){
             Set<KeyPair> keyset = registerMap.get(topic);
+            if (keyset == null)
+                return;
             for (KeyPair key : keyset){
                 unregister(key);
             }

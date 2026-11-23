@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event;
 
 
+import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionRegisterException;
 import com.codeit.sb13.playlist_for_everyone.global.service.MatchRule;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.SessionInfo;
@@ -54,7 +55,9 @@ public class WatchingSessionEventListener {
             );
         } catch (RuntimeException e) {
             log.error("[{}] 비즈니스 로직 처리 중 에러 발생",
-                    this.getClass().getSimpleName());
+                    this.getClass().getSimpleName(),
+                    e);
+            throw new WebSocketSessionRegisterException(e);
         }
     }
 
@@ -75,7 +78,8 @@ public class WatchingSessionEventListener {
             );
         } catch (RuntimeException e) {
             log.error("[{}] 비즈니스 로직 처리 중 에러 발생",
-                    this.getClass().getSimpleName());
+                    this.getClass().getSimpleName(),
+                    e);
         }
     }
 
@@ -90,7 +94,8 @@ public class WatchingSessionEventListener {
             viewService.refresh(info.session());
         } catch (RuntimeException e) {
             log.error("[{}] 비즈니스 로직 처리 중 에러 발생",
-                    this.getClass().getSimpleName());
+                    this.getClass().getSimpleName(),
+                    e);
         }
     }
 
@@ -111,7 +116,9 @@ public class WatchingSessionEventListener {
             );
         } catch (RuntimeException e) {
             log.error("[{}] 비즈니스 로직 처리 중 에러 발생",
-                    this.getClass().getSimpleName());
+                    this.getClass().getSimpleName(),
+                    e);
+            throw new WebSocketSessionRegisterException(e);
         }
 
     }
@@ -131,7 +138,8 @@ public class WatchingSessionEventListener {
             );
         } catch (RuntimeException e) {
             log.error("[{}] 비즈니스 로직 처리 중 에러 발생",
-                    this.getClass().getSimpleName());
+                    this.getClass().getSimpleName(),
+                    e);
         }
     }
 
@@ -156,7 +164,8 @@ public class WatchingSessionEventListener {
             chatService.send(contentId, new RedisMessageDto<>(destination, event.message()));
         } catch (RuntimeException e) {
             log.error("[{}] 비즈니스 로직 처리 중 에러 발생",
-                    this.getClass().getSimpleName());
+                    this.getClass().getSimpleName(),
+                    e);
         }
     }
     /**
@@ -170,7 +179,8 @@ public class WatchingSessionEventListener {
             watchingSessionService.cleanUpWithSessionId(info.session());
         } catch (RuntimeException e) {
             log.error("[{}] 비즈니스 로직 처리 중 에러 발생",
-                    this.getClass().getSimpleName());
+                    this.getClass().getSimpleName(),
+                    e);
         }
     }
 
