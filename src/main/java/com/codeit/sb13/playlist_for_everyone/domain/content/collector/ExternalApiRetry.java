@@ -9,7 +9,9 @@ import org.springframework.web.client.RestClientResponseException;
 
 import java.net.ConnectException;
 import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
 import java.net.http.HttpTimeoutException;
+import java.nio.channels.UnresolvedAddressException;
 import java.time.Duration;
 import java.util.function.Supplier;
 
@@ -37,14 +39,16 @@ public class ExternalApiRetry {
         }
 
         if (exception instanceof ResourceAccessException e) {
+            if (e.contains(UnknownHostException.class)
+                    || e.contains(UnresolvedAddressException.class)) {
+                return false;
+            }
             return e.contains(ConnectException.class)
                     || isTimeout(e);
         }
-
         if (exception instanceof RestClientException e) {
             return isTimeout(e);
         }
-
         return false;
     }
 
