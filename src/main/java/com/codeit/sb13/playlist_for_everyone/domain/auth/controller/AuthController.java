@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.auth.controller;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.controller.swagger.AuthApi;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.dto.TokenReissueResult;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.dto.request.ResetPasswordRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.dto.response.JwtDto;
@@ -16,7 +17,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/auth")
-public class AuthController {
+public class AuthController implements AuthApi {
 
 
     private final AuthService authService;
@@ -36,6 +37,7 @@ public class AuthController {
      * Access Token은 JSON으로 반환하고
      * Refresh Token은 기존 쿠키를 교체하여 전달한다.
      */
+    @Override
     @PostMapping("/refresh")
     public ResponseEntity<JwtDto> reissue(@CookieValue(name = RefreshTokenCookieFactory.COOKIE_NAME, required = false) String refreshToken) {
         // 쿠키 누락과 빈 값은 서비스 호출 전에 인증 실패로 처리한다.
@@ -61,6 +63,7 @@ public class AuthController {
      *  토큰 생성과 쿠키 저장은 Spring Security가 담당하며,
      *  응답 본문 없이 204 상태를 반환한다.
      */
+    @Override
     @GetMapping("/csrf-token")
     public ResponseEntity<Void> issueCsrfToken(CsrfToken csrfToken) {
         csrfToken.getToken();
@@ -69,11 +72,13 @@ public class AuthController {
     }
 
     /**
-     * 임시 비밀번호를 발급해 이메일로 보낸다.
+     * 임시 비밀번호를 발급하고, 안내 메일은 발급이 커밋된 뒤 따로 보낸다.
      *
      * 기존 비밀번호는 바꾸지 않는다. 임시 비밀번호는 3분 동안 로그인에 사용할 수 있다.
+     * 204는 발급이 끝났다는 뜻이며 메일 도착까지 보장하지 않는다. 메일을 끝내 보내지 못하면 그 발급은 폐기된다.
      * 가입하지 않은 이메일이면 404를 반환한다.
      */
+    @Override
     @PostMapping("/reset-password")
     public ResponseEntity<Void> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
 
@@ -81,7 +86,4 @@ public class AuthController {
 
         return ResponseEntity.noContent().build();
     }
-
-
-
 }

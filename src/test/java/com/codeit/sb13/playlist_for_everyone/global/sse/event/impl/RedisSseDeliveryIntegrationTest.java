@@ -1,15 +1,19 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.event.impl;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.impl.RedisUserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.global.config.*;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisBrokerRegister;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
-import com.codeit.sb13.playlist_for_everyone.global.sse.event.LoginSession;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Event;
+import com.codeit.sb13.playlist_for_everyone.global.sse.event.LoginSession;
+import com.codeit.sb13.playlist_for_everyone.global.sse.event.RevokeEvent;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEventPublisher;
 import com.codeit.sb13.playlist_for_everyone.global.sse.history.impl.RedisSseHistoryStore;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.impl.InMemorySseEmitterRepository;
+import com.codeit.sb13.playlist_for_everyone.global.sse.scheduler.SseHeartbeatScheduler;
 import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseConnectionCloser;
 import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseDeliveryCoordinator;
 import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseDeliveryService;
@@ -24,9 +28,12 @@ import org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfigurat
 import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.dao.QueryTimeoutException;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -35,12 +42,16 @@ import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @SpringBootTest(
@@ -52,6 +63,10 @@ import static org.mockito.Mockito.*;
                 RedisSseEventPublisher.class,
                 RedisSseEventSubscriber.class,
                 RedisSseSubscription.class,
+                RedisRevokeEventSubscriber.class,
+                RedisRevokeEventPublisher.class,
+                RedisUserSessionRepository.class,
+                RetryConfig.class,
                 SseDeliveryService.class,
                 InMemorySseEmitterRepository.class,
                 SseEventPublisherConfig.class,
@@ -66,6 +81,7 @@ import static org.mockito.Mockito.*;
                 "everyone.sse.transport=redis",
                 "everyone.sse.subscription-enabled=true",
                 "everyone.sse.redis.channel=test:sse:delivery",
+                "everyone.sse.redis.revoke-channel=" + RedisSseDeliveryIntegrationTest.REVOKE_CHANNEL,
                 "everyone.sse.history.retention=10m",
                 "everyone.sse.history.max-events-per-user=10",
                 "everyone.sse.history.key-prefix=test:sse:delivery:history",
@@ -82,6 +98,8 @@ import static org.mockito.Mockito.*;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @DisplayName("Redis SSE 수신자 연결 전송 통합 테스트")
 public class RedisSseDeliveryIntegrationTest {
+
+    static final String REVOKE_CHANNEL = "test:sse:delivery:revocations";
 
     @Container
     static final GenericContainer<?> redis = new GenericContainer<>(
@@ -105,6 +123,18 @@ public class RedisSseDeliveryIntegrationTest {
 
     @Autowired
     private SseDeliveryCoordinator deliveryCoordinator;
+
+    @Autowired
+    private SseDeliveryService sseDeliveryService;
+
+    @Autowired
+    private UserSessionRepository userSessionRepository;
+
+    @Autowired
+    private RedisRevokeEventPublisher revokeEventPublisher;
+
+    @MockitoSpyBean
+    private StringRedisTemplate stringRedisTemplate;
 
     private final LoginSession loginSession = new LoginSession(UUID.randomUUID());
 
@@ -312,6 +342,94 @@ public class RedisSseDeliveryIntegrationTest {
         });
     }
 
+    @Test
+    @DisplayName("폐기 이벤트 발행이 세 번 실패하면 각 서버의 다음 하트비트에서 폐기된 연결을 닫는다.")
+    void closesRevokedConnectionsOnBothNodesAfterPublishRetriesAreExhausted() {
+        createAdditionalNodeRunner().run(contextB -> {
+            assertThat(contextB).hasNotFailed();
+
+            SseEmitterRepository repositoryOnB = contextB.getBean(SseEmitterRepository.class);
+            SseDeliveryCoordinator coordinatorOnB = contextB.getBean(SseDeliveryCoordinator.class);
+            SseDeliveryService serviceOnB = contextB.getBean(SseDeliveryService.class);
+            UUID userId = UUID.randomUUID();
+            Connection connectionOnA = Connection.create();
+            Connection connectionOnB = Connection.create();
+            SseEmitter emitterOnA = mock(SseEmitter.class);
+            SseEmitter emitterOnB = mock(SseEmitter.class);
+            LoginSession session = new LoginSession(userSessionRepository.start(userId, Duration.ofMinutes(1)).sessionId());
+
+            try {
+                deliveryCoordinator.register(userId, connectionOnA, emitterOnA, session);
+                coordinatorOnB.register(userId, connectionOnB, emitterOnB, session);
+                userSessionRepository.endIfCurrent(userId, session.id());
+                doThrow(new QueryTimeoutException("테스트용 Redis 폐기 메시지 발행 시간 초과"))
+                        .when(stringRedisTemplate).convertAndSend(eq(REVOKE_CHANNEL), anyString());
+
+                revokeEventPublisher.publish(new RevokeEvent<>(userId, session.id()));
+
+                verify(stringRedisTemplate, times(3)).convertAndSend(eq(REVOKE_CHANNEL), anyString());
+                assertThat(sseEmitterRepository.findByUserIdAndConnection(userId, connectionOnA)).contains(emitterOnA);
+                assertThat(repositoryOnB.findByUserIdAndConnection(userId, connectionOnB)).contains(emitterOnB);
+
+                new SseHeartbeatScheduler(sseDeliveryService).sendHeartbeat();
+
+                verify(emitterOnA).complete();
+                assertThat(sseEmitterRepository.findByUserIdAndConnection(userId, connectionOnA)).isEmpty();
+                assertThat(repositoryOnB.findByUserIdAndConnection(userId, connectionOnB)).contains(emitterOnB);
+
+                new SseHeartbeatScheduler(serviceOnB).sendHeartbeat();
+
+                verify(emitterOnB).complete();
+                assertThat(repositoryOnB.findByUserIdAndConnection(userId, connectionOnB)).isEmpty();
+            } finally {
+                deliveryCoordinator.cleanupConnection(userId, connectionOnA);
+                coordinatorOnB.cleanupConnection(userId, connectionOnB);
+                userSessionRepository.endIfCurrent(userId, session.id());
+            }
+        });
+    }
+
+    @Test
+    @DisplayName("폐기 이벤트를 발행하면 하트비트 전에 두 서버의 연결을 닫는다.")
+    void closesRevokedConnectionsOnBothNodesOnPubSubDelivery() {
+        createAdditionalNodeRunner().run(contextB -> {
+            assertThat(contextB).hasNotFailed();
+
+            SseEmitterRepository repositoryOnB = contextB.getBean(SseEmitterRepository.class);
+            SseDeliveryCoordinator coordinatorOnB = contextB.getBean(SseDeliveryCoordinator.class);
+            UUID userId = UUID.randomUUID();
+            Connection connectionOnA = Connection.create();
+            Connection connectionOnB = Connection.create();
+            SseEmitter emitterOnA = mock(SseEmitter.class);
+            SseEmitter emitterOnB = mock(SseEmitter.class);
+            LoginSession session = new LoginSession(userSessionRepository.start(userId, Duration.ofMinutes(1)).sessionId());
+
+            try {
+                deliveryCoordinator.register(userId, connectionOnA, emitterOnA, session);
+                coordinatorOnB.register(userId, connectionOnB, emitterOnB, session);
+                await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+                    var subscriptions = redis.execInContainer("redis-cli", "--raw", "PUBSUB", "NUMSUB", REVOKE_CHANNEL);
+                    assertThat(subscriptions.getExitCode()).isZero();
+                    assertThat(subscriptions.getStdout().lines().toList()).containsExactly(REVOKE_CHANNEL, "2");
+                });
+                userSessionRepository.endIfCurrent(userId, session.id());
+
+                revokeEventPublisher.publish(new RevokeEvent<>(userId, session.id()));
+
+                await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+                    assertThat(sseEmitterRepository.findByUserIdAndConnection(userId, connectionOnA)).isEmpty();
+                    assertThat(repositoryOnB.findByUserIdAndConnection(userId, connectionOnB)).isEmpty();
+                });
+                verify(emitterOnA).complete();
+                verify(emitterOnB).complete();
+            } finally {
+                deliveryCoordinator.cleanupConnection(userId, connectionOnA);
+                coordinatorOnB.cleanupConnection(userId, connectionOnB);
+                userSessionRepository.endIfCurrent(userId, session.id());
+            }
+        });
+    }
+
     private ApplicationContextRunner createAdditionalNodeRunner(){
         return new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(
@@ -325,6 +443,8 @@ public class RedisSseDeliveryIntegrationTest {
                         RedisSseEventPublisher.class,
                         RedisSseEventSubscriber.class,
                         RedisSseSubscription.class,
+                        RedisRevokeEventSubscriber.class,
+                        RedisUserSessionRepository.class,
                         SseDeliveryService.class,
                         InMemorySseEmitterRepository.class,
                         SseEventPublisherConfig.class,
@@ -341,6 +461,7 @@ public class RedisSseDeliveryIntegrationTest {
                         "everyone.sse.transport=redis",
                         "everyone.sse.subscription-enabled=true",
                         "everyone.sse.redis.channel=test:sse:delivery",
+                        "everyone.sse.redis.revoke-channel=" + REVOKE_CHANNEL,
                         "everyone.sse.history.retention=10m",
                         "everyone.sse.history.max-events-per-user=10",
                         "everyone.sse.history.key-prefix=test:sse:delivery:history",

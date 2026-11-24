@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.global.config.SseTransportConfig;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.util.TestPropertyValues;
@@ -36,7 +37,8 @@ class SseTransportPropertiesTest {
     @DisplayName("정상 Redis 전송 설정이면 설정 로딩에 성공하고 값을 바인딩한다.")
     void bindValidSseTransportProperties(){
         contextRunner.withPropertyValues("everyone.sse.transport=redis",
-                "everyone.sse.redis.channel=test:sse:events")
+                "everyone.sse.redis.channel=test:sse:events",
+                "everyone.sse.redis.revoke-channel=test:sse:revocations")
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     SseTransportProperties properties = context.getBean(SseTransportProperties.class);
@@ -44,6 +46,28 @@ class SseTransportPropertiesTest {
                     assertThat(properties.redis()).isNotNull();
                     assertThat(properties.redis().channel()).isEqualTo("test:sse:events");
                 });
+    }
+
+    @ParameterizedTest(name = "폐기 채널 설정 [{0}]")
+    @NullSource
+    @ValueSource(strings = {" "})
+    @DisplayName("폐기 채널 설정이 없거나 공백이면 시작에 실패한다.")
+    void failsToStartWithoutRevocationChannel(String revokeChannel) {
+        ApplicationContextRunner runner = contextRunner.withPropertyValues(
+                "everyone.sse.transport=redis",
+                "everyone.sse.redis.channel=test:sse:events"
+        );
+        if (revokeChannel != null) {
+            runner = runner.withInitializer(context -> TestPropertyValues.of(
+                    Map.of("everyone.sse.redis.revoke-channel", revokeChannel)
+            ).applyTo(context));
+        }
+        runner.run(context -> {
+            assertThat(context).hasFailed();
+            assertThat(context.getStartupFailure()).rootCause()
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("revoke-channel");
+        });
     }
 
     @Test
@@ -64,7 +88,8 @@ class SseTransportPropertiesTest {
     void startsSuccessfullyRegardlessOfTransportCase(String transport){
         contextRunner.withPropertyValues(
                 "everyone.sse.transport=" + transport,
-                "everyone.sse.redis.channel=everyone:sse:events"
+                "everyone.sse.redis.channel=everyone:sse:events",
+                "everyone.sse.redis.revoke-channel=everyone:sse:session:revoked"
         ).run(context -> {
             assertThat(context).hasNotFailed();
             assertThat(context).hasSingleBean(SseTransportProperties.class);

@@ -98,6 +98,19 @@ public class InMemorySseEmitterRepository implements SseEmitterRepository {
         return convertToEmitterMap(connections, (sessionId) -> sessionId.equals(loginSession.id()));
     }
 
+    @Override
+    public Map<UUID, Set<LoginSession>> findAllLoginSessions() {
+        return sseEmitters.entrySet()
+                .stream()
+                .collect(Collectors.toUnmodifiableMap(Map.Entry::getKey,
+                        entry -> entry.getValue()
+                                .values()
+                                .stream()
+                                .map(SseEmitterEntry::loginSession)
+                                .collect(Collectors.toUnmodifiableSet()))
+                );
+    }
+
     private Map<Connection, SseEmitter> convertToEmitterMap(Map<Connection, SseEmitterEntry> connections, Predicate<UUID> loginSessionFilter) {
         return connections.entrySet()
                 .stream()

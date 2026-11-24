@@ -41,7 +41,7 @@ public class PasswordResetMailSender {
                 로그인한 뒤 비밀번호를 변경해 주세요.
                 """.formatted(temporaryPassword, validity.toMinutes()));
 
-        // 실패하면 MailException이 그대로 전파되어 호출한 쪽 트랜잭션이 롤백된다.
+        // 실패하면 MailException을 그대로 던져 호출한 쪽에서 재시도할 수 있게 한다.
         mailSender.send(message);
     }
 }
