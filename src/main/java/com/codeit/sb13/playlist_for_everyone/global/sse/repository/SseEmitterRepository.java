@@ -6,6 +6,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -52,6 +53,8 @@ public interface SseEmitterRepository {
      * 같은 세션의 여러 탭이 포함될 수 있으며, 일치하는 연결이 없으면 빈 Map을 반환한다.
      */
     Map<Connection, SseEmitter> findByUserIdAndLoginSessionId(UUID userId, LoginSession loginSession);
+
+    Map<UUID, Set<LoginSession>> findAllLoginSessions();
 
 
 }
