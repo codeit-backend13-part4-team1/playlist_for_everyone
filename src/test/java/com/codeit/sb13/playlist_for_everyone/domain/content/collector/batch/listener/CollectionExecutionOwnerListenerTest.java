@@ -29,7 +29,7 @@ class CollectionExecutionOwnerListenerTest {
         );
 
         var listener = new CollectionExecutionOwnerListener(
-                Optional.of(owner),
+                () -> Optional.of(owner),
                 repository
         );
 
@@ -55,7 +55,7 @@ class CollectionExecutionOwnerListenerTest {
         when(execution.getExecutionContext()).thenReturn(context);
 
         var listener = new CollectionExecutionOwnerListener(
-                Optional.empty(),
+                () -> Optional.empty(),
                 repository
         );
 
