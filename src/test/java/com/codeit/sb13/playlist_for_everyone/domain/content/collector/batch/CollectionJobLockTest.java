@@ -2,12 +2,16 @@ package com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch;
 
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import java.sql.SQLException;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
 @Testcontainers
 class CollectionJobLockTest {
@@ -95,6 +99,58 @@ class CollectionJobLockTest {
             }
 
             assertThat(pool.getHikariPoolMXBean().getActiveConnections()).isZero();
+        }
+    }
+
+    @Test
+    void 잠금_연결이_강제_종료되면_다른_연결이_잠금을_얻는다() throws Exception {
+        var otherDataSource = new DriverManagerDataSource(
+                postgres.getJdbcUrl(),
+                postgres.getUsername(),
+                postgres.getPassword()
+        );
+
+        var otherLock = new CollectionJobLock(otherDataSource);
+        var controlJdbc = new JdbcTemplate(otherDataSource);
+
+        try (var pool = new HikariDataSource()) {
+            pool.setJdbcUrl(postgres.getJdbcUrl());
+            pool.setUsername(postgres.getUsername());
+            pool.setPassword(postgres.getPassword());
+            pool.setMaximumPoolSize(1);
+            pool.setMinimumIdle(0);
+            pool.setMaxLifetime(0);
+            pool.setIdleTimeout(0);
+
+            var ownerJdbc = new JdbcTemplate(pool);
+            Integer ownerPid = ownerJdbc.queryForObject(
+                    "SELECT pg_backend_pid()",
+                    Integer.class
+            );
+
+            assertThat(ownerPid).isNotNull();
+
+            var ownerLock = new CollectionJobLock(pool);
+            var ownerHandle = ownerLock.tryAcquire(TMDB_LOCK_KEY).orElseThrow();
+
+            try {
+                assertThat(otherLock.tryAcquire(TMDB_LOCK_KEY)).isEmpty();
+
+                Boolean terminated = controlJdbc.queryForObject(
+                        "SELECT pg_terminate_backend(?, 5000)",
+                        Boolean.class,
+                        ownerPid
+                );
+
+                assertThat(terminated).isTrue();
+
+                try (var handle = otherLock.tryAcquire(TMDB_LOCK_KEY).orElseThrow()) {
+                    assertThat(handle).isNotNull();
+                }
+            } finally {
+                assertThatThrownBy(ownerHandle::close)
+                        .isInstanceOf(SQLException.class);
+            }
         }
     }
 }
