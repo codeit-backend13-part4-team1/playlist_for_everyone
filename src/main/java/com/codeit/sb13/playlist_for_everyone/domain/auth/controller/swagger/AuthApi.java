@@ -57,7 +57,7 @@ public interface AuthApi {
     @Operation(summary = "비밀번호 초기화",
             description = "3분간 쓸 수 있는 임시 비밀번호를 메일로 보냅니다. 소셜 가입 계정은 사용할 수 없습니다.")
     @ApiResponses({
-            @ApiResponse(responseCode = "204", description = "메일 발송 성공"),
+            @ApiResponse(responseCode = "204", description = "발급 완료. 메일은 잠시 후 발송됩니다."),
             @ApiResponse(responseCode = "400", description = "잘못된 요청 또는 소셜 가입 계정",
                     content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
                             schema = @Schema(implementation = ApiErrorResponse.class))),
