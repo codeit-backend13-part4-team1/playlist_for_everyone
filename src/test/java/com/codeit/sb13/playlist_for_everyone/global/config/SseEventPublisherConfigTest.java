@@ -35,7 +35,8 @@ class SseEventPublisherConfigTest {
                     RedisSseEventPublisher.class)
             .withPropertyValues(
                     "everyone.sse.transport=redis",
-                    "everyone.sse.redis.channel=test:sse:event"
+                    "everyone.sse.redis.channel=test:sse:event",
+                    "everyone.sse.redis.revoke-channel=test:sse:revocations"
             )
             .withBean(SseHistoryStore.class, () -> historyStore)
             .withBean(StringRedisTemplate.class, () -> redisTemplate)

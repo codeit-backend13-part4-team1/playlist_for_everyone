@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.service;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.global.sse.config.SseProperties;
 import com.codeit.sb13.playlist_for_everyone.global.sse.config.SseRetryProperties;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
@@ -51,6 +52,9 @@ class SseRetryExhaustionTest {
     @Mock
     private ScheduledFuture<?> retryFuture;
 
+    @Mock
+    private UserSessionRepository userSessionRepository;
+
     @ParameterizedTest(name = "complete() 예외 발생={0}")
     @ValueSource(booleans = {false, true})
     @DisplayName("재시도를 소진하면 완료 콜백 실행이나 complete 성공 여부에 의존하지 않고 연결과 전송 상태를 정리한다.")
@@ -66,10 +70,11 @@ class SseRetryExhaustionTest {
         SseDeliveryCoordinator coordinator = new SseDeliveryCoordinator(
                 recoveryService, retryTaskScheduler, retryProperties , new SseConnectionCloser(repository), repository
         );
-        SseConnectionService service = new SseConnectionService(repository, properties, coordinator);
+        SseConnectionService service = new SseConnectionService(repository, properties, coordinator, userSessionRepository);
         DataAccessResourceFailureException failure =
                 new DataAccessResourceFailureException("테스트용 후속 이력 조회 실패");
 
+        when(userSessionRepository.isCurrent(userId, loginSession.id())).thenReturn(true);
         when(retryTaskScheduler.getClock()).thenReturn(Clock.fixed(
                 Instant.parse("2026-11-07T00:00:00Z"), ZoneOffset.UTC
         ));

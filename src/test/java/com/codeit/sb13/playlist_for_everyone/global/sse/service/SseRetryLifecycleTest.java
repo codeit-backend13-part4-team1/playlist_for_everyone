@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.service;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.global.sse.config.SseProperties;
 import com.codeit.sb13.playlist_for_everyone.global.sse.config.SseRetryProperties;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
@@ -57,6 +58,9 @@ public class SseRetryLifecycleTest {
     @Mock
     private ScheduledFuture<?> retryFuture;
 
+    @Mock
+    private UserSessionRepository userSessionRepository;
+
     private SseEmitterRepository repository;
     private SseDeliveryCoordinator coordinator;
     private SseConnectionService connectionService;
@@ -81,7 +85,9 @@ public class SseRetryLifecycleTest {
         connectionService = new SseConnectionService(
                 repository,
                 properties,
-                coordinator);
+                coordinator,
+                userSessionRepository);
+        when(userSessionRepository.isCurrent(any(UUID.class), eq(loginSession.id()))).thenReturn(true);
     }
 
     @Test
@@ -332,6 +338,62 @@ public class SseRetryLifecycleTest {
         verify(retryTaskScheduler)
                 .schedule(any(Runnable.class), any(Instant.class));
         verify(retryFuture, never()).cancel(anyBoolean());
+    }
+
+    @Test
+    @DisplayName("세션 폐기를 반복해도 해당 세션의 연결과 예약만 한 번 종료한다.")
+    void revocationClosesOnlyMatchingConnectionsAndCancelsRetryOnce() {
+        UUID userId = UUID.randomUUID();
+        UUID otherUserId = UUID.randomUUID();
+        UUID lastEventId = UUID.randomUUID();
+        LoginSession newLoginSession = new LoginSession(UUID.randomUUID());
+        SseHistoryPosition upperBound = new SseHistoryPosition("1000-0");
+        SseDeliveryService deliveryService = new SseDeliveryService(repository, coordinator);
+        stubRecoveryAndRetrySchedule(userId, lastEventId, upperBound);
+
+        try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
+            SseEmitter emitter = connectionService.connect(userId, lastEventId, loginSession);
+            Map<Connection, SseEmitter> original = repository.findByUserIdAndLoginSessionId(userId, loginSession);
+            assertThat(original).hasSize(1);
+            Connection connection = original.keySet().iterator().next();
+            Runnable retryTask = scheduleRetryAfterReadFailure(userId, connection, emitter, upperBound);
+
+            Connection otherTab = Connection.create();
+            SseEmitter otherTabEmitter = mock(SseEmitter.class);
+            coordinator.register(userId, otherTab, otherTabEmitter, loginSession);
+            Connection alreadyClosed = Connection.create();
+            SseEmitter closedEmitter = mock(SseEmitter.class);
+            coordinator.register(userId, alreadyClosed, closedEmitter, loginSession);
+            coordinator.closeConnection(userId, alreadyClosed);
+
+            Connection newConnection = Connection.create();
+            SseEmitter newEmitter = mock(SseEmitter.class);
+            coordinator.register(userId, newConnection, newEmitter, newLoginSession);
+            Connection otherUserConnection = Connection.create();
+            SseEmitter otherUserEmitter = mock(SseEmitter.class);
+            coordinator.register(otherUserId, otherUserConnection, otherUserEmitter, loginSession);
+
+            deliveryService.revoke(userId, loginSession);
+            assertThat(repository.findByUserIdAndLoginSessionId(userId, loginSession)).isEmpty();
+
+            deliveryService.revoke(userId, loginSession);
+            retryTask.run();
+            coordinator.requestDelivery(userId, connection);
+
+            assertThat(repository.findByUserIdAndLoginSessionId(userId, newLoginSession))
+                    .containsExactlyInAnyOrderEntriesOf(Map.of(newConnection, newEmitter));
+            assertThat(repository.findByUserIdAndLoginSessionId(otherUserId, loginSession))
+                    .containsExactlyInAnyOrderEntriesOf(Map.of(otherUserConnection, otherUserEmitter));
+            verify(emitter).complete();
+            verify(otherTabEmitter).complete();
+            verify(closedEmitter).complete();
+            verify(newEmitter, never()).complete();
+            verify(otherUserEmitter, never()).complete();
+            verify(retryFuture).cancel(false);
+            verify(recoveryService).recover(userId, emitter, lastEventId);
+            verify(recoveryService).recoverAfter(userId, connection, emitter, upperBound);
+            verifyNoMoreInteractions(recoveryService, retryFuture);
+        }
     }
 
     private void stubRecoveryAndRetrySchedule(

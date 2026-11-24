@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.service;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.global.sse.config.SseProperties;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
@@ -35,6 +36,9 @@ public class SseConnectionLifecycleTest {
     @Mock
     private SseDeliveryCoordinator deliveryCoordinator;
 
+    @Mock
+    private UserSessionRepository userSessionRepository;
+
     @Test
     @DisplayName("컨텍스트가 종료되면 에미터 종료를 요청하고 연결 정리를 조정기에 위임한다.")
     void contextCloseRequestsCompletionAndDelegatesCleanup(){
@@ -53,7 +57,7 @@ public class SseConnectionLifecycleTest {
         // try 블록을 벗어날 때 context.close가 호출되며 실제 종료 이벤트가 발행된다.
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()){
             context.registerBean(SseConnectionService.class,
-                    ()-> new SseConnectionService(repository, properties, deliveryCoordinator));
+                    ()-> new SseConnectionService(repository, properties, deliveryCoordinator, userSessionRepository));
 
             context.refresh();
             verify(emitter, never()).complete();
@@ -89,7 +93,7 @@ public class SseConnectionLifecycleTest {
 
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()){
             context.registerBean(SseConnectionService.class,
-                    ()-> new SseConnectionService(repository, properties, deliveryCoordinator));
+                    ()-> new SseConnectionService(repository, properties, deliveryCoordinator, userSessionRepository));
             context.registerBean("testLifecycle", Lifecycle.class, () -> lifecycle);
             context.refresh();
 

@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.service;
 
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
+import com.codeit.sb13.playlist_for_everyone.global.sse.event.LoginSession;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
 import lombok.RequiredArgsConstructor;
@@ -75,6 +76,13 @@ public class SseDeliveryService {
                                 sendHeartbeat(userId, connection, emitter)
                         )
                 );
+    }
+
+    public void revoke(UUID userId, LoginSession loginSession){
+        sseEmitterRepository.findByUserIdAndLoginSessionId(userId, loginSession)
+                .keySet()
+                .forEach(connection ->
+                        deliveryCoordinator.closeConnection(userId, connection));
     }
 
     private void sendHeartbeat(UUID userId, Connection connection, SseEmitter emitter) {

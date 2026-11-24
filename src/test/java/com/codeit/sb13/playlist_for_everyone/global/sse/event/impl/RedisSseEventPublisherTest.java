@@ -40,7 +40,7 @@ class RedisSseEventPublisherTest {
     void setUp(){
         objectMapper = JsonMapper.builder().build();
         SseTransportProperties properties = new SseTransportProperties("redis",
-                new SseTransportProperties.Redis("test:sse:events")
+                new SseTransportProperties.Redis("test:sse:events", "test:sse:revocations")
         );
 
         publisher = new RedisSseEventPublisher(redisTemplate, objectMapper, properties);

@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.service;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.global.sse.config.SseProperties;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.LoginSession;
@@ -48,6 +49,9 @@ class SseConnectionServiceTest {
     @Mock
     private SseDeliveryCoordinator deliveryCoordinator;
 
+    @Mock
+    private UserSessionRepository userSessionRepository;
+
     private SseConnectionService service;
 
     @BeforeEach
@@ -56,7 +60,8 @@ class SseConnectionServiceTest {
                 Duration.ofSeconds(15),
                 Duration.ofMinutes(30)
         );
-        service = new SseConnectionService(repository, properties, deliveryCoordinator);
+        service = new SseConnectionService(repository, properties, deliveryCoordinator, userSessionRepository);
+        lenient().when(userSessionRepository.isCurrent(any(UUID.class), eq(loginSession.id()))).thenReturn(true);
     }
 
     @Test
@@ -92,7 +97,7 @@ class SseConnectionServiceTest {
             verify(deliveryCoordinator, never()).recover(any(), any(), any());
             verify(emitter, never()).send(any(SseEmitter.SseEventBuilder.class));
             verify(emitter, never()).complete();
-            verifyNoInteractions(repository);
+            verifyNoInteractions(repository, userSessionRepository);
         }
     }
 
@@ -105,7 +110,7 @@ class SseConnectionServiceTest {
                 connectionTimeout
         );
         SseConnectionService serviceWithCustomTimeout =
-                new SseConnectionService(repository, properties, deliveryCoordinator);
+                new SseConnectionService(repository, properties, deliveryCoordinator, userSessionRepository);
 
         SseEmitter emitter = serviceWithCustomTimeout.connect(UUID.randomUUID(), null, loginSession);
 
@@ -401,7 +406,7 @@ class SseConnectionServiceTest {
     }
 
     @Test
-    @DisplayName("연결을 요청하면 이벤트 ID 없는 초기 SSE 주석을 전송한다.")
+    @DisplayName("연결을 등록하고 세션을 재검증한 뒤 이벤트 ID 없는 초기 주석을 전송한다.")
     void connectSendsInitialComment() throws IOException {
         UUID userId = UUID.randomUUID();
 
@@ -410,7 +415,10 @@ class SseConnectionServiceTest {
             ArgumentCaptor<SseEmitter.SseEventBuilder> eventCaptor =
                     ArgumentCaptor.forClass(SseEmitter.SseEventBuilder.class);
 
-            verify(emitter).send(eventCaptor.capture());
+            InOrder order = inOrder(deliveryCoordinator, userSessionRepository, emitter);
+            order.verify(deliveryCoordinator).register(eq(userId), any(Connection.class), same(emitter), eq(loginSession));
+            order.verify(userSessionRepository).isCurrent(userId, loginSession.id());
+            order.verify(emitter).send(eventCaptor.capture());
 
             // 주석과 프레임 종료 구분자만 있는지 확인한다. id 필드가 생기면 이 검증이 실패한다.
             assertThat(eventCaptor.getValue().build())
