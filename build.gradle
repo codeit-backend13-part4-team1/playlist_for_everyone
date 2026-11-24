@@ -61,6 +61,7 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-batch-jdbc'
 	implementation platform("software.amazon.awssdk:bom:${dependencyVersions.awsSdk}")
 	implementation 'software.amazon.awssdk:s3'
+	implementation 'software.amazon.awssdk:ecs'
 	implementation 'org.springframework.boot:spring-boot-starter-restclient'
 
 	// 모니터링, AOP 및 재시도
