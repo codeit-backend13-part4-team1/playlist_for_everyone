@@ -35,7 +35,8 @@ class TemporaryPasswordMailListenerTest {
     private static final String EMAIL = "user@test.com";
     private static final String RAW_PASSWORD = "Ab3!Cd4@Ef5#";
     private static final Duration VALIDITY = Duration.ofMinutes(3);
-    private static final TemporaryPasswordIssuedEvent EVENT = eventExpiringIn(VALIDITY);
+    // 만료 시각이 각 테스트를 실행하는 시점 기준이 되도록 테스트마다 새로 만든다.
+    private final TemporaryPasswordIssuedEvent EVENT = eventExpiringIn(VALIDITY);
 
     @Mock
     private PasswordResetMailSender mailSender;
