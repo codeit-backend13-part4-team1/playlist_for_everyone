@@ -53,6 +53,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import javax.sql.DataSource;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -123,6 +124,9 @@ class SportsDbCollectionJobTest {
 
     @Autowired
     private ApplicationEvents applicationEvents;
+
+    @Autowired
+    private DataSource dataSource;
 
     @TestConfiguration(proxyBeanMethods = false)
     static class MetricsTestConfig {
@@ -829,7 +833,7 @@ class SportsDbCollectionJobTest {
     }
 
     @Test
-    void 강제_종료로_남은_Job과_Step을_FAILED로_복구한다() {
+    void 강제_종료로_남은_Job과_Step을_FAILED로_복구한다() throws Exception {
         var parameters = new JobParametersBuilder()
                 .addString("leagueId", "4328")
                 .addString("season", "2014-2015")
@@ -853,11 +857,18 @@ class SportsDbCollectionJobTest {
         step.setStatus(BatchStatus.STARTED);
         jobRepository.update(step);
 
+        when(sportsDbClient.getEventsBySeason("4328", "2014-2015"))
+                .thenReturn(new SportsDbEventsResponse(List.of()));
+
         var launcher = new CollectionJobLauncher(
-                jobOperator, tmdbJob, job, jobRepository
+                jobOperator,
+                tmdbJob,
+                job,
+                jobRepository,
+                new CollectionJobLock(dataSource)
         );
 
-        launcher.recoverInterruptedExecutions();
+        launcher.startSportsDb("4328", "2014-2015");
 
         // 메모리에 있는 객체가 아니라 DB에서 다시 조회
         var recovered = jobRepository.getJobExecution(execution.getId());

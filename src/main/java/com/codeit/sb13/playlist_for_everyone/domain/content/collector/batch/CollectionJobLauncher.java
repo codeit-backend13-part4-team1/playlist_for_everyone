@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch;
 
 import org.springframework.batch.core.job.Job;
+import org.springframework.batch.core.job.parameters.JobParameters;
 import org.springframework.batch.core.job.parameters.JobParametersBuilder;
 import org.springframework.batch.core.launch.JobOperator;
 import org.springframework.batch.core.repository.JobRepository;
@@ -9,64 +10,69 @@ import java.util.UUID;
 
 public class CollectionJobLauncher {
 
+    private static final long TMDB_LOCK_KEY = 254_001L;
+    private static final long SPORTS_DB_LOCK_KEY = 254_002L;
+
     private final JobOperator jobOperator;
     private final Job tmdbCollectionJob;
     private final Job sportsDbCollectionJob;
     private final JobRepository jobRepository;
+    private final CollectionJobLock jobLock;
 
     public CollectionJobLauncher(
             JobOperator jobOperator,
             Job tmdbCollectionJob,
             Job sportsDbCollectionJob,
-            JobRepository jobRepository
+            JobRepository jobRepository,
+            CollectionJobLock jobLock
     ) {
         this.jobOperator = jobOperator;
         this.tmdbCollectionJob = tmdbCollectionJob;
         this.sportsDbCollectionJob = sportsDbCollectionJob;
         this.jobRepository = jobRepository;
+        this.jobLock = jobLock;
     }
 
     public void startTmdb(long maxPages) throws Exception {
-        if (!jobRepository.findRunningJobExecutions(
-                tmdbCollectionJob.getName()
-        ).isEmpty()) {
-            return;
-        }
-
         var parameters = new JobParametersBuilder()
                 .addLong("maxPages", maxPages)
                 .addString("run.id", UUID.randomUUID().toString())
                 .toJobParameters();
 
-        jobOperator.start(tmdbCollectionJob, parameters);
+        startWithLock(tmdbCollectionJob, TMDB_LOCK_KEY, parameters);
     }
 
     public void startSportsDb(String leagueId, String season) throws Exception {
-        if (!jobRepository.findRunningJobExecutions(
-                sportsDbCollectionJob.getName()
-        ).isEmpty()) {
-            return;
-        }
-
         var parameters = new JobParametersBuilder()
                 .addString("leagueId", leagueId)
                 .addString("season", season)
                 .addString("run.id", UUID.randomUUID().toString())
                 .toJobParameters();
 
-        jobOperator.start(sportsDbCollectionJob, parameters);
+        startWithLock(sportsDbCollectionJob, SPORTS_DB_LOCK_KEY, parameters);
     }
 
-    /** 이전 프로세스가 종료된 뒤 남은 수집 실행 복구 */
-    public void recoverInterruptedExecutions() {
-        for (var execution : jobRepository.findRunningJobExecutions(
-                tmdbCollectionJob.getName()
-        )) {
-            jobOperator.recover(execution);
+    /** 잠금을 얻은 경우에만 복구하고 실행 */
+    private void startWithLock(
+            Job job,
+            long lockKey,
+            JobParameters parameters
+    ) throws Exception {
+        var acquired = jobLock.tryAcquire(lockKey);
+
+        if (acquired.isEmpty()) {
+            return;
         }
 
+        try (var handle = acquired.get()) {
+            recoverInterruptedExecutions(job);
+            jobOperator.start(job, parameters);
+        }
+    }
+
+    private void recoverInterruptedExecutions(Job job) {
         for (var execution : jobRepository.findRunningJobExecutions(
-                sportsDbCollectionJob.getName()
+                job.getName()
         )) {
             jobOperator.recover(execution);
         }

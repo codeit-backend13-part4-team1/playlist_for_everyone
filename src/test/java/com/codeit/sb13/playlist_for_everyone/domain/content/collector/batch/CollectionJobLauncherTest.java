@@ -1,35 +1,65 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.batch.core.job.Job;
+import org.springframework.batch.core.job.JobExecution;
 import org.springframework.batch.core.job.parameters.JobParameters;
 import org.springframework.batch.core.launch.JobOperator;
 import org.springframework.batch.core.repository.JobRepository;
-import org.springframework.batch.core.job.JobExecution;
 
 import java.util.Optional;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.when;
 
 class CollectionJobLauncherTest {
 
+    private JobOperator jobOperator;
+    private JobRepository jobRepository;
+    private Job tmdbJob;
+    private Job sportsDbJob;
+    private CollectionJobLock jobLock;
+    private CollectionJobLock.Handle handle;
+    private CollectionJobLauncher launcher;
+
+    @BeforeEach
+    void setUp() throws Exception {
+        jobOperator = mock(JobOperator.class);
+        jobRepository = mock(JobRepository.class);
+        tmdbJob = mock(Job.class);
+        sportsDbJob = mock(Job.class);
+        jobLock = mock(CollectionJobLock.class);
+        handle = mock(CollectionJobLock.Handle.class);
+
+        when(tmdbJob.getName()).thenReturn("tmdbCollectionJob");
+        when(sportsDbJob.getName()).thenReturn("sportsDbCollectionJob");
+        when(jobLock.tryAcquire(anyLong())).thenReturn(Optional.of(handle));
+
+        launcher = new CollectionJobLauncher(
+                jobOperator,
+                tmdbJob,
+                sportsDbJob,
+                jobRepository,
+                jobLock
+        );
+    }
+
     @Test
     void 수집할_페이지_수를_전달해_TMDB_배치를_실행한다() throws Exception {
-        var jobOperator = mock(JobOperator.class);
-        var tmdbJob = mock(Job.class);
-        var sportsDbJob = mock(Job.class);
-        var jobRepository = mock(JobRepository.class);
-        var launcher = new CollectionJobLauncher(jobOperator, tmdbJob, sportsDbJob, jobRepository);
-
         launcher.startTmdb(5L);
 
         var captor = ArgumentCaptor.forClass(JobParameters.class);
@@ -38,16 +68,12 @@ class CollectionJobLauncherTest {
         var parameters = captor.getValue();
         assertThat(parameters.getLong("maxPages")).isEqualTo(5L);
         assertThat(parameters.getString("run.id")).isNotBlank();
+
+        verify(handle).close();
     }
 
     @Test
     void 리그와_시즌을_전달해_스포츠_배치를_실행한다() throws Exception {
-        var jobOperator = mock(JobOperator.class);
-        var tmdbJob = mock(Job.class);
-        var sportsDbJob = mock(Job.class);
-        var jobRepository = mock(JobRepository.class);
-        var launcher = new CollectionJobLauncher(jobOperator, tmdbJob, sportsDbJob, jobRepository);
-
         launcher.startSportsDb("4328", "2014-2015");
 
         var captor = ArgumentCaptor.forClass(JobParameters.class);
@@ -57,104 +83,71 @@ class CollectionJobLauncherTest {
         assertThat(parameters.getString("leagueId")).isEqualTo("4328");
         assertThat(parameters.getString("season")).isEqualTo("2014-2015");
         assertThat(parameters.getString("run.id")).isNotBlank();
-    }
 
-    @Test
-    void TMDB_배치가_실행_중이면_새로_실행하지_않는다() throws Exception {
-        var jobOperator = mock(JobOperator.class);
-        var jobRepository = mock(JobRepository.class);
-        var tmdbJob = mock(Job.class);
-        var sportsDbJob = mock(Job.class);
-
-        when(tmdbJob.getName()).thenReturn("tmdbCollectionJob");
-        when(jobRepository.findRunningJobExecutions("tmdbCollectionJob"))
-                .thenReturn(Set.of(mock(JobExecution.class)));
-
-        var launcher = new CollectionJobLauncher(
-                jobOperator, tmdbJob, sportsDbJob, jobRepository
-        );
-
-        launcher.startTmdb(5L);
-
-        verify(jobRepository).findRunningJobExecutions("tmdbCollectionJob");
-        verifyNoInteractions(jobOperator);
-    }
-
-    @Test
-    void 스포츠_배치가_실행_중이면_새로_실행하지_않는다() throws Exception {
-        var jobOperator = mock(JobOperator.class);
-        var jobRepository = mock(JobRepository.class);
-        var tmdbJob = mock(Job.class);
-        var sportsDbJob = mock(Job.class);
-
-        when(sportsDbJob.getName()).thenReturn("sportsDbCollectionJob");
-        when(jobRepository.findRunningJobExecutions("sportsDbCollectionJob"))
-                .thenReturn(Set.of(mock(JobExecution.class)));
-
-        var launcher = new CollectionJobLauncher(
-                jobOperator, tmdbJob, sportsDbJob, jobRepository
-        );
-
-        launcher.startSportsDb("4328", "2014-2015");
-
-        verify(jobRepository).findRunningJobExecutions("sportsDbCollectionJob");
-        verifyNoInteractions(jobOperator);
-    }
-
-    @Test
-    void 이전에_남은_두_수집_작업의_실행을_복구한다() {
-        var jobOperator = mock(JobOperator.class);
-        var jobRepository = mock(JobRepository.class);
-        var tmdbJob = mock(Job.class);
-        var sportsDbJob = mock(Job.class);
-        var tmdbExecution = mock(JobExecution.class);
-        var sportsDbExecution = mock(JobExecution.class);
-
-        when(tmdbJob.getName()).thenReturn("tmdbCollectionJob");
-        when(sportsDbJob.getName()).thenReturn("sportsDbCollectionJob");
-
-        when(jobRepository.findRunningJobExecutions("tmdbCollectionJob"))
-                .thenReturn(Set.of(tmdbExecution));
-        when(jobRepository.findRunningJobExecutions("sportsDbCollectionJob"))
-                .thenReturn(Set.of(sportsDbExecution));
-
-        var launcher = new CollectionJobLauncher(
-                jobOperator, tmdbJob, sportsDbJob, jobRepository
-        );
-
-        launcher.recoverInterruptedExecutions();
-
-        verify(jobOperator).recover(tmdbExecution);
-        verify(jobOperator).recover(sportsDbExecution);
+        verify(handle).close();
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"tmdb", "sportsdb"})
     void 잠금을_얻지_못하면_실행과_복구를_건너뛴다(String provider) throws Exception {
-        var jobOperator = mock(JobOperator.class);
-        var jobRepository = mock(JobRepository.class);
-        var tmdbJob = mock(Job.class);
-        var sportsDbJob = mock(Job.class);
-        var jobLock = mock(CollectionJobLock.class);
-
         when(jobLock.tryAcquire(anyLong())).thenReturn(Optional.empty());
 
-        var launcher = new CollectionJobLauncher(
-                jobOperator,
-                tmdbJob,
-                sportsDbJob,
-                jobRepository,
-                jobLock
-        );
+        start(provider);
 
+        long lockKey = "tmdb".equals(provider) ? 254_001L : 254_002L;
+        verify(jobLock).tryAcquire(lockKey);
+
+        verifyNoInteractions(jobRepository, jobOperator, handle);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"tmdb", "sportsdb"})
+    void 잠금을_얻으면_해당_작업만_복구하고_실행한_뒤_반납한다(
+            String provider
+    ) throws Exception {
+        boolean tmdb = "tmdb".equals(provider);
+        Job job = tmdb ? tmdbJob : sportsDbJob;
+        long lockKey = tmdb ? 254_001L : 254_002L;
+        var execution = mock(JobExecution.class);
+
+        when(jobRepository.findRunningJobExecutions(job.getName()))
+                .thenReturn(Set.of(execution));
+
+        start(provider);
+
+        var order = inOrder(jobLock, jobRepository, jobOperator, handle);
+
+        order.verify(jobLock).tryAcquire(lockKey);
+        order.verify(jobRepository).findRunningJobExecutions(job.getName());
+        order.verify(jobOperator).recover(execution);
+        order.verify(jobOperator).start(eq(job), any(JobParameters.class));
+        order.verify(handle).close();
+
+        verifyNoMoreInteractions(jobRepository);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"tmdb", "sportsdb"})
+    void 배치_실행에서_예외가_발생해도_잠금을_반납한다(
+            String provider
+    ) throws Exception {
+        Job job = "tmdb".equals(provider) ? tmdbJob : sportsDbJob;
+
+        when(jobOperator.start(eq(job), any(JobParameters.class)))
+                .thenThrow(new IllegalStateException("수집 실행 실패"));
+
+        assertThatThrownBy(() -> start(provider))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("수집 실행 실패");
+
+        verify(handle).close();
+    }
+
+    private void start(String provider) throws Exception {
         if ("tmdb".equals(provider)) {
             launcher.startTmdb(5L);
-            verify(jobLock).tryAcquire(254_001L);
         } else {
             launcher.startSportsDb("4328", "2014-2015");
-            verify(jobLock).tryAcquire(254_002L);
         }
-
-        verifyNoInteractions(jobRepository, jobOperator);
     }
 }
