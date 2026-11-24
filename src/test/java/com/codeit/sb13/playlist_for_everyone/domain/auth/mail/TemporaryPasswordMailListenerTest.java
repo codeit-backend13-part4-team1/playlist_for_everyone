@@ -10,6 +10,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.core.task.TaskExecutor;
+import org.springframework.core.task.TaskRejectedException;
 import org.springframework.mail.MailSendException;
 
 import java.time.Duration;
@@ -45,8 +47,8 @@ class TemporaryPasswordMailListenerTest {
 
     @BeforeEach
     void setUp() {
-        // 재시도 대기 없이 바로 다시 시도한다.
-        listener = new TemporaryPasswordMailListener(mailSender, passwordResetService, Duration.ZERO);
+        // 받은 작업을 바로 실행하고, 재시도 대기 없이 다시 시도한다.
+        listener = new TemporaryPasswordMailListener(mailSender, passwordResetService, Runnable::run, Duration.ZERO);
     }
 
     @Test
@@ -117,5 +119,21 @@ class TemporaryPasswordMailListenerTest {
                 .contains(TEMPORARY_PASSWORD_ID.toString())
                 .doesNotContain(EMAIL)
                 .doesNotContain(RAW_PASSWORD);
+    }
+
+    @Test
+    @DisplayName("메일 실행기가 작업을 받지 않으면 메일을 보내지 않고 발급을 폐기한다.")
+    void 메일_실행기가_작업을_받지_않으면_발급을_폐기한다() {
+        TaskExecutor rejecting = task -> {
+            throw new TaskRejectedException("메일 실행기 포화");
+        };
+        TemporaryPasswordMailListener saturatedListener =
+                new TemporaryPasswordMailListener(mailSender, passwordResetService, rejecting, Duration.ZERO);
+
+        saturatedListener.handle(EVENT);
+
+        // 요청 스레드에서 대신 보내지 않는다. 메일 장애가 API 응답까지 막지 않게 한다.
+        verify(mailSender, never()).send(anyString(), anyString(), any(Duration.class));
+        verify(passwordResetService).discardUndeliverable(TEMPORARY_PASSWORD_ID);
     }
 }

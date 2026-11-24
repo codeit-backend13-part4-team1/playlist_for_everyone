@@ -17,11 +17,13 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mail.MailSendException;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -48,8 +50,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.willAnswer;
 import static org.mockito.BDDMockito.willThrow;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.*;
 
 /**
  * 실제 트랜잭션에서 발급·파기와 커밋 뒤 메일 발송을 검증한다.
@@ -113,6 +114,10 @@ class PasswordResetServiceIntegrationTest {
     @MockitoBean
     private PasswordResetMailSender passwordResetMailSender;
 
+    @Autowired
+    @Qualifier(PasswordResetMailAsyncConfig.EXECUTOR_NAME)
+    private ThreadPoolTaskExecutor mailExecutor;
+
 
     @AfterEach
     void cleanUp() {
@@ -159,11 +164,14 @@ class PasswordResetServiceIntegrationTest {
         String requestThread = Thread.currentThread().getName();
         passwordResetService.resetPassword(EMAIL);
 
-        await().atMost(SEND_TIMEOUT).untilAsserted(() -> assertThat(sendThread.get()).isNotNull());
+        // 메일 Mock 안에서 스레드 이름을 먼저 기록하고 DB 조회는 그다음에 한다. 두 값이 모두 채워질 때까지 기다린다.
+        await().atMost(SEND_TIMEOUT).untilAsserted(() -> {
+            assertThat(sendThread.get()).isNotNull();
+            assertThat(committedCount.get()).isEqualTo(1);
+        });
         assertThat(sendThread.get())
                 .isNotEqualTo(requestThread)
                 .startsWith("password-reset-mail-");
-        assertThat(committedCount.get()).isEqualTo(1);
     }
 
     @Test
@@ -242,6 +250,26 @@ class PasswordResetServiceIntegrationTest {
                 .hasSize(1);
         await().atMost(SEND_TIMEOUT).untilAsserted(() ->
                 verify(passwordResetMailSender, times(1)).send(anyString(), anyString(), any(Duration.class)));
+    }
+
+    @Test
+    @DirtiesContext(methodMode = DirtiesContext.MethodMode.AFTER_METHOD)
+    @DisplayName("메일 실행기가 작업을 받지 못하면 요청은 성공하고, 발급은 바로 폐기된다.")
+    void 메일_실행기가_작업을_받지_못하면_발급을_바로_폐기한다() {
+        UUID userId = saveUser();
+        // 실행기를 멈춰 새 작업을 거부하게 만든다. 멈춘 실행기가 다른 테스트에 남지 않게 끝나면 컨텍스트를 다시 만든다.
+        mailExecutor.shutdown();
+
+        assertThatCode(() -> passwordResetService.resetPassword(EMAIL)).doesNotThrowAnyException();
+
+        // 거부되면 요청 스레드에서 바로 폐기하므로 기다리지 않고 확인한다.
+        assertThat(temporaryPasswordRepository.findAllByUserIdAndStatus(userId, TemporaryPasswordStatus.ACTIVE))
+                .isEmpty();
+        assertThat(temporaryPasswordRepository.findAll())
+                .singleElement()
+                .extracting(TemporaryPassword::getStatus)
+                .isEqualTo(TemporaryPasswordStatus.DISCARDED);
+        verify(passwordResetMailSender, never()).send(anyString(), anyString(), any(Duration.class));
     }
 
 

@@ -5,8 +5,10 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.event.TemporaryPassword
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.PasswordResetService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.retry.RetryPolicy;
 import org.springframework.core.retry.RetryTemplate;
+import org.springframework.core.task.TaskExecutor;
 import org.springframework.mail.MailException;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
@@ -32,16 +34,21 @@ public class TemporaryPasswordMailListener {
 
     private final PasswordResetMailSender mailSender;
     private final PasswordResetService passwordResetService;
+    private final TaskExecutor mailExecutor;
     private final RetryTemplate retryTemplate;
 
     @Autowired
-    public TemporaryPasswordMailListener(PasswordResetMailSender mailSender, PasswordResetService passwordResetService) {
-        this(mailSender, passwordResetService, Duration.ofSeconds(1));
+    public TemporaryPasswordMailListener(PasswordResetMailSender mailSender,
+                                         PasswordResetService passwordResetService,
+                                         @Qualifier(PasswordResetMailAsyncConfig.EXECUTOR_NAME) TaskExecutor mailExecutor) {
+        this(mailSender, passwordResetService, mailExecutor , Duration.ofSeconds(1));
     }
 
-    TemporaryPasswordMailListener(PasswordResetMailSender mailSender, PasswordResetService passwordResetService, Duration initialDelay) {
+    TemporaryPasswordMailListener(PasswordResetMailSender mailSender, PasswordResetService passwordResetService,
+                                  TaskExecutor mailExecutor, Duration initialDelay) {
         this.mailSender = mailSender;
         this.passwordResetService = passwordResetService;
+        this.mailExecutor = mailExecutor;
         this.retryTemplate = new RetryTemplate(RetryPolicy.builder()
                 .maxRetries(MAX_RETRIES)
                 .delay(initialDelay)
