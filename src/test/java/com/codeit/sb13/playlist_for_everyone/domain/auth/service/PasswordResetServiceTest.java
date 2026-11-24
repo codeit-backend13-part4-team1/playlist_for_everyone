@@ -248,6 +248,27 @@ class PasswordResetServiceTest {
                 passwordEncoder, eventPublisher);
     }
 
+    @Test
+    @DisplayName("메일을 보내지 못한 임시 비밀번호가 아직 사용 가능하면 폐기한다.")
+    void 메일을_보내지_못한_임시_비밀번호가_아직_사용_가능하면_폐기한다() {
+        TemporaryPassword issued = TemporaryPassword.issue(USER_ID, ENCODED_PASSWORD, LocalDateTime.now().plusMinutes(3));
+        given(temporaryPasswordRepository.findById(TEMPORARY_PASSWORD_ID)).willReturn(Optional.of(issued));
+
+        passwordResetService.discardUndeliverable(TEMPORARY_PASSWORD_ID);
+
+        assertThat(issued.getStatus()).isEqualTo(TemporaryPasswordStatus.DISCARDED);
+    }
+
+    @Test
+    @DisplayName("폐기할 임시 비밀번호가 없으면 아무것도 하지 않는다.")
+    void 폐기할_임시_비밀번호가_없으면_아무것도_하지_않는다() {
+        given(temporaryPasswordRepository.findById(TEMPORARY_PASSWORD_ID)).willReturn(Optional.empty());
+
+        passwordResetService.discardUndeliverable(TEMPORARY_PASSWORD_ID);
+
+        verify(temporaryPasswordRepository, never()).save(any());
+    }
+
 
     private void givenUserExists() {
         User user = User.builder()
