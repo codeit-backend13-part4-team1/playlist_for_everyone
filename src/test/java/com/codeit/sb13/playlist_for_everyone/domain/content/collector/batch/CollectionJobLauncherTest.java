@@ -5,8 +5,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
+import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.job.Job;
 import org.springframework.batch.core.job.JobExecution;
+import org.springframework.batch.core.job.JobInstance;
 import org.springframework.batch.core.job.parameters.JobParameters;
 import org.springframework.batch.core.launch.JobOperator;
 import org.springframework.batch.core.repository.JobRepository;
@@ -271,6 +273,30 @@ class CollectionJobLauncherTest {
         order.verify(handle).close();
 
         verifyNoMoreInteractions(jobOperator);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"tmdb", "sportsdb"})
+    void 재시작_대기_표시가_없는_실패_이력은_자동_재개하지_않는다(
+            String provider
+    ) throws Exception {
+        Job job = "tmdb".equals(provider) ? tmdbJob : sportsDbJob;
+        var instance = mock(JobInstance.class);
+        var failedExecution = mock(JobExecution.class);
+
+        when(jobRepository.getJobInstances(eq(job.getName()), eq(0), anyInt()))
+                .thenReturn(List.of(instance));
+        when(jobRepository.getLastJobExecution(instance)).thenReturn(failedExecution);
+        when(failedExecution.getStatus()).thenReturn(BatchStatus.FAILED);
+        when(failedExecution.getExecutionContext()).thenReturn(new ExecutionContext());
+
+        start(provider);
+
+        verify(jobOperator).start(eq(job), any(JobParameters.class));
+        verify(jobOperator, never()).recover(any(JobExecution.class));
+        verify(jobOperator, never()).restart(any(JobExecution.class));
+        verifyNoInteractions(recoveryPolicy);
+        verify(handle).close();
     }
 
     private void start(String provider) throws Exception {
