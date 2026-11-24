@@ -39,8 +39,8 @@
 관계가 없는 경우와 조회 실패 모두 알림을 발행하지 않지만, 실패 여부는 로그로 구분합니다.
 
 [NotificationDomainEventListener](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/notification/event/listener/NotificationDomainEventListener.java)가
-중복 ID와 행위자를 제외한 뒤 수신자별 요청을 목록으로 만듭니다. 요청이 있으면 전용 실행기에 작업 하나를 제출합니다.
-중복 제거는 이번 조회 목록에만 적용하며, 같은 업무 이벤트의 재발행까지 막는 멱등성 처리는 아닙니다.
+중복 ID와 행위자를 제외한 뒤 수신자별 요청을 목록으로 만듭니다. 수신자가 없으면 처리를 종료합니다.
+플레이리스트 생성은 요청 목록을 전용 실행기에 작업 하나로 제출합니다. 콘텐츠 추가는 플레이리스트 ID와 콘텐츠 ID로 Redis 키를 선점한 뒤 작업을 제출합니다. 같은 키가 이미 있으면 요청 목록 전체의 제출을 생략합니다. [반복 알림 발송 제한](14-deduplication.md)
 저장 단계의 `NotificationUserReader`는 수신자 한 명을 `User` 연관관계로 연결하는 별도 역할입니다.
 
 ## 정상 처리의 전체 흐름
@@ -51,7 +51,13 @@ flowchart TD
     B --> C["NotificationDomainEventListener / AFTER_COMMIT"]
     C --> D["NotificationTargetReader: 팔로워 또는 구독자 조회"]
     D --> E["중복 ID·행위자 제외"]
-    E --> F["요청 목록을 작업 하나로 제출"]
+    E --> R{"수신자가 있는가?"}
+    R -->|아니오| END["처리 종료"]
+    R -->|예| TYPE{"이벤트 유형"}
+    TYPE -->|플레이리스트 생성| F["요청 목록을 작업 하나로 제출"]
+    TYPE -->|콘텐츠 추가| RESERVE{"Redis 키 선점 성공?"}
+    RESERVE -->|성공| F
+    RESERVE -->|기존 키 있음| END
     F --> W["NotificationAsyncProcessor 워커에서 수신자별 요청 순차 발행"]
     W --> G["NotificationEventListener / fallbackExecution=true"]
     G --> H["NotificationService.save / REQUIRES_NEW 저장·커밋"]
@@ -62,7 +68,7 @@ flowchart TD
 업무 이벤트는 `AFTER_COMMIT`, `fallbackExecution=false`로 수신합니다. 롤백되거나 트랜잭션 없이 발행되면 처리하지 않습니다.
 서비스 호출을 감싼 트랜잭션이 있다면 그 트랜잭션의 커밋 후에 처리하며, 서비스 본문 종료나 `save` 반환은 커밋 완료가 아닙니다.
 
-커밋 처리 스레드에서 수신자를 조회하고 요청 목록 전체를 제출합니다. 알림 워커는 공통 요청을 순서대로 발행합니다.
+커밋 처리 스레드에서 수신자를 조회하고, 제출 조건을 충족한 요청 목록을 전용 실행기에 넘깁니다. 알림 워커는 공통 요청을 순서대로 발행합니다.
 요청마다 `REQUIRES_NEW`로 알림을 저장하고, 각 알림이 커밋되면 같은 워커가 SSE 발행을 요청합니다.
 DTO·공유 이력·Redis·연결별 전송은 [공통 저장·전송 흐름](01-creation-and-delivery.md)에서 이어집니다.
 
