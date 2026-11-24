@@ -40,6 +40,7 @@ import org.springframework.test.context.event.ApplicationEvents;
 import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -86,6 +87,10 @@ public class NotificationPlaylistIntegrationTest {
     @Container
     static final PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:16");
 
+    @Container
+    static final GenericContainer<?> redis = new GenericContainer<>("redis:7.4-alpine")
+            .withExposedPorts(6379);
+
     @DynamicPropertySource
     static void
     configurePostgres(DynamicPropertyRegistry registry) {
@@ -93,6 +98,8 @@ public class NotificationPlaylistIntegrationTest {
         registry.add("spring.datasource.username", postgres::getUsername);
         registry.add("spring.datasource.password", postgres::getPassword);
         registry.add("spring.datasource.driver-class-name", postgres::getDriverClassName);
+        registry.add("spring.data.redis.host", redis::getHost);
+        registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
     }
 
     @MockitoBean

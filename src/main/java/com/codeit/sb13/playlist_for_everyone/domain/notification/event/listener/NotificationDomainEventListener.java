@@ -138,6 +138,7 @@ public class NotificationDomainEventListener {
                 "playlistId", event.playlistId(),
                 "contentId", event.contentId(),
                 "actorId", event.actorId());
+        String actionKey = "playlist-content-add:%s:%s".formatted(event.playlistId(), event.contentId());
         try {
             List<NotificationCreateRequestedEvent> requests = getSubscriberIdsOrEmpty(event).stream()
                     .distinct()
@@ -146,7 +147,7 @@ public class NotificationDomainEventListener {
                             "\"%s\" 플레이리스트에 \"%s\" 콘텐츠가 추가되었습니다.".formatted(event.playlistTitle(), event.contentTitle()),
                             NotificationLevel.INFO, NotificationSource.PLAYLIST_CONTENT_ADDED))
                     .toList();
-            submit("콘텐츠 추가", ids, requests);
+            submit("콘텐츠 추가", ids, requests, batch -> notificationSubmitter.submit(actionKey, batch));
         } catch (RuntimeException failure) {
             logCreationFailure("콘텐츠 추가", ids, failure);
         }
