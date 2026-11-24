@@ -77,7 +77,7 @@ public class PasswordResetService {
         String rawPassword = temporaryPasswordGenerator.generate();
         LocalDateTime expiredAt = LocalDateTime.now().plus(TEMPORARY_PASSWORD_VALIDITY);
 
-        //DB에는 해시만 저장한다.
+        // DB에는 해시만 저장한다.
         TemporaryPassword issued = TemporaryPassword.issue(user.getId(), passwordEncoder.encode(rawPassword), expiredAt);
         temporaryPasswordRepository.save(issued);
 
@@ -120,10 +120,12 @@ public class PasswordResetService {
 
     /**
      * 발송 되지 않은 임시 비밀번호를 폐기 한다.
+     *
      */
     @Transactional
     public void discardUndeliverable(UUID temporaryPasswordId) {
-        // 그린에서 구현
+        temporaryPasswordRepository.findById(temporaryPasswordId)
+                .ifPresent(TemporaryPassword::discard);
     }
 
     // 남은 시간을 초 단위로 올림한다.
