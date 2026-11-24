@@ -8,6 +8,8 @@ public class CollectionExecutionRecoveryPolicy {
 
     private final EcsTaskStatusClient statusClient;
 
+    public static final String RESTART_PENDING_KEY = "collection.recovery.restartPending";
+
     public CollectionExecutionRecoveryPolicy(EcsTaskStatusClient statusClient) {
         this.statusClient = statusClient;
     }

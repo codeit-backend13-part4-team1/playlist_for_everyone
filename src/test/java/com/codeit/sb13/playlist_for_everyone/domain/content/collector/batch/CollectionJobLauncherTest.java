@@ -10,6 +10,7 @@ import org.springframework.batch.core.job.JobExecution;
 import org.springframework.batch.core.job.parameters.JobParameters;
 import org.springframework.batch.core.launch.JobOperator;
 import org.springframework.batch.core.repository.JobRepository;
+import org.springframework.batch.infrastructure.item.ExecutionContext;
 
 import java.sql.SQLException;
 import java.util.LinkedHashSet;
@@ -149,6 +150,8 @@ class CollectionJobLauncherTest {
         var execution = mock(JobExecution.class);
         var failure = new IllegalStateException("수집 실행 복구 실패");
 
+        when(execution.getExecutionContext())
+                .thenReturn(new ExecutionContext());
         when(jobRepository.findRunningJobExecutions(job.getName())).thenReturn(Set.of(execution));
         when(recoveryPolicy.canRecover(execution)).thenReturn(true);
 
@@ -172,6 +175,8 @@ class CollectionJobLauncherTest {
         var execution = mock(JobExecution.class);
         var recovered = mock(JobExecution.class);
 
+        when(execution.getExecutionContext())
+                .thenReturn(new ExecutionContext());
         when(jobRepository.findRunningJobExecutions(job.getName()))
                 .thenReturn(Set.of(execution));
         when(recoveryPolicy.canRecover(execution)).thenReturn(true);
@@ -249,6 +254,8 @@ class CollectionJobLauncherTest {
         var recovered = mock(JobExecution.class);
         var failure = new IllegalStateException("수집 작업 재시작 실패");
 
+        when(execution.getExecutionContext())
+                .thenReturn(new ExecutionContext());
         when(jobRepository.findRunningJobExecutions(job.getName()))
                 .thenReturn(Set.of(execution));
         when(recoveryPolicy.canRecover(execution)).thenReturn(true);

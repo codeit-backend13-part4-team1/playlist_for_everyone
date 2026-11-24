@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.listener;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.CollectionExecutionOwner;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.CollectionExecutionRecoveryPolicy;
 import org.springframework.batch.core.job.JobExecution;
 import org.springframework.batch.core.listener.JobExecutionListener;
 import org.springframework.batch.core.repository.JobRepository;
@@ -29,6 +30,8 @@ public class CollectionExecutionOwnerListener implements JobExecutionListener {
     public void beforeJob(JobExecution jobExecution) {
         var owner = ownerSupplier.get();
         var context = jobExecution.getExecutionContext();
+
+        context.remove(CollectionExecutionRecoveryPolicy.RESTART_PENDING_KEY);
 
         context.remove(CLUSTER_ARN_KEY);
         context.remove(TASK_ARN_KEY);

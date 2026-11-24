@@ -1,11 +1,15 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch;
 
+import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.job.Job;
+import org.springframework.batch.core.job.JobExecution;
 import org.springframework.batch.core.job.parameters.JobParameters;
 import org.springframework.batch.core.job.parameters.JobParametersBuilder;
 import org.springframework.batch.core.launch.JobOperator;
 import org.springframework.batch.core.repository.JobRepository;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 public class CollectionJobLauncher {
@@ -55,7 +59,9 @@ public class CollectionJobLauncher {
         startWithLock(sportsDbCollectionJob, SPORTS_DB_LOCK_KEY, parameters);
     }
 
-    /** 잠금 안에서 신규 실행 또는 중단된 작업 재시작 */
+    /**
+     * 잠금 안에서 신규 실행 또는 중단된 작업 재시작
+     */
     private void startWithLock(
             Job job,
             long lockKey,
@@ -68,7 +74,7 @@ public class CollectionJobLauncher {
         }
 
         try (var handle = acquired.get()) {
-            var executions = jobRepository.findRunningJobExecutions(job.getName());
+            var executions = findExecutionsToResume(job);
 
             if (executions.isEmpty()) {
                 jobOperator.start(job, parameters);
@@ -82,9 +88,59 @@ public class CollectionJobLauncher {
             }
 
             for (var execution : executions) {
+                execution.getExecutionContext().put(
+                        CollectionExecutionRecoveryPolicy.RESTART_PENDING_KEY,
+                        true
+                );
+                jobRepository.updateExecutionContext(execution);
+
                 var recovered = jobOperator.recover(execution);
                 jobOperator.restart(recovered);
             }
+        }
+    }
+
+    /**
+     * 실행 중인 작업과 복구 후 재시작을 기다리는 작업 조회
+     */
+    private List<JobExecution> findExecutionsToResume(Job job) {
+        var executions = new ArrayList<>(
+                jobRepository.findRunningJobExecutions(job.getName())
+        );
+
+        int pageSize = 100;
+        int offset = 0;
+
+        while (true) {
+            var instances = jobRepository.getJobInstances(
+                    job.getName(),
+                    offset,
+                    pageSize
+            );
+
+            for (var instance : instances) {
+                var latest = jobRepository.getLastJobExecution(instance);
+
+                if (latest == null || latest.getStatus() != BatchStatus.FAILED) {
+                    continue;
+                }
+
+                boolean restartPending = Boolean.TRUE.equals(
+                        latest.getExecutionContext().get(
+                                CollectionExecutionRecoveryPolicy.RESTART_PENDING_KEY
+                        )
+                );
+
+                if (restartPending) {
+                    executions.add(latest);
+                }
+            }
+
+            if (instances.size() < pageSize) {
+                return executions;
+            }
+
+            offset += pageSize;
         }
     }
 }

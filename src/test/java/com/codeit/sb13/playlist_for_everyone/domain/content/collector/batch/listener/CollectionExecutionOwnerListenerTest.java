@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.listener;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.CollectionExecutionOwner;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.CollectionExecutionRecoveryPolicy;
 import org.junit.jupiter.api.Test;
 import org.springframework.batch.core.job.JobExecution;
 import org.springframework.batch.core.repository.JobRepository;
@@ -21,6 +22,8 @@ class CollectionExecutionOwnerListenerTest {
         var execution = mock(JobExecution.class);
         var context = new ExecutionContext();
 
+        context.put(CollectionExecutionRecoveryPolicy.RESTART_PENDING_KEY, true);
+
         when(execution.getExecutionContext()).thenReturn(context);
 
         var owner = new CollectionExecutionOwner(
@@ -35,6 +38,8 @@ class CollectionExecutionOwnerListenerTest {
 
         listener.beforeJob(execution);
 
+        assertThat(context.containsKey(CollectionExecutionRecoveryPolicy.RESTART_PENDING_KEY))
+                .isFalse();
         assertThat(context.getString("collection.owner.clusterArn"))
                 .isEqualTo(owner.clusterArn());
         assertThat(context.getString("collection.owner.taskArn"))
@@ -54,10 +59,7 @@ class CollectionExecutionOwnerListenerTest {
 
         when(execution.getExecutionContext()).thenReturn(context);
 
-        var listener = new CollectionExecutionOwnerListener(
-                () -> Optional.empty(),
-                repository
-        );
+        var listener = new CollectionExecutionOwnerListener(() -> Optional.empty(), repository);
 
         listener.beforeJob(execution);
 
