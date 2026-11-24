@@ -6,6 +6,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.collector.TmdbClient
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.config.EcsTaskMetadataConfig;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.config.SportsDbBatchConfig;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.config.TmdbBatchConfig;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.listener.CollectionExecutionOwnerListener;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.listener.CollectionStepMetricsListener;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.*;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentSource;
@@ -133,6 +134,9 @@ class SportsDbCollectionJobTest {
 
     @Autowired
     private DataSource dataSource;
+
+    @Autowired
+    private ContentCollectionService collectionService;
 
     @TestConfiguration(proxyBeanMethods = false)
     static class MetricsTestConfig {
@@ -839,7 +843,29 @@ class SportsDbCollectionJobTest {
     }
 
     @Test
-    void 강제_종료로_남은_Job과_Step을_FAILED로_복구한다() throws Exception {
+    void 종료된_태스크의_수집을_저장된_위치부터_재시작한다()
+            throws Exception {
+        var previousOwner = new CollectionExecutionOwner(
+                "arn:aws:ecs:ap-northeast-2:123456789012:cluster/test",
+                "arn:aws:ecs:ap-northeast-2:123456789012:task/test/previous"
+        );
+        var currentOwner = new CollectionExecutionOwner(
+                previousOwner.clusterArn(),
+                "arn:aws:ecs:ap-northeast-2:123456789012:task/test/current"
+        );
+
+        // 첫 번째 경기는 이미 커밋된 상태
+        var savedFirst = collectionService.save(new CollectedContentData(
+                ContentType.sport,
+                "첫 번째 경기",
+                "경기 설명",
+                "https://example.com/thumbnail.jpg",
+                ContentSource.THE_SPORTS_DB,
+                "449001",
+                List.of("Soccer")
+        ));
+        var firstId = savedFirst.getId();
+
         var parameters = new JobParametersBuilder()
                 .addString("leagueId", "4328")
                 .addString("season", "2014-2015")
@@ -847,29 +873,55 @@ class SportsDbCollectionJobTest {
                 .toJobParameters();
 
         var instance = jobRepository.createJobInstance(
-                job.getName(), parameters
+                job.getName(),
+                parameters
         );
         var execution = jobRepository.createJobExecution(
-                instance, parameters, new ExecutionContext()
+                instance,
+                parameters,
+                new ExecutionContext()
         );
         var step = jobRepository.createStepExecution(
-                "sportsDbCollectionStep", execution
+                "sportsDbCollectionStep",
+                execution
         );
 
-        // 강제 종료 후 실행 중으로 남은 기록
+        // 첫 번째 경기 처리 후 태스크가 종료된 상황
         execution.setStatus(BatchStatus.STARTED);
+        execution.getExecutionContext().putString(
+                CollectionExecutionOwnerListener.CLUSTER_ARN_KEY,
+                previousOwner.clusterArn()
+        );
+        execution.getExecutionContext().putString(
+                CollectionExecutionOwnerListener.TASK_ARN_KEY,
+                previousOwner.taskArn()
+        );
+        jobRepository.updateExecutionContext(execution);
         jobRepository.update(execution);
 
         step.setStatus(BatchStatus.STARTED);
+        step.getExecutionContext().putInt("sportsDbEventReader.index", 1);
+        jobRepository.updateExecutionContext(step);
         jobRepository.update(step);
 
+        var first = new SportsDbEventResponse(
+                "449001", "첫 번째 경기", "Soccer",
+                "English Premier League", "2014-2015",
+                "2014-08-16", null
+        );
+        var second = new SportsDbEventResponse(
+                "449002", "두 번째 경기", "Soccer",
+                "English Premier League", "2014-2015",
+                "2014-08-17", null
+        );
+
         when(sportsDbClient.getEventsBySeason("4328", "2014-2015"))
-                .thenReturn(new SportsDbEventsResponse(List.of()));
+                .thenReturn(new SportsDbEventsResponse(List.of(first, second)));
+        when(metadataClient.getCurrentOwner(anyString()))
+                .thenReturn(Optional.of(currentOwner));
 
-        var recoveryPolicy = mock(CollectionExecutionRecoveryPolicy.class);
-
-        when(recoveryPolicy.canRecover(any(JobExecution.class)))
-                .thenReturn(true);
+        var statusClient = mock(EcsTaskStatusClient.class);
+        when(statusClient.isStopped(previousOwner)).thenReturn(true);
 
         var launcher = new CollectionJobLauncher(
                 jobOperator,
@@ -877,27 +929,44 @@ class SportsDbCollectionJobTest {
                 job,
                 jobRepository,
                 new CollectionJobLock(dataSource),
-                recoveryPolicy
+                new CollectionExecutionRecoveryPolicy(statusClient)
         );
 
         launcher.startSportsDb("4328", "2014-2015");
 
-        // 메모리에 있는 객체가 아니라 DB에서 다시 조회
         var recovered = jobRepository.getJobExecution(execution.getId());
-
         assertThat(recovered).isNotNull();
         assertThat(recovered.getStatus()).isEqualTo(BatchStatus.FAILED);
-        assertThat(recovered.getEndTime()).isNotNull();
 
-        assertThat(recovered.getStepExecutions()).hasSize(1);
-        var recoveredStep = recovered.getStepExecutions().iterator().next();
+        var restarted = jobRepository.getLastJobExecution(instance);
+        assertThat(restarted).isNotNull();
+        assertThat(restarted.getId()).isNotEqualTo(execution.getId());
+        assertThat(restarted.getStatus()).isEqualTo(BatchStatus.COMPLETED);
+        assertThat(restarted.getJobParameters()).isEqualTo(parameters);
 
-        assertThat(recoveredStep.getStatus()).isEqualTo(BatchStatus.FAILED);
-        assertThat(recoveredStep.getEndTime()).isNotNull();
+        var restartedStep = restarted.getStepExecutions().iterator().next();
+        assertThat(restartedStep.getReadCount()).isEqualTo(1);
+        assertThat(restartedStep.getWriteCount()).isEqualTo(1);
 
-        assertThat(jobRepository.findRunningJobExecutions(job.getName()))
-                .extracting(item -> item.getId())
-                .doesNotContain(execution.getId());
+        assertThat(contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.THE_SPORTS_DB,
+                ContentType.sport,
+                "449001"
+        )).hasValueSatisfying(content ->
+                assertThat(content.getId()).isEqualTo(firstId)
+        );
+
+        assertThat(contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.THE_SPORTS_DB,
+                ContentType.sport,
+                "449002"
+        )).isPresent();
+
+        assertThat(restarted.getExecutionContext().getString(
+                CollectionExecutionOwnerListener.TASK_ARN_KEY
+        )).isEqualTo(currentOwner.taskArn());
+
+        verify(statusClient).isStopped(previousOwner);
     }
 
     @ParameterizedTest
