@@ -640,6 +640,28 @@ class NotificationDomainEventListenerTest {
         verify(processor, times(1)).publish(any(NotificationPublishBatch.class));
     }
 
+    @Test
+    @DisplayName("제한 시간 안에 같은 콘텐츠에 다시 참여하면 알림 작업을 한 번만 제출한다.")
+    void skipsRepeatedWatchingSessionStartedNotification(){
+        UUID watcherId = UUID.randomUUID();
+        UUID contentId = UUID.randomUUID();
+
+        WatchingSessionStartedEvent event = new WatchingSessionStartedEvent(watcherId, "홍길동", contentId, "인터스텔라");
+
+        when(targetReader.findFollowerIds(watcherId))
+                .thenReturn(List.of(UUID.randomUUID(), UUID.randomUUID()));
+
+        String actionKey = "watching-session-start:%s:%s".formatted(watcherId, contentId);
+        lenient().when(store.tryReserve(actionKey))
+                .thenReturn(Optional.of(new Reservation(actionKey, "test-token")))
+                .thenReturn(Optional.empty());
+
+        listener.handleWatchingSessionStarted(event);
+        listener.handleWatchingSessionStarted(event);
+
+        verify(processor, times(1)).publish(any(NotificationPublishBatch.class));
+    }
+
 
 
 
