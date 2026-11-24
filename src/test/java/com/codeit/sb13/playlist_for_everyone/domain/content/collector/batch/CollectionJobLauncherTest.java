@@ -219,6 +219,53 @@ class CollectionJobLauncherTest {
         verify(handle).close();
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"tmdb", "sportsdb"})
+    void 태스크_상태_조회에_실패하면_실행하지_않고_잠금을_반납한다(
+            String provider
+    ) throws Exception {
+        Job job = "tmdb".equals(provider) ? tmdbJob : sportsDbJob;
+        var execution = mock(JobExecution.class);
+        var failure = new IllegalStateException("ECS 태스크 조회 실패");
+
+        when(jobRepository.findRunningJobExecutions(job.getName()))
+                .thenReturn(Set.of(execution));
+        when(recoveryPolicy.canRecover(execution)).thenThrow(failure);
+
+        assertThatThrownBy(() -> start(provider))
+                .isSameAs(failure);
+
+        verifyNoInteractions(jobOperator);
+        verify(handle).close();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"tmdb", "sportsdb"})
+    void 재시작에_실패하면_새_작업을_실행하지_않고_잠금을_반납한다(
+            String provider
+    ) throws Exception {
+        Job job = "tmdb".equals(provider) ? tmdbJob : sportsDbJob;
+        var execution = mock(JobExecution.class);
+        var recovered = mock(JobExecution.class);
+        var failure = new IllegalStateException("수집 작업 재시작 실패");
+
+        when(jobRepository.findRunningJobExecutions(job.getName()))
+                .thenReturn(Set.of(execution));
+        when(recoveryPolicy.canRecover(execution)).thenReturn(true);
+        when(jobOperator.recover(execution)).thenReturn(recovered);
+        when(jobOperator.restart(recovered)).thenThrow(failure);
+
+        assertThatThrownBy(() -> start(provider))
+                .isSameAs(failure);
+
+        var order = inOrder(jobOperator, handle);
+        order.verify(jobOperator).recover(execution);
+        order.verify(jobOperator).restart(recovered);
+        order.verify(handle).close();
+
+        verifyNoMoreInteractions(jobOperator);
+    }
+
     private void start(String provider) throws Exception {
         if ("tmdb".equals(provider)) {
             launcher.startTmdb(5L);
