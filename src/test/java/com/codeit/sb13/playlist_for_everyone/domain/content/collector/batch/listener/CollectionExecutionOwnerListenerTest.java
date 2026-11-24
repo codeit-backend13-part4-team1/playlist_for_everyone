@@ -1,5 +1,6 @@
-package com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch;
+package com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.listener;
 
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.CollectionExecutionOwner;
 import org.junit.jupiter.api.Test;
 import org.springframework.batch.core.job.JobExecution;
 import org.springframework.batch.core.repository.JobRepository;

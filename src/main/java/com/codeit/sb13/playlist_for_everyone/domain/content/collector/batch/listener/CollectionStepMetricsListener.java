@@ -1,4 +1,4 @@
-package com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch;
+package com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.listener;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.batch.core.ExitStatus;

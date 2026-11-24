@@ -1,4 +1,4 @@
-package com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch;
+package com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.reader;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.SportsDbClient;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.SportsDbEventResponse;
