@@ -11,20 +11,14 @@ import org.springframework.batch.core.job.parameters.JobParameters;
 import org.springframework.batch.core.launch.JobOperator;
 import org.springframework.batch.core.repository.JobRepository;
 
+import java.sql.SQLException;
 import java.util.Optional;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.inOrder;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.verifyNoMoreInteractions;
-import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 class CollectionJobLauncherTest {
 
@@ -141,6 +135,45 @@ class CollectionJobLauncherTest {
                 .hasMessage("수집 실행 실패");
 
         verify(handle).close();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"tmdb", "sportsdb"})
+    void 잠금_획득에서_오류가_발생하면_복구하거나_실행하지_않는다(
+            String provider
+    ) throws Exception {
+        var failure = new SQLException("잠금 연결 실패");
+
+        when(jobLock.tryAcquire(anyLong())).thenThrow(failure);
+
+        assertThatThrownBy(() -> start(provider))
+                .isSameAs(failure);
+
+        verifyNoInteractions(jobRepository, jobOperator, handle);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"tmdb", "sportsdb"})
+    void 이전_실행_복구에_실패하면_새로_실행하지_않고_잠금을_반납한다(
+            String provider
+    ) throws Exception {
+        Job job = "tmdb".equals(provider) ? tmdbJob : sportsDbJob;
+        var execution = mock(JobExecution.class);
+        var failure = new IllegalStateException("수집 실행 복구 실패");
+
+        when(jobRepository.findRunningJobExecutions(job.getName()))
+                .thenReturn(Set.of(execution));
+
+        doThrow(failure).when(jobOperator).recover(execution);
+
+        assertThatThrownBy(() -> start(provider))
+                .isSameAs(failure);
+
+        var order = inOrder(jobOperator, handle);
+        order.verify(jobOperator).recover(execution);
+        order.verify(handle).close();
+
+        verifyNoMoreInteractions(jobOperator);
     }
 
     private void start(String provider) throws Exception {
