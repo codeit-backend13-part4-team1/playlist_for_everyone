@@ -3,7 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.auth.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.entity.TemporaryPassword;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.entity.TemporaryPasswordStatus;
-import com.codeit.sb13.playlist_for_everyone.domain.auth.mail.PasswordResetMailSender;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.event.TemporaryPasswordIssuedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.TemporaryPasswordRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.mail.MailSendException;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -30,9 +30,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -40,6 +38,7 @@ import static org.mockito.Mockito.*;
 class PasswordResetServiceTest {
 
     private static final UUID USER_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
+    private static final UUID TEMPORARY_PASSWORD_ID = UUID.fromString("22222222-2222-2222-2222-222222222222");
     private static final String EMAIL = "user@test.com";
     private static final String RAW_PASSWORD = "Ab3!Cd4@Ef5#";
     private static final String ENCODED_PASSWORD = "encoded-temporary-password";
@@ -57,7 +56,7 @@ class PasswordResetServiceTest {
     private PasswordEncoder passwordEncoder;
 
     @Mock
-    private PasswordResetMailSender passwordResetMailSender;
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private PasswordResetService passwordResetService;
@@ -65,11 +64,17 @@ class PasswordResetServiceTest {
 
 
     @Test
-    @DisplayName("임시 비밀번호를 해시로 저장하고 원문을 메일로 보낸다.")
-    void 임시_비밀번호를_해시로_저장하고_메일로_보낸다() {
+    @DisplayName("임시 비밀번호를 해시로 저장하고 원문은 발급 이벤트로 전달한다.")
+    void 임시_비밀번호를_해시로_저장하고_원문은_발급_이벤트로_전달한다() {
         givenUserExists();
         given(temporaryPasswordGenerator.generate()).willReturn(RAW_PASSWORD);
         given(passwordEncoder.encode(RAW_PASSWORD)).willReturn(ENCODED_PASSWORD);
+
+        given(temporaryPasswordRepository.save(any(TemporaryPassword.class))).willAnswer(invocation -> {
+            TemporaryPassword issued = invocation.getArgument(0);
+            ReflectionTestUtils.setField(issued, "id", TEMPORARY_PASSWORD_ID);
+            return issued;
+        });
 
         LocalDateTime before = LocalDateTime.now();
         passwordResetService.resetPassword(EMAIL);
@@ -83,25 +88,30 @@ class PasswordResetServiceTest {
         // DB에는 원문이 아닌 해시만 저장한다.
         assertThat(saved.getPassword()).isEqualTo(ENCODED_PASSWORD);
         assertThat(saved.getStatus()).isEqualTo(TemporaryPasswordStatus.ACTIVE);
-        // 실행 시각 + 3분 범위 안이어야 한다.
         assertThat(saved.getExpiredAt()).isBetween(before.plusMinutes(3), after.plusMinutes(3));
 
-        // 메일에는 원문과 같은 유효 시간을 보낸다.
-        verify(passwordResetMailSender).send(EMAIL, RAW_PASSWORD, Duration.ofMinutes(3));
+        ArgumentCaptor<TemporaryPasswordIssuedEvent> eventCaptor =
+                ArgumentCaptor.forClass(TemporaryPasswordIssuedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        TemporaryPasswordIssuedEvent event = eventCaptor.getValue();
+        assertThat(event.temporaryPasswordId()).isEqualTo(TEMPORARY_PASSWORD_ID);
+        assertThat(event.email()).isEqualTo(EMAIL);
+        assertThat(event.temporaryPassword()).isEqualTo(RAW_PASSWORD);
+        assertThat(event.validity()).isEqualTo(Duration.ofMinutes(3));
     }
 
     @Test
-    @DisplayName("저장한 뒤에 메일을 보낸다.")
-    void 저장한_뒤에_메일을_보낸다() {
+    @DisplayName("저장한 뒤에 발급 이벤트를 발행한다.")
+    void 저장한_뒤에_발급_이벤트를_발행한다() {
         givenUserExists();
         given(temporaryPasswordGenerator.generate()).willReturn(RAW_PASSWORD);
         given(passwordEncoder.encode(RAW_PASSWORD)).willReturn(ENCODED_PASSWORD);
 
         passwordResetService.resetPassword(EMAIL);
 
-        InOrder inOrder = inOrder(temporaryPasswordRepository, passwordResetMailSender);
+        InOrder inOrder = inOrder(temporaryPasswordRepository, eventPublisher);
         inOrder.verify(temporaryPasswordRepository).save(any(TemporaryPassword.class));
-        inOrder.verify(passwordResetMailSender).send(anyString(), anyString(), any(Duration.class));
+        inOrder.verify(eventPublisher).publishEvent(any(TemporaryPasswordIssuedEvent.class));
     }
 
     @Test
@@ -117,8 +127,6 @@ class PasswordResetServiceTest {
 
         passwordResetService.resetPassword(EMAIL);
 
-        InOrder inOrder = inOrder(temporaryPasswordRepository, passwordResetMailSender);
-
         assertThat(first.getStatus()).isEqualTo(TemporaryPasswordStatus.DISCARDED);
         assertThat(second.getStatus()).isEqualTo(TemporaryPasswordStatus.DISCARDED);
     }
@@ -131,21 +139,7 @@ class PasswordResetServiceTest {
         assertThatThrownBy(() -> passwordResetService.resetPassword(EMAIL))
                 .isInstanceOf(UserNotFoundException.class);
 
-        verifyNoInteractions(temporaryPasswordRepository, temporaryPasswordGenerator, passwordResetMailSender);
-    }
-
-    @Test
-    @DisplayName("메일 발송에 실패하면 예외를 그대로 전파한다.")
-    void 메일_발송에_실패하면_예외를_전파한다() {
-        givenUserExists();
-        given(temporaryPasswordGenerator.generate()).willReturn(RAW_PASSWORD);
-        given(passwordEncoder.encode(RAW_PASSWORD)).willReturn(ENCODED_PASSWORD);
-        willThrow(new MailSendException("SMTP 연결 실패"))
-                .given(passwordResetMailSender).send(anyString(), anyString(), any(Duration.class));
-
-        // 예외가 전파되어야 @Transactional이 저장을 롤백한다. 롤백 자체는 통합 테스트에서 확인한다.
-        assertThatThrownBy(() -> passwordResetService.resetPassword(EMAIL))
-                .isInstanceOf(MailSendException.class);
+        verifyNoInteractions(temporaryPasswordRepository, temporaryPasswordGenerator, eventPublisher);
     }
 
     @Test
@@ -158,7 +152,7 @@ class PasswordResetServiceTest {
                 .isInstanceOf(PasswordResetTooManyRequestsException.class);
 
         verify(temporaryPasswordRepository, never()).save(any(TemporaryPassword.class));
-        verifyNoInteractions(temporaryPasswordGenerator, passwordResetMailSender);
+        verifyNoInteractions(temporaryPasswordGenerator, eventPublisher);
     }
 
     @Test
@@ -171,7 +165,7 @@ class PasswordResetServiceTest {
 
         passwordResetService.resetPassword(EMAIL);
 
-        verify(passwordResetMailSender).send(EMAIL, RAW_PASSWORD, Duration.ofMinutes(3));
+        verify(eventPublisher).publishEvent(any(TemporaryPasswordIssuedEvent.class));
     }
 
     @Test
@@ -186,7 +180,7 @@ class PasswordResetServiceTest {
         assertThatThrownBy(() -> passwordResetService.resetPassword(EMAIL))
                 .isInstanceOf(PasswordResetTooManyRequestsException.class);
 
-        verifyNoInteractions(temporaryPasswordGenerator, passwordResetMailSender);
+        verifyNoInteractions(temporaryPasswordGenerator, eventPublisher);
     }
 
     @Test
@@ -203,7 +197,7 @@ class PasswordResetServiceTest {
 
         passwordResetService.resetPassword(EMAIL);
 
-        verify(passwordResetMailSender).send(EMAIL, RAW_PASSWORD, Duration.ofMinutes(3));
+        verify(eventPublisher).publishEvent(any(TemporaryPasswordIssuedEvent.class));
     }
 
     @Test
@@ -251,7 +245,7 @@ class PasswordResetServiceTest {
         // 락을 잡거나 발급 제한을 확인하기 전에 끝나야 한다.
         verify(userRepository, never()).findByIdForUpdate(any());
         verifyNoInteractions(temporaryPasswordRepository, temporaryPasswordGenerator,
-                passwordEncoder, passwordResetMailSender);
+                passwordEncoder, eventPublisher);
     }
 
 
