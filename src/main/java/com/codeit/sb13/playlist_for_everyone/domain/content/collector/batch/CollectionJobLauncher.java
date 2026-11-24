@@ -55,7 +55,7 @@ public class CollectionJobLauncher {
         startWithLock(sportsDbCollectionJob, SPORTS_DB_LOCK_KEY, parameters);
     }
 
-    /** 잠금을 얻은 경우에만 복구하고 실행 */
+    /** 잠금 안에서 신규 실행 또는 중단된 작업 재시작 */
     private void startWithLock(
             Job job,
             long lockKey,
@@ -68,27 +68,23 @@ public class CollectionJobLauncher {
         }
 
         try (var handle = acquired.get()) {
-            if (!recoverInterruptedExecutions(job)) {
+            var executions = jobRepository.findRunningJobExecutions(job.getName());
+
+            if (executions.isEmpty()) {
+                jobOperator.start(job, parameters);
                 return;
             }
 
-            jobOperator.start(job, parameters);
-        }
-    }
+            for (var execution : executions) {
+                if (!recoveryPolicy.canRecover(execution)) {
+                    return;
+                }
+            }
 
-    private boolean recoverInterruptedExecutions(Job job) {
-        var executions = jobRepository.findRunningJobExecutions(job.getName());
-
-        for (var execution : executions) {
-            if (!recoveryPolicy.canRecover(execution)) {
-                return false;
+            for (var execution : executions) {
+                var recovered = jobOperator.recover(execution);
+                jobOperator.restart(recovered);
             }
         }
-
-        for (var execution : executions) {
-            jobOperator.recover(execution);
-        }
-
-        return true;
     }
 }
