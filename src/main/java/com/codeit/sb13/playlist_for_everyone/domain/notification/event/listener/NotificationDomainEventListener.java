@@ -185,6 +185,7 @@ public class NotificationDomainEventListener {
         Map<String, UUID> ids = Map.of(
                 "contentId", event.contentId(),
                 "watcherId", event.watcherId());
+        String actionKey = "watching-session-start:%s:%s".formatted( event.watcherId(), event.contentId());
         String watcherName = resolveUserName(event.watcherName());
         try {
             List<NotificationCreateRequestedEvent> requests = getFollowerIdsOrEmpty(event.watcherId(),
@@ -198,7 +199,7 @@ public class NotificationDomainEventListener {
                             .formatted(watcherName, event.contentTitle()),
                             NotificationLevel.INFO, NotificationSource.WATCHING_SESSION_STARTED))
                     .toList();
-            submit("콘텐츠 시청 시작", ids, requests);
+            submit("콘텐츠 시청 시작", ids, requests, batch -> notificationSubmitter.submit(actionKey, batch));
         }catch (RuntimeException failure) {
             logCreationFailure("콘텐츠 시청 시작", ids, failure);
         }
