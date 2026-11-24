@@ -22,6 +22,7 @@ import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.job.Job;
+import org.springframework.batch.core.job.JobExecution;
 import org.springframework.batch.core.job.parameters.InvalidJobParametersException;
 import org.springframework.batch.core.job.parameters.JobParametersBuilder;
 import org.springframework.batch.core.launch.JobOperator;
@@ -865,12 +866,18 @@ class SportsDbCollectionJobTest {
         when(sportsDbClient.getEventsBySeason("4328", "2014-2015"))
                 .thenReturn(new SportsDbEventsResponse(List.of()));
 
+        var recoveryPolicy = mock(CollectionExecutionRecoveryPolicy.class);
+
+        when(recoveryPolicy.canRecover(any(JobExecution.class)))
+                .thenReturn(true);
+
         var launcher = new CollectionJobLauncher(
                 jobOperator,
                 tmdbJob,
                 job,
                 jobRepository,
-                new CollectionJobLock(dataSource)
+                new CollectionJobLock(dataSource),
+                recoveryPolicy
         );
 
         launcher.startSportsDb("4328", "2014-2015");

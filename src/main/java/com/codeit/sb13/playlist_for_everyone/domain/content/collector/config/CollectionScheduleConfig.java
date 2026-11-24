@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.collector.config;
 
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.CollectionExecutionRecoveryPolicy;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.CollectionJobLauncher;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.CollectionJobLock;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.CollectionScheduler;
@@ -44,14 +45,16 @@ public class CollectionScheduleConfig {
             @Qualifier("tmdbCollectionJob") Job tmdbCollectionJob,
             @Qualifier("sportsDbCollectionJob") Job sportsDbCollectionJob,
             JobRepository jobRepository,
-            CollectionJobLock jobLock
+            CollectionJobLock jobLock,
+            CollectionExecutionRecoveryPolicy recoveryPolicy
     ) {
         return new CollectionJobLauncher(
                 jobOperator,
                 tmdbCollectionJob,
                 sportsDbCollectionJob,
                 jobRepository,
-                jobLock
+                jobLock,
+                recoveryPolicy
         );
     }
 

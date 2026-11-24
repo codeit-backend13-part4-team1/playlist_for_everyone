@@ -18,19 +18,22 @@ public class CollectionJobLauncher {
     private final Job sportsDbCollectionJob;
     private final JobRepository jobRepository;
     private final CollectionJobLock jobLock;
+    private final CollectionExecutionRecoveryPolicy recoveryPolicy;
 
     public CollectionJobLauncher(
             JobOperator jobOperator,
             Job tmdbCollectionJob,
             Job sportsDbCollectionJob,
             JobRepository jobRepository,
-            CollectionJobLock jobLock
+            CollectionJobLock jobLock,
+            CollectionExecutionRecoveryPolicy recoveryPolicy
     ) {
         this.jobOperator = jobOperator;
         this.tmdbCollectionJob = tmdbCollectionJob;
         this.sportsDbCollectionJob = sportsDbCollectionJob;
         this.jobRepository = jobRepository;
         this.jobLock = jobLock;
+        this.recoveryPolicy = recoveryPolicy;
     }
 
     public void startTmdb(long maxPages) throws Exception {
@@ -65,16 +68,27 @@ public class CollectionJobLauncher {
         }
 
         try (var handle = acquired.get()) {
-            recoverInterruptedExecutions(job);
+            if (!recoverInterruptedExecutions(job)) {
+                return;
+            }
+
             jobOperator.start(job, parameters);
         }
     }
 
-    private void recoverInterruptedExecutions(Job job) {
-        for (var execution : jobRepository.findRunningJobExecutions(
-                job.getName()
-        )) {
+    private boolean recoverInterruptedExecutions(Job job) {
+        var executions = jobRepository.findRunningJobExecutions(job.getName());
+
+        for (var execution : executions) {
+            if (!recoveryPolicy.canRecover(execution)) {
+                return false;
+            }
+        }
+
+        for (var execution : executions) {
             jobOperator.recover(execution);
         }
+
+        return true;
     }
 }

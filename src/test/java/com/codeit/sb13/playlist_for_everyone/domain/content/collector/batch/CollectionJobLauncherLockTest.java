@@ -56,7 +56,8 @@ class CollectionJobLauncherLockTest {
                 tmdbJob,
                 sportsDbJob,
                 firstRepository,
-                new CollectionJobLock(dataSource)
+                new CollectionJobLock(dataSource),
+                mock(CollectionExecutionRecoveryPolicy.class)
         );
 
         var secondLauncher = new CollectionJobLauncher(
@@ -64,7 +65,8 @@ class CollectionJobLauncherLockTest {
                 tmdbJob,
                 sportsDbJob,
                 secondRepository,
-                new CollectionJobLock(dataSource)
+                new CollectionJobLock(dataSource),
+                mock(CollectionExecutionRecoveryPolicy.class)
         );
 
         var started = new CountDownLatch(1);

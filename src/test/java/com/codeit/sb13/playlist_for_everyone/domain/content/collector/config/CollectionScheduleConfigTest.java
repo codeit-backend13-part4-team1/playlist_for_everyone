@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.collector.config;
 
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.CollectionExecutionRecoveryPolicy;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.CollectionJobLauncher;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -17,7 +18,8 @@ import org.springframework.scheduling.config.CronTask;
 import javax.sql.DataSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 class CollectionScheduleConfigTest {
 
@@ -29,7 +31,8 @@ class CollectionScheduleConfigTest {
                     .withBean(JobRepository.class, () -> mock(JobRepository.class))
                     .withBean(DataSource.class, () -> mock(DataSource.class))
                     .withUserConfiguration(CollectionScheduleConfig.class,
-                            SchedulingTestConfig.class);
+                            SchedulingTestConfig.class)
+                    .withBean(CollectionExecutionRecoveryPolicy.class, () -> mock(CollectionExecutionRecoveryPolicy.class));
 
     @Configuration(proxyBeanMethods = false)
     @EnableScheduling

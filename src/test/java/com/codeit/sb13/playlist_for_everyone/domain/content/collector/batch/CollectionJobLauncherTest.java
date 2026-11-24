@@ -10,7 +10,6 @@ import org.springframework.batch.core.job.JobExecution;
 import org.springframework.batch.core.job.parameters.JobParameters;
 import org.springframework.batch.core.launch.JobOperator;
 import org.springframework.batch.core.repository.JobRepository;
-import org.springframework.batch.infrastructure.item.ExecutionContext;
 
 import java.sql.SQLException;
 import java.util.Optional;
@@ -30,6 +29,7 @@ class CollectionJobLauncherTest {
     private CollectionJobLock jobLock;
     private CollectionJobLock.Handle handle;
     private CollectionJobLauncher launcher;
+    private CollectionExecutionRecoveryPolicy recoveryPolicy;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -39,12 +39,20 @@ class CollectionJobLauncherTest {
         sportsDbJob = mock(Job.class);
         jobLock = mock(CollectionJobLock.class);
         handle = mock(CollectionJobLock.Handle.class);
+        recoveryPolicy = mock(CollectionExecutionRecoveryPolicy.class);
 
         when(tmdbJob.getName()).thenReturn("tmdbCollectionJob");
         when(sportsDbJob.getName()).thenReturn("sportsDbCollectionJob");
         when(jobLock.tryAcquire(anyLong())).thenReturn(Optional.of(handle));
 
-        launcher = new CollectionJobLauncher(jobOperator, tmdbJob, sportsDbJob, jobRepository, jobLock);
+        launcher = new CollectionJobLauncher(
+                jobOperator,
+                tmdbJob,
+                sportsDbJob,
+                jobRepository,
+                jobLock,
+                recoveryPolicy
+        );
     }
 
     @Test
@@ -91,16 +99,19 @@ class CollectionJobLauncherTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"tmdb", "sportsdb"})
-    void 이전_실행의_태스크_정보가_없으면_복구와_새_실행을_보류한다(String provider) throws Exception {
+    void 복구가_허용되지_않으면_복구와_새_실행을_보류한다(
+            String provider
+    ) throws Exception {
         Job job = "tmdb".equals(provider) ? tmdbJob : sportsDbJob;
         var execution = mock(JobExecution.class);
 
-        when(execution.getExecutionContext()).thenReturn(new ExecutionContext());
-        when(jobRepository.findRunningJobExecutions(job.getName())).thenReturn(Set.of(execution));
+        when(jobRepository.findRunningJobExecutions(job.getName()))
+                .thenReturn(Set.of(execution));
+        when(recoveryPolicy.canRecover(execution)).thenReturn(false);
 
         start(provider);
 
-        verify(jobRepository).findRunningJobExecutions(job.getName());
+        verify(recoveryPolicy).canRecover(execution);
         verifyNoInteractions(jobOperator);
         verify(handle).close();
     }
@@ -137,6 +148,7 @@ class CollectionJobLauncherTest {
         var failure = new IllegalStateException("수집 실행 복구 실패");
 
         when(jobRepository.findRunningJobExecutions(job.getName())).thenReturn(Set.of(execution));
+        when(recoveryPolicy.canRecover(execution)).thenReturn(true);
 
         doThrow(failure).when(jobOperator).recover(execution);
 
