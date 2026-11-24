@@ -144,7 +144,9 @@ public class PasswordResetService {
     /** 안내 메일을 보내기 직전에, 그 사이 재발급 등으로 폐기되지 않았는지 확인한다. */
     @Transactional(readOnly = true)
     public boolean isActive(UUID temporaryPasswordId) {
-        return true; // [red] GREEN에서 저장된 상태로 판단한다.
+        return temporaryPasswordRepository.findById(temporaryPasswordId)
+                .map(temporaryPassword -> temporaryPassword.getStatus() == TemporaryPasswordStatus.ACTIVE)
+                .orElse(false);
     }
 
 }

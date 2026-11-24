@@ -19,8 +19,11 @@ import java.time.LocalDateTime;
 import java.util.concurrent.RejectedExecutionException;
 
 /**
+ * 임시 비밀번호 발급 이벤트를 받아 안내 메일을 보낸다.
+ *
  * <p>발급 트랜잭션이 커밋된 뒤 메일 전용 실행기에 넘겨 보낸다. 롤백되면 보내지 않는다.
  * 실행기가 작업을 받지 못하면 요청 스레드에서 대신 보내지 않고 바로 폐기한다.
+ * 보내기 직전마다 그 사이 재발급으로 폐기되지 않았는지 확인하고, 폐기됐으면 보내지 않는다.
  * 보내기 직전마다 남은 사용 시간을 계산해 메일에 적고, 1분도 남지 않았으면 보내지 않고 폐기한다.
  * 메일 서버 오류는 1초, 2초 간격으로 최대 두 번 다시 시도한다.
  * 끝내 보내지 못하면 임시 비밀번호가 남지 않도록 폐기한다.
@@ -74,6 +77,12 @@ public class TemporaryPasswordMailListener {
     private void send(TemporaryPasswordIssuedEvent event) {
         try {
             retryTemplate.invoke(() -> {
+                // 대기 중에 재발급되면 이 발급은 이미 폐기됐다. 쓸 수 없는 비밀번호는 보내지 않는다.
+                if (!passwordResetService.isActive(event.temporaryPasswordId())) {
+                    log.info("이미 폐기된 임시 비밀번호라 메일을 보내지 않습니다. temporaryPasswordId={}",
+                            event.temporaryPasswordId());
+                    return null;
+                }
                 // 대기열과 재시도 대기에서 보낸 시간만큼 줄어든 남은 시간을 시도마다 다시 계산한다.
                 Duration remaining = Duration.between(LocalDateTime.now(), event.expiredAt());
                 if (remaining.compareTo(MIN_REMAINING) < 0) {
