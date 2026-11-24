@@ -10,17 +10,18 @@ import org.springframework.core.retry.RetryPolicy;
 import org.springframework.core.retry.RetryTemplate;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.mail.MailException;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.time.Duration;
+import java.util.concurrent.RejectedExecutionException;
 
 /**
  * 임시 비밀번호 발급 이벤트를 받아 안내 메일을 보낸다.
  *
- * <p>발급 트랜잭션이 커밋된 뒤에 전용 실행기에서 보낸다. 롤백되면 보내지 않는다.
+ * <p>발급 트랜잭션이 커밋된 뒤 메일 전용 실행기에 넘겨 보낸다. 롤백되면 보내지 않는다.
+ * 실행기가 작업을 받지 못하면 요청 스레드에서 대신 보내지 않고 바로 폐기한다.
  * 메일 서버 오류는 1초, 2초 간격으로 최대 두 번 다시 시도한다.
  * 끝내 보내지 못하면 임시 비밀번호가 남지 않도록 폐기한다.
  * 로그에는 임시 비밀번호 ID와 예외 타입만 남기고 이메일과 원문은 남기지 않는다.
@@ -41,7 +42,7 @@ public class TemporaryPasswordMailListener {
     public TemporaryPasswordMailListener(PasswordResetMailSender mailSender,
                                          PasswordResetService passwordResetService,
                                          @Qualifier(PasswordResetMailAsyncConfig.EXECUTOR_NAME) TaskExecutor mailExecutor) {
-        this(mailSender, passwordResetService, mailExecutor , Duration.ofSeconds(1));
+        this(mailSender, passwordResetService, mailExecutor, Duration.ofSeconds(1));
     }
 
     TemporaryPasswordMailListener(PasswordResetMailSender mailSender, PasswordResetService passwordResetService,
@@ -58,18 +59,30 @@ public class TemporaryPasswordMailListener {
                 .build());
     }
 
-    @Async(PasswordResetMailAsyncConfig.EXECUTOR_NAME)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handle(TemporaryPasswordIssuedEvent event) {
         try {
-            retryTemplate.invoke(()-> {
+            mailExecutor.execute(() -> send(event));
+        } catch (RejectedExecutionException exception) {
+            // 요청 스레드에서 대신 보내면 메일 장애가 API 응답까지 막는다.
+            discard(event, exception);
+        }
+    }
+
+    private void send(TemporaryPasswordIssuedEvent event) {
+        try {
+            retryTemplate.invoke(() -> {
                 mailSender.send(event.email(), event.temporaryPassword(), event.validity());
                 return null;
             });
         } catch (RuntimeException exception) {
-            log.error("임시 비밀번호 안내 메일을 보내지 못해 발급을 폐기합니다. temporaryPasswordId={}, exceptionType={}",
-                    event.temporaryPasswordId(), exception.getClass().getSimpleName());
-            passwordResetService.discardUndeliverable(event.temporaryPasswordId());
+            discard(event, exception);
         }
+    }
+
+    private void discard(TemporaryPasswordIssuedEvent event, Exception exception) {
+        log.error("임시 비밀번호 안내 메일을 보내지 못해 발급을 폐기합니다. temporaryPasswordId={}, exceptionType={}",
+                event.temporaryPasswordId(), exception.getClass().getSimpleName());
+        passwordResetService.discardUndeliverable(event.temporaryPasswordId());
     }
 }

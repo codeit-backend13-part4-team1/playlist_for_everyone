@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -119,10 +120,12 @@ public class PasswordResetService {
     }
 
     /**
-     * 발송 되지 않은 임시 비밀번호를 폐기 한다.
+     * 안내 메일을 보내지 못한 임시 비밀번호를 폐기한다.
      *
+     * <p>발급 트랜잭션이 커밋된 뒤에 호출되므로 항상 새 트랜잭션에서 실행한다.
+     * 커밋 후 단계에서 기존 트랜잭션에 참여하면 변경이 반영되지 않는다.
      */
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void discardUndeliverable(UUID temporaryPasswordId) {
         temporaryPasswordRepository.findById(temporaryPasswordId)
                 .ifPresent(TemporaryPassword::discard);
