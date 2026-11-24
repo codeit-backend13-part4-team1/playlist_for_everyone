@@ -618,6 +618,28 @@ class NotificationDomainEventListenerTest {
                 .doesNotContain(event.watcherName(), event.contentTitle(), failureMessage);
     }
 
+    @Test
+    @DisplayName("제한 시간 안에 같은 플레이리스트에 같은 콘텐츠를 다시 추가하면 알림 작업을 한번만 제출한다.")
+    void skipsRepeatedPlaylistContentAddedNotification(){
+        UUID playlistId = UUID.randomUUID();
+        UUID contentId = UUID.randomUUID();
+
+        PlaylistContentAddedEvent event = new PlaylistContentAddedEvent(playlistId, "퇴근 후 영화", contentId, "인셉션", UUID.randomUUID());
+
+        when(targetReader.findSubscriberIds(playlistId))
+                .thenReturn(List.of(UUID.randomUUID(), UUID.randomUUID()));
+
+        String actionKey = "playlist-content-add:%s:%s".formatted(playlistId, contentId);
+        lenient().when(store.tryReserve(actionKey))
+                .thenReturn(Optional.of(new Reservation(actionKey, "test-token")))
+                .thenReturn(Optional.empty());
+
+        listener.handlePlaylistContentAdded(event);
+        listener.handlePlaylistContentAdded(event);
+
+        verify(processor, times(1)).publish(any(NotificationPublishBatch.class));
+    }
+
 
 
 
