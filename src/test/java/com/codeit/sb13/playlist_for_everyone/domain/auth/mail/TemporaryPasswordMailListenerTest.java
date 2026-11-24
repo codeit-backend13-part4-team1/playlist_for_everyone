@@ -21,11 +21,9 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.*;
 
 @ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
 @DisplayName("임시 비밀번호 안내 메일 발송")
@@ -36,7 +34,7 @@ class TemporaryPasswordMailListenerTest {
     private static final String RAW_PASSWORD = "Ab3!Cd4@Ef5#";
     private static final Duration VALIDITY = Duration.ofMinutes(3);
     // 만료 시각이 각 테스트를 실행하는 시점 기준이 되도록 테스트마다 새로 만든다.
-    private final TemporaryPasswordIssuedEvent EVENT = eventExpiringIn(VALIDITY);
+    private final TemporaryPasswordIssuedEvent event = eventExpiringIn(VALIDITY);
 
     @Mock
     private PasswordResetMailSender mailSender;
@@ -50,15 +48,17 @@ class TemporaryPasswordMailListenerTest {
     void setUp() {
         // 받은 작업을 바로 실행하고, 재시도 대기 없이 다시 시도한다.
         listener = new TemporaryPasswordMailListener(mailSender, passwordResetService, Runnable::run, Duration.ZERO);
+        // 기본은 아직 사용 가능한 발급이다. 상태를 확인하지 않는 테스트(거부, toString)도 있어 lenient로 둔다.
+        lenient().when(passwordResetService.isActive(TEMPORARY_PASSWORD_ID)).thenReturn(true);
     }
 
     @Test
     @DisplayName("이벤트의 이메일, 원문, 유효 시간으로 메일을 보낸다.")
     void 이벤트의_이메일_원문_유효_시간으로_메일을_보낸다() {
-        listener.handle(EVENT);
+        listener.handle(event);
 
         verify(mailSender).send(EMAIL, RAW_PASSWORD, VALIDITY);
-        verifyNoInteractions(passwordResetService);
+        verify(passwordResetService, never()).discardUndeliverable(any());
     }
 
     @Test
@@ -69,7 +69,7 @@ class TemporaryPasswordMailListenerTest {
                 .willDoNothing()
                 .given(mailSender).send(anyString(), anyString(), any(Duration.class));
 
-        listener.handle(EVENT);
+        listener.handle(event);
 
         verify(mailSender, times(3)).send(EMAIL, RAW_PASSWORD, VALIDITY);
         verify(passwordResetService, never()).discardUndeliverable(any());
@@ -81,7 +81,7 @@ class TemporaryPasswordMailListenerTest {
         willThrow(new MailSendException("SMTP 연결 실패"))
                 .given(mailSender).send(anyString(), anyString(), any(Duration.class));
 
-        listener.handle(EVENT);
+        listener.handle(event);
 
         verify(mailSender, times(3)).send(EMAIL, RAW_PASSWORD, VALIDITY);
         verify(passwordResetService).discardUndeliverable(TEMPORARY_PASSWORD_ID);
@@ -93,7 +93,7 @@ class TemporaryPasswordMailListenerTest {
         willThrow(new IllegalStateException("메일 설정 오류"))
                 .given(mailSender).send(anyString(), anyString(), any(Duration.class));
 
-        listener.handle(EVENT);
+        listener.handle(event);
 
         verify(mailSender, times(1)).send(EMAIL, RAW_PASSWORD, VALIDITY);
         verify(passwordResetService).discardUndeliverable(TEMPORARY_PASSWORD_ID);
@@ -105,7 +105,7 @@ class TemporaryPasswordMailListenerTest {
         willThrow(new MailSendException("SMTP 연결 실패"))
                 .given(mailSender).send(anyString(), anyString(), any(Duration.class));
 
-        listener.handle(EVENT);
+        listener.handle(event);
 
         assertThat(output.getAll())
                 .contains(TEMPORARY_PASSWORD_ID.toString())
@@ -116,7 +116,7 @@ class TemporaryPasswordMailListenerTest {
     @Test
     @DisplayName("이벤트를 문자열로 바꿔도 이메일과 원문이 드러나지 않는다.")
     void 이벤트를_문자열로_바꿔도_이메일과_원문이_드러나지_않는다() {
-        assertThat(EVENT.toString())
+        assertThat(event.toString())
                 .contains(TEMPORARY_PASSWORD_ID.toString())
                 .doesNotContain(EMAIL)
                 .doesNotContain(RAW_PASSWORD);
@@ -131,7 +131,7 @@ class TemporaryPasswordMailListenerTest {
         TemporaryPasswordMailListener saturatedListener =
                 new TemporaryPasswordMailListener(mailSender, passwordResetService, rejecting, Duration.ZERO);
 
-        saturatedListener.handle(EVENT);
+        saturatedListener.handle(event);
 
         // 요청 스레드에서 대신 보내지 않는다. 메일 장애가 API 응답까지 막지 않게 한다.
         verify(mailSender, never()).send(anyString(), anyString(), any(Duration.class));
@@ -144,7 +144,7 @@ class TemporaryPasswordMailListenerTest {
         listener.handle(eventExpiringIn(Duration.ofMinutes(2)));
 
         verify(mailSender).send(EMAIL, RAW_PASSWORD, Duration.ofMinutes(2));
-        verifyNoInteractions(passwordResetService);
+        verify(passwordResetService, never()).discardUndeliverable(any());
     }
 
     @Test
@@ -154,6 +154,17 @@ class TemporaryPasswordMailListenerTest {
 
         verify(mailSender, never()).send(anyString(), anyString(), any(Duration.class));
         verify(passwordResetService).discardUndeliverable(TEMPORARY_PASSWORD_ID);
+    }
+
+    @Test
+    @DisplayName("메일이 나가기 전에 재발급으로 폐기됐으면 보내지 않고, 다시 폐기하지도 않는다.")
+    void 재발급으로_폐기된_발급이면_메일을_보내지_않는다() {
+        given(passwordResetService.isActive(TEMPORARY_PASSWORD_ID)).willReturn(false);
+
+        listener.handle(event);
+
+        verify(mailSender, never()).send(anyString(), anyString(), any(Duration.class));
+        verify(passwordResetService, never()).discardUndeliverable(any());
     }
 
     private static TemporaryPasswordIssuedEvent eventExpiringIn(Duration remaining) {

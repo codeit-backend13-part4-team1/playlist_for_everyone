@@ -269,6 +269,33 @@ class PasswordResetServiceTest {
         verify(temporaryPasswordRepository, never()).save(any());
     }
 
+    @Test
+    @DisplayName("사용 가능 상태인 임시 비밀번호면 메일을 보낼 대상이다.")
+    void 사용_가능_상태면_발송_대상이다() {
+        TemporaryPassword active = TemporaryPassword.issue(USER_ID, ENCODED_PASSWORD, LocalDateTime.now().plusMinutes(3));
+        given(temporaryPasswordRepository.findById(TEMPORARY_PASSWORD_ID)).willReturn(Optional.of(active));
+
+        assertThat(passwordResetService.isActive(TEMPORARY_PASSWORD_ID)).isTrue();
+    }
+
+    @Test
+    @DisplayName("이미 폐기된 임시 비밀번호면 메일을 보낼 대상이 아니다.")
+    void 폐기된_임시_비밀번호는_발송_대상이_아니다() {
+        TemporaryPassword discarded = TemporaryPassword.issue(USER_ID, ENCODED_PASSWORD, LocalDateTime.now().plusMinutes(3));
+        discarded.discard();
+        given(temporaryPasswordRepository.findById(TEMPORARY_PASSWORD_ID)).willReturn(Optional.of(discarded));
+
+        assertThat(passwordResetService.isActive(TEMPORARY_PASSWORD_ID)).isFalse();
+    }
+
+    @Test
+    @DisplayName("임시 비밀번호가 없으면 메일을 보낼 대상이 아니다.")
+    void 임시_비밀번호가_없으면_발송_대상이_아니다() {
+        given(temporaryPasswordRepository.findById(TEMPORARY_PASSWORD_ID)).willReturn(Optional.empty());
+
+        assertThat(passwordResetService.isActive(TEMPORARY_PASSWORD_ID)).isFalse();
+    }
+
 
     private void givenUserExists() {
         User user = User.builder()

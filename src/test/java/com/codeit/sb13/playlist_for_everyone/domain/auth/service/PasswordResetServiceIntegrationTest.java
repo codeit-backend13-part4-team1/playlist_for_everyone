@@ -134,6 +134,9 @@ class PasswordResetServiceIntegrationTest {
         UUID userId = saveUser();
 
         passwordResetService.resetPassword(EMAIL);
+        // 첫 메일이 나간 뒤에 재요청한다. 늦게 실행되면 이미 폐기된 발급이라 보내지 않기 때문이다.
+        await().atMost(SEND_TIMEOUT).untilAsserted(() ->
+                verify(passwordResetMailSender, times(1)).send(anyString(), anyString(), any(Duration.class)));
         moveIssuedAtToPast();
         passwordResetService.resetPassword(EMAIL);
 
