@@ -2,7 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.auth.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.entity.TemporaryPassword;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.entity.TemporaryPasswordStatus;
-import com.codeit.sb13.playlist_for_everyone.domain.auth.mail.PasswordResetMailSender;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.event.TemporaryPasswordIssuedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.TemporaryPasswordRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
@@ -10,6 +10,7 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.auth.PasswordReset
 import com.codeit.sb13.playlist_for_everyone.global.exception.auth.PasswordResetTooManyRequestsException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,10 +23,10 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 비밀번호 초기화: 임시 비밀번호를 발급하고 이메일로 보낸다.
+ * 비밀번호 초기화: 임시 비밀번호를 발급하고 안내 메일 발송을 요청한다.
  *
  * 사용자의 기존 비밀번호를 바꾸지 않는다. 임시 비밀번호는 별도로 저장하고, 만료 전까지만 로그인에 사용할 수 있다.
- * 메일 발송이 실패하면 예외로 트랜잭션이 롤백되어 발급도 취소된다.
+ * 메일은 발급이 커밋된 뒤 트랜잭션 밖에서 보내, SMTP 응답을 기다리는 동안 DB 커넥션과 행 락을 잡고 있지 않는다.
  * 비밀번호 없이 소셜 로그인으로 가입한 계정은 초기화 대상이 아니다.
  */
 
@@ -46,7 +47,7 @@ public class PasswordResetService {
     private final TemporaryPasswordRepository  temporaryPasswordRepository;
     private final TemporaryPasswordGenerator temporaryPasswordGenerator;
     private final PasswordEncoder passwordEncoder;
-    private final PasswordResetMailSender passwordResetMailSender;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public void resetPassword(String email) {
@@ -76,13 +77,13 @@ public class PasswordResetService {
         String rawPassword = temporaryPasswordGenerator.generate();
         LocalDateTime expiredAt = LocalDateTime.now().plus(TEMPORARY_PASSWORD_VALIDITY);
 
-        // DB에는 해시만 저장하고, 원문은 메일로만 전달한다.
-        temporaryPasswordRepository.save(
-                TemporaryPassword.issue(user.getId(), passwordEncoder.encode(rawPassword), expiredAt)
-        );
+        //DB에는 해시만 저장한다.
+        TemporaryPassword issued = TemporaryPassword.issue(user.getId(), passwordEncoder.encode(rawPassword), expiredAt);
+        temporaryPasswordRepository.save(issued);
 
-        // 마지막에 보낸다. 실패하면 예외로 위의 파기·저장이 모두 롤백된다.
-        passwordResetMailSender.send(user.getEmail(), rawPassword, TEMPORARY_PASSWORD_VALIDITY);
+        // 원문은 커밋이 끝난 뒤 메일로만 전달한다. 롤백되면 이벤트도 전달되지 않는다.
+        eventPublisher.publishEvent(new TemporaryPasswordIssuedEvent(
+                issued.getId(), user.getEmail(), rawPassword, TEMPORARY_PASSWORD_VALIDITY));
     }
 
     /**
