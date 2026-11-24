@@ -106,6 +106,9 @@ class TmdbCollectionJobTest {
     @MockitoBean
     private TmdbClient tmdbClient;
 
+    @MockitoBean
+    private EcsTaskMetadataClient metadataClient;
+
     @Autowired
     private ApplicationEvents applicationEvents;
 
