@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch;
 
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.listener.CollectionExecutionOwnerListener;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.batch.core.job.Job;
@@ -7,27 +8,22 @@ import org.springframework.batch.core.job.JobExecution;
 import org.springframework.batch.core.job.parameters.JobParameters;
 import org.springframework.batch.core.launch.JobOperator;
 import org.springframework.batch.core.repository.JobRepository;
+import org.springframework.batch.infrastructure.item.ExecutionContext;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
-import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.listener.CollectionExecutionOwnerListener;
-import org.springframework.batch.infrastructure.item.ExecutionContext;
-import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.sql.DriverManager;
 import java.util.Set;
-
-import static org.mockito.Mockito.verify;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @Testcontainers
 class CollectionJobLauncherLockTest {
