@@ -64,7 +64,7 @@ public class AuthFilterOpenApiCustomizer implements OpenApiCustomizer {
                         .addApiResponse("200", jsonResponse("로그인 성공", "JwtDto"))
                         .addApiResponse("401", jsonResponse("로그인 실패", ERROR_SCHEMA))
                         .addApiResponse("403", jsonResponse("CSRF 오류", ERROR_SCHEMA))
-                        .addApiResponse("500", jsonResponse("서버 오류", ERROR_SCHEMA)));
+                        .addApiResponse("500", new ApiResponse().description("서버 오류")));
     }
 
     private Operation signOut() {
