@@ -90,6 +90,7 @@ public class NotificationDomainEventListener {
         if (event.ownerId().equals(event.subscriberId())) {
             return;
         }
+        String actionKey = "playlist-subscribe:%s:%s".formatted(event.subscriberId(), event.playlistId());
         Map<String, UUID> ids = Map.of(
                 "playlistId", event.playlistId(),
                 "ownerId", event.ownerId(),
@@ -98,7 +99,7 @@ public class NotificationDomainEventListener {
             NotificationCreateRequestedEvent request = new NotificationCreateRequestedEvent(event.ownerId(), "새로운 구독자",
                     "%s님이 \"%s\" 플레이리스트를 구독했습니다.".formatted(resolveUserName(event.subscriberName()), event.playlistTitle()),
                     NotificationLevel.INFO, NotificationSource.PLAYLIST_SUBSCRIBED);
-            submit("플레이리스트 구독", ids, List.of(request));
+            submit("플레이리스트 구독", ids, List.of(request), batch -> notificationSubmitter.submit(actionKey, batch));
         } catch (RuntimeException failure) {
             logCreationFailure("플레이리스트 구독", ids, failure);
         }
