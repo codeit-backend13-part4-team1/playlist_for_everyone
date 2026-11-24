@@ -12,6 +12,7 @@ import io.swagger.v3.oas.models.media.MediaType;
 import io.swagger.v3.oas.models.media.ObjectSchema;
 import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.media.StringSchema;
+import io.swagger.v3.oas.models.parameters.PathParameter;
 import io.swagger.v3.oas.models.parameters.RequestBody;
 import io.swagger.v3.oas.models.responses.ApiResponse;
 import io.swagger.v3.oas.models.responses.ApiResponses;
@@ -21,7 +22,7 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * Spring Security 필터가 처리해 springdoc이 수집하지 못하는 로그인·로그아웃 API를 문서에 추가한다.
+ * Spring Security 필터가 처리해 springdoc이 수집하지 못하는 로그인·로그아웃·소셜 로그인 시작 API를 문서에 추가한다.
  *
  * <p>프로토타입 문서와 같이 "인증" 태그 안에 두고 operationId를 signIn, signOut으로 맞춘다.
  * 두 API는 로그인 전에도 호출하므로 bearerAuth를 붙이지 않는다.
@@ -33,6 +34,7 @@ public class AuthFilterOpenApiCustomizer implements OpenApiCustomizer {
     static final String TAG = "인증";
     static final String SIGN_IN_PATH = "/api/auth/sign-in";
     static final String SIGN_OUT_PATH = "/api/auth/sign-out";
+    static final String SOCIAL_LOGIN_PATH = "/oauth2/authorization/{provider}";
 
     private static final String FORM = org.springframework.http.MediaType.APPLICATION_FORM_URLENCODED_VALUE;
     private static final String JSON = org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
@@ -44,6 +46,7 @@ public class AuthFilterOpenApiCustomizer implements OpenApiCustomizer {
         registerSchemas(openApi, JwtDto.class, ApiErrorResponse.class);
         openApi.path(SIGN_IN_PATH, new PathItem().post(signIn()));
         openApi.path(SIGN_OUT_PATH, new PathItem().post(signOut()));
+        openApi.path(SOCIAL_LOGIN_PATH, new PathItem().get(socialLogin()));
     }
 
     private Operation signIn() {
@@ -77,6 +80,23 @@ public class AuthFilterOpenApiCustomizer implements OpenApiCustomizer {
                         .addApiResponse("204", new ApiResponse().description("로그아웃 성공"))
                         .addApiResponse("403", jsonResponse("CSRF 오류", ERROR_SCHEMA))
                         .addApiResponse("500", jsonResponse("서버 오류", ERROR_SCHEMA)));
+    }
+
+    private Operation socialLogin() {
+        StringSchema providers = new StringSchema();
+        providers.setEnum(List.of("google", "kakao"));
+
+        return new Operation()
+                .operationId("socialLogin")
+                .addTagsItem(TAG)
+                .summary("소셜 로그인 시작")
+                .description("브라우저 주소 이동으로 호출하며 Swagger에서는 실행할 수 없습니다. 성공 후 /api/auth/refresh로 Access Token을 받습니다.")
+                .addParametersItem(new PathParameter()
+                        .name("provider")
+                        .description("소셜 로그인 제공자")
+                        .schema(providers))
+                .responses(new ApiResponses()
+                        .addApiResponse("302", new ApiResponse().description("제공자 인증 화면으로 이동")));
     }
 
     private ApiResponse jsonResponse(String description, String schemaName) {

@@ -25,9 +25,7 @@ import org.springframework.web.bind.annotation.RequestBody;
  * {@link AuthFilterOpenApiCustomizer}가 같은 "인증" 태그로 추가한다.
  * 인증 API는 로그인 전에도 호출하므로 bearerAuth를 붙이지 않는다.
  */
-@Tag(name = "인증", description = """
-        로그인, 로그아웃, 토큰 재발급, 비밀번호 초기화 API입니다.
-        """)
+@Tag(name = "인증", description = "로그인, 로그아웃, 소셜 로그인, 토큰 재발급, 비밀번호 초기화 API입니다.")
 @ApiResponses({
         @ApiResponse(responseCode = "500", description = "서버 오류",
                 content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
