@@ -348,7 +348,7 @@ public class SseRetryLifecycleTest {
         UUID lastEventId = UUID.randomUUID();
         LoginSession newLoginSession = new LoginSession(UUID.randomUUID());
         SseHistoryPosition upperBound = new SseHistoryPosition("1000-0");
-        SseDeliveryService deliveryService = new SseDeliveryService(repository, coordinator);
+        SseDeliveryService deliveryService = new SseDeliveryService(repository, coordinator, userSessionRepository);
         stubRecoveryAndRetrySchedule(userId, lastEventId, upperBound);
 
         try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
