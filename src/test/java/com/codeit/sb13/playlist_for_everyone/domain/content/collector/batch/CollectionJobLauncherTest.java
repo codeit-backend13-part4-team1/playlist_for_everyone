@@ -1,6 +1,8 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.batch.core.job.Job;
 import org.springframework.batch.core.job.parameters.JobParameters;
@@ -8,6 +10,7 @@ import org.springframework.batch.core.launch.JobOperator;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.job.JobExecution;
 
+import java.util.Optional;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -123,5 +126,35 @@ class CollectionJobLauncherTest {
 
         verify(jobOperator).recover(tmdbExecution);
         verify(jobOperator).recover(sportsDbExecution);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"tmdb", "sportsdb"})
+    void 잠금을_얻지_못하면_실행과_복구를_건너뛴다(String provider) throws Exception {
+        var jobOperator = mock(JobOperator.class);
+        var jobRepository = mock(JobRepository.class);
+        var tmdbJob = mock(Job.class);
+        var sportsDbJob = mock(Job.class);
+        var jobLock = mock(CollectionJobLock.class);
+
+        when(jobLock.tryAcquire(anyLong())).thenReturn(Optional.empty());
+
+        var launcher = new CollectionJobLauncher(
+                jobOperator,
+                tmdbJob,
+                sportsDbJob,
+                jobRepository,
+                jobLock
+        );
+
+        if ("tmdb".equals(provider)) {
+            launcher.startTmdb(5L);
+            verify(jobLock).tryAcquire(254_001L);
+        } else {
+            launcher.startSportsDb("4328", "2014-2015");
+            verify(jobLock).tryAcquire(254_002L);
+        }
+
+        verifyNoInteractions(jobRepository, jobOperator);
     }
 }
