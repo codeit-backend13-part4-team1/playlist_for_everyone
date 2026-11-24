@@ -1017,4 +1017,86 @@ class SportsDbCollectionJobTest {
         assertThat(stored.getExecutionContext().get("collection.owner.taskArn"))
                 .isEqualTo(owner.taskArn());
     }
+
+    @Test
+    void 복구_후_재시작_요청이_실패해도_다음_예약에서_같은_작업을_이어간다()
+            throws Exception {
+        var parameters = new JobParametersBuilder()
+                .addString("leagueId", "4328")
+                .addString("season", "2014-2015")
+                .addString("run.id", UUID.randomUUID().toString())
+                .toJobParameters();
+
+        var instance = jobRepository.createJobInstance(
+                job.getName(),
+                parameters
+        );
+        var execution = jobRepository.createJobExecution(
+                instance,
+                parameters,
+                new ExecutionContext()
+        );
+        var step = jobRepository.createStepExecution(
+                "sportsDbCollectionStep",
+                execution
+        );
+
+        execution.setStatus(BatchStatus.STARTED);
+        jobRepository.update(execution);
+
+        step.setStatus(BatchStatus.STARTED);
+        jobRepository.update(step);
+
+        var recoveryPolicy = mock(CollectionExecutionRecoveryPolicy.class);
+        when(recoveryPolicy.canRecover(any(JobExecution.class)))
+                .thenReturn(true);
+
+        var failingOperator = mock(JobOperator.class);
+        var failure = new IllegalStateException("재시작 요청 실패");
+
+        when(failingOperator.recover(any(JobExecution.class)))
+                .thenAnswer(invocation ->
+                        jobOperator.recover(invocation.getArgument(0))
+                );
+        when(failingOperator.restart(any(JobExecution.class)))
+                .thenThrow(failure);
+
+        var firstLauncher = new CollectionJobLauncher(
+                failingOperator,
+                tmdbJob,
+                job,
+                jobRepository,
+                new CollectionJobLock(dataSource),
+                recoveryPolicy
+        );
+
+        assertThatThrownBy(() ->
+                firstLauncher.startSportsDb("4328", "2014-2015")
+        ).isSameAs(failure);
+
+        var recovered = jobRepository.getJobExecution(execution.getId());
+        assertThat(recovered).isNotNull();
+        assertThat(recovered.getStatus()).isEqualTo(BatchStatus.FAILED);
+
+        when(sportsDbClient.getEventsBySeason("4328", "2014-2015"))
+                .thenReturn(new SportsDbEventsResponse(List.of()));
+
+        var nextLauncher = new CollectionJobLauncher(
+                jobOperator,
+                tmdbJob,
+                job,
+                jobRepository,
+                new CollectionJobLock(dataSource),
+                recoveryPolicy
+        );
+
+        nextLauncher.startSportsDb("4328", "2014-2015");
+
+        var restarted = jobRepository.getLastJobExecution(instance);
+
+        assertThat(restarted).isNotNull();
+        assertThat(restarted.getStatus()).isEqualTo(BatchStatus.COMPLETED);
+        assertThat(restarted.getId()).isNotEqualTo(execution.getId());
+        assertThat(restarted.getJobParameters()).isEqualTo(parameters);
+    }
 }
