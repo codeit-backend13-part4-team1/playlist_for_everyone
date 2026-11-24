@@ -25,5 +25,6 @@ public class SseHeartbeatScheduler {
     )
     public void sendHeartbeat(){
         sseDeliveryService.sendHeartbeatToLocalConnections();
+        sseDeliveryService.revalidateLocalSessions();
     }
 }

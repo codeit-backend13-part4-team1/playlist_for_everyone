@@ -33,6 +33,7 @@ public class RedisSseSubscription implements SseSubscription {
 
     private final RedisBrokerRegister redisBrokerRegister;
     private final MessageListener subscriber;
+    private final MessageListener revokeSubscriber;
     private final SseTransportProperties properties;
 
     // 공용 MessageListener 타입의 다른 빈과 구분하여 SSE 수신 리스너를 명시적으로 선택한다.
@@ -40,10 +41,13 @@ public class RedisSseSubscription implements SseSubscription {
             RedisBrokerRegister redisBrokerRegister,
             @Qualifier("redisSseEventSubscriber")
             MessageListener subscriber,
+            @Qualifier("redisRevokeEventSubscriber")
+            MessageListener revokeSubscriber,
             SseTransportProperties properties) {
         this.redisBrokerRegister = redisBrokerRegister;
         this.subscriber = subscriber;
         this.properties = properties;
+        this.revokeSubscriber = revokeSubscriber;
     }
 
     @Override
@@ -54,6 +58,10 @@ public class RedisSseSubscription implements SseSubscription {
                 properties.redis().channel()
         );
 
+        redisBrokerRegister.register(
+                revokeSubscriber,
+                properties.redis().revokeChannel()
+        );
     }
 
     @Override
@@ -62,6 +70,11 @@ public class RedisSseSubscription implements SseSubscription {
         redisBrokerRegister.unregister(
                 subscriber,
                 properties.redis().channel()
+        );
+
+        redisBrokerRegister.unregister(
+                revokeSubscriber,
+                properties.redis().revokeChannel()
         );
     }
 }
