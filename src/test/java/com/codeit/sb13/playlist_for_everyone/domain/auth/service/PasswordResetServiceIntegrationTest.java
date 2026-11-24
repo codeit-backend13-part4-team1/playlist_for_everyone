@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.domain.auth.service;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.config.PasswordResetMailAsyncConfig;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.entity.TemporaryPassword;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.entity.TemporaryPasswordStatus;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.mail.PasswordResetMailSender;
@@ -71,7 +72,8 @@ import static org.mockito.Mockito.verify;
         PasswordEncoderConfig.class,
         PasswordResetService.class,
         TemporaryPasswordGenerator.class,
-        TemporaryPasswordMailListener.class
+        TemporaryPasswordMailListener.class,
+        PasswordResetMailAsyncConfig.class
 })
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
