@@ -5,6 +5,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowRe
 import com.codeit.sb13.playlist_for_everyone.domain.follow.event.UserFollowedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.repository.FollowRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.service.FollowService;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.config.NotificationDeduplicationProperties;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.command.NotificationCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationCreateRequestedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationSource;
@@ -14,6 +15,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.Notifica
 import com.codeit.sb13.playlist_for_everyone.domain.notification.event.NotificationCreatedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener.NotificationEventListener;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.repository.NotificationRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.repository.impl.NotificationDeduplicationStore;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.repository.impl.NotificationDeduplicationStore.Reservation;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationService;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationUserReader;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationFixtureCleanup;
@@ -47,6 +50,7 @@ import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.task.TaskDecorator;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.test.annotation.DirtiesContext;
@@ -63,6 +67,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -140,6 +145,12 @@ class NotificationIntegrationTest {
 
     @Autowired
     private NotificationRepository notificationRepository;
+
+    @Autowired
+    private NotificationDeduplicationStore deduplicationStore;
+
+    @Autowired
+    private StringRedisTemplate redisTemplate;
 
     @Autowired
     private NotificationUserReader notificationUserReader;
@@ -318,6 +329,41 @@ class NotificationIntegrationTest {
         assertThat(saved.getLevel()).isEqualTo(expectedRequest.level());
 
         verify(sseEventPublisher).publish(any());
+    }
+
+    @Test
+    @DisplayName("이전 토큰으로는 새 선점을 보존하고 현재 토큰으로는 선점 키를 삭제한다.")
+    void preservesNewReservationWhenReleasingStaleReservation() {
+        String actionKey = "follow:%s:%s".formatted(UUID.randomUUID(), UUID.randomUUID());
+        Reservation previous = deduplicationStore.tryReserve(actionKey).orElseThrow();
+
+        // 기존 키가 만료된 뒤 같은 행위가 다시 선점된 상황을 만든다.
+        assertThat(redisTemplate.delete(previous.key())).isTrue();
+        Reservation current = deduplicationStore.tryReserve(actionKey).orElseThrow();
+
+        deduplicationStore.release(previous);
+
+        assertThat(redisTemplate.opsForValue().get(current.key())).isEqualTo(current.token());
+
+        deduplicationStore.release(current);
+
+        assertThat(redisTemplate.opsForValue().get(current.key())).isNull();
+    }
+
+    @Test
+    @DisplayName("같은 행위를 다시 선점하려 해도 기존 제한 시간은 연장되지 않는다.")
+    void doesNotExtendExpirationWhenReservationAlreadyExists() {
+        NotificationDeduplicationStore store = new NotificationDeduplicationStore(
+                redisTemplate, new NotificationDeduplicationProperties(Duration.ofSeconds(60))
+        );
+        String actionKey = "follow:%s:%s".formatted(UUID.randomUUID(), UUID.randomUUID());
+        Reservation reservation = store.tryReserve(actionKey).orElseThrow();
+
+        assertThat(redisTemplate.getExpire(reservation.key())).isBetween(31L, 60L);
+        assertThat(redisTemplate.expire(reservation.key(), Duration.ofSeconds(30))).isTrue();
+
+        assertThat(store.tryReserve(actionKey)).isEmpty();
+        assertThat(redisTemplate.getExpire(reservation.key())).isBetween(1L, 30L);
     }
 
     @ParameterizedTest(name = "{0}")
