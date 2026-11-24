@@ -68,6 +68,49 @@ jobs:
           path: build/reports/jacoco/test/coverage.svg
           if-no-files-found: error
 
+  publish-coverage-badge:
+    name: Publish coverage badge
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download coverage badge
+        uses: actions/download-artifact@v7
+        with:
+          name: coverage-badge
+          path: badge-artifact
+
+      - name: Publish badge
+        run: |
+          set -euo pipefail
+          test -s badge-artifact/coverage.svg
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git ls-remote --exit-code --heads origin coverage-badges > /dev/null; then
+            git fetch origin coverage-badges
+            git switch --detach FETCH_HEAD
+          else
+            git switch --orphan coverage-badges
+          fi
+
+          cp badge-artifact/coverage.svg coverage.svg
+          git add coverage.svg
+
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+
+          git commit -m "chore: update coverage badge"
+          git push origin HEAD:refs/heads/coverage-badges
+
   push-image:
     name: Build and Push Image
     # main에 머지된 코드가 테스트를 통과했을 때만 실행한다.
