@@ -110,6 +110,8 @@ everyone:
       pool-size: ${EVERYONE_NOTIFICATION_ASYNC_POOL_SIZE:2}
       # 대기 중인 작업 수의 상한. 0이면 작업을 대기열에 보관하지 않는다.
       queue-capacity: ${EVERYONE_NOTIFICATION_ASYNC_QUEUE_CAPACITY:100}
+    deduplication:
+      window: ${EVERYONE_NOTIFICATION_DEDUPLICATION_WINDOW:60s}
 
   s3:
     bucket: ${EVERYONE_S3_BUCKET}
