@@ -1,11 +1,13 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.service;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.LoginSession;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.springframework.web.util.DisconnectedClientHelper;
@@ -29,6 +31,8 @@ public class SseDeliveryService {
     private final SseEmitterRepository sseEmitterRepository;
 
     private final SseDeliveryCoordinator deliveryCoordinator;
+
+    private final UserSessionRepository userSessionRepository;
 
     /**
      * 수신자의 모든 로컬 연결에 후속 이력 조회를 요청한다. 브로커 메시지는 조회를 깨우는 신호다.
@@ -76,6 +80,23 @@ public class SseDeliveryService {
                                 sendHeartbeat(userId, connection, emitter)
                         )
                 );
+    }
+
+    public void revalidateLocalSessions(){
+        sseEmitterRepository.findAllLoginSessions()
+                .forEach((userId, value) -> value
+                        .stream()
+                        .filter(loginSession -> isNotCurrentSession(userId, loginSession))
+                        .forEach(loginSession -> revoke(userId, loginSession)));
+    }
+
+    private boolean isNotCurrentSession(UUID userId, LoginSession loginSession) {
+        try {
+            return !userSessionRepository.isCurrent(userId, loginSession.id());
+        }catch (DataAccessException e){
+            log.warn("SSE 세션 재검증 중 Redis 조회에 실패했습니다. userId={}", userId, e);
+            return false;
+        }
     }
 
     public void revoke(UUID userId, LoginSession loginSession){
