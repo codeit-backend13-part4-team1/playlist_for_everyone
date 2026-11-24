@@ -161,6 +161,33 @@ class CollectionJobLauncherTest {
         verifyNoMoreInteractions(jobOperator);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"tmdb", "sportsdb"})
+    void 종료가_확인된_이전_작업을_복구한_뒤_재시작한다(
+            String provider
+    ) throws Exception {
+        Job job = "tmdb".equals(provider) ? tmdbJob : sportsDbJob;
+        var execution = mock(JobExecution.class);
+        var recovered = mock(JobExecution.class);
+
+        when(jobRepository.findRunningJobExecutions(job.getName()))
+                .thenReturn(Set.of(execution));
+        when(recoveryPolicy.canRecover(execution)).thenReturn(true);
+        when(jobOperator.recover(execution)).thenReturn(recovered);
+
+        start(provider);
+
+        var order = inOrder(recoveryPolicy, jobOperator, handle);
+
+        order.verify(recoveryPolicy).canRecover(execution);
+        order.verify(jobOperator).recover(execution);
+        order.verify(jobOperator).restart(recovered);
+        order.verify(handle).close();
+
+        verify(jobOperator, never())
+                .start(any(Job.class), any(JobParameters.class));
+    }
+
     private void start(String provider) throws Exception {
         if ("tmdb".equals(provider)) {
             launcher.startTmdb(5L);
