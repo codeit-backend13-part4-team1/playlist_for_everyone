@@ -207,6 +207,27 @@ class NotificationDomainEventListenerTest {
     }
 
     @Test
+    @DisplayName("제한 시간 안에 같은 플레이리스트를 재구독하면 알림 작업을 한 번만 제출한다.")
+    void skipsRepeatedPlaylistSubscriptionNotification() {
+        UUID playlistId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID subscriberId = UUID.randomUUID();
+        PlaylistSubscribedEvent event = new PlaylistSubscribedEvent(
+                playlistId, "퇴근 후 영화", ownerId, subscriberId, "홍길동"
+        );
+
+        String actionKey = "playlist-subscribe:%s:%s".formatted(subscriberId, playlistId);
+        lenient().when(store.tryReserve(actionKey))
+                .thenReturn(Optional.of(new Reservation(actionKey, "test-token")))
+                .thenReturn(Optional.empty());
+
+        listener.handlePlaylistSubscribed(event);
+        listener.handlePlaylistSubscribed(event);
+
+        verify(processor, times(1)).publish(any(NotificationPublishBatch.class));
+    }
+
+    @Test
     @DisplayName("플레이리스트 생성 시 소유자의 각 팔로워에게 이벤트의 이름과 제목으로 INFO 알림 생성을 요청한다.")
     void submitsPlaylistCreatedNotificationRequestsToFollowers(){
         UUID playlistId = UUID.randomUUID();
