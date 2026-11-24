@@ -3,7 +3,9 @@ package com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener
 import com.codeit.sb13.playlist_for_everyone.domain.follow.event.UserFollowedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationCreateRequestedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.event.NotificationAsyncProcessor;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.event.NotificationSubmitter;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.monitoring.NotificationMetrics;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.repository.impl.NotificationDeduplicationStore;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationTargetReader;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationTaskTracker;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistContentAddedEvent;
@@ -40,6 +42,7 @@ import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -51,9 +54,8 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
 
 /**
  * 실제 JDBC 커밋·업무 리스너·알림 실행기를 연결하고 공통 요청 수신에서 작업을 차단한다.
@@ -63,7 +65,8 @@ import static org.mockito.Mockito.when;
         NotificationAsyncConfig.class,
         NotificationAsyncProcessor.class,
         NotificationDomainEventListener.class,
-        NotificationBusinessAsyncIntegrationTest.TransactionConfig.class
+        NotificationBusinessAsyncIntegrationTest.TransactionConfig.class,
+        NotificationSubmitter.class
 })
 @TestPropertySource(properties = {
         "everyone.notification.async.pool-size=2",
@@ -90,6 +93,8 @@ class NotificationBusinessAsyncIntegrationTest {
     private NotificationMetrics metrics;
     @MockitoBean
     private NotificationEventListener notificationEventListener;
+    @MockitoBean
+    private NotificationDeduplicationStore store;
 
     private final UUID businessId = UUID.randomUUID();
     private final UUID actorId = UUID.randomUUID();
@@ -101,6 +106,9 @@ class NotificationBusinessAsyncIntegrationTest {
     @BeforeEach
     void setUp() {
         jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS business_markers (id UUID PRIMARY KEY)");
+
+        when(store.tryReserve(anyString()))
+                .thenReturn(Optional.of(new NotificationDeduplicationStore.Reservation("test-key", "test-token")));
     }
 
     @AfterEach
@@ -180,6 +188,9 @@ class NotificationBusinessAsyncIntegrationTest {
 
             assertThat(markerCount()).isEqualTo(1);
             verifyNoInteractions(notificationEventListener);
+            if (source == Source.FOLLOW){
+                verify(store).release(new NotificationDeduplicationStore.Reservation("test-key", "test-token"));
+            }
             assertThat(output.getAll())
                     .contains(source.label + " 알림 작업 제출 거부.",
                             "requestCount=" + receivers(source).size(),

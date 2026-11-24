@@ -7,7 +7,10 @@ import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.Notif
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationSource;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.NotificationLevel;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.event.NotificationAsyncProcessor;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.event.NotificationSubmitter;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.monitoring.NotificationMetrics;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.repository.impl.NotificationDeduplicationStore;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.repository.impl.NotificationDeduplicationStore.Reservation;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationTargetReader;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistContentAddedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistCreatedEvent;
@@ -15,6 +18,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistSubsc
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.event.UserRoleChangedEvent;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionStartedEvent;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,6 +36,7 @@ import org.springframework.boot.test.system.OutputCaptureExtension;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -57,11 +62,27 @@ class NotificationDomainEventListenerTest {
     @Mock
     private NotificationMetrics metrics;
 
-    @InjectMocks
+    @Mock
+    private NotificationDeduplicationStore store;
+
     private NotificationDomainEventListener listener;
 
     @Captor
     private ArgumentCaptor<NotificationPublishBatch> batchCaptor;
+
+    @BeforeEach
+    void setUp(){
+        NotificationSubmitter notificationSubmitter = new NotificationSubmitter(processor, store);
+        listener = new NotificationDomainEventListener(
+                targetReader,
+                processor,
+                metrics,
+                notificationSubmitter
+        );
+
+        lenient().when(store.tryReserve(anyString()))
+                .thenReturn(Optional.of(new Reservation("test-key", "test-token")));
+    }
 
     @Test
     @DisplayName("팔로우 이벤트를 팔로우받은 사용자의 알림 생성 요청 목록으로 한 번 제출한다.")
@@ -91,6 +112,11 @@ class NotificationDomainEventListenerTest {
         UUID followeeId = UUID.randomUUID();
 
         UserFollowedEvent event = new UserFollowedEvent(followerId, "홍길동", followeeId);
+        String actionKey = "follow:%s:%s".formatted(followerId, followeeId);
+        when(store.tryReserve(actionKey))
+                .thenReturn(Optional.of(new Reservation(actionKey, "test-token")))
+                .thenReturn(Optional.empty());
+
         listener.handleUserFollowed(event);
         listener.handleUserFollowed(event);
 

@@ -7,6 +7,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.Notif
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationSource;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.NotificationLevel;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.event.NotificationAsyncProcessor;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.event.NotificationSubmitter;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.monitoring.NotificationMetrics;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationTargetReader;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistContentAddedEvent;
@@ -48,16 +49,18 @@ public class NotificationDomainEventListener {
     private final NotificationTargetReader targetReader;
     private final NotificationAsyncProcessor processor;
     private final NotificationMetrics metrics;
+    private final NotificationSubmitter notificationSubmitter;
 
     /** 팔로우받은 사용자에게 INFO 요청을 만든다. 이름은 이벤트 스냅샷을 사용하고 공백이면 '사용자'로 보정한다. */
     @TransactionalEventListener
     public void handleUserFollowed(UserFollowedEvent event) {
         Map<String, UUID> ids = Map.of("followerId", event.followerId(), "followeeId", event.followeeId());
+        String actionKey = "follow:%s:%s".formatted(event.followerId(), event.followeeId());
         try {
             NotificationCreateRequestedEvent request = new NotificationCreateRequestedEvent(event.followeeId(), "새로운 팔로워",
                     "%s님이 회원님을 팔로우했습니다.".formatted(resolveUserName(event.followerName())),
                     NotificationLevel.INFO, NotificationSource.USER_FOLLOWED);
-            submit("팔로우", ids, List.of(request));
+            submit("팔로우", ids, List.of(request), batch -> notificationSubmitter.submit(actionKey, batch));
         } catch (RuntimeException failure) {
             logCreationFailure("팔로우", ids, failure);
         }
@@ -202,12 +205,16 @@ public class NotificationDomainEventListener {
 
     /** @Async 프록시에 목록 전체를 한 번 제출한다. 거부 시 호출 스레드에서 대신 실행하거나 재시도하지 않는다. */
     private void submit(String source, Map<String, UUID> ids, List<NotificationCreateRequestedEvent> requests) {
+        submit(source, ids, requests, processor::publish);
+    }
+
+    private void submit(String source, Map<String, UUID> ids, List<NotificationCreateRequestedEvent> requests, Consumer<NotificationPublishBatch> publishBatch){
         if (requests.isEmpty()) {
             return;
         }
         NotificationPublishBatch batch = new NotificationPublishBatch(source, ids, requests);
         try {
-            processor.publish(batch);
+            publishBatch.accept(batch);
         } catch (TaskRejectedException failure) {
             log.warn("{} 알림 작업 제출 거부. sourceIds={}, requestCount={}, exceptionType={}",
                     source, ids, requests.size(), failure.getClass().getSimpleName());

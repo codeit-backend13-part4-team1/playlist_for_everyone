@@ -58,6 +58,7 @@ import org.springframework.test.context.event.ApplicationEvents;
 import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -120,6 +121,9 @@ class NotificationIntegrationTest {
 
     @Container
     static final PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:16");
+    @Container
+    static final GenericContainer<?> redis = new GenericContainer<>("redis:7.4-alpine")
+            .withExposedPorts(6379);
 
     @DynamicPropertySource
     static void configurePostgres(DynamicPropertyRegistry registry) {
@@ -127,6 +131,8 @@ class NotificationIntegrationTest {
         registry.add("spring.datasource.username", postgres::getUsername);
         registry.add("spring.datasource.password", postgres::getPassword);
         registry.add("spring.datasource.driver-class-name", postgres::getDriverClassName);
+        registry.add("spring.data.redis.host", redis::getHost);
+        registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
     }
 
     @Autowired
@@ -279,8 +285,8 @@ class NotificationIntegrationTest {
     }
 
     @Test
-    @DisplayName("팔로우 이벤트를 발행한 트랜잭션의 커밋 후 알림을 저장한다.")
-    void savesNotificationFromFollowEventAfterBusinessCommit() {
+    @DisplayName("같은 팔로우 이벤트를 두 번 커밋해도 알림은 한 번만 저장한다.")
+    void savesOnlyOneNotificationWhenSameFollowEventCommitsTwice() {
         // 이벤트를 직접 발행해 커밋 전후의 소비 시점을 관찰한다. 실제 팔로우 등록은 별도 사례로 검증한다.
         UserFollowedEvent event = new UserFollowedEvent(UUID.randomUUID(), "홍길동", RECEIVER_ID);
         NotificationCreateRequestedEvent expectedRequest = new NotificationCreateRequestedEvent(
@@ -300,7 +306,9 @@ class NotificationIntegrationTest {
             verifyNoInteractions(sseEventPublisher);
         });
 
+        transactionTemplate.executeWithoutResult(status -> eventPublisher.publishEvent(event));
         notificationTasks.awaitCompletion();
+        assertThat(notificationTasks.submittedTaskCount()).isEqualTo(1);
         verify(notificationEventListener).handleNotification(expectedRequest);
 
         Notification saved = findOnlyNotification();
