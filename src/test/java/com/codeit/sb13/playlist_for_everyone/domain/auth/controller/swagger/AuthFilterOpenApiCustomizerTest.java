@@ -6,6 +6,8 @@ import io.swagger.v3.oas.models.Operation;
 import io.swagger.v3.oas.models.Paths;
 import io.swagger.v3.oas.models.media.ObjectSchema;
 import io.swagger.v3.oas.models.media.Schema;
+import io.swagger.v3.oas.models.media.StringSchema;
+import io.swagger.v3.oas.models.parameters.Parameter;
 import io.swagger.v3.oas.models.responses.ApiResponse;
 import io.swagger.v3.oas.models.responses.ApiResponses;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,6 +22,7 @@ class AuthFilterOpenApiCustomizerTest {
 
     private static final String SIGN_IN = "/api/auth/sign-in";
     private static final String SIGN_OUT = "/api/auth/sign-out";
+    private static final String SOCIAL_LOGIN = "/oauth2/authorization/{provider}";
 
     private final AuthFilterOpenApiCustomizer customizer = new AuthFilterOpenApiCustomizer();
     private OpenAPI openApi;
@@ -102,6 +105,27 @@ class AuthFilterOpenApiCustomizerTest {
 
         assertThat(postOf(SIGN_IN).getSecurity()).isNullOrEmpty();
         assertThat(postOf(SIGN_OUT).getSecurity()).isNullOrEmpty();
+    }
+
+    @Test
+    @DisplayName("소셜 로그인 시작을 provider 경로 변수가 있는 GET 작업으로 추가한다.")
+    void 소셜_로그인_시작을_provider_경로_변수가_있는_GET_작업으로_추가한다() {
+        customizer.customise(openApi);
+
+        assertThat(openApi.getPaths()).containsKey(SOCIAL_LOGIN);
+        Operation socialLogin = openApi.getPaths().get(SOCIAL_LOGIN).getGet();
+        assertThat(socialLogin.getOperationId()).isEqualTo("socialLogin");
+        assertThat(socialLogin.getTags()).containsExactly("인증");
+
+        Parameter provider = socialLogin.getParameters().get(0);
+        assertThat(provider.getName()).isEqualTo("provider");
+        assertThat(provider.getIn()).isEqualTo("path");
+        assertThat(provider.getRequired()).isTrue();
+        assertThat(((StringSchema) provider.getSchema()).getEnum()).containsExactly("google", "kakao");
+
+        // 제공자 인증 화면으로 보내는 리다이렉트이며, 로그인 전에 호출한다.
+        assertThat(socialLogin.getResponses()).containsKey("302");
+        assertThat(socialLogin.getSecurity()).isNullOrEmpty();
     }
 
     private Operation postOf(String path) {
