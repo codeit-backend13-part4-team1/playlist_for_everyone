@@ -197,7 +197,7 @@ class NotificationIntegrationTest {
     private NotificationTaskTracker notificationTasks;
     private TransactionTemplate transactionTemplate;
     // 팔로워 사용자는 구독 사례에서 subscriberId로 재사용한다.
-    private static final UUID FOLLOWER_ID = UUID.randomUUID();
+    private final UUID followerId = UUID.randomUUID();
     private static final UUID PLAYLIST_ID = UUID.randomUUID();
 
     @BeforeEach
@@ -212,7 +212,7 @@ class NotificationIntegrationTest {
         jdbcTemplate.update("""
                 INSERT INTO users (id, email, nickname, role, enabled, created_at)
                 VALUES (?, ?, ?, 'USER', true, CURRENT_TIMESTAMP)
-                """, FOLLOWER_ID, FOLLOWER_ID + "@test.example", "홍길동");
+                """, followerId, followerId + "@test.example", "홍길동");
 
     }
 
@@ -228,7 +228,7 @@ class NotificationIntegrationTest {
         followRepository.deleteAllInBatch();
         jdbcTemplate.update("DELETE FROM subscriptions WHERE playlist_id =?", PLAYLIST_ID);
         jdbcTemplate.update("DELETE FROM playlists WHERE id = ?", PLAYLIST_ID);
-        jdbcTemplate.update("DELETE FROM users WHERE id IN (?, ?)", RECEIVER_ID , FOLLOWER_ID);
+        jdbcTemplate.update("DELETE FROM users WHERE id IN (?, ?)", RECEIVER_ID, followerId);
     }
 
     @Test
@@ -730,7 +730,7 @@ class NotificationIntegrationTest {
     @Test
     @DisplayName("실제 팔로우 등록이 커밋되면 대상 사용자에게 알림을 저장하고 SSE 발행을 한 번 요청한다.")
     void savesNotificationAfterActualFollowRegistrationCommits(){
-        FollowCommand command = new FollowCommand(RECEIVER_ID, FOLLOWER_ID);
+        FollowCommand command = new FollowCommand(RECEIVER_ID, followerId);
 
         double attemptsBefore = publishAttempts(meterRegistry, "user_followed");
         long processedBefore = processingCount(meterRegistry, "user_followed");
@@ -775,7 +775,7 @@ class NotificationIntegrationTest {
         double attemptsBefore = publishAttempts(meterRegistry, "user_followed");
         long processedBefore = processingCount(meterRegistry, "user_followed");
 
-        FollowResult result = followService.follow(new FollowCommand(RECEIVER_ID, FOLLOWER_ID));
+        FollowResult result = followService.follow(new FollowCommand(RECEIVER_ID, followerId));
         assertThat(result.created()).isTrue();
         assertThat(followRepository.existsById(result.followDto().id())).isTrue();
         assertThat(followRepository.count()).isEqualTo(1L);
@@ -789,7 +789,7 @@ class NotificationIntegrationTest {
         // 팔로우 유지와 함께 비동기 프로세서가 예외를 처리하고 기록한 사실까지 확인한다.
         assertThat(output.getOut()).contains(
                 "팔로우 알림 재발행 실패.",
-                "followerId=" + FOLLOWER_ID,
+                "followerId=" + followerId,
                 "followeeId=" + RECEIVER_ID,
                 "exceptionType=IllegalStateException"
         );
@@ -860,7 +860,7 @@ class NotificationIntegrationTest {
     @DisplayName("실제 구독이 커밋되면 플레이리스트 소유자에게 알림을 저장하고 SSE 알림을 요청한다.")
     void savesNotificationAfterActualPlaylistSubscriptionCommits(){
         insertPlaylist();
-        UUID subscriberId = FOLLOWER_ID;
+        UUID subscriberId = followerId;
 
         double attemptsBefore = publishAttempts(meterRegistry, "playlist_subscribed");
         long processedBefore = processingCount(meterRegistry, "playlist_subscribed");
@@ -917,7 +917,7 @@ class NotificationIntegrationTest {
     @DisplayName("실제 구독이 롤백되면 구독 정보와 구독자 수를 되돌리고 알림을 생성하지 않는다.")
     void doesNotSaveNotificationWhenActualPlaylistSubscriptionRollsBack(ApplicationEvents applicationEvents){
         insertPlaylist();
-        UUID subscriberId = FOLLOWER_ID;
+        UUID subscriberId = followerId;
 
         transactionTemplate.executeWithoutResult(status ->{
             playlistService.subscribe(PLAYLIST_ID, subscriberId);
@@ -947,7 +947,6 @@ class NotificationIntegrationTest {
     @DisplayName("트랜잭션 밖의 시청 시작 이벤트로 팔로워 알림을 저장하고 SSE 발행을 요청한다.")
     void savesWatchSessionNotificationWithoutTransaction(){
         UUID watcherId = RECEIVER_ID;
-        UUID followerId = FOLLOWER_ID;
 
         insertFollow(followerId, watcherId);
 
@@ -962,7 +961,7 @@ class NotificationIntegrationTest {
     @Test
     @DisplayName("시청 시작 이벤트를 발행한 트랜잭션이 롤백되면 알림 작업을 제출하지 않는다.")
     void ignoresWatchingSessionStartedEventWhenTransactionRollsBack(){
-        insertFollow(FOLLOWER_ID, RECEIVER_ID);
+        insertFollow(followerId, RECEIVER_ID);
         WatchingSessionStartedEvent event = new WatchingSessionStartedEvent(RECEIVER_ID, "홍길동", UUID.randomUUID(), "인터스텔라");
 
         transactionTemplate.executeWithoutResult(status ->{
