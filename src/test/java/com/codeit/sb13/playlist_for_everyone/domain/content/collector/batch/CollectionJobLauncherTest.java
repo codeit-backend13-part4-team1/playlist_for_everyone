@@ -10,6 +10,7 @@ import org.springframework.batch.core.job.JobExecution;
 import org.springframework.batch.core.job.parameters.JobParameters;
 import org.springframework.batch.core.launch.JobOperator;
 import org.springframework.batch.core.repository.JobRepository;
+import org.springframework.batch.infrastructure.item.ExecutionContext;
 
 import java.sql.SQLException;
 import java.util.Optional;
@@ -43,13 +44,7 @@ class CollectionJobLauncherTest {
         when(sportsDbJob.getName()).thenReturn("sportsDbCollectionJob");
         when(jobLock.tryAcquire(anyLong())).thenReturn(Optional.of(handle));
 
-        launcher = new CollectionJobLauncher(
-                jobOperator,
-                tmdbJob,
-                sportsDbJob,
-                jobRepository,
-                jobLock
-        );
+        launcher = new CollectionJobLauncher(jobOperator, tmdbJob, sportsDbJob, jobRepository, jobLock);
     }
 
     @Test
@@ -96,78 +91,56 @@ class CollectionJobLauncherTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"tmdb", "sportsdb"})
-    void 잠금을_얻으면_해당_작업만_복구하고_실행한_뒤_반납한다(
-            String provider
-    ) throws Exception {
-        boolean tmdb = "tmdb".equals(provider);
-        Job job = tmdb ? tmdbJob : sportsDbJob;
-        long lockKey = tmdb ? 254_001L : 254_002L;
+    void 이전_실행의_태스크_정보가_없으면_복구와_새_실행을_보류한다(String provider) throws Exception {
+        Job job = "tmdb".equals(provider) ? tmdbJob : sportsDbJob;
         var execution = mock(JobExecution.class);
 
-        when(jobRepository.findRunningJobExecutions(job.getName()))
-                .thenReturn(Set.of(execution));
+        when(execution.getExecutionContext()).thenReturn(new ExecutionContext());
+        when(jobRepository.findRunningJobExecutions(job.getName())).thenReturn(Set.of(execution));
 
         start(provider);
 
-        var order = inOrder(jobLock, jobRepository, jobOperator, handle);
-
-        order.verify(jobLock).tryAcquire(lockKey);
-        order.verify(jobRepository).findRunningJobExecutions(job.getName());
-        order.verify(jobOperator).recover(execution);
-        order.verify(jobOperator).start(eq(job), any(JobParameters.class));
-        order.verify(handle).close();
-
-        verifyNoMoreInteractions(jobRepository);
+        verify(jobRepository).findRunningJobExecutions(job.getName());
+        verifyNoInteractions(jobOperator);
+        verify(handle).close();
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"tmdb", "sportsdb"})
-    void 배치_실행에서_예외가_발생해도_잠금을_반납한다(
-            String provider
-    ) throws Exception {
+    void 배치_실행에서_예외가_발생해도_잠금을_반납한다(String provider) throws Exception {
         Job job = "tmdb".equals(provider) ? tmdbJob : sportsDbJob;
 
-        when(jobOperator.start(eq(job), any(JobParameters.class)))
-                .thenThrow(new IllegalStateException("수집 실행 실패"));
+        when(jobOperator.start(eq(job), any(JobParameters.class))).thenThrow(new IllegalStateException("수집 실행 실패"));
 
-        assertThatThrownBy(() -> start(provider))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessage("수집 실행 실패");
+        assertThatThrownBy(() -> start(provider)).isInstanceOf(IllegalStateException.class).hasMessage("수집 실행 실패");
 
         verify(handle).close();
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"tmdb", "sportsdb"})
-    void 잠금_획득에서_오류가_발생하면_복구하거나_실행하지_않는다(
-            String provider
-    ) throws Exception {
+    void 잠금_획득에서_오류가_발생하면_복구하거나_실행하지_않는다(String provider) throws Exception {
         var failure = new SQLException("잠금 연결 실패");
 
         when(jobLock.tryAcquire(anyLong())).thenThrow(failure);
 
-        assertThatThrownBy(() -> start(provider))
-                .isSameAs(failure);
+        assertThatThrownBy(() -> start(provider)).isSameAs(failure);
 
         verifyNoInteractions(jobRepository, jobOperator, handle);
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"tmdb", "sportsdb"})
-    void 이전_실행_복구에_실패하면_새로_실행하지_않고_잠금을_반납한다(
-            String provider
-    ) throws Exception {
+    void 이전_실행_복구에_실패하면_새로_실행하지_않고_잠금을_반납한다(String provider) throws Exception {
         Job job = "tmdb".equals(provider) ? tmdbJob : sportsDbJob;
         var execution = mock(JobExecution.class);
         var failure = new IllegalStateException("수집 실행 복구 실패");
 
-        when(jobRepository.findRunningJobExecutions(job.getName()))
-                .thenReturn(Set.of(execution));
+        when(jobRepository.findRunningJobExecutions(job.getName())).thenReturn(Set.of(execution));
 
         doThrow(failure).when(jobOperator).recover(execution);
 
-        assertThatThrownBy(() -> start(provider))
-                .isSameAs(failure);
+        assertThatThrownBy(() -> start(provider)).isSameAs(failure);
 
         var order = inOrder(jobOperator, handle);
         order.verify(jobOperator).recover(execution);
