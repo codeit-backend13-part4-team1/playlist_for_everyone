@@ -2,15 +2,12 @@ package com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.ContentCollectionService;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.SportsDbClient;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.TmdbClient;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.config.EcsTaskMetadataConfig;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.config.SportsDbBatchConfig;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.config.TmdbBatchConfig;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.listener.CollectionStepMetricsListener;
-import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.SportsDbEventResponse;
-import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.SportsDbEventsResponse;
-import com.codeit.sb13.playlist_for_everyone.domain.content.collector.TmdbClient;
-import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.TmdbMovieResponse;
-import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.TmdbPageResponse;
-import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.TmdbTvResponse;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.*;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentSource;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.event.ContentCollectionFinishedEvent;
@@ -28,8 +25,8 @@ import org.springframework.batch.core.job.Job;
 import org.springframework.batch.core.job.parameters.InvalidJobParametersException;
 import org.springframework.batch.core.job.parameters.JobParametersBuilder;
 import org.springframework.batch.core.launch.JobOperator;
-import org.springframework.batch.core.step.StepExecution;
 import org.springframework.batch.core.repository.JobRepository;
+import org.springframework.batch.core.step.StepExecution;
 import org.springframework.batch.infrastructure.item.ExecutionContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -87,7 +84,8 @@ import static org.mockito.Mockito.*;
         SportsDbBatchConfig.class,
         TmdbBatchConfig.class,
         SportsDbCollectionJobTest.MetricsTestConfig.class,
-        CollectionStepMetricsListener.class
+        CollectionStepMetricsListener.class,
+        EcsTaskMetadataConfig.class
 })
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @Testcontainers
@@ -121,6 +119,9 @@ class SportsDbCollectionJobTest {
 
     @MockitoBean
     private TmdbClient tmdbClient;
+
+    @MockitoBean
+    private EcsTaskMetadataClient metadataClient;
 
     @Autowired
     private JobRepository jobRepository;
@@ -204,10 +205,10 @@ class SportsDbCollectionJobTest {
 
         var executionCount = jdbcTemplate.queryForObject(
                 """
-                SELECT COUNT(*)
-                FROM batch_job_execution
-                WHERE job_execution_id = ?
-                """,
+                        SELECT COUNT(*)
+                        FROM batch_job_execution
+                        WHERE job_execution_id = ?
+                        """,
                 Long.class,
                 execution.getId()
         );
@@ -359,22 +360,22 @@ class SportsDbCollectionJobTest {
     void 잘못된_경기가_건너뛰기_제한을_초과하면_배치가_실패한다()
             throws Exception {
 
-            var writeCounter = meterRegistry.counter(
-                    "content.collection.items.write",
-                    "job", "sportsDbCollectionJob",
-                    "step", "sportsDbCollectionStep"
-            );
+        var writeCounter = meterRegistry.counter(
+                "content.collection.items.write",
+                "job", "sportsDbCollectionJob",
+                "step", "sportsDbCollectionStep"
+        );
 
-            var skipCounter = meterRegistry.counter(
-                    "content.collection.items.skip",
-                    "job", "sportsDbCollectionJob",
-                    "step", "sportsDbCollectionStep"
-            );
+        var skipCounter = meterRegistry.counter(
+                "content.collection.items.skip",
+                "job", "sportsDbCollectionJob",
+                "step", "sportsDbCollectionStep"
+        );
 
-            double writesBefore = writeCounter.count();
-            double skipsBefore = skipCounter.count();
+        double writesBefore = writeCounter.count();
+        double skipsBefore = skipCounter.count();
 
-            var events = new ArrayList<SportsDbEventResponse>();
+        var events = new ArrayList<SportsDbEventResponse>();
 
         events.add(new SportsDbEventResponse(
                 "443001", "첫 번째 정상 경기", "Soccer",
@@ -751,12 +752,12 @@ class SportsDbCollectionJobTest {
 
         var contentCount = jdbcTemplate.queryForObject(
                 """
-                SELECT COUNT(*)
-                FROM contents
-                WHERE provider = ?
-                  AND type = ?
-                  AND provider_item_id = ?
-                """,
+                        SELECT COUNT(*)
+                        FROM contents
+                        WHERE provider = ?
+                          AND type = ?
+                          AND provider_item_id = ?
+                        """,
                 Long.class,
                 ContentSource.THE_SPORTS_DB.name(),
                 ContentType.sport.name(),
@@ -889,5 +890,54 @@ class SportsDbCollectionJobTest {
         assertThat(jobRepository.findRunningJobExecutions(job.getName()))
                 .extracting(item -> item.getId())
                 .doesNotContain(execution.getId());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"tmdb", "sportsdb"})
+    void 수집_배치_실행_태스크를_DB에_기록한다(String provider) throws Exception {
+        var owner = new CollectionExecutionOwner(
+                "arn:aws:ecs:ap-northeast-2:123456789012:cluster/test",
+                "arn:aws:ecs:ap-northeast-2:123456789012:task/test/current"
+        );
+
+        when(metadataClient.getCurrentOwner(anyString()))
+                .thenReturn(Optional.of(owner));
+
+        when(tmdbClient.getPopularMovies(1))
+                .thenReturn(new TmdbPageResponse<TmdbMovieResponse>(
+                        1, List.of(), 1, 0
+                ));
+        when(tmdbClient.getPopularTvShows(1))
+                .thenReturn(new TmdbPageResponse<TmdbTvResponse>(
+                        1, List.of(), 1, 0
+                ));
+        when(sportsDbClient.getEventsBySeason("4328", "2014-2015"))
+                .thenReturn(new SportsDbEventsResponse(List.of()));
+
+        var builder = new JobParametersBuilder()
+                .addString("run.id", UUID.randomUUID().toString());
+
+        Job targetJob;
+
+        if ("tmdb".equals(provider)) {
+            builder.addLong("maxPages", 1L);
+            targetJob = tmdbJob;
+        } else {
+            builder.addString("leagueId", "4328");
+            builder.addString("season", "2014-2015");
+            targetJob = job;
+        }
+
+        var execution = jobOperator.start(targetJob, builder.toJobParameters());
+
+        assertThat(execution.getStatus()).isEqualTo(BatchStatus.COMPLETED);
+
+        var stored = jobRepository.getJobExecution(execution.getId());
+
+        assertThat(stored).isNotNull();
+        assertThat(stored.getExecutionContext().get("collection.owner.clusterArn"))
+                .isEqualTo(owner.clusterArn());
+        assertThat(stored.getExecutionContext().get("collection.owner.taskArn"))
+                .isEqualTo(owner.taskArn());
     }
 }
