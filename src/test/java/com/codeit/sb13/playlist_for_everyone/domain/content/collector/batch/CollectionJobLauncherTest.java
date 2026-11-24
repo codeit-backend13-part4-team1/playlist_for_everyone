@@ -12,6 +12,8 @@ import org.springframework.batch.core.launch.JobOperator;
 import org.springframework.batch.core.repository.JobRepository;
 
 import java.sql.SQLException;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -186,6 +188,35 @@ class CollectionJobLauncherTest {
 
         verify(jobOperator, never())
                 .start(any(Job.class), any(JobParameters.class));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"tmdb", "sportsdb"})
+    void 복구할_수_없는_실행이_하나라도_있으면_모든_복구를_보류한다(
+            String provider
+    ) throws Exception {
+        Job job = "tmdb".equals(provider) ? tmdbJob : sportsDbJob;
+        var stoppedExecution = mock(JobExecution.class);
+        var runningExecution = mock(JobExecution.class);
+
+        var executions = new LinkedHashSet<>(List.of(
+                stoppedExecution,
+                runningExecution
+        ));
+
+        when(jobRepository.findRunningJobExecutions(job.getName()))
+                .thenReturn(executions);
+        when(recoveryPolicy.canRecover(stoppedExecution)).thenReturn(true);
+        when(recoveryPolicy.canRecover(runningExecution)).thenReturn(false);
+
+        start(provider);
+
+        var order = inOrder(recoveryPolicy);
+        order.verify(recoveryPolicy).canRecover(stoppedExecution);
+        order.verify(recoveryPolicy).canRecover(runningExecution);
+
+        verifyNoInteractions(jobOperator);
+        verify(handle).close();
     }
 
     private void start(String provider) throws Exception {
