@@ -50,6 +50,7 @@ import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.task.TaskDecorator;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -146,7 +147,7 @@ class NotificationIntegrationTest {
     @Autowired
     private NotificationRepository notificationRepository;
 
-    @Autowired
+    @MockitoSpyBean
     private NotificationDeduplicationStore deduplicationStore;
 
     @Autowired
@@ -756,6 +757,23 @@ class NotificationIntegrationTest {
                     .as("알림 처리 시간 기록 증가량")
                     .isEqualTo(1L);
         });
+    }
+
+    @Test
+    @DisplayName("Redis 선점에 실패해도 팔로우 커밋을 유지하고 알림을 저장해 SSE 발행을 요청한다.")
+    void savesNotificationWhenRedisReservationFails() {
+        String actionKey = "follow:%s:%s".formatted(followerId, RECEIVER_ID);
+        doThrow(new RedisConnectionFailureException("테스트용 Redis 연결 실패"))
+                .when(deduplicationStore).tryReserve(actionKey);
+
+        FollowResult result = followService.follow(new FollowCommand(RECEIVER_ID, followerId));
+
+        assertThat(result.created()).isTrue();
+        assertThat(followRepository.existsById(result.followDto().id())).isTrue();
+        assertThat(findOnlyNotification().getReceiverId()).isEqualTo(RECEIVER_ID);
+        assertThat(notificationTasks.submittedTaskCount()).isEqualTo(1);
+        verify(sseEventPublisher).publish(any());
+        verify(deduplicationStore, never()).release(any());
     }
 
     @Test

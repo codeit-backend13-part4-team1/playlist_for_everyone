@@ -19,7 +19,16 @@ public class NotificationSubmitter {
     private final NotificationDeduplicationStore store;
 
     public void submit(String actionKey, NotificationPublishBatch batch){
-        Optional<NotificationDeduplicationStore.Reservation> reservation = store.tryReserve(actionKey);
+        Optional<NotificationDeduplicationStore.Reservation> reservation;
+        try {
+            reservation = store.tryReserve(actionKey);
+        } catch (DataAccessException failure) {
+            log.warn("{} 알림 Redis 선점 실패로 중복 제한 없이 작업 제출을 시도합니다. sourceIds={}, exceptionType={}",
+                    batch.source(), batch.sourceIds(), failure.getClass().getSimpleName());
+            processor.publish(batch);
+            return;
+        }
+
         if (reservation.isEmpty()) {
             return;
         }
