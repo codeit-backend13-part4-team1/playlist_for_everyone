@@ -84,6 +84,19 @@ class NotificationDomainEventListenerTest {
 
     }
 
+    @Test
+    @DisplayName("제한 시간 안에 같은 상대를 다시 팔로우하면 알림 작업을 한 번만 제출한다.")
+    void skipsRepeatedFollowNotification(){
+        UUID followerId = UUID.randomUUID();
+        UUID followeeId = UUID.randomUUID();
+
+        UserFollowedEvent event = new UserFollowedEvent(followerId, "홍길동", followeeId);
+        listener.handleUserFollowed(event);
+        listener.handleUserFollowed(event);
+
+        verify(processor, times(1)).publish(any(NotificationPublishBatch.class));
+    }
+
     @ParameterizedTest
     @NullAndEmptySource
     @ValueSource(strings = {" ", "\t", "\n"})
