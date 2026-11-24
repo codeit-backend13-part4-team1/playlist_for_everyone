@@ -15,13 +15,13 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.concurrent.RejectedExecutionException;
 
 /**
- * 임시 비밀번호 발급 이벤트를 받아 안내 메일을 보낸다.
- *
  * <p>발급 트랜잭션이 커밋된 뒤 메일 전용 실행기에 넘겨 보낸다. 롤백되면 보내지 않는다.
  * 실행기가 작업을 받지 못하면 요청 스레드에서 대신 보내지 않고 바로 폐기한다.
+ * 보내기 직전마다 남은 사용 시간을 계산해 메일에 적고, 1분도 남지 않았으면 보내지 않고 폐기한다.
  * 메일 서버 오류는 1초, 2초 간격으로 최대 두 번 다시 시도한다.
  * 끝내 보내지 못하면 임시 비밀번호가 남지 않도록 폐기한다.
  * 로그에는 임시 비밀번호 ID와 예외 타입만 남기고 이메일과 원문은 남기지 않는다.
@@ -32,6 +32,8 @@ public class TemporaryPasswordMailListener {
 
     // 최초 1번 + 재시도 2번 = 총 3번 보낸다.
     static final int MAX_RETRIES = 2;
+    // 남은 시간이 이보다 짧으면 사용자가 메일을 받아도 쓸 수 없어 보내지 않는다.
+    static final Duration MIN_REMAINING = Duration.ofMinutes(1);
 
     private final PasswordResetMailSender mailSender;
     private final PasswordResetService passwordResetService;
@@ -72,12 +74,28 @@ public class TemporaryPasswordMailListener {
     private void send(TemporaryPasswordIssuedEvent event) {
         try {
             retryTemplate.invoke(() -> {
-                // [red] GREEN에서 보내는 시점의 남은 시간으로 바꾼다.
-                mailSender.send(event.email(), event.temporaryPassword(), Duration.ofMinutes(3));
+                // 대기열과 재시도 대기에서 보낸 시간만큼 줄어든 남은 시간을 시도마다 다시 계산한다.
+                Duration remaining = Duration.between(LocalDateTime.now(), event.expiredAt());
+                if (remaining.compareTo(MIN_REMAINING) < 0) {
+                    throw new ExpiringTemporaryPasswordException();
+                }
+                mailSender.send(event.email(), event.temporaryPassword(), roundToMinutes(remaining));
                 return null;
             });
         } catch (RuntimeException exception) {
             discard(event, exception);
+        }
+    }
+
+    // 메일은 분 단위로 안내한다. 버림하면 바로 보낸 메일도 "2분"이 되어 가장 가까운 분으로 맞춘다.
+    private static Duration roundToMinutes(Duration remaining) {
+        return Duration.ofMinutes(remaining.plusSeconds(30).toMinutes());
+    }
+
+    /** 남은 사용 시간이 너무 짧아 메일을 보내지 않을 때 던진다. 메일 오류가 아니므로 재시도하지 않는다. */
+    static final class ExpiringTemporaryPasswordException extends RuntimeException {
+        ExpiringTemporaryPasswordException() {
+            super("임시 비밀번호의 남은 사용 시간이 1분 미만입니다.");
         }
     }
 
