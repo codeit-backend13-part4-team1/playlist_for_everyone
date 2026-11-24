@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.auth.service;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.entity.TemporaryPassword;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.entity.TemporaryPasswordStatus;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.mail.PasswordResetMailSender;
+import com.codeit.sb13.playlist_for_everyone.domain.auth.mail.TemporaryPasswordMailListener;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.TemporaryPasswordRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
@@ -38,9 +39,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.*;
+import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.willAnswer;
@@ -49,8 +51,9 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 /**
- * 실제 트랜잭션에서 발급·파기·롤백을 검증한다.
- * 테스트 트랜잭션을 끄고 서비스가 직접 커밋·롤백하게 한다. 메일 발송만 Mock으로 대체한다.
+ * 실제 트랜잭션에서 발급·파기와 커밋 뒤 메일 발송을 검증한다.
+ * 테스트 트랜잭션을 끄고 서비스가 직접 커밋하게 한다. 메일 발송만 Mock으로 대체한다.
+ * 메일은 다른 스레드에서 나가므로 결과는 기다렸다가 확인한다.
  */
 @DataJpaTest(
         showSql = false,
@@ -68,6 +71,7 @@ import static org.mockito.Mockito.verify;
         PasswordEncoderConfig.class,
         PasswordResetService.class,
         TemporaryPasswordGenerator.class,
+        TemporaryPasswordMailListener.class
 })
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
@@ -76,6 +80,7 @@ import static org.mockito.Mockito.verify;
 class PasswordResetServiceIntegrationTest {
 
     private static final String EMAIL = "reset@test.com";
+    private static final Duration SEND_TIMEOUT = Duration.ofSeconds(5);
 
     @Container
     static final PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:16-alpine");
@@ -131,27 +136,53 @@ class PasswordResetServiceIntegrationTest {
                 .containsExactlyInAnyOrder(TemporaryPasswordStatus.ACTIVE, TemporaryPasswordStatus.DISCARDED);
         assertThat(temporaryPasswordRepository.findAllByUserIdAndStatus(userId, TemporaryPasswordStatus.ACTIVE))
                 .hasSize(1);
+        await().atMost(SEND_TIMEOUT).untilAsserted(() ->
+                verify(passwordResetMailSender, times(2)).send(anyString(), anyString(), any(Duration.class)));
     }
 
     @Test
-    @DisplayName("메일 발송에 실패하면 임시 비밀번호 발급과 이전 것의 파기가 모두 취소된다.")
-    void 메일_발송에_실패하면_모두_롤백된다() {
-        UUID userId = saveUser();
-        passwordResetService.resetPassword(EMAIL);   // 첫 발급은 성공
-        moveIssuedAtToPast();
-        TemporaryPassword first = temporaryPasswordRepository.findAll().get(0);
+    @DisplayName("메일은 발급이 커밋된 뒤 요청 스레드가 아닌 전용 스레드에서 보낸다.")
+    void 커밋된_뒤_전용_스레드에서_메일을_보낸다() {
+        saveUser();
+        AtomicReference<String> sendThread = new AtomicReference<>();
+        AtomicReference<Integer> committedCount = new AtomicReference<>();
+        willAnswer(invocation -> {
+            sendThread.set(Thread.currentThread().getName());
+            // 트랜잭션 밖의 다른 커넥션으로 조회한다. 커밋 전이면 0건이 보인다.
+            committedCount.set(jdbcTemplate.queryForObject(
+                    "SELECT count(*) FROM temporary_passwords WHERE status = 'ACTIVE'", Integer.class));
+            return null;
+        }).given(passwordResetMailSender).send(anyString(), anyString(), any(Duration.class));
 
+        String requestThread = Thread.currentThread().getName();
+        passwordResetService.resetPassword(EMAIL);
+
+        await().atMost(SEND_TIMEOUT).untilAsserted(() -> assertThat(sendThread.get()).isNotNull());
+        assertThat(sendThread.get())
+                .isNotEqualTo(requestThread)
+                .startsWith("password-reset-mail-");
+        assertThat(committedCount.get()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("메일을 끝내 보내지 못해도 요청은 성공하고, 발급된 임시 비밀번호는 폐기된다.")
+    void 메일을_끝내_보내지_못하면_발급을_폐기한다() {
+        UUID userId = saveUser();
         willThrow(new MailSendException("SMTP 연결 실패"))
                 .given(passwordResetMailSender).send(anyString(), anyString(), any(Duration.class));
 
-        assertThatThrownBy(() -> passwordResetService.resetPassword(EMAIL))
-                .isInstanceOf(MailSendException.class);
+        // 메일은 커밋 뒤에 보내므로 발송 실패가 요청 결과를 바꾸지 않는다.
+        assertThatCode(() -> passwordResetService.resetPassword(EMAIL)).doesNotThrowAnyException();
 
-        // 두 번째 발급은 저장되지 않았고, 첫 번째 것도 파기되지 않은 채 그대로 사용 가능하다.
-        assertThat(temporaryPasswordRepository.findAll()).hasSize(1);
+        // 최초 1번 + 재시도 2번(1초, 2초 대기)이 끝나면 폐기된다.
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
+                assertThat(temporaryPasswordRepository.findAll())
+                        .singleElement()
+                        .extracting(TemporaryPassword::getStatus)
+                        .isEqualTo(TemporaryPasswordStatus.DISCARDED));
         assertThat(temporaryPasswordRepository.findAllByUserIdAndStatus(userId, TemporaryPasswordStatus.ACTIVE))
-                .extracting(TemporaryPassword::getId)
-                .containsExactly(first.getId());
+                .isEmpty();
+        verify(passwordResetMailSender, times(3)).send(anyString(), anyString(), any(Duration.class));
     }
 
     @Test
@@ -166,7 +197,8 @@ class PasswordResetServiceIntegrationTest {
         // 거부된 요청은 이전 것을 파기하지도, 새로 발급하지도 않는다.
         assertThat(temporaryPasswordRepository.findAllByUserIdAndStatus(userId, TemporaryPasswordStatus.ACTIVE))
                 .hasSize(1);
-        verify(passwordResetMailSender, times(1)).send(anyString(), anyString(), any(Duration.class));
+        await().atMost(SEND_TIMEOUT).untilAsserted(() ->
+                verify(passwordResetMailSender, times(1)).send(anyString(), anyString(), any(Duration.class)));
     }
 
     @Test
@@ -174,18 +206,12 @@ class PasswordResetServiceIntegrationTest {
     void 같은_계정의_동시_요청은_하나만_발급한다() throws ExecutionException, InterruptedException {
         UUID userId = saveUser();
 
-        // 먼저 들어간 요청이 커밋하기 전에 다른 요청이 제한을 확인하도록 발송을 늦춘다.
-        willAnswer(invocation -> {
-            Thread.sleep(500);
-            return null;
-        }).given(passwordResetMailSender).send(anyString(), anyString(), any(Duration.class));
-
         ExecutorService executor = Executors.newFixedThreadPool(2);
         CountDownLatch ready = new CountDownLatch(2); // 두 스레드가 모두 준비될 때까지
         CountDownLatch start = new CountDownLatch(1); // 동시에 출발시키는 신호
         List<Future<Throwable>> futures = new ArrayList<>();
 
-        for (int i =0; i < 2; i++) {
+        for (int i = 0; i < 2; i++) {
             futures.add(executor.submit(() -> {
                 ready.countDown();
                 start.await();
@@ -212,7 +238,8 @@ class PasswordResetServiceIntegrationTest {
         assertThat(errors).singleElement().isInstanceOf(PasswordResetTooManyRequestsException.class);
         assertThat(temporaryPasswordRepository.findAllByUserIdAndStatus(userId, TemporaryPasswordStatus.ACTIVE))
                 .hasSize(1);
-        verify(passwordResetMailSender, times(1)).send(anyString(), anyString(), any(Duration.class));
+        await().atMost(SEND_TIMEOUT).untilAsserted(() ->
+                verify(passwordResetMailSender, times(1)).send(anyString(), anyString(), any(Duration.class)));
     }
 
 
