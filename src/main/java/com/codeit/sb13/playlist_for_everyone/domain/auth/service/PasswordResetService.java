@@ -84,7 +84,7 @@ public class PasswordResetService {
 
         // 원문은 커밋이 끝난 뒤 메일로만 전달한다. 롤백되면 이벤트도 전달되지 않는다.
         eventPublisher.publishEvent(new TemporaryPasswordIssuedEvent(
-                issued.getId(), user.getEmail(), rawPassword, TEMPORARY_PASSWORD_VALIDITY));
+                issued.getId(), user.getEmail(), rawPassword, expiredAt));
     }
 
     /**

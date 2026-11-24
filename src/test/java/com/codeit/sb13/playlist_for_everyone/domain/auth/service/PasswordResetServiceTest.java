@@ -20,7 +20,6 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
@@ -97,7 +96,8 @@ class PasswordResetServiceTest {
         assertThat(event.temporaryPasswordId()).isEqualTo(TEMPORARY_PASSWORD_ID);
         assertThat(event.email()).isEqualTo(EMAIL);
         assertThat(event.temporaryPassword()).isEqualTo(RAW_PASSWORD);
-        assertThat(event.validity()).isEqualTo(Duration.ofMinutes(3));
+        // 메일에 쓸 만료 시각은 DB에 저장한 값과 같아야 한다.
+        assertThat(event.expiredAt()).isEqualTo(saved.getExpiredAt());
     }
 
     @Test

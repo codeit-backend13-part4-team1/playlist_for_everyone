@@ -72,7 +72,8 @@ public class TemporaryPasswordMailListener {
     private void send(TemporaryPasswordIssuedEvent event) {
         try {
             retryTemplate.invoke(() -> {
-                mailSender.send(event.email(), event.temporaryPassword(), event.validity());
+                // [red] GREEN에서 보내는 시점의 남은 시간으로 바꾼다.
+                mailSender.send(event.email(), event.temporaryPassword(), Duration.ofMinutes(3));
                 return null;
             });
         } catch (RuntimeException exception) {

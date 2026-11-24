@@ -15,6 +15,7 @@ import org.springframework.core.task.TaskRejectedException;
 import org.springframework.mail.MailSendException;
 
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -34,8 +35,7 @@ class TemporaryPasswordMailListenerTest {
     private static final String EMAIL = "user@test.com";
     private static final String RAW_PASSWORD = "Ab3!Cd4@Ef5#";
     private static final Duration VALIDITY = Duration.ofMinutes(3);
-    private static final TemporaryPasswordIssuedEvent EVENT =
-            new TemporaryPasswordIssuedEvent(TEMPORARY_PASSWORD_ID, EMAIL, RAW_PASSWORD, VALIDITY);
+    private static final TemporaryPasswordIssuedEvent EVENT = eventExpiringIn(VALIDITY);
 
     @Mock
     private PasswordResetMailSender mailSender;
@@ -135,5 +135,28 @@ class TemporaryPasswordMailListenerTest {
         // 요청 스레드에서 대신 보내지 않는다. 메일 장애가 API 응답까지 막지 않게 한다.
         verify(mailSender, never()).send(anyString(), anyString(), any(Duration.class));
         verify(passwordResetService).discardUndeliverable(TEMPORARY_PASSWORD_ID);
+    }
+
+    @Test
+    @DisplayName("발송이 늦어지면 메일에는 실제로 남은 시간을 적는다.")
+    void 발송이_늦어지면_실제로_남은_시간을_적는다() {
+        listener.handle(eventExpiringIn(Duration.ofMinutes(2)));
+
+        verify(mailSender).send(EMAIL, RAW_PASSWORD, Duration.ofMinutes(2));
+        verifyNoInteractions(passwordResetService);
+    }
+
+    @Test
+    @DisplayName("남은 시간이 1분도 안 되면 메일을 보내지 않고 발급을 폐기한다.")
+    void 남은_시간이_1분도_안_되면_발급을_폐기한다() {
+        listener.handle(eventExpiringIn(Duration.ofSeconds(30)));
+
+        verify(mailSender, never()).send(anyString(), anyString(), any(Duration.class));
+        verify(passwordResetService).discardUndeliverable(TEMPORARY_PASSWORD_ID);
+    }
+
+    private static TemporaryPasswordIssuedEvent eventExpiringIn(Duration remaining) {
+        return new TemporaryPasswordIssuedEvent(
+                TEMPORARY_PASSWORD_ID, EMAIL, RAW_PASSWORD, LocalDateTime.now().plus(remaining));
     }
 }
