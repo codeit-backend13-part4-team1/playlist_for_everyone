@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository;
 
+import io.lettuce.core.RedisCommandExecutionException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -107,7 +108,7 @@ public class ViewingSessionRedisRepository {
      */
     @Retryable(
             retryFor = {
-                    IllegalStateException.class,
+                    RedisCommandExecutionException.class,
                     RedisConnectionFailureException.class,
                     QueryTimeoutException.class
             },
@@ -149,7 +150,7 @@ public class ViewingSessionRedisRepository {
      */
     @Retryable(
             retryFor = {
-                    IllegalStateException.class,
+                    RedisCommandExecutionException.class,
                     RedisConnectionFailureException.class,
                     QueryTimeoutException.class
             },
@@ -184,7 +185,7 @@ public class ViewingSessionRedisRepository {
      */
     @Retryable(
             retryFor = {
-                    IllegalStateException.class,
+                    RedisCommandExecutionException.class,
                     RedisConnectionFailureException.class,
                     QueryTimeoutException.class
             },
@@ -216,7 +217,7 @@ public class ViewingSessionRedisRepository {
     // ttl 리프레시 매서드
     @Retryable(
             retryFor = {
-                    IllegalStateException.class,
+                    RedisCommandExecutionException.class,
                     RedisConnectionFailureException.class,
                     QueryTimeoutException.class
             },
@@ -243,7 +244,7 @@ public class ViewingSessionRedisRepository {
 
     @Retryable(
             retryFor = {
-                    IllegalStateException.class,
+                    RedisCommandExecutionException.class,
                     RedisConnectionFailureException.class,
                     QueryTimeoutException.class
             },
@@ -291,7 +292,7 @@ public class ViewingSessionRedisRepository {
      */
     @Retryable(
             retryFor = {
-                    IllegalStateException.class,
+                    RedisCommandExecutionException.class,
                     RedisConnectionFailureException.class,
                     QueryTimeoutException.class
             },
@@ -308,7 +309,7 @@ public class ViewingSessionRedisRepository {
         );
 
         if (query == null || query.size() != contents.size()) {
-            throw new IllegalStateException("redis 조회 컬럼이 요청된 컨텐츠 컬럼과 일치하지 않습니다.");
+            throw new RedisCommandExecutionException("redis 조회 컬럼이 요청된 컨텐츠 컬럼과 일치하지 않습니다.");
         }
 
         return query.stream().map(item -> (List<?>) item)

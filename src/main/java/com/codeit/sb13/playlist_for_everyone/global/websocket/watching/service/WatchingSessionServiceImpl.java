@@ -115,9 +115,16 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
             }
         }
 
-        // 3. 메세지 전송
-        sendViewingSessionMessage(subscription, ChangeType.JOIN, auth, content);
+        // 3. 메세지 전송을 위한 리소스 조회 및 메세지 전송
+        User user = userService.getById(auth.getUserId());
+        sendViewingSessionMessage(subscription, ChangeType.JOIN, user, content);
         // 4. 알림 발송
+        eventPublisher.publishEvent(new WatchingSessionStartedEvent(
+                user.getId(),
+                user.getName(),
+                content.id(),
+                content.title()
+        ));
     }
 
     /**
@@ -167,15 +174,17 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
 
             content = contentService.getById(contentId);
         }
-        // 3. 메세지 전송
-        sendViewingSessionMessage(subscription, ChangeType.LEAVE, auth, content);
+
+        // 3. 메세지 전송을 위한 리소스 조회 및 메세지 전송
+        User user = userService.getById(auth.getUserId());
+        sendViewingSessionMessage(subscription, ChangeType.LEAVE, user, content);
     }
 
     // viewing 세션 초기 정보 전송 메세지 조립용 매서드
     private void sendViewingSessionMessage(
             WSSubscription subscription,
             ChangeType type,
-            SecurityUser auth,
+            User user,
             ContentDto content
     ){
         // 3. 메세지 전송 객체 조립
@@ -184,8 +193,6 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
         WatchingSessionChange change = null;
 
         try {
-            User user = userService.getById(auth.getUserId());
-
             Watcher watcher = mapper.toWatcher(user);
             WatchContent watchContent = mapper.toWatchContent(content);
             WatchingSessionDto dto = new WatchingSessionDto(
@@ -198,16 +205,6 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
                     type,
                     dto,
                     viewingSessionService.getCurrentViewerCount(content.id()));
-
-            // 시청 초반에 이벤트 발행
-            if (type == ChangeType.JOIN){
-                eventPublisher.publishEvent(new WatchingSessionStartedEvent(
-                        user.getId(),
-                        user.getName(),
-                        content.id(),
-                        content.title()
-                ));
-            }
 
         } catch (RuntimeException e) {
             log.warn("[{}] 페이로드 조립 실패 - contentId : {}, subscriptionId : {}",
