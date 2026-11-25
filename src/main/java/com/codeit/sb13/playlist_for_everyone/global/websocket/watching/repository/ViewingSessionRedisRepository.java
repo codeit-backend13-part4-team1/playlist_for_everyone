@@ -17,7 +17,6 @@ import org.springframework.stereotype.Component;
 import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatcherScriptConfig.*;
@@ -28,6 +27,8 @@ import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.We
  * 내부적으론, Hash 와 ZSet 구조를 사용한다.
  * Key [Session] -> Hash[String subscription, String content]]
  * ZSet [Content] -> [Time expiredAt, String session:subscription]
+ * ZSet [User] -> Content
+ * [Content] -> counter
  */
 
 @Slf4j
@@ -96,7 +97,14 @@ public class ViewingSessionRedisRepository {
      * - QueryTimeoutException.class
      */
 
-    // 세션 등록 매서드
+    /**
+     * 시청 세션 등록 매서드.
+     * 시청 세션을 등록하며, 유저별 첫 시청 세션 참여인지 여부를 반환한다.
+     * @param contentId 컨텐츠 id.
+     * @param userId 유저 id.
+     * @param sessionId 세션 id.
+     * @param subscriptionId 구독 id.
+     */
     @Retryable(
             retryFor = {
                     IllegalStateException.class,
@@ -106,26 +114,37 @@ public class ViewingSessionRedisRepository {
             backoff = @Backoff(delay = 100, multiplier = 3)
     )
     public void register(
-            String session,
-            String subscription,
-            String content
+            String contentId,
+            String userId,
+            String sessionId,
+            String subscriptionId
     ){
         // NPE 검사.
-        validate(session, subscription, content);
+        validate(contentId, userId, sessionId, subscriptionId);
 
-        Long res = redisExecute(registerScript,
-                List.of(sessionKey(session), contentKey(content)),
-                subscription,
-                content,
-                new SetKey(session, subscription).toString(),
+        /**
+         * Key - contentId, userId, sessionId, subscriptionId.
+         * Argv - contentKeyPrefix, userKeyPrefix, sessionKeyPrefix, counterPrefix, delimiter, ttl
+         * 인자를 주입해야 한다.
+         * return 0 -> 이미 구독한 사용자, 1 -> 신규 사용자, 기타 -> error(RedisCommandExecutionException)
+         */
+        Long res = redis.execute(registerScript,
+                List.of(contentId, userId, sessionId, subscriptionId),
+                VIEW_CONTENT_KEY_PREFIX,
+                VIEW_USER_KEY_PREFIX,
+                VIEW_SESSION_KEY_PREFIX,
+                VIEW_CONTENT_COUNTER_PREFIX,
+                DELIMITER,
                 String.valueOf(TTL.toMillis())
         );
-
-        if (res == null || Long.valueOf(-1).equals(res))
-            throw new IllegalStateException("Failed to register watcher.");
     }
 
-    // 세션 등록 취소 매서드
+
+    /**
+     * 세션 등록 취소 매서드
+     * @param sessionId 세션 id
+     * @param subscriptionId 구독 id
+     */
     @Retryable(
             retryFor = {
                     IllegalStateException.class,
@@ -135,24 +154,32 @@ public class ViewingSessionRedisRepository {
             backoff = @Backoff(delay = 100, multiplier = 3)
     )
     public void unregister(
-            String session,
-            String subscription
+            String sessionId,
+            String subscriptionId
     ){
-        validate(session, subscription);
+        validate(sessionId, subscriptionId);
 
-        Long res = redisExecute(unregisterScript,
-                List.of(sessionKey(session)),
-                subscription,
-                new SetKey(session, subscription).toString(),
-                STORAGE_CONTENT_PREFIX
+        /**
+         * Key - sessionId, subscriptionId
+         * Argv - contentKeyPrefix, userKeyPrefix, sessionKeyPrefix, counterPrefix, delimiter
+         * return 0 or Error
+         */
+        Long res = redis.execute(unregisterScript,
+                List.of(sessionId, subscriptionId),
+                VIEW_CONTENT_KEY_PREFIX,
+                VIEW_USER_KEY_PREFIX,
+                VIEW_SESSION_KEY_PREFIX,
+                VIEW_CONTENT_COUNTER_PREFIX,
+                DELIMITER
         );
-
-
-        if (res == null) throw new IllegalStateException("Failed to unregister watcher.");
     }
 
-    // 세션들 등록 취소 매서드
-    // todo - delemeter 을 argv 로 넘겨야 한다.
+
+    /**
+     * 여러 구독들에 대한 등록 취소 매서드
+     * @param sessionId 세션 id
+     * @param subscriptionIds 구독 id 목록
+     */
     @Retryable(
             retryFor = {
                     IllegalStateException.class,
@@ -163,28 +190,136 @@ public class ViewingSessionRedisRepository {
     )
     public void unregisterAll(
             String sessionId,
-            List<String> subscriptionIds,
-            UUID contentId
+            List<String> subscriptionIds
     ){
-        String sessionKey = sessionKey(sessionId);
-        String contentKey = contentKey(contentId.toString());
-
-        // ARGV[1] = contentId
-        // ARGV[2] = sessionId
-        // ARGV[3...] = subscriptionIds
-        Object[] args = Stream.concat(
-                Stream.of(contentId.toString(), sessionId),
-                subscriptionIds.stream()
-        ).toArray();
+        /**
+         * Keys - sessionId
+         * ARGV - contentKeyPrefix, userKeyPrefix, sessionKeyPrefix, counterPrefix, delimiter, subscriptions
+         * return 0
+         */
 
         Long res = redis.execute(unregisterAllScript,
-                List.of(sessionKey, contentKey, DELIMITER),
-                args
+                List.of(sessionId),
+                VIEW_CONTENT_KEY_PREFIX,
+                VIEW_USER_KEY_PREFIX,
+                VIEW_SESSION_KEY_PREFIX,
+                VIEW_CONTENT_COUNTER_PREFIX,
+                DELIMITER,
+                subscriptionIds.toArray()
         );
 
-        if (res == null || Long.valueOf(-1).equals(res))
-            throw new IllegalStateException("Failed to register watcher.");
     }
+
+    // ttl 리프레시 매서드
+    @Retryable(
+            retryFor = {
+                    IllegalStateException.class,
+                    RedisConnectionFailureException.class,
+                    QueryTimeoutException.class
+            },
+            backoff = @Backoff(delay = 100, multiplier = 2)
+    )
+    public void refresh(String sessionId){
+        validate(sessionId);
+
+        /**
+         * Keys - sessionId
+         * ARGV - contentKeyPrefix, userKeyPrefix, sessionKeyPrefix, counterPrefix, delimiter, ttl
+         * return 1
+         */
+        Long res = redis.execute(refreshScript,
+                List.of(sessionId),
+                VIEW_CONTENT_KEY_PREFIX,
+                VIEW_USER_KEY_PREFIX,
+                VIEW_SESSION_KEY_PREFIX,
+                VIEW_CONTENT_COUNTER_PREFIX,
+                DELIMITER,
+                String.valueOf(TTL.toMillis())
+        );
+    }
+
+    @Retryable(
+            retryFor = {
+                    IllegalStateException.class,
+                    RedisConnectionFailureException.class,
+                    QueryTimeoutException.class
+            },
+            backoff = @Backoff(delay = 100, multiplier = 2)
+    )
+    public void deleteWithContentId(UUID contentId){
+
+        /**
+         * key - contentId
+         * argv - contentKeyPrefix, userKeyPrefix, sessionKeyPrefix, counterPrefix, delimiter, ttl
+         * return 1
+         */
+        Long res = redis.execute(
+                deleteFromContentScript,
+                List.of(contentId.toString()),
+                VIEW_CONTENT_KEY_PREFIX,
+                VIEW_USER_KEY_PREFIX,
+                VIEW_SESSION_KEY_PREFIX,
+                VIEW_CONTENT_COUNTER_PREFIX,
+                DELIMITER
+        );
+    }
+
+
+    /**
+     * content 를 시청중인 유효 시청자 수 반환.
+     * 특정 유저의 중복 시청은 1명으로 친다.
+     * @param contentId
+     * @return
+     */
+    public Long getWatcherCount(String contentId){
+        validate(contentId);
+
+        return redis.execute(countScript,
+                List.of(contentId),
+                VIEW_CONTENT_COUNTER_PREFIX
+        );
+    }
+
+    /**
+     * 컨텐츠 별 시청자 수를 map 으로 반환.
+     * List 에 null 이 올 경우, NullPointException 반환
+     * @param contents contentId 리스트
+     * @return contentId 가 비어있을 경우, 빈 map 반환.
+     */
+    @Retryable(
+            retryFor = {
+                    IllegalStateException.class,
+                    RedisConnectionFailureException.class,
+                    QueryTimeoutException.class
+            },
+            backoff = @Backoff(delay = 100, multiplier = 2)
+    )
+    public Map<UUID, Long> getWatcherCountWithMultipleContents(List<String> contents){
+        Objects.requireNonNull(contents);
+
+        if(contents.isEmpty()) return Map.of();
+
+        List<?> query = redis.execute(countMultipleContentsScript,
+                contents,
+                VIEW_CONTENT_COUNTER_PREFIX
+        );
+
+        if (query == null || query.size() != contents.size()) {
+            throw new IllegalStateException("redis 조회 컬럼이 요청된 컨텐츠 컬럼과 일치하지 않습니다.");
+        }
+
+        return query.stream().map(item -> (List<?>) item)
+                .collect(Collectors.toMap(
+                        item -> UUID.fromString((String) item.get(0)),
+                        item -> (Long) item.get(1),
+                        (existing, replacement) -> existing // 중복 제거용 세 번째 인자.
+                ));
+    }
+
+
+    /*
+     * RECOVER 매서드
+     */
 
     @Recover
     public void failRecover(RuntimeException e) {
@@ -213,122 +348,16 @@ public class ViewingSessionRedisRepository {
         );
     }
 
-    // ttl 리프레시 매서드
-    @Retryable(
-            retryFor = {
-                    IllegalStateException.class,
-                    RedisConnectionFailureException.class,
-                    QueryTimeoutException.class
-            },
-            backoff = @Backoff(delay = 100, multiplier = 2)
-    )
-    public void refresh(String session){
-        validate(session);
 
-        Long res = redisExecute(refreshScript,
-                List.of(sessionKey(session)),
-                session,
-                STORAGE_CONTENT_PREFIX,
-                String.valueOf(TTL.toMillis()),
-                DELIMITER
-        );
-
-        if (res == null) throw new IllegalStateException("Failed to refresh watcher.");
-    }
-
-    @Retryable(
-            retryFor = {
-                    IllegalStateException.class,
-                    RedisConnectionFailureException.class,
-                    QueryTimeoutException.class
-            },
-            backoff = @Backoff(delay = 100, multiplier = 2)
-    )
-    public void deleteWithContentId(UUID contentId){
-        Long res = redisExecute(
-                deleteFromContentScript,
-                List.of(contentId.toString()),
-                STORAGE_CONTENT_PREFIX,
-                STORAGE_SESSION_PREFIX,
-                DELIMITER
-        );
-
-        if (!Long.valueOf(1).equals(res)) throw new IllegalStateException("Failed to delete watcher.");
-    }
-
-
-    public Long getWatcherCount(String content){
-        validate(content);
-
-        return redis.execute(countScript,
-                List.of(contentKey(content))
-        );
-    }
-
-    /**
-     * 컨텐츠 별 시청자 수를 map 으로 반환.
-     * List 에 null 이 올 경우, NullPointException 반환
-     * @param contents contentId 리스트
-     * @return contentId 가 비어있을 경우, 빈 map 반환.
+    /*
+     * private 편의 매서드
      */
-    @Retryable(
-            retryFor = {
-                    IllegalStateException.class,
-                    RedisConnectionFailureException.class,
-                    QueryTimeoutException.class
-            },
-            backoff = @Backoff(delay = 100, multiplier = 2)
-    )
-    public Map<UUID, Long> getWatcherCountWithMultipleContents(List<String> contents){
-        Objects.requireNonNull(contents);
-
-        if(contents.isEmpty()) return Map.of();
-
-        List<?> query = redis.execute(countMultipleContentsScript,
-                contents,
-                STORAGE_CONTENT_PREFIX
-        );
-
-        if (query == null || query.size() != contents.size()) {
-            throw new IllegalStateException("redis 조회 컬럼이 요청된 컨텐츠 컬럼과 일치하지 않습니다.");
-        }
-
-        return query.stream().map(item -> (List<?>) item)
-                .collect(Collectors.toMap(
-                        item -> UUID.fromString((String) item.get(0)),
-                        item -> (Long) item.get(1),
-                        (existing, replacement) -> existing // 중복 제거용 세 번째 인자.
-                ));
-    }
-
-    // 세션 - 구독 쌍에 해당하는 컨텐츠 반환
-    public String getContent(String session, String subscription){
-        return (String) redis.opsForHash().get(sessionKey(session),subscription);
-    }
-
 
     // 커스텀 예외를 작성한다면 여기에.
     private void validate(String ...args){
         for (String arg : args){
             check(arg);
         }
-    }
-
-    private String sessionKey(String session){
-        return STORAGE_SESSION_PREFIX + session;
-    }
-
-    private String contentKey(String content){
-        return STORAGE_CONTENT_PREFIX + content;
-    }
-
-
-    private Long redisExecute(
-            RedisScript<Long> script,
-            List<String> keys,
-            String ...args
-    ){
-        return redis.execute(script, keys, (Object[]) args);
     }
 
 }

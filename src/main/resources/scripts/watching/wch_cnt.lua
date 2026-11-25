@@ -1,15 +1,10 @@
--- key
--- 1. content id
+-- keys
+local content_id = KEYS[1]
 
-local time = redis.call('TIME')
--- 반올림 미릴초 단위
-local now = time[1] * 1000 + math.floor(time[2]/1000)
+-- argv
+local content_count_prefix = ARGV[1]
 
-local count = redis.call(
-    'ZCOUNT',
-    KEYS[1],
-    '(' .. tostring(now),
-    '+inf'
-)
+local content_count_key = content_count_prefix .. content_id
 
+local count = redis.call(redis.call('GET',content_count_key))
 return count

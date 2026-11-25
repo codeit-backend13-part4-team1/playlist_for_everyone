@@ -3,15 +3,16 @@
 -- KEYS : contentId 를 담고있는 리스트
 -- ARGV[1] : contentPrefix
 
-local time = redis.call('TIME')
-local now = time[1] * 1000 + math.floor(time[2]/1000)
+-- ARGV
+local content_counter_prefix
+
 local result = {}
 
-for i, contentId in ipairs(KEYS) do
-    local key = ARGV[1] .. contentId
-    local count = redis.call('ZCOUNT', key, '(' .. tostring(now), '+inf')
-    redis.log(redis.LOG_NOTICE, contentId, key, count)
-    result[i] = {contentId, count}
+for i, content_id in ipairs(KEYS) do
+    local content_counter_key = content_counter_prefix .. content_id
+    local viewer = redis.call('GET',content_counter_key)
+    result[i] = {content_id, viewer}
 end
 
 return result
+
