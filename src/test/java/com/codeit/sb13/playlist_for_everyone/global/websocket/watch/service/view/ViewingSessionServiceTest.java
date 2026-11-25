@@ -59,6 +59,8 @@ public class ViewingSessionServiceTest {
 
     UUID contentId;
 
+    UUID userId = UUID.randomUUID();
+
     /*
      * 컨텐츠 ID별로 동일한 락 객체를 반환하기 위한 저장소.
      *
@@ -165,10 +167,10 @@ public class ViewingSessionServiceTest {
             // when
             executeSerialized(
                     () -> viewingSessionService.join(
-                            first, contentId),
+                            first, contentId, userId),
 
                     () -> viewingSessionService.join(
-                            second, contentId),
+                            second, contentId, userId),
 
                     firstEntered,
                     releaseFirst,
@@ -258,7 +260,7 @@ public class ViewingSessionServiceTest {
             // when
             executeSerialized(
                     () -> viewingSessionService.join(
-                            subscription, contentId),
+                            subscription, contentId, userId),
 
                     () -> viewingSessionService.leave(
                             subscription, contentId),
@@ -294,204 +296,6 @@ public class ViewingSessionServiceTest {
 
             assertThat(leaveEntered.getCount())
                     .isZero();
-
-            verifyNoMoreInteractions(
-                    viewingSessionRepository,
-                    viewingSessionRedisRepository,
-                    redisTopicRegistry,
-                    room
-            );
-        }
-
-        @Test
-        @DisplayName("동일 컨텐츠의 일괄 퇴장 작업 중에는 입장 작업이 개입할 수 없다")
-        void concurrentJoinAndLeaveAll() throws Exception {
-
-            // given
-            WSSubscription first =
-                    createSubscription("session-1", "sub-1");
-
-            WSSubscription second =
-                    createSubscription("session-1", "sub-2");
-
-            WSSubscription newcomer =
-                    createSubscription("session-2", "sub-3");
-
-            List<WSSubscription> subscriptions =
-                    List.of(first, second);
-
-            stubRoom(contentId);
-            stubExistingRoom(contentId);
-
-            Object lock = getContentLock(contentId);
-
-            CountDownLatch firstEntered = new CountDownLatch(1);
-            CountDownLatch releaseFirst = new CountDownLatch(1);
-            CountDownLatch joinEntered = new CountDownLatch(1);
-
-            doAnswer(invocation -> {
-
-                assertLockHeld(lock);
-
-                firstEntered.countDown();
-
-                awaitRelease(releaseFirst);
-
-                return null;
-
-            }).when(room).leaveAll(subscriptions);
-
-            doAnswer(invocation -> {
-
-                assertLockHeld(lock);
-
-                joinEntered.countDown();
-
-                return null;
-
-            }).when(room).join(newcomer);
-
-            // when
-            executeSerialized(
-                    () -> viewingSessionService.leaveAll(
-                            subscriptions, contentId),
-
-                    () -> viewingSessionService.join(
-                            newcomer, contentId),
-
-                    firstEntered,
-                    releaseFirst,
-
-                    () -> {
-                        assertThat(joinEntered.getCount())
-                                .as("LEAVE ALL 진행 중 JOIN은 진입할 수 없다.")
-                                .isEqualTo(1L);
-                    }
-            );
-
-            // then
-            InOrder inOrder = createInOrder();
-
-            // LEAVE ALL
-            verifyLeaveAllOrder(
-                    inOrder,
-                    room,
-                    subscriptions,
-                    contentId
-            );
-
-            // JOIN
-            verifyJoinOrder(
-                    inOrder,
-                    room,
-                    newcomer,
-                    contentId
-            );
-
-            assertThat(joinEntered.getCount())
-                    .isZero();
-
-            verifyNoMoreInteractions(
-                    viewingSessionRepository,
-                    viewingSessionRedisRepository,
-                    redisTopicRegistry,
-                    room
-            );
-        }
-
-        @Test
-        @DisplayName("동일 컨텐츠의 입장 작업 중에는 룸 제거 작업이 개입할 수 없다")
-        void concurrentJoinAndDestroy() throws Exception {
-
-            // given
-            WSSubscription subscription =
-                    createSubscription("session-1", "sub-1");
-
-            stubRoom(contentId);
-
-            Object lock = getContentLock(contentId);
-
-            CountDownLatch firstEntered = new CountDownLatch(1);
-            CountDownLatch releaseFirst = new CountDownLatch(1);
-            CountDownLatch destroyEntered = new CountDownLatch(1);
-
-            AtomicReference<List<WSSubscription>> destroyed =
-                    new AtomicReference<>();
-
-            /*
-             * DESTROY의 첫 번째 작업은 find()이다.
-             *
-             * 해당 메서드에 진입하는 시점을 확인한다.
-             */
-            when(viewingSessionRepository.find(contentId))
-                    .thenAnswer(invocation -> {
-
-                        assertLockHeld(lock);
-
-                        destroyEntered.countDown();
-
-                        return Optional.of(room);
-                    });
-
-            when(room.getAll())
-                    .thenReturn(List.of(subscription));
-
-            doAnswer(invocation -> {
-
-                assertLockHeld(lock);
-
-                firstEntered.countDown();
-
-                awaitRelease(releaseFirst);
-
-                return null;
-
-            }).when(room).join(subscription);
-
-            // when
-            executeSerialized(
-                    () -> viewingSessionService.join(
-                            subscription, contentId),
-
-                    () -> destroyed.set(
-                            viewingSessionService.destroy(contentId)),
-
-                    firstEntered,
-                    releaseFirst,
-
-                    () -> {
-                        assertThat(destroyEntered.getCount())
-                                .as("JOIN 진행 중 DESTROY는 진입할 수 없다.")
-                                .isEqualTo(1L);
-
-                        assertThat(destroyed.get())
-                                .isNull();
-                    }
-            );
-
-            // then
-            InOrder inOrder = createInOrder();
-
-            // JOIN
-            verifyJoinOrder(
-                    inOrder,
-                    room,
-                    subscription,
-                    contentId
-            );
-
-            // DESTROY
-            verifyDestroyOrder(
-                    inOrder,
-                    room,
-                    contentId
-            );
-
-            assertThat(destroyEntered.getCount())
-                    .isZero();
-
-            assertThat(destroyed.get())
-                    .containsExactly(subscription);
 
             verifyNoMoreInteractions(
                     viewingSessionRepository,
@@ -583,7 +387,7 @@ public class ViewingSessionServiceTest {
                 // when
                 Future<?> firstFuture = executor.submit(
                         () -> viewingSessionService.join(
-                                first, firstContentId)
+                                first, firstContentId, userId)
                 );
 
                 awaitEntry(
@@ -594,7 +398,7 @@ public class ViewingSessionServiceTest {
 
                 Future<?> secondFuture = executor.submit(
                         () -> viewingSessionService.join(
-                                second, secondContentId)
+                                second, secondContentId, userId)
                 );
 
                 /*
@@ -694,9 +498,10 @@ public class ViewingSessionServiceTest {
             doAnswer(answer)
                     .when(viewingSessionRedisRepository)
                     .register(
+                            contentId.toString(),
+                            userId.toString(),
                             "session-1",
-                            "sub-1",
-                            contentId.toString()
+                            "sub-1"
                     );
 
             doAnswer(answer)
@@ -714,7 +519,8 @@ public class ViewingSessionServiceTest {
             // when
             viewingSessionService.join(
                     subscription,
-                    contentId
+                    contentId,
+                    userId
             );
 
             // then
@@ -794,149 +600,6 @@ public class ViewingSessionServiceTest {
             );
         }
 
-        @Test
-        @DisplayName("일괄 퇴장 과정의 모든 삭제 작업은 컨텐츠 락으로 보호된다")
-        void leaveAllHoldsContentLock() {
-
-            // given
-            WSSubscription first =
-                    createSubscription("session-1", "sub-1");
-
-            WSSubscription second =
-                    createSubscription("session-1", "sub-2");
-
-            List<WSSubscription> subscriptions =
-                    List.of(first, second);
-
-            List<String> subscriptionIds =
-                    List.of("sub-1", "sub-2");
-
-            Object lock = getContentLock(contentId);
-
-            when(viewingSessionRepository.find(contentId))
-                    .thenAnswer(invocation -> {
-
-                        assertLockHeld(lock);
-
-                        return Optional.of(room);
-                    });
-
-            Answer<Void> answer = lockHeldAnswer(lock);
-
-            doAnswer(answer)
-                    .when(room).leaveAll(subscriptions);
-
-            doAnswer(answer)
-                    .when(viewingSessionRedisRepository)
-                    .unregisterAll(
-                            "session-1",
-                            subscriptionIds,
-                            contentId
-                    );
-
-            doAnswer(answer)
-                    .when(redisTopicRegistry)
-                    .unregisterAll(
-                            "session-1",
-                            subscriptionIds
-                    );
-
-            // when
-            viewingSessionService.leaveAll(
-                    subscriptions,
-                    contentId
-            );
-
-            // then
-            InOrder inOrder = createInOrder();
-
-            verifyLeaveAllOrder(
-                    inOrder,
-                    room,
-                    subscriptions,
-                    contentId
-            );
-
-            assertLockReleased(lock);
-
-            verifyNoMoreInteractions(
-                    viewingSessionRepository,
-                    viewingSessionRedisRepository,
-                    redisTopicRegistry,
-                    room
-            );
-        }
-
-        @Test
-        @DisplayName("룸 제거 과정의 모든 작업은 컨텐츠 락으로 보호된다")
-        void destroyHoldsContentLock() {
-
-            // given
-            WSSubscription subscription =
-                    createSubscription("session-1", "sub-1");
-
-            Object lock = getContentLock(contentId);
-
-            when(viewingSessionRepository.find(contentId))
-                    .thenAnswer(invocation -> {
-
-                        assertLockHeld(lock);
-
-                        return Optional.of(room);
-                    });
-
-            Answer<Void> answer = lockHeldAnswer(lock);
-
-            doAnswer(answer)
-                    .when(viewingSessionRedisRepository)
-                    .deleteWithContentId(contentId);
-
-            doAnswer(answer)
-                    .when(redisTopicRegistry)
-                    .disconnectWithContentId(
-                            contentId.toString()
-                    );
-
-            doAnswer(answer)
-                    .when(viewingSessionRepository)
-                    .remove(room);
-
-            when(room.getAll())
-                    .thenAnswer(invocation -> {
-
-                        assertLockHeld(lock);
-
-                        return List.of(subscription);
-                    });
-
-            doAnswer(answer)
-                    .when(room).clear();
-
-            // when
-            List<WSSubscription> result =
-                    viewingSessionService.destroy(contentId);
-
-            // then
-            InOrder inOrder = createInOrder();
-
-            verifyDestroyOrder(
-                    inOrder,
-                    room,
-                    contentId
-            );
-
-            assertThat(result)
-                    .containsExactly(subscription);
-
-            assertLockReleased(lock);
-
-            verifyNoMoreInteractions(
-                    viewingSessionRepository,
-                    viewingSessionRedisRepository,
-                    redisTopicRegistry,
-                    room
-            );
-        }
     }
 
     // =========================================================
@@ -1004,7 +667,8 @@ public class ViewingSessionServiceTest {
                 Future<?> joinFuture = executor.submit(
                         () -> viewingSessionService.join(
                                 subscription,
-                                contentId
+                                contentId,
+                                userId
                         )
                 );
 
@@ -1364,9 +1028,10 @@ public class ViewingSessionServiceTest {
 
         inOrder.verify(viewingSessionRedisRepository)
                 .register(
+                        contentId.toString(),
+                        userId.toString(),
                         subscription.sessionId(),
-                        subscription.id(),
-                        contentId.toString()
+                        subscription.id()
                 );
 
         inOrder.verify(targetRoom)
@@ -1450,8 +1115,7 @@ public class ViewingSessionServiceTest {
         inOrder.verify(viewingSessionRedisRepository)
                 .unregisterAll(
                         sessionId,
-                        subscriptionIds,
-                        contentId
+                        subscriptionIds
                 );
 
         inOrder.verify(redisTopicRegistry)

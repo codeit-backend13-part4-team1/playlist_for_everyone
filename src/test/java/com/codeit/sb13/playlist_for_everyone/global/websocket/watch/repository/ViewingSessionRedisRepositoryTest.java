@@ -62,229 +62,105 @@ public class ViewingSessionRedisRepositoryTest {
         log.info("[WatcherRegistryTest] 테스트 세팅 완료");
     }
 
-    @AfterEach
-    void teardown(){
-        clear();
-        factory.destroy();
-        log.info("[WatcherRegistryTest] 테스트 종료");
-    }
+    // 필요한 import
+// import org.junit.jupiter.api.DisplayName;
+// import org.junit.jupiter.api.Test;
+// import java.util.List;
+// import java.util.UUID;
+// import static org.assertj.core.api.Assertions.assertThat;
 
-    private void clear(){
-        Set<String> sessions = template.keys(STORAGE_SESSION_PREFIX + "*");
-        Set<String> contents = template.keys(STORAGE_CONTENT_PREFIX + "*");
-        contents.addAll(sessions);
-        for(String key : contents){
-            template.delete(key);
-            log.info("[WatcherRegistryTest] key 삭제됨 - {}",key);
-        }
-    }
-
-    private boolean checkContainedChannelIdInList(String sessionId, String targetId){
-         Map<Object,Object> test= template.opsForHash()
-                 .entries(STORAGE_SESSION_PREFIX + sessionId);
-
-         log.info("세션 id:{} - {}",sessionId,test);
-
-         for(Object id : test.values()){
-             log.info("[WatcherRegistryTest] id 검색됨 - {}",id);
-             if (targetId.equals(id)) return true;
-         }
-        return false;
-    }
-    private boolean checkContainedSessionIdInList(String contentId, String targetId){
-        Set<String> idList = template.opsForZSet()
-                .range(STORAGE_CONTENT_PREFIX + contentId,0,-1);
-        for (String id : idList) {
-            log.info("[WatcherRegistryTest] id 검색됨 - {}",id);
-            if (targetId.equals(id)) return true;
-        }
-        return false;
-    }
-
-    private String subscriptionKey(String session, String subscription){
-        return session + WatcherScriptConfig.DELIMITER + subscription;
-    }
-
+// 테스트 설정 전제: 구독 TTL과 시청자 카운터 TTL은 모두 3초
 
     @Test
-    @DisplayName("컨텐츠와 현재세션번호를 기반으로 시청 등록 후 세션 id 기반 삭제 테스트")
-    void registerWatcher(){
-        String contentId = UUID.randomUUID().toString();
-        String sessionId = "a56s72D43D";
-        String subscriptionId = "sub-1";
+    @DisplayName("같은 콘텐츠에 서로 다른 사용자 두 명이 등록하면 시청자 수는 2명이다")
+    void registerCountsViewers() {
+        String content = newId();
 
-        viewingSessionRedisRepository.register(sessionId, subscriptionId, contentId);
+        viewingSessionRedisRepository.register(content, newId(), newId(), "sub-1");
+        viewingSessionRedisRepository.register(content, newId(), newId(), "sub-2");
 
-        assertThat(checkContainedChannelIdInList(sessionId, contentId)).isTrue();
-        assertThat(checkContainedSessionIdInList(contentId, subscriptionKey(sessionId,subscriptionId))).isTrue();
-
-        viewingSessionRedisRepository.unregister(sessionId, subscriptionId);
-
-        assertThat(checkContainedChannelIdInList(sessionId, contentId)).isFalse();
-        assertThat(checkContainedSessionIdInList(contentId, subscriptionKey(sessionId,subscriptionId))).isFalse();
-    }
-
-
-    @Test
-    @DisplayName("현재 컨텐츠를 시청하고 있는 사용자(세션) 수 조회")
-    void unRegisterWatcher(){
-
-        String contentId = UUID.randomUUID().toString();
-        String session1 = "a56s72D9eD";
-        String subscriptionId1 = "sub-1";
-        String session2 = "a56172D9eD";
-        String subscriptionId2 = "sub-2";
-        String session3 = "af1s72D9eD";
-        String subscriptionId3 = "sub-3";
-
-        viewingSessionRedisRepository.register(session1, subscriptionId1, contentId);
-        viewingSessionRedisRepository.register(session2, subscriptionId2, contentId);
-        viewingSessionRedisRepository.register(session3, subscriptionId3, contentId);
-
-
-        log.info("[WatcherRegistryTest] 세션 수 조회 - {}", viewingSessionRedisRepository.getWatcherCount(contentId));
-        assertThat(viewingSessionRedisRepository.getWatcherCount(contentId)).isEqualTo(3L);
+        assertThat(viewingSessionRedisRepository.getWatcherCount(content)).isEqualTo(2L);
     }
 
     @Test
-    @DisplayName("컨텐츠 ttl 갱신 테스트")
-    void refreshTest(){
-        String content1 = UUID.randomUUID().toString();
-        String content2 = UUID.randomUUID().toString();
+    @DisplayName("한 세션을 갱신하면 그 세션의 모든 콘텐츠는 유지되고 미갱신 콘텐츠는 0명이 된다")
+    void refreshKeepsOnlyTheRefreshedSessionAlive() throws InterruptedException {
+        String session = newId();
+        String user = newId();
+        String contentA = newId();
+        String contentB = newId();
+        String idleContent = newId();
 
-        String session1 = "asfjkel1";
-        String subscription1 = "sub-1";
-        String session2 = "asdhfjsdfhkw";
-        String subscription2 = "sub-2";
+        viewingSessionRedisRepository.register(contentA, user, session, "sub-a");
+        viewingSessionRedisRepository.register(contentB, user, session, "sub-b");
+        viewingSessionRedisRepository.register(idleContent, newId(), newId(), "sub-c");
 
-        viewingSessionRedisRepository.register(session1, subscription1, content1);
-        viewingSessionRedisRepository.register(session2, subscription2, content2);
+        // 미갱신 콘텐츠도 처음에는 1명이어야 만료 전후를 검증할 수 있다.
+        assertThat(viewingSessionRedisRepository.getWatcherCount(contentA)).isEqualTo(1L);
+        assertThat(viewingSessionRedisRepository.getWatcherCount(contentB)).isEqualTo(1L);
+        assertThat(viewingSessionRedisRepository.getWatcherCount(idleContent)).isEqualTo(1L);
 
-        log.info("[WatcherRegistryTest] 세션 등록 완료");
+        // 3초 TTL을 넘겨 총 5초간 진행한다. 이 동안 시청자 수 조회는 하지 않는다.
+        for (int i = 0; i < 4; i++) {
+            Thread.sleep(1_000);
+            viewingSessionRedisRepository.refresh(session);
+        }
 
-        Instant start = Instant.now();
-        Instant now = Instant.now();
-        Duration duration = Duration.between(start, now);
-
-        do {
-            try {
-                Thread.sleep(1000);
-                viewingSessionRedisRepository.refresh(session1);
-                log.info("[WatcherRegistryTest] 컨텐츠 갱신 완료");
-                now = Instant.now();
-                duration = Duration.between(start, now);
-            }
-            catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                log.info("[WatcherRegistryTest] 컨텐츠 갱신 중 인터럽트 발생");
-            }
-        } while (duration.toSeconds() < 5);
-
-        assertThat(viewingSessionRedisRepository.getWatcherCount(content1)).isEqualTo(1L);
-        assertThat(viewingSessionRedisRepository.getWatcherCount(content2)).isEqualTo(0L);
-
+        assertThat(viewingSessionRedisRepository.getWatcherCount(contentA)).isEqualTo(1L);
+        assertThat(viewingSessionRedisRepository.getWatcherCount(contentB)).isEqualTo(1L);
+        assertThat(viewingSessionRedisRepository.getWatcherCount(idleContent)).isZero();
     }
 
-    @Nested
-    @DisplayName("Delete Test")
-    class Delete {
+    @Test
+    @DisplayName("한 세션에서 구독 여러 개를 삭제하면 각 콘텐츠에 남은 시청자 수가 반영된다")
+    void removeSubscriptionsUpdatesEachContent() {
+        String session = newId();
+        String user = newId();
+        String contentA = newId();
+        String contentB = newId();
 
-        String contentId1 = UUID.randomUUID().toString();
-        String contentId2 = UUID.randomUUID().toString();
-        String sessionId1 = "test-session-id1";
-        String sessionId2 = "test-session-id2";
-        String subscriptionId1 = "test-sub-1";
-        String subscriptionId2 = "test-sub-2";
+        viewingSessionRedisRepository.register(contentA, user, session, "sub-a");
+        viewingSessionRedisRepository.register(contentB, user, session, "sub-b");
 
-        @BeforeEach
-        void setUp(){
-            // content 1 에는 session 1,2
-            viewingSessionRedisRepository.register(sessionId1, subscriptionId1, contentId1);
-            viewingSessionRedisRepository.register(sessionId2, subscriptionId1, contentId1);
+        // A에는 다른 세션의 시청자 한 명이 더 있다.
+        viewingSessionRedisRepository.register(contentA, newId(), newId(), "sub-c");
 
-            // content 2 에는 session 1 만
-            viewingSessionRedisRepository.register(sessionId1, subscriptionId2, contentId2);
-        }
+        assertThat(viewingSessionRedisRepository.getWatcherCount(contentA)).isEqualTo(2L);
+        assertThat(viewingSessionRedisRepository.getWatcherCount(contentB)).isEqualTo(1L);
 
-        @Test
-        @DisplayName("특정 컨텐트에 속한 특정 세션의 모든 구독을 삭제하는 테스트")
-        void unregisterAllTest(){
-            viewingSessionRedisRepository.unregisterAll(sessionId1,List.of(subscriptionId1, subscriptionId2),UUID.fromString(contentId1));
+        viewingSessionRedisRepository.unregisterAll(session, List.of("sub-a", "sub-b"));
 
-            assertThat(viewingSessionRedisRepository.getWatcherCount(contentId1)).isEqualTo(1L);
-            assertThat(viewingSessionRedisRepository.getWatcherCount(contentId2)).isEqualTo(1L);
-        }
-
-        @Test
-        @DisplayName("컨텐츠 id 기반 삭제 테스트")
-        void deleteWithContentIdTest(){
-            viewingSessionRedisRepository.deleteWithContentId(UUID.fromString(contentId1));
-
-            assertThat(viewingSessionRedisRepository.getWatcherCount(contentId1)).isEqualTo(0L);
-            assertThat(viewingSessionRedisRepository.getWatcherCount(contentId2)).isEqualTo(1L);
-            assertThat(checkContainedChannelIdInList(sessionId1,contentId1)).isFalse();
-            assertThat(checkContainedChannelIdInList(sessionId2,contentId1)).isFalse();
-            assertThat(checkContainedChannelIdInList(sessionId1,contentId2)).isTrue();
-        }
+        assertThat(viewingSessionRedisRepository.getWatcherCount(contentA)).isEqualTo(1L);
+        assertThat(viewingSessionRedisRepository.getWatcherCount(contentB)).isZero();
     }
 
-    @Nested
-    @DisplayName("redis 스크립트 조회 테스트")
-    class Query {
+    @Test
+    @DisplayName("콘텐츠를 삭제한 뒤 같은 세션을 갱신해도 삭제한 콘텐츠는 다시 집계되지 않는다")
+    void removeContentSurvivesSessionRefresh() {
+        String session = newId();
+        String user = newId();
+        String removedContent = newId();
+        String remainingContent = newId();
 
-        String content1 = UUID.randomUUID().toString();
-        String content2 = UUID.randomUUID().toString();
-        String content3 = UUID.randomUUID().toString();
+        viewingSessionRedisRepository.register(removedContent, user, session, "sub-a");
+        viewingSessionRedisRepository.register(remainingContent, user, session, "sub-b");
 
-        String sessionId1 = "session1";
-        String sessionId2 = "session2";
-        String sessionId3 = "session3";
+        assertThat(viewingSessionRedisRepository.getWatcherCount(removedContent)).isEqualTo(1L);
+        assertThat(viewingSessionRedisRepository.getWatcherCount(remainingContent)).isEqualTo(1L);
 
-        String subscriptionId1 = "subscription1";
-        String subscriptionId2 = "subscription2";
-        String subscriptionId3 = "subscription3";
+        viewingSessionRedisRepository.deleteWithContentId(UUID.fromString(removedContent));
 
-        @BeforeEach
-        void setUp(){
-            List<String> contentIdList = List.of(content1,content2,content3);
-            List<String> sessionIdList = List.of(sessionId1,sessionId2,sessionId3);
-            List<String> subscriptionIdList = List.of(subscriptionId1,subscriptionId2,subscriptionId3);
+        assertThat(viewingSessionRedisRepository.getWatcherCount(removedContent)).isZero();
 
+        viewingSessionRedisRepository.refresh(session);
 
-            for (String subscription: subscriptionIdList){
-                log.info("[WatchingSessionRepositoryTest] content1: {}, session: {}, subscription: {}", content1, sessionId1, subscription);
-                viewingSessionRedisRepository.register(sessionId1, subscription, content1);
-            }
-
-            for (String subscription: subscriptionIdList){
-                log.info("[WatchingSessionRepositoryTest] content2: {}, session: {}, subscription: {}", content2, sessionId2, subscription);
-                viewingSessionRedisRepository.register(sessionId2, subscription, content2);
-            }
-
-            for (String subscription: subscriptionIdList){
-                log.info("[WatchingSessionRepositoryTest] content3: {}, session: {}, subscription: {}", content3, sessionId3, subscription);
-                viewingSessionRedisRepository.register(sessionId3, subscription, content3);
-            }
-
-
-        }
-
-        @Test
-        @DisplayName("컨텐츠 리스트를 받아와서 해당하는 모든 컨텐츠의 시청자를 조회")
-        void countWithMultipleContentsTest(){
-            Map<UUID, Long> result = viewingSessionRedisRepository
-                    .getWatcherCountWithMultipleContents(List.of(content1,content2));
-
-            for (Map.Entry<UUID, Long> entry : result.entrySet()){
-                log.info("[ViewingSessionRepositoryTest] contentId: {}, count: {}", entry.getKey(), entry.getValue());
-                assertThat(entry.getKey()).isIn(UUID.fromString(content1), UUID.fromString(content2));
-                assertThat(entry.getValue()).isEqualTo(3L);
-            }
-
-        }
+        assertThat(viewingSessionRedisRepository.getWatcherCount(removedContent)).isZero();
+        assertThat(viewingSessionRedisRepository.getWatcherCount(remainingContent)).isEqualTo(1L);
     }
 
-
+    private static String newId() {
+        return UUID.randomUUID().toString();
+    }
 
 
 }

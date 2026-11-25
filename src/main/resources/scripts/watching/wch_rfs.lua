@@ -27,11 +27,10 @@ local delimiter = ARGV[5]
 local ttl = tonumber(ARGV[6])
 
 local session_key = session_key_prefix .. session_id
-local subscriptions = redis.call('HGETALL', session_key)
 
-if #subscriptions == 0 then
-    return 0
-end
+local time = redis.call('TIME')
+local now = time[1] * 1000 + math.floor(time[2] / 1000)
+local expires_at = now + ttl
 
 local function parse_pair(value)
     local pos = string.find(value, delimiter, 1, true)
@@ -72,14 +71,24 @@ local function count_current_viewing_user_update(_content_id, now)
 
         if content_user_pair then
             local content_id, user_id = parse_pair(content_user_pair)
-            if content_id == content_id and not existed_user[user_id] then
+            if content_id == _content_id and not existed_user[user_id] then
                 existed_user[user_id] = true
                 count = count + 1
             end
         end
     end
 
-    redis.call('SET', content_counter_key_prefix .. content_id, count)
+    local counter_key = content_counter_key_prefix .. _content_id
+    redis.call('SET', counter_key, count, 'PX', ttl)
+end
+
+
+-- logic
+
+local subscriptions = redis.call('HGETALL', session_key)
+
+if #subscriptions == 0 then
+    return 0
 end
 
 -- HGETALL 결과는 [subscriptionId, contentId .. delimiter .. userId, ...].
@@ -87,10 +96,12 @@ end
 local members_by_content = {}
 local user_keys = {}
 
+
 -- Hash 이므로 키, 값, 키2, 값2, ...
 for i = 1, #subscriptions, 2 do
     local subscription_id = subscriptions[i]
     local content_id, user_id = parse_pair(subscriptions[i + 1])
+
     local member = session_id .. delimiter .. subscription_id
     local user_key = user_key_prefix .. user_id
 
@@ -103,13 +114,11 @@ for i = 1, #subscriptions, 2 do
         member = member,
         user_key = user_key
     })
+
     user_keys[user_key] = true
 end
 
-local redis_time = redis.call('TIME')
-local now = tonumber(redis_time[1]) * 1000
-    + math.floor(tonumber(redis_time[2]) / 1000)
-local expires_at = now + ttl
+
 
 redis.call('PEXPIRE', session_key, ttl)
 
@@ -117,20 +126,17 @@ for content_id, records in pairs(members_by_content) do
     local content_key = content_key_prefix .. content_id
 
     -- score <= now 인 구독을 이 콘텐츠에서 한 번만 정리한다.
-    local expired_count = redis.call(
-        'ZREMRANGEBYSCORE', content_key, '-inf', now
-    )
+    local expired_count = redis.call('ZREMRANGEBYSCORE', content_key, '-inf', now)
     local needs_recount = expired_count > 0
 
     for _, record in ipairs(records) do
+
         -- 세션 Hash에 남아 있는 구독의 사용자 인덱스도 복구한다.
         redis.call('SADD', record.user_key, record.member)
 
         -- 기존 멤버는 score만 갱신하며 0을 반환한다.
         -- 멤버가 없었거나 위에서 만료로 정리됐다면 1을 반환한다.
-        local added = redis.call(
-            'ZADD', content_key, expires_at, record.member
-        )
+        local added = redis.call('ZADD', content_key, expires_at, record.member)
 
         if added > 0 then
             needs_recount = true
@@ -139,7 +145,13 @@ for content_id, records in pairs(members_by_content) do
 
     extend_shared_key_ttl(content_key)
 
+    local counter_key = content_counter_key_prefix .. content_id
+
     if needs_recount then
+        -- 활성 구독 구성이 바뀌었으므로 값을 다시 계산하고 TTL도 설정한다.
+        count_current_viewing_user_update(content_id, now)
+    elseif redis.call('PEXPIRE', counter_key, ttl) == 0 then
+        -- 카운터가 이미 만료됐다면 활성 구독을 기준으로 다시 생성한다.
         count_current_viewing_user_update(content_id, now)
     end
 end

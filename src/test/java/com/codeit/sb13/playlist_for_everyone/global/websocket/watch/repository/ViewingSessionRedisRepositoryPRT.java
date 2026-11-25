@@ -14,8 +14,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.STORAGE_CONTENT_PREFIX;
-import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.STORAGE_SESSION_PREFIX;
+import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @Disabled // 스크립트 로그 테스트 용. 필요시 활성화.
@@ -61,14 +60,15 @@ public class ViewingSessionRedisRepositoryPRT {
     String sessionId2 = "test-session-id2";
     String subscriptionId1 = "test-sub-1";
     String subscriptionId2 = "test-sub-2";
+    String userId = UUID.randomUUID().toString();
 
     void register(){
         // content 1 에는 session 1,2
-        repository.register(sessionId1, subscriptionId1, contentId1);
-        repository.register(sessionId2, subscriptionId1, contentId1);
+        repository.register(contentId1, userId, sessionId1, subscriptionId1);
+        repository.register(contentId1, userId, sessionId2, subscriptionId1);
 
         // content 2 에는 session 1 만
-        repository.register(sessionId1, subscriptionId2, contentId2);
+        repository.register(contentId2, userId, sessionId1, subscriptionId2);
     }
 
 
@@ -120,15 +120,15 @@ public class ViewingSessionRedisRepositoryPRT {
 
 
             for (String subscription: subscriptionIdList){
-                repository.register(sessionId1, subscription, content1);
+                repository.register(content1, userId, sessionId1, subscription);
             }
 
             for (String subscription: subscriptionIdList){
-                repository.register(sessionId2, subscription, content2);
+                repository.register(content2, userId, sessionId2, subscription);
             }
 
             for (String subscription: subscriptionIdList){
-                repository.register(sessionId3, subscription, content3);
+                repository.register(content3, userId, sessionId3, subscription);
             }
 
 
@@ -142,7 +142,7 @@ public class ViewingSessionRedisRepositoryPRT {
 
             for (Map.Entry<UUID, Long> entry : result.entrySet()){
                 assertThat(entry.getKey()).isIn(UUID.fromString(content1),UUID.fromString(content2));
-                assertThat(entry.getValue()).isEqualTo(3L);
+                assertThat(entry.getValue()).isEqualTo(1L);
             }
 
         }

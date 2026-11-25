@@ -385,8 +385,10 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
                     List<WSSubscription> viewingSubscriptionList = viewingTargets.get(contentId);
                     List<WSSubscription> chattingSubscriptionList = chattingTargets.get(contentId);
 
+                    log.info("chatSessionList : {}", chattingSubscriptionList);
+
                     if (!viewingSubscriptionList.isEmpty()){
-                        chattingSessionService.leaveAll(viewingSubscriptionList, contentId);
+                        viewingSessionService.leaveAll(viewingSubscriptionList, contentId);
                     }
                     if (!chattingSubscriptionList.isEmpty()) {
                         chattingSessionService.leaveAll(chattingSubscriptionList, contentId);

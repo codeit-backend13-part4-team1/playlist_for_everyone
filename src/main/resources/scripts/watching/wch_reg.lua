@@ -113,6 +113,7 @@ local function count_current_viewing_user_update(_content_id)
 
     -- content 시청자 수 카운터에 현재 시청자 수 대입
     redis.call('SET', content_counter_key, count)
+    redis.call('PEXPIREAT', content_counter_key, expiresAt)
 end
 
 

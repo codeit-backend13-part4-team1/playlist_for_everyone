@@ -4,14 +4,22 @@
 -- ARGV[1] : contentPrefix
 
 -- ARGV
-local content_counter_prefix
+local content_counter_prefix = ARGV[1]
 
 local result = {}
 
 for i, content_id in ipairs(KEYS) do
     local content_counter_key = content_counter_prefix .. content_id
     local viewer = redis.call('GET',content_counter_key)
-    result[i] = {content_id, viewer}
+
+    redis.log(redis.LOG_NOTICE, content_counter_key, viewer)
+
+    -- nil => false 로 취급 된다.
+    if not viewer then
+        result[i] = {content_id, "0"}
+    else
+        result[i] = {content_id, viewer}
+    end
 end
 
 return result

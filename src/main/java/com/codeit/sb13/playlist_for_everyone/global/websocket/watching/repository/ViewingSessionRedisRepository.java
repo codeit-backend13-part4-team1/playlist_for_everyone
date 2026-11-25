@@ -137,6 +137,8 @@ public class ViewingSessionRedisRepository {
                 DELIMITER,
                 String.valueOf(TTL.toMillis())
         );
+        log.info("register contentId:{}, userId:{}, result: {}", contentId, userId, res);
+
     }
 
 
@@ -192,21 +194,22 @@ public class ViewingSessionRedisRepository {
             String sessionId,
             List<String> subscriptionIds
     ){
+        //  인자 요소 리스트
+        List<String> args = new ArrayList<>(List.of(
+                VIEW_CONTENT_KEY_PREFIX,
+                VIEW_USER_KEY_PREFIX,
+                VIEW_SESSION_KEY_PREFIX,
+                VIEW_CONTENT_COUNTER_PREFIX,
+                DELIMITER
+        ));
+        args.addAll(subscriptionIds);
+
         /**
          * Keys - sessionId
          * ARGV - contentKeyPrefix, userKeyPrefix, sessionKeyPrefix, counterPrefix, delimiter, subscriptions
          * return 0
          */
-
-        Long res = redis.execute(unregisterAllScript,
-                List.of(sessionId),
-                VIEW_CONTENT_KEY_PREFIX,
-                VIEW_USER_KEY_PREFIX,
-                VIEW_SESSION_KEY_PREFIX,
-                VIEW_CONTENT_COUNTER_PREFIX,
-                DELIMITER,
-                subscriptionIds.toArray()
-        );
+        redis.execute(unregisterAllScript, List.of(sessionId), args.toArray());
 
     }
 
@@ -311,7 +314,7 @@ public class ViewingSessionRedisRepository {
         return query.stream().map(item -> (List<?>) item)
                 .collect(Collectors.toMap(
                         item -> UUID.fromString((String) item.get(0)),
-                        item -> (Long) item.get(1),
+                        item -> Long.valueOf((String) item.get(1)),
                         (existing, replacement) -> existing // 중복 제거용 세 번째 인자.
                 ));
     }
