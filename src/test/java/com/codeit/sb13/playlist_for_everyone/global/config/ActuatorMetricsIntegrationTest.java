@@ -49,4 +49,13 @@ class ActuatorMetricsIntegrationTest {
         mockMvc.perform(head("/actuator/metrics/spring.batch.job"))
                 .andExpect(status().isForbidden());
     }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void 관리자는_활성_SSE_연결이_없으면_0을_조회한다() throws Exception {
+        mockMvc.perform(get("/actuator/metrics/everyone.sse.connections.active"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.measurements[0].statistic").value("VALUE"))
+                .andExpect(jsonPath("$.measurements[0].value").value(0.0));
+    }
 }
