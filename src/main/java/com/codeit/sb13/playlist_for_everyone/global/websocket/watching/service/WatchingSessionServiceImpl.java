@@ -10,6 +10,7 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocke
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionRegisterException;
 import com.codeit.sb13.playlist_for_everyone.global.service.MatchRule;
+import com.codeit.sb13.playlist_for_everyone.global.service.lock.Locks;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSession;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSubscription;
@@ -23,7 +24,6 @@ import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.v
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
@@ -46,6 +46,8 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
     private final WatchingSessionMapper mapper;
 
     private final ApplicationEventPublisher eventPublisher;
+
+    private final Locks locks;
 
     private final MatchRule UUID_PATTERN = MatchRule
             .builder()
@@ -94,7 +96,7 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
             subscription = session.subscribe(subscriptionId, destination);
             try {
                 // 2. 비즈니스 로직 등록
-                viewingSessionService.join(subscription, contentId);
+                viewingSessionService.join(subscription, contentId, auth.getUserId());
             } catch (RuntimeException e) {
                 log.error("[{}] 구독 등록 실패 - contentId : {}, sessionId : {}, subscriptionId : {}",
                         this.getClass().getSimpleName(),
@@ -115,6 +117,7 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
 
         // 3. 메세지 전송
         sendViewingSessionMessage(subscription, ChangeType.JOIN, auth, content);
+        // 4. 알림 발송
     }
 
     /**
@@ -343,6 +346,7 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
             // 병렬개 동시 처리를 위한 파라매터 리스트. session, subscription, content 순으로 가정한다.
             Map<UUID, List<WSSubscription>> viewingTargets = new HashMap<>();
             Map<UUID, List<WSSubscription>> chattingTargets = new HashMap<>();
+            Set<UUID> contentIds = new HashSet<>();
 
             for (WSSubscription subscription : session.getAllSubscriptions()) {
                 String destination = subscription.destination();
@@ -372,24 +376,21 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
                 }
             }
 
-            // content별 관련된 구독 해지
-            for (Map.Entry<UUID, List<WSSubscription>> entry : chattingTargets.entrySet()){
-                UUID contentId = entry.getKey();
-                List<WSSubscription> subscriptions = entry.getValue();
-                try {
-                    chattingSessionService.leaveAll(subscriptions, contentId);
-                } catch (RuntimeException e){
-                    // 실패시 기록과 함께 다음 작업
-                }
-            }
+            contentIds.addAll(viewingTargets.keySet());
+            contentIds.addAll(chattingTargets.keySet());
 
-            for (Map.Entry<UUID, List<WSSubscription>> entry : viewingTargets.entrySet()){
-                UUID contentId = entry.getKey();
-                List<WSSubscription> subscriptions = entry.getValue();
-                try {
-                    viewingSessionService.leaveAll(subscriptions, contentId);
-                } catch (RuntimeException e){
-                    // 실패시 기록과 함께 다음 작업
+            for (UUID contentId : contentIds) {
+                // 동일 content lock 내에서  content 리소스 삭제 작업.
+                synchronized (locks.lock(contentId)){
+                    List<WSSubscription> viewingSubscriptionList = viewingTargets.get(contentId);
+                    List<WSSubscription> chattingSubscriptionList = chattingTargets.get(contentId);
+
+                    if (!viewingSubscriptionList.isEmpty()){
+                        chattingSessionService.leaveAll(viewingSubscriptionList, contentId);
+                    }
+                    if (!chattingSubscriptionList.isEmpty()) {
+                        chattingSessionService.leaveAll(chattingSubscriptionList, contentId);
+                    }
                 }
             }
         }
@@ -408,8 +409,10 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
         // todo - 실제 세션 닫기는 구독 관리가 필요하다. 지금은 구독 관리를 simpBroker 가 함으로
         //  이 매서드에선 산순 구독 등록만 정리하고, 실제 구독 저일는 추후 다른 매서드에서 하도록 한다.
         // 1. 컨텐츠에 연결된 리소스 식별 및 정리
-        unregisteredSubscriptionList.addAll(viewingSessionService.destroy(contentId));
-        unregisteredSubscriptionList.addAll(chattingSessionService.destroy(contentId));
+        synchronized (locks.lock(contentId)) {
+            unregisteredSubscriptionList.addAll(viewingSessionService.destroy(contentId));
+            unregisteredSubscriptionList.addAll(chattingSessionService.destroy(contentId));
+        }
 
         // 2. 세션 리소스 정리
         for (WSSubscription subscription : unregisteredSubscriptionList) {

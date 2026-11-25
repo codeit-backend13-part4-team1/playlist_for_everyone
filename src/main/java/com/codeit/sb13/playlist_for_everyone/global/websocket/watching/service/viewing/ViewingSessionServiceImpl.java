@@ -33,7 +33,7 @@ public class ViewingSessionServiceImpl implements ViewingSessionService{
     private final Locks locks;
 
     @Override
-    public void join(WSSubscription subscription, UUID contentId) {
+    public void join(WSSubscription subscription, UUID contentId, UUID userId) {
         // 1. 인자 체크
         Objects.requireNonNull(subscription);
         Objects.requireNonNull(contentId);
@@ -45,9 +45,11 @@ public class ViewingSessionServiceImpl implements ViewingSessionService{
             // 3. 세션 룸에 구독 등록
             // 글로벌 todo - UUID 등록으로 간편하게 변경되도록 변경.
             viewingSessionPresence.register(
+                    contentId.toString(),
+                    userId.toString(),
                     subscription.sessionId(),
-                    subscription.id(),
-                    contentId.toString());
+                    subscription.id()
+            );
             // 4. 메세지 수신을 위한 브로커 등록 -> 단일이라면 redis 등록이 없어진다.
             // todo - UUID 등록으로 간편하게 되도록 변경
             redisTopicRegistry.register(
@@ -77,17 +79,18 @@ public class ViewingSessionServiceImpl implements ViewingSessionService{
     @Override
     public void leaveAll(List<WSSubscription> subscriptions, UUID contentId) {
         Objects.requireNonNull(contentId);
-        synchronized (locks.lock(contentId)) {
-            ViewingSessionRoom room = getRoomOrException(contentId);
-            room.leaveAll(subscriptions);
 
-            // tmp
-            String sessionId = subscriptions.get(0).sessionId();
-            List<String> subscriptionIds = subscriptions.stream().map(WSSubscription::id).collect(Collectors.toList());
-            // todo. - 글로벌, topic 저장소를 UUID 기준으로 변경하면서 변경.
-            viewingSessionPresence.unregisterAll(sessionId ,subscriptionIds, contentId);
-            redisTopicRegistry.unregisterAll(sessionId, subscriptionIds);
-        }
+        /* content 단위 락은 외부에서 걸어서, 다중작업을 한번에 할 수 있도록 변경. */
+
+        ViewingSessionRoom room = getRoomOrException(contentId);
+        room.leaveAll(subscriptions);
+
+        // tmp
+        String sessionId = subscriptions.get(0).sessionId();
+        List<String> subscriptionIds = subscriptions.stream().map(WSSubscription::id).collect(Collectors.toList());
+        // todo. - 글로벌, topic 저장소를 UUID 기준으로 변경하면서 변경.
+        viewingSessionPresence.unregisterAll(sessionId ,subscriptionIds);
+        redisTopicRegistry.unregisterAll(sessionId, subscriptionIds);
     }
 
     // 여러 인스턴스에서 동일 로직 수행 시, 로직 사이에 동일 id 로 세션 등록이 들어오면, 생성한 등록을 삭제 해 버릴 가능성 있음.
@@ -96,22 +99,21 @@ public class ViewingSessionServiceImpl implements ViewingSessionService{
     @Override
     public List<WSSubscription> destroy(UUID contentId) {
         List<WSSubscription> res;
-        synchronized (locks.lock(contentId)) {
-            try {
-                ViewingSessionRoom room = getRoomOrException(contentId);
-                // 저장소에서 세션 해지 및, 토픽 등록 해제.
-                viewingSessionPresence.deleteWithContentId(contentId);
-                redisTopicRegistry.disconnectWithContentId(contentId.toString());
-                // 실제 리소스 삭제.
-                viewingSessionRepository.remove(room);
 
-                // 반환용 로컬 구독 리스트 사본 생성
-                res = room.getAll();
-                room.clear();
-                return res;
-            } catch (WebSocketSessionRegisterException e) {
-                return List.of();
-            }
+        try {
+            ViewingSessionRoom room = getRoomOrException(contentId);
+            // 저장소에서 세션 해지 및, 토픽 등록 해제.
+            viewingSessionPresence.deleteWithContentId(contentId);
+            redisTopicRegistry.disconnectWithContentId(contentId.toString());
+            // 실제 리소스 삭제.
+            viewingSessionRepository.remove(room);
+
+            // 반환용 로컬 구독 리스트 사본 생성
+            res = room.getAll();
+            room.clear();
+            return res;
+        } catch (WebSocketSessionRegisterException e) {
+            return List.of();
         }
     }
 

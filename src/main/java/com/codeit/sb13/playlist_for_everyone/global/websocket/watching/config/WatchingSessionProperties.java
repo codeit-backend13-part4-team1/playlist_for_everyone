@@ -18,8 +18,11 @@ public class WatchingSessionProperties {
     static public final String STORAGE_SESSION_PREFIX = "storage:watching:session:";
     static public final String STORAGE_CONTENT_PREFIX = "storage:watching:content:";
     // watchingSession 의 데이터(Session change event, chat) 전달용 prefix
-    static public final String MESSAGE_CHAT_PREFIX = "message:watching:chat:";
-    static public final String MESSAGE_VIEW_PREFIX = "message:watching:view:";
+
+    static public final String VIEW_CONTENT_KEY_PREFIX = "websocket:watching:view:content:";
+    static public final String VIEW_USER_KEY_PREFIX = "websocket:watching:view:user:";
+    static public final String VIEW_SESSION_KEY_PREFIX = "websocket:watching:view:session:";
+    static public final String VIEW_CONTENT_COUNTER_PREFIX = "websocket:watching:view:subscription:";
 
     static public final String UUID_REGEX = "([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})";
 
