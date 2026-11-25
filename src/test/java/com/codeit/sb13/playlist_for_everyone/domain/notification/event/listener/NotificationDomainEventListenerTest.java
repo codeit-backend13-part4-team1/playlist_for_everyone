@@ -7,7 +7,10 @@ import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.Notif
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationSource;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.NotificationLevel;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.event.NotificationAsyncProcessor;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.event.NotificationSubmitter;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.monitoring.NotificationMetrics;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.repository.impl.NotificationDeduplicationStore;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.repository.impl.NotificationDeduplicationStore.Reservation;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationTargetReader;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistContentAddedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistCreatedEvent;
@@ -15,6 +18,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistSubsc
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
 import com.codeit.sb13.playlist_for_everyone.domain.user.event.UserRoleChangedEvent;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionStartedEvent;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,6 +36,7 @@ import org.springframework.boot.test.system.OutputCaptureExtension;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -57,11 +62,27 @@ class NotificationDomainEventListenerTest {
     @Mock
     private NotificationMetrics metrics;
 
-    @InjectMocks
+    @Mock
+    private NotificationDeduplicationStore store;
+
     private NotificationDomainEventListener listener;
 
     @Captor
     private ArgumentCaptor<NotificationPublishBatch> batchCaptor;
+
+    @BeforeEach
+    void setUp(){
+        NotificationSubmitter notificationSubmitter = new NotificationSubmitter(processor, store);
+        listener = new NotificationDomainEventListener(
+                targetReader,
+                processor,
+                metrics,
+                notificationSubmitter
+        );
+
+        lenient().when(store.tryReserve(anyString()))
+                .thenReturn(Optional.of(new Reservation("test-key", "test-token")));
+    }
 
     @Test
     @DisplayName("팔로우 이벤트를 팔로우받은 사용자의 알림 생성 요청 목록으로 한 번 제출한다.")
@@ -82,6 +103,24 @@ class NotificationDomainEventListenerTest {
                 .isEqualTo("홍길동님이 회원님을 팔로우했습니다.");
         assertThat(request.level()).isEqualTo(NotificationLevel.INFO);
 
+    }
+
+    @Test
+    @DisplayName("제한 시간 안에 같은 상대를 다시 팔로우하면 알림 작업을 한 번만 제출한다.")
+    void skipsRepeatedFollowNotification(){
+        UUID followerId = UUID.randomUUID();
+        UUID followeeId = UUID.randomUUID();
+
+        UserFollowedEvent event = new UserFollowedEvent(followerId, "홍길동", followeeId);
+        String actionKey = "follow:%s:%s".formatted(followerId, followeeId);
+        when(store.tryReserve(actionKey))
+                .thenReturn(Optional.of(new Reservation(actionKey, "test-token")))
+                .thenReturn(Optional.empty());
+
+        listener.handleUserFollowed(event);
+        listener.handleUserFollowed(event);
+
+        verify(processor, times(1)).publish(any(NotificationPublishBatch.class));
     }
 
     @ParameterizedTest
@@ -165,6 +204,27 @@ class NotificationDomainEventListenerTest {
         PlaylistSubscribedEvent event = new PlaylistSubscribedEvent(UUID.randomUUID(), "퇴근 후 영화", userId, userId, "홍길동");
         listener.handlePlaylistSubscribed(event);
         verifyNoInteractions(processor);
+    }
+
+    @Test
+    @DisplayName("제한 시간 안에 같은 플레이리스트를 재구독하면 알림 작업을 한 번만 제출한다.")
+    void skipsRepeatedPlaylistSubscriptionNotification() {
+        UUID playlistId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID subscriberId = UUID.randomUUID();
+        PlaylistSubscribedEvent event = new PlaylistSubscribedEvent(
+                playlistId, "퇴근 후 영화", ownerId, subscriberId, "홍길동"
+        );
+
+        String actionKey = "playlist-subscribe:%s:%s".formatted(subscriberId, playlistId);
+        lenient().when(store.tryReserve(actionKey))
+                .thenReturn(Optional.of(new Reservation(actionKey, "test-token")))
+                .thenReturn(Optional.empty());
+
+        listener.handlePlaylistSubscribed(event);
+        listener.handlePlaylistSubscribed(event);
+
+        verify(processor, times(1)).publish(any(NotificationPublishBatch.class));
     }
 
     @Test
@@ -556,6 +616,50 @@ class NotificationDomainEventListenerTest {
                         "watcherId=" + watcherId,
                         "exceptionType=IllegalStateException")
                 .doesNotContain(event.watcherName(), event.contentTitle(), failureMessage);
+    }
+
+    @Test
+    @DisplayName("제한 시간 안에 같은 플레이리스트에 같은 콘텐츠를 다시 추가하면 알림 작업을 한번만 제출한다.")
+    void skipsRepeatedPlaylistContentAddedNotification(){
+        UUID playlistId = UUID.randomUUID();
+        UUID contentId = UUID.randomUUID();
+
+        PlaylistContentAddedEvent event = new PlaylistContentAddedEvent(playlistId, "퇴근 후 영화", contentId, "인셉션", UUID.randomUUID());
+
+        when(targetReader.findSubscriberIds(playlistId))
+                .thenReturn(List.of(UUID.randomUUID(), UUID.randomUUID()));
+
+        String actionKey = "playlist-content-add:%s:%s".formatted(playlistId, contentId);
+        lenient().when(store.tryReserve(actionKey))
+                .thenReturn(Optional.of(new Reservation(actionKey, "test-token")))
+                .thenReturn(Optional.empty());
+
+        listener.handlePlaylistContentAdded(event);
+        listener.handlePlaylistContentAdded(event);
+
+        verify(processor, times(1)).publish(any(NotificationPublishBatch.class));
+    }
+
+    @Test
+    @DisplayName("제한 시간 안에 같은 콘텐츠에 다시 참여하면 알림 작업을 한 번만 제출한다.")
+    void skipsRepeatedWatchingSessionStartedNotification(){
+        UUID watcherId = UUID.randomUUID();
+        UUID contentId = UUID.randomUUID();
+
+        WatchingSessionStartedEvent event = new WatchingSessionStartedEvent(watcherId, "홍길동", contentId, "인터스텔라");
+
+        when(targetReader.findFollowerIds(watcherId))
+                .thenReturn(List.of(UUID.randomUUID(), UUID.randomUUID()));
+
+        String actionKey = "watching-session-start:%s:%s".formatted(watcherId, contentId);
+        lenient().when(store.tryReserve(actionKey))
+                .thenReturn(Optional.of(new Reservation(actionKey, "test-token")))
+                .thenReturn(Optional.empty());
+
+        listener.handleWatchingSessionStarted(event);
+        listener.handleWatchingSessionStarted(event);
+
+        verify(processor, times(1)).publish(any(NotificationPublishBatch.class));
     }
 
 

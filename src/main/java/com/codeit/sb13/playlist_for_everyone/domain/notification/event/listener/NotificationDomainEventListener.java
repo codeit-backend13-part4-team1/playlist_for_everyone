@@ -7,6 +7,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.Notif
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationSource;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.NotificationLevel;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.event.NotificationAsyncProcessor;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.event.NotificationSubmitter;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.monitoring.NotificationMetrics;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationTargetReader;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistContentAddedEvent;
@@ -48,16 +49,18 @@ public class NotificationDomainEventListener {
     private final NotificationTargetReader targetReader;
     private final NotificationAsyncProcessor processor;
     private final NotificationMetrics metrics;
+    private final NotificationSubmitter notificationSubmitter;
 
     /** 팔로우받은 사용자에게 INFO 요청을 만든다. 이름은 이벤트 스냅샷을 사용하고 공백이면 '사용자'로 보정한다. */
     @TransactionalEventListener
     public void handleUserFollowed(UserFollowedEvent event) {
         Map<String, UUID> ids = Map.of("followerId", event.followerId(), "followeeId", event.followeeId());
+        String actionKey = "follow:%s:%s".formatted(event.followerId(), event.followeeId());
         try {
             NotificationCreateRequestedEvent request = new NotificationCreateRequestedEvent(event.followeeId(), "새로운 팔로워",
                     "%s님이 회원님을 팔로우했습니다.".formatted(resolveUserName(event.followerName())),
                     NotificationLevel.INFO, NotificationSource.USER_FOLLOWED);
-            submit("팔로우", ids, List.of(request));
+            submit("팔로우", ids, List.of(request), batch -> notificationSubmitter.submit(actionKey, batch));
         } catch (RuntimeException failure) {
             logCreationFailure("팔로우", ids, failure);
         }
@@ -87,6 +90,7 @@ public class NotificationDomainEventListener {
         if (event.ownerId().equals(event.subscriberId())) {
             return;
         }
+        String actionKey = "playlist-subscribe:%s:%s".formatted(event.subscriberId(), event.playlistId());
         Map<String, UUID> ids = Map.of(
                 "playlistId", event.playlistId(),
                 "ownerId", event.ownerId(),
@@ -95,7 +99,7 @@ public class NotificationDomainEventListener {
             NotificationCreateRequestedEvent request = new NotificationCreateRequestedEvent(event.ownerId(), "새로운 구독자",
                     "%s님이 \"%s\" 플레이리스트를 구독했습니다.".formatted(resolveUserName(event.subscriberName()), event.playlistTitle()),
                     NotificationLevel.INFO, NotificationSource.PLAYLIST_SUBSCRIBED);
-            submit("플레이리스트 구독", ids, List.of(request));
+            submit("플레이리스트 구독", ids, List.of(request), batch -> notificationSubmitter.submit(actionKey, batch));
         } catch (RuntimeException failure) {
             logCreationFailure("플레이리스트 구독", ids, failure);
         }
@@ -134,6 +138,7 @@ public class NotificationDomainEventListener {
                 "playlistId", event.playlistId(),
                 "contentId", event.contentId(),
                 "actorId", event.actorId());
+        String actionKey = "playlist-content-add:%s:%s".formatted(event.playlistId(), event.contentId());
         try {
             List<NotificationCreateRequestedEvent> requests = getSubscriberIdsOrEmpty(event).stream()
                     .distinct()
@@ -142,7 +147,7 @@ public class NotificationDomainEventListener {
                             "\"%s\" 플레이리스트에 \"%s\" 콘텐츠가 추가되었습니다.".formatted(event.playlistTitle(), event.contentTitle()),
                             NotificationLevel.INFO, NotificationSource.PLAYLIST_CONTENT_ADDED))
                     .toList();
-            submit("콘텐츠 추가", ids, requests);
+            submit("콘텐츠 추가", ids, requests, batch -> notificationSubmitter.submit(actionKey, batch));
         } catch (RuntimeException failure) {
             logCreationFailure("콘텐츠 추가", ids, failure);
         }
@@ -180,6 +185,7 @@ public class NotificationDomainEventListener {
         Map<String, UUID> ids = Map.of(
                 "contentId", event.contentId(),
                 "watcherId", event.watcherId());
+        String actionKey = "watching-session-start:%s:%s".formatted( event.watcherId(), event.contentId());
         String watcherName = resolveUserName(event.watcherName());
         try {
             List<NotificationCreateRequestedEvent> requests = getFollowerIdsOrEmpty(event.watcherId(),
@@ -193,7 +199,7 @@ public class NotificationDomainEventListener {
                             .formatted(watcherName, event.contentTitle()),
                             NotificationLevel.INFO, NotificationSource.WATCHING_SESSION_STARTED))
                     .toList();
-            submit("콘텐츠 시청 시작", ids, requests);
+            submit("콘텐츠 시청 시작", ids, requests, batch -> notificationSubmitter.submit(actionKey, batch));
         }catch (RuntimeException failure) {
             logCreationFailure("콘텐츠 시청 시작", ids, failure);
         }
@@ -202,12 +208,16 @@ public class NotificationDomainEventListener {
 
     /** @Async 프록시에 목록 전체를 한 번 제출한다. 거부 시 호출 스레드에서 대신 실행하거나 재시도하지 않는다. */
     private void submit(String source, Map<String, UUID> ids, List<NotificationCreateRequestedEvent> requests) {
+        submit(source, ids, requests, processor::publish);
+    }
+
+    private void submit(String source, Map<String, UUID> ids, List<NotificationCreateRequestedEvent> requests, Consumer<NotificationPublishBatch> publishBatch){
         if (requests.isEmpty()) {
             return;
         }
         NotificationPublishBatch batch = new NotificationPublishBatch(source, ids, requests);
         try {
-            processor.publish(batch);
+            publishBatch.accept(batch);
         } catch (TaskRejectedException failure) {
             log.warn("{} 알림 작업 제출 거부. sourceIds={}, requestCount={}, exceptionType={}",
                     source, ids, requests.size(), failure.getClass().getSimpleName());
