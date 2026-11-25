@@ -6,7 +6,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.security.RefreshTokenCo
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.SocialAccountService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.core.Authentication;
@@ -30,7 +30,6 @@ import java.util.UUID;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class SocialLoginHandler implements AuthenticationSuccessHandler, AuthenticationFailureHandler {
 
     static final String SUCCESS_URL = "/#/contents";
@@ -40,6 +39,19 @@ public class SocialLoginHandler implements AuthenticationSuccessHandler, Authent
     private final SocialAccountService socialAccountService;
     private final LoginSessionIssuer loginSessionIssuer;
     private final RefreshTokenCookieFactory refreshTokenCookieFactory;
+    private final String redirectBaseUrl;
+
+    public SocialLoginHandler(SocialIdentityExtractor socialIdentityExtractor,
+                              SocialAccountService socialAccountService,
+                              LoginSessionIssuer loginSessionIssuer,
+                              RefreshTokenCookieFactory refreshTokenCookieFactory,
+                              @Value("${everyone.oauth2.redirect-base-url}") String redirectBaseUrl) {
+        this.socialIdentityExtractor = socialIdentityExtractor;
+        this.socialAccountService = socialAccountService;
+        this.loginSessionIssuer = loginSessionIssuer;
+        this.refreshTokenCookieFactory = refreshTokenCookieFactory;
+        this.redirectBaseUrl = redirectBaseUrl;
+    }
 
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
