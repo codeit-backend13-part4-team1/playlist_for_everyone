@@ -179,7 +179,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 user.getEmail(),
                 "",
                 user.getRole(),
-                user.isLocked()
+                user.isLocked(),
+                claims.sessionId()
         );
         // 인증 정보에 불필요한 비밀번호 필드가 남지 않도록 제거한다.
         principal.eraseCredentials();

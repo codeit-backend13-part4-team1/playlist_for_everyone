@@ -25,18 +25,18 @@ public class WebSocketServiceImpl implements WebSocketService{
         webSocketSessionRegistry.findByUserIdAndLoginSessionId(userId,sessionId)
                 .forEach(session -> {
                     try {
-                        try {
-                            watchingSessionService.cleanUpWithSessionId(session.id());
-                        } catch (RuntimeException e) {
-                            // todo - 추후 재처리 기능 추가.
-                            log.error("[{}] 비즈니스 구독 리소스 등록 해제중 오류가 발생했습니다. id: {}",
-                                    this.getClass().getSimpleName(),
-                                    session.id()
-                            );
-                        }
+                        watchingSessionService.cleanUpWithSessionId(session.id());
+                    } catch (RuntimeException e) {
+                        log.error("[{}] 비즈니스 구독 리소스 등록 해제중 오류가 발생했습니다. id: {}",
+                                this.getClass().getSimpleName(),
+                                session.id()
+                        );
+                    }
+
+                    try {
                         session.disconnect();
                     } catch (IOException e) {
-                        log.error("[{}] 세션 등록 해제중 오류가 발생했습니다. id: {}",
+                        log.error("[{}] 세션 연결 끊기가 실패 했습니다. - id: {}",
                                 this.getClass().getSimpleName(),
                                 session.id()
                         );

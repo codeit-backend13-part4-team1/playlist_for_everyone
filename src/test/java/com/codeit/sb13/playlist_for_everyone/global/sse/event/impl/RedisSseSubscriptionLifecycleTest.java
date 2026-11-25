@@ -16,42 +16,51 @@ public class RedisSseSubscriptionLifecycleTest {
     private final RedisBrokerRegister redisBrokerRegister = mock(RedisBrokerRegister.class);
 
     private final MessageListener subscriber = mock(MessageListener.class);
+    private final MessageListener revokeSubscriber = mock(MessageListener.class);
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
             .withUserConfiguration(SseTransportConfig.class,
                     RedisSseSubscription.class)
             .withPropertyValues("everyone.sse.transport=redis",
-                    "everyone.sse.redis.channel=test:sse:events")
+                    "everyone.sse.redis.channel=test:sse:events",
+                    "everyone.sse.redis.revoke-channel=test:sse:revocations")
             .withBean(RedisBrokerRegister.class,
                     ()-> redisBrokerRegister)
             .withBean("redisSseEventSubscriber",
                     MessageListener.class,
                     () -> subscriber)
+            .withBean("redisRevokeEventSubscriber",
+                    MessageListener.class,
+                    () -> revokeSubscriber)
             .withBean("chatMessageListener",
                     MessageListener.class,
                     () -> mock(MessageListener.class));
 
     @Test
-    @DisplayName("컨텍스트가 시작되면 SSE 수신 리스너를 설정된 채널에 자동 등록한다.")
+    @DisplayName("컨텍스트가 시작되면 일반 이벤트와 세션 폐기 리스너를 각 채널에 등록한다.")
     void registerSubscriberWhenContextStarts(){
         contextRunner.run(context ->{
             assertThat(context).hasNotFailed();
             assertThat(context).hasSingleBean(SseSubscription.class);
 
             verify(redisBrokerRegister).register(subscriber, "test:sse:events");
+            verify(redisBrokerRegister).register(revokeSubscriber, "test:sse:revocations");
         });
     }
 
     @Test
-    @DisplayName("컨텍스트가 종료되면 SSE 수신 리스너를 설정된 채널에서 자동 해제한다.")
+    @DisplayName("컨텍스트가 종료되면 일반 이벤트와 세션 폐기 리스너를 각 채널에서 해제한다.")
     void unregistersSubscriberWhenContextCloses(){
         contextRunner.run(context -> {
             assertThat(context).hasNotFailed();
             verify(redisBrokerRegister, never())
                     .unregister(subscriber, "test:sse:events");
+            verify(redisBrokerRegister, never())
+                    .unregister(revokeSubscriber, "test:sse:revocations");
         });
 
         verify(redisBrokerRegister).unregister(subscriber, "test:sse:events");
+        verify(redisBrokerRegister).unregister(revokeSubscriber, "test:sse:revocations");
     }
 
     @Test

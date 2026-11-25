@@ -1,17 +1,15 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.viewing;
 
-import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionRegisterException;
 import com.codeit.sb13.playlist_for_everyone.global.service.lock.Locks;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisTopicRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSubscription;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.ViewSessionMessageListener;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.entity.ViewingSessionRoom;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.WatchingSessionRepository;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.ViewingSessionRedisRepository;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.viewing.ViewingSessionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.security.core.parameters.P;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -29,7 +27,7 @@ import java.util.stream.Collectors;
 public class ViewingSessionServiceImpl implements ViewingSessionService{
     private final ViewingSessionRepository viewingSessionRepository;
     private final ViewSessionMessageListener viewSessionMessageListener;
-    private final WatchingSessionRepository viewingSessionPresence;
+    private final ViewingSessionRedisRepository viewingSessionPresence;
     private final RedisTopicRegistry redisTopicRegistry;
     private final RedisTemplate<String, Object> redisTemplate;
     private final Locks locks;
@@ -111,7 +109,7 @@ public class ViewingSessionServiceImpl implements ViewingSessionService{
                 res = room.getAll();
                 room.clear();
                 return res;
-            } catch (WebSocketSessionNotFoundException e) {
+            } catch (WebSocketSessionRegisterException e) {
                 return List.of();
             }
         }

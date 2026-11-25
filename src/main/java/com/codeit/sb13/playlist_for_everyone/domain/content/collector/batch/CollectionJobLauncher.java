@@ -1,74 +1,146 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch;
 
+import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.job.Job;
+import org.springframework.batch.core.job.JobExecution;
+import org.springframework.batch.core.job.parameters.JobParameters;
 import org.springframework.batch.core.job.parameters.JobParametersBuilder;
 import org.springframework.batch.core.launch.JobOperator;
 import org.springframework.batch.core.repository.JobRepository;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 public class CollectionJobLauncher {
+
+    private static final long TMDB_LOCK_KEY = 254_001L;
+    private static final long SPORTS_DB_LOCK_KEY = 254_002L;
 
     private final JobOperator jobOperator;
     private final Job tmdbCollectionJob;
     private final Job sportsDbCollectionJob;
     private final JobRepository jobRepository;
+    private final CollectionJobLock jobLock;
+    private final CollectionExecutionRecoveryPolicy recoveryPolicy;
 
     public CollectionJobLauncher(
             JobOperator jobOperator,
             Job tmdbCollectionJob,
             Job sportsDbCollectionJob,
-            JobRepository jobRepository
+            JobRepository jobRepository,
+            CollectionJobLock jobLock,
+            CollectionExecutionRecoveryPolicy recoveryPolicy
     ) {
         this.jobOperator = jobOperator;
         this.tmdbCollectionJob = tmdbCollectionJob;
         this.sportsDbCollectionJob = sportsDbCollectionJob;
         this.jobRepository = jobRepository;
+        this.jobLock = jobLock;
+        this.recoveryPolicy = recoveryPolicy;
     }
 
     public void startTmdb(long maxPages) throws Exception {
-        if (!jobRepository.findRunningJobExecutions(
-                tmdbCollectionJob.getName()
-        ).isEmpty()) {
-            return;
-        }
-
         var parameters = new JobParametersBuilder()
                 .addLong("maxPages", maxPages)
                 .addString("run.id", UUID.randomUUID().toString())
                 .toJobParameters();
 
-        jobOperator.start(tmdbCollectionJob, parameters);
+        startWithLock(tmdbCollectionJob, TMDB_LOCK_KEY, parameters);
     }
 
     public void startSportsDb(String leagueId, String season) throws Exception {
-        if (!jobRepository.findRunningJobExecutions(
-                sportsDbCollectionJob.getName()
-        ).isEmpty()) {
-            return;
-        }
-
         var parameters = new JobParametersBuilder()
                 .addString("leagueId", leagueId)
                 .addString("season", season)
                 .addString("run.id", UUID.randomUUID().toString())
                 .toJobParameters();
 
-        jobOperator.start(sportsDbCollectionJob, parameters);
+        startWithLock(sportsDbCollectionJob, SPORTS_DB_LOCK_KEY, parameters);
     }
 
-    /** 이전 프로세스가 종료된 뒤 남은 수집 실행 복구 */
-    public void recoverInterruptedExecutions() {
-        for (var execution : jobRepository.findRunningJobExecutions(
-                tmdbCollectionJob.getName()
-        )) {
-            jobOperator.recover(execution);
+    /**
+     * 잠금 안에서 신규 실행 또는 중단된 작업 재시작
+     */
+    private void startWithLock(
+            Job job,
+            long lockKey,
+            JobParameters parameters
+    ) throws Exception {
+        var acquired = jobLock.tryAcquire(lockKey);
+
+        if (acquired.isEmpty()) {
+            return;
         }
 
-        for (var execution : jobRepository.findRunningJobExecutions(
-                sportsDbCollectionJob.getName()
-        )) {
-            jobOperator.recover(execution);
+        try (var handle = acquired.get()) {
+            var executions = findExecutionsToResume(job);
+
+            if (executions.isEmpty()) {
+                jobOperator.start(job, parameters);
+                return;
+            }
+
+            for (var execution : executions) {
+                if (!recoveryPolicy.canRecover(execution)) {
+                    return;
+                }
+            }
+
+            for (var execution : executions) {
+                execution.getExecutionContext().put(
+                        CollectionExecutionRecoveryPolicy.RESTART_PENDING_KEY,
+                        true
+                );
+                jobRepository.updateExecutionContext(execution);
+
+                var recovered = jobOperator.recover(execution);
+                jobOperator.restart(recovered);
+            }
+        }
+    }
+
+    /**
+     * 실행 중인 작업과 복구 후 재시작을 기다리는 작업 조회
+     */
+    private List<JobExecution> findExecutionsToResume(Job job) {
+        var executions = new ArrayList<>(
+                jobRepository.findRunningJobExecutions(job.getName())
+        );
+
+        int pageSize = 100;
+        int offset = 0;
+
+        while (true) {
+            var instances = jobRepository.getJobInstances(
+                    job.getName(),
+                    offset,
+                    pageSize
+            );
+
+            for (var instance : instances) {
+                var latest = jobRepository.getLastJobExecution(instance);
+
+                if (latest == null || latest.getStatus() != BatchStatus.FAILED) {
+                    continue;
+                }
+
+                boolean restartPending = Boolean.TRUE.equals(
+                        latest.getExecutionContext().get(
+                                CollectionExecutionRecoveryPolicy.RESTART_PENDING_KEY
+                        )
+                );
+
+                if (restartPending) {
+                    executions.add(latest);
+                }
+            }
+
+            if (instances.size() < pageSize) {
+                return executions;
+            }
+
+            offset += pageSize;
         }
     }
 }

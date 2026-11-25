@@ -1,9 +1,13 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.service;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Event;
+import com.codeit.sb13.playlist_for_everyone.global.sse.event.LoginSession;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
+import com.codeit.sb13.playlist_for_everyone.global.sse.repository.impl.InMemorySseEmitterRepository;
+import com.codeit.sb13.playlist_for_everyone.global.sse.scheduler.SseHeartbeatScheduler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -11,12 +15,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -26,7 +32,8 @@ import static org.mockito.Mockito.*;
 
 /**
  * 전송 서비스가 수신자의 연결을 선택하고, 일부 실패에도 나머지 전송을 계속하는지 검증한다.
- * 저장소와 emitter는 Mock으로 대체하고, 서비스 내부 JSON 변환에는 실제 JsonMapper를 사용한다.
+ * 전송 테스트는 저장소와 emitter를 Mock으로 대체하고, 서비스 내부 JSON 변환에는 실제 JsonMapper를 사용한다.
+ * 세션별 조회 횟수 검증은 실제 메모리 저장소에 여러 탭을 등록한다.
  * 실제 HTTP 전송과 Spring MVC 메시지 변환기는 실행하지 않는다.
  *
  * <p>실패 후 계속 진행하는 테스트에서는 LinkedHashMap으로 실패 연결을 먼저 배치한다.
@@ -42,13 +49,16 @@ class SseDeliveryServiceTest {
     @Mock
     private SseDeliveryCoordinator deliveryCoordinator;
 
+    @Mock
+    private UserSessionRepository userSessionRepository;
+
     private SseDeliveryService service;
     private final UUID receiverId = UUID.randomUUID();
     private final Connection connection = Connection.create();
 
     @BeforeEach
     void setUp() {
-        service = new SseDeliveryService(repository, deliveryCoordinator);
+        service = new SseDeliveryService(repository, deliveryCoordinator, userSessionRepository);
     }
 
     @Test
@@ -347,5 +357,78 @@ class SseDeliveryServiceTest {
         verify(healthyEmitter).send(any(SseEmitter.SseEventBuilder.class));
         verify(otherUserEmitter).send(any(SseEmitter.SseEventBuilder.class));
 
+    }
+    @Test
+    @DisplayName("같은 로그인 세션의 여러 탭을 한 번만 조회하고 폐기된 세션의 탭만 닫는다.")
+    void revalidatesEachLoginSessionOnceAndClosesOnlyRevokedTabs() {
+        SseEmitterRepository localRepository = new InMemorySseEmitterRepository();
+        SseDeliveryService localService =
+                new SseDeliveryService(localRepository, deliveryCoordinator, userSessionRepository);
+        UUID userId = UUID.randomUUID();
+        UUID otherUserId = UUID.randomUUID();
+        LoginSession revokedSession = new LoginSession(UUID.randomUUID());
+        LoginSession currentSession = new LoginSession(UUID.randomUUID());
+        LoginSession otherUserSession = new LoginSession(UUID.randomUUID());
+        Connection firstTab = Connection.create();
+        Connection secondTab = Connection.create();
+
+        localRepository.save(userId, firstTab, new SseEmitter(), revokedSession);
+        localRepository.save(userId, secondTab, new SseEmitter(), revokedSession);
+        localRepository.save(userId, Connection.create(), new SseEmitter(), currentSession);
+        localRepository.save(otherUserId, Connection.create(), new SseEmitter(), otherUserSession);
+        when(userSessionRepository.isCurrent(userId, revokedSession.id())).thenReturn(false);
+        when(userSessionRepository.isCurrent(userId, currentSession.id())).thenReturn(true);
+        when(userSessionRepository.isCurrent(otherUserId, otherUserSession.id())).thenReturn(true);
+
+        localService.revalidateLocalSessions();
+
+        verify(userSessionRepository).isCurrent(userId, revokedSession.id());
+        verify(userSessionRepository).isCurrent(userId, currentSession.id());
+        verify(userSessionRepository).isCurrent(otherUserId, otherUserSession.id());
+        verifyNoMoreInteractions(userSessionRepository);
+        verify(deliveryCoordinator).closeConnection(userId, firstTab);
+        verify(deliveryCoordinator).closeConnection(userId, secondTab);
+        verifyNoMoreInteractions(deliveryCoordinator);
+    }
+
+    @Test
+    @DisplayName("세션 조회 실패 중에도 하트비트를 보내고 다른 세션을 확인하며 다음 점검에서 다시 조회한다.")
+    void keepsConnectionOnLookupFailureAndClosesItAfterRevocationIsConfirmed() throws IOException {
+        UUID otherUserId = UUID.randomUUID();
+        LoginSession loginSession = new LoginSession(UUID.randomUUID());
+        LoginSession otherUserSession = new LoginSession(UUID.randomUUID());
+        SseEmitter emitter = mock(SseEmitter.class);
+        Connection otherConnection = Connection.create();
+        SseEmitter otherEmitter = mock(SseEmitter.class);
+        Map<UUID, Set<LoginSession>> sessions = new LinkedHashMap<>();
+        sessions.put(receiverId, Set.of(loginSession));
+        sessions.put(otherUserId, Set.of(otherUserSession));
+
+        when(repository.findAll()).thenReturn(Map.of(
+                receiverId, Map.of(connection, emitter),
+                otherUserId, Map.of(otherConnection, otherEmitter)
+        ));
+        when(repository.findAllLoginSessions()).thenReturn(sessions);
+        when(userSessionRepository.isCurrent(receiverId, loginSession.id()))
+                .thenThrow(new QueryTimeoutException("테스트용 Redis 조회 시간 초과"))
+                .thenReturn(false);
+        when(userSessionRepository.isCurrent(otherUserId, otherUserSession.id())).thenReturn(true);
+        when(repository.findByUserIdAndLoginSessionId(receiverId, loginSession))
+                .thenReturn(Map.of(connection, emitter));
+        SseHeartbeatScheduler scheduler = new SseHeartbeatScheduler(service);
+
+        scheduler.sendHeartbeat();
+
+        verify(emitter).send(any(SseEmitter.SseEventBuilder.class));
+        verify(otherEmitter).send(any(SseEmitter.SseEventBuilder.class));
+        verify(userSessionRepository).isCurrent(otherUserId, otherUserSession.id());
+        verifyNoInteractions(deliveryCoordinator);
+
+        scheduler.sendHeartbeat();
+
+        verify(userSessionRepository, times(2)).isCurrent(receiverId, loginSession.id());
+        verify(emitter, times(2)).send(any(SseEmitter.SseEventBuilder.class));
+        verify(deliveryCoordinator).closeConnection(receiverId, connection);
+        verifyNoMoreInteractions(deliveryCoordinator);
     }
 }

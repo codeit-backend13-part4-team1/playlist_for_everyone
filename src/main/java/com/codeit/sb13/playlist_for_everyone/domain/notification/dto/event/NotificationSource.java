@@ -8,6 +8,7 @@ public enum NotificationSource {
     PLAYLIST_CREATED("playlist_created"),
     PLAYLIST_CONTENT_ADDED("playlist_content_added"),
     DIRECT_MESSAGE_CREATED("direct_message_created"),
+    WATCHING_SESSION_STARTED("watching_session_started"),
     DIRECT_REQUEST("direct_request");
 
     private final String tagValue;

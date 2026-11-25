@@ -30,6 +30,12 @@ logging:
     org.hibernate.orm.jdbc.bind: off
 
 everyone:
+  notification:
+    async:
+      # 외부 환경변수와 무관하게 테스트 실행기의 크기를 고정한다.
+      pool-size: 2
+      queue-capacity: 100
+
   s3:
     bucket: everyone-test-backup
     region: ap-northeast-2
@@ -66,3 +72,13 @@ everyone:
   dm:
     websocket:
       subscription-enabled: false
+
+  oauth2:
+    # 실제 Google·Kakao를 호출하지 않는 테스트용 값이다.
+    redirect-base-url: https://everyone.test
+    google:
+      client-id: test-google-client-id
+      client-secret: test-google-client-secret
+    kakao:
+      client-id: test-kakao-client-id
+      client-secret: test-kakao-client-secret

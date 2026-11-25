@@ -26,6 +26,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.stubbing.Answer;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.redis.core.RedisTemplate;
 
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadInfo;
@@ -80,6 +81,9 @@ public class WatchingSessionConcurrencyTest {
 
     @Mock
     WatchingSessionMapper mapper;
+
+    @Mock
+    RedisTemplate<String, Object> redisTemplate;
 
     @Mock
     SecurityUser auth;

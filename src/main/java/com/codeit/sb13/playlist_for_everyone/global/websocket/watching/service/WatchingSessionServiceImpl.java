@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
+import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketDestinationInvalidException;
@@ -14,6 +15,7 @@ import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSession;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSubscription;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.WatchingSessionMapper;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.chat.ContentChatDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.*;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionStartedEvent;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.chatting.ChattingSessionService;
@@ -21,9 +23,10 @@ import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.v
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
-import java.io.IOException;
 import java.util.*;
 
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
@@ -143,7 +146,6 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
              * 지금은 취소된 구독 개별로 연결을 종료할 수 없기 때문에, 세션에서 구독을 취소하는건 작용이 없는 매서드이다.
              * 비즈니스 로직에서 구독이 취소되는 로직은 실제 구독과 동기화 되는 게 아닌, send 메세지를 막는 역할만 한다.
              */
-            // todo - 재시도 로직 작성이 필요하다.
             try {
                 // 1. 구독 등록 취소
                 viewingSessionService.leave(subscription, contentId);
@@ -176,7 +178,6 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
         // 3. 메세지 전송 객체 조립
         // 메세지가 전송 실패한다고 해도, 구독이 해제되어선 안된다.
         // 지금은 별도 메서드에 발신이 실패해도 조용히 넘기는 것으로 우선 둔다.
-        // todo - 추후 메세지 발신 재시도 로직 필요.
         WatchingSessionChange change = null;
 
         try {
@@ -289,7 +290,6 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
              * 지금은 취소된 구독 개별로 연결을 종료할 수 없기 때문에, 세션에서 구독을 취소하는건 작용이 없는 매서드이다.
              * 비즈니스 로직에서 구독이 취소되는 로직은 실제 구독과 동기화 되는 게 아닌, send 메세지를 막는 역할만 한다.
              */
-            // todo - 재시도 로직 작성이 필요하다.
             try {
                 chattingSessionService.leave(subscription, contentId);
             } catch (RuntimeException e) {
@@ -305,6 +305,24 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
             }
 
         }
+    }
+
+    @Async("watchingSessionExecutor")
+    @Override
+    public void sendChatMessage(UUID contentId, UUID userId, String message) {
+        Objects.requireNonNull(contentId);
+        Objects.requireNonNull(userId);
+        Objects.requireNonNull(message);
+
+        User user = userService.getById(userId);
+
+        // 실질적으로 UserSummary 와 같은 필드를 가진 객체.
+        // 기능 검정 후 클래스 교체 및 테스트 코드 변경.
+        Watcher tmp = mapper.toWatcher(user);
+
+        UserSummary sender = new UserSummary(tmp.userId(), tmp.name(), tmp.profileImageUrl());
+
+        chattingSessionService.send(contentId, new ContentChatDto(sender,message));
     }
 
 
@@ -374,15 +392,6 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
                     // 실패시 기록과 함께 다음 작업
                 }
             }
-
-
-            // 실제 세션 닫기
-            try {
-                session.disconnect();
-            } catch (IOException e) {
-                log.error("[{}] ({}) 세션 닫기 실패", this.getClass().getSimpleName(), sessionId, e);
-                throw new WebSocketSessionRegisterException(e);
-            }
         }
     }
 
@@ -406,20 +415,16 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
         for (WSSubscription subscription : unregisteredSubscriptionList) {
             try {
                 WSSession session = getSessionOrExcept(subscription.sessionId());
-                synchronized (session) {
-                    session.unsubscribe(subscription);
-                }
+                session.unsubscribe(subscription);
             } catch (RuntimeException e) {
                 log.error("[{}] 구독 해제 실패 - sessionId : {}, subscriptionId : {}",
                         this.getClass().getSimpleName(),
                         subscription.sessionId(),
                         subscription.id(),
                         e);
-                // 구독 해제 실패 시, 재시도 로직 추후 추가
             }
         }
     }
-
 
     /*
      * 공용 편의 매서드

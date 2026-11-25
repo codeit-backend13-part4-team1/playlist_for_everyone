@@ -1,7 +1,8 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.chatting;
 
-import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionNotFoundException;
+import com.codeit.sb13.playlist_for_everyone.global.exception.websocket.WebSocketSessionRegisterException;
 import com.codeit.sb13.playlist_for_everyone.global.service.lock.Locks;
+import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisMessageDto;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisTopicRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSubscription;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.ChatSessionMessageListener;
@@ -84,28 +85,31 @@ public class ChattingSessionServiceImpl implements ChattingSessionService {
             try {
                 ChattingSessionRoom room = getRoomOrException(contentId);
                 // 저장소에서 세션 해지 및, 토픽 등록 해제.
-                redisTopicRegistry.disconnectWithContentId(contentId.toString());
+                redisTopicRegistry.disconnectWithContentId(room.topic());
 
                 res = room.getAll();
                 room.clear();
                 chattingSessionRepository.remove(room);
                 return res;
-            } catch (WebSocketSessionNotFoundException e) {
+            } catch (WebSocketSessionRegisterException e) {
                 return List.of();
             }
 
         }
     }
-    // todo - 메세지의 전송기를 별도로 분리하고, 인스턴스에 따라 redis 구현체와 로컬 구현체를 작성할 것.
+
     @Override
     public void send(UUID contentId, Object payload) {
         ChattingSessionRoom room = getRoomOrException(contentId);
-        redisTemplate.convertAndSend(room.topic(), payload);
+
+        redisTemplate.convertAndSend(room.topic(), new RedisMessageDto<>(room.destination(),payload));
     }
+
+    // todo - 로컬 인스턴스로 받은 메세지를 전송하는 이벤트 리스너 작성.
 
     private ChattingSessionRoom getRoomOrException(UUID contentId) {
         return chattingSessionRepository.find(contentId)
-                .orElseThrow(WebSocketSessionNotFoundException::new);
+                .orElseThrow(WebSocketSessionRegisterException::new);
     }
 
 }

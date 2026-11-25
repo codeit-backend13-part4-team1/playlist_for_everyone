@@ -3,13 +3,15 @@
 [#51](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/51)은 **저장이 커밋된 알림을 수신자에게 실시간으로 전달**하는 연결 작업입니다.
 알림 생성 요청부터 읽고, 트랜잭션 경계와 실패 처리를 확인하면 코드를 따라가기 쉽습니다.
 업무 이벤트부터 확인하려면 [팔로우 연동](07-domain-event-integration.md), [권한 변경·구독 연동](08-role-subscription-integration.md),
-[플레이리스트 생성·콘텐츠 추가 연동](09-playlist-event-integration.md), [DM 연동](11-direct-message-integration.md) 중 해당 가이드를 먼저 읽습니다.
+[플레이리스트 생성·콘텐츠 추가 연동](09-playlist-event-integration.md), [DM 연동](11-direct-message-integration.md), [시청 시작 연동](13-watching-session-integration.md) 중 해당 가이드를 먼저 읽습니다.
 연결부터 전달까지는 [SSE 전체 흐름](../sse/00-overall-flow.md), 이력과 복구 정책은 [공유 이력 계약](../sse/09-shared-history.md)을 참고합니다.
 
 ## 역할부터 구분하기
 
 | 역할 | 코드 | 맡은 일 |
 | --- | --- | --- |
+| 업무 이벤트 수신 | `NotificationDomainEventListener` | 이벤트별 실행 조건에 따라 수신자를 결정하고 알림 요청 목록 구성 |
+| 비동기 발행 | `NotificationAsyncProcessor` | `@Async`로 요청 목록을 작업 하나로 받아 알림 워커에서 순차 발행 |
 | 생성 요청 | `NotificationCreateRequestedEvent` | 수신자·제목·내용·수준으로 알림 저장을 요청 |
 | 공통 요청 수신 | `NotificationEventListener` | 트랜잭션 안의 요청은 커밋 후, 밖의 요청은 즉시 받아 command로 변환하고 저장 서비스 호출 |
 | 독립 저장 | `NotificationService.save` | 새 트랜잭션에서 수신자를 조회·연결하고 알림 저장·생성 이벤트 발행 |
@@ -40,21 +42,33 @@ DB의 `receiver_id` 외래 키와 요청·응답의 UUID 형식은 유지합니�
 
 ## 요청 수신 조건과 알림 커밋
 
-아래는 요청을 등록한 트랜잭션이 커밋되거나, 트랜잭션 밖에서 요청을 발행한 경우의 정상 처리 흐름입니다.
+업무 이벤트와 직접 발행한 공통 생성 요청은 모두 같은 저장·전송 흐름으로 이어집니다. 그림의 저장·전송 구간은 알림 한 건을 기준으로 합니다.
 
 ```mermaid
 sequenceDiagram
-    participant B as 공통 요청 발행자
+    participant B as 이벤트 발행자
+    participant D as 업무 이벤트 리스너
+    participant W as 알림 전용 실행기 워커
     participant R as 생성 요청 리스너
     participant N as 알림 저장 서비스
     participant S as SSE 전송 리스너
     participant Redis as Redis
     participant C as 수신자 연결 서버
-    B->>R: NotificationCreateRequestedEvent 발행
-    alt 트랜잭션 안에서 발행
-        Note over B,R: 요청을 등록한 트랜잭션의 커밋 후 처리
-    else 트랜잭션 밖에서 발행
-        Note over B,R: fallbackExecution=true로 즉시 처리
+    alt 업무 이벤트로 생성
+        alt 트랜잭션 안에서 업무 이벤트 발행
+            B->>B: 업무 이벤트 발행 후 트랜잭션 커밋
+            B->>D: AFTER_COMMIT 처리
+        else 트랜잭션 밖에서 시청 시작 이벤트 발행
+            B->>D: fallbackExecution=true로 즉시 처리
+        end
+        D->>D: 수신자 결정 및 알림 요청 목록 구성
+        D-)W: 전용 실행기에 작업 하나 제출
+        W->>R: NotificationCreateRequestedEvent 발행
+    else 트랜잭션 안에서 공통 요청 직접 발행
+        B->>B: 공통 요청 발행 후 트랜잭션 커밋
+        B->>R: AFTER_COMMIT 처리
+    else 트랜잭션 밖에서 공통 요청 직접 발행
+        B->>R: fallbackExecution=true로 즉시 처리
     end
     R->>N: save 호출 / REQUIRES_NEW 시작
     N->>N: 사용자 조회·연결 / 저장 / DTO 복사 / 생성 이벤트 발행
@@ -76,20 +90,25 @@ sequenceDiagram
 | `PlaylistCreatedEvent` | `NotificationDomainEventListener` | `false` | 무시 |
 | `PlaylistContentAddedEvent` | `NotificationDomainEventListener` | `false` | 무시 |
 | `DirectMessageCreatedEvent` | `NotificationDomainEventListener` | `false` | 무시 |
+| `WatchingSessionStartedEvent` | `NotificationDomainEventListener` | `true` | 발행 스레드에서 즉시 처리 |
 | `NotificationCreateRequestedEvent` | `NotificationEventListener` | `true` | 즉시 처리 |
 | `NotificationCreatedEvent` | `NotificationSseEventListener` | `false` | 무시 |
 
 트랜잭션에 등록된 이벤트는 커밋 후 처리하고, 롤백되면 처리하지 않습니다.
-위 여섯 업무 이벤트는 업무 커밋 후 공통 요청을 재발행하므로 별도 변환 트랜잭션 없이 위 즉시 처리 경로로 연결됩니다.
-플레이리스트 생성·콘텐츠 추가에서는 처리 시점에 수신자를 조회하고 각 수신자에게 공통 요청을 발행합니다.
+업무 이벤트 리스너를 실행하는 스레드에서 수신자를 조회하고 알림 요청 목록을 구성합니다.
+트랜잭션 안에서 발행한 이벤트는 커밋 처리 스레드에서, 트랜잭션 밖에서 발행한 시청 시작 이벤트는 발행 스레드에서 이 작업을 수행합니다.
+요청이 있으면 `NotificationAsyncProcessor`의 `@Async("notificationTaskExecutor")`를 통해 작업 하나를 제출합니다.
+알림 워커는 공통 생성 요청을 트랜잭션 밖에서 순서대로 발행하므로 요청 리스너가 즉시 실행됩니다.
 
 `NotificationCreatedEvent`는 **저장 트랜잭션 안에서** 발행됩니다. 이름만 보고 커밋까지 완료된 것으로 해석하지 않습니다.
 현재 UUID 생성 전략과 JPA Auditing은 신규 엔티티를 저장할 때 ID·생성시각을 채워 주므로 DTO를 즉시 구성합니다.
 `save` 반환이나 SQL을 실행하는 `flush` 자체는 커밋 완료를 뜻하지 않으며, 이 경로는 명시적 `flush`를 강제하지 않습니다.
 
-저장은 별도 Spring 빈을 통해 호출하여 `REQUIRES_NEW`를 적용합니다.
-업무 커밋 전에 저장 서비스를 직접 호출하면 알림만 먼저 커밋될 수 있습니다. 업무 이벤트는 저장 트랜잭션 안에서 발행하고 커밋 후 변환합니다.
-세 리스너에 `@Async`는 없습니다. 트랜잭션에 등록된 요청은 커밋 처리 스레드에서, 밖의 요청은 발행 스레드에서 실행하며 브라우저 수신 완료를 기다리지는 않습니다.
+업무 이벤트 경로에서는 알림 워커가 수신자별 `REQUIRES_NEW` 트랜잭션으로 저장하고, 알림 커밋 후 같은 워커에서 SSE 발행을 요청합니다.
+업무 커밋 전에 저장 서비스를 직접 호출하면 알림만 먼저 커밋될 수 있습니다. DB 변경에 따른 업무 이벤트는 해당 저장 트랜잭션 안에서 발행하고 커밋 후 변환합니다.
+
+작업을 제출할 때 `TaskContextDecorator`가 호출 스레드의 인증과 MDC를 캡처합니다.
+MDC에 `requestId`가 있으면 알림 워커 로그에서도 같은 값으로 요청을 추적할 수 있습니다. 작업이 끝나면 워커의 이전 인증과 MDC를 복원합니다.
 
 ## 이벤트 ID와 클라이언트 데이터
 
@@ -117,6 +136,10 @@ DTO의 DB 알림 ID를 수신자 조건으로 일괄 조회하여 현재 남아 
 | 상황 | 알림 저장·전송 결과 |
 | --- | --- |
 | 업무 이벤트나 공통 요청을 등록한 트랜잭션의 롤백 | 해당 AFTER_COMMIT 소비 미실행, 알림·SSE 발행 없음 |
+| 수신자 조회·요청 생성 실패 | 업무 이벤트 리스너가 기록, 해당 작업 미제출·업무 커밋 유지 |
+| 반복 알림 Redis 선점 실패 | 경고를 기록하고 중복 제한 없이 기존 실행기에 제출을 시도합니다. 장애 중에는 중복 저장이 발생할 수 있습니다. [반복 알림 발송 제한](14-deduplication.md#redis-선점에-실패하는-경우) |
+| 알림 작업 제출 거부 | 업무 이벤트 리스너가 기록, 해당 요청 목록 전체 미처리·업무 커밋 유지 |
+| 워커에서 개별 공통 요청 발행 실패 | 비동기 프로세서가 실패를 기록하고 같은 작업의 다음 요청 처리 |
 | 알림 입력 검증 실패 | 원래 업무 커밋 유지, 검증 실패 기록, 알림 저장·SSE 발행 없음 |
 | 수신자 미존재 | 사용자 조회에서 UserNotFoundException 발생, 알림 저장·생성 이벤트 발행 전 종료 |
 | 실제 DB 저장 실패 | 알림 트랜잭션 롤백, 원래 업무 커밋 유지, 실패 기록, SSE 발행 없음 |
@@ -143,8 +166,8 @@ DB 알림은 조회할 수 있습니다. 공유 이력 저장에 성공한 항�
 발행 실패 후 보관된 이력이 즉시 전송된다고 보장하지 않으며, 이후 조회 신호나 유효한 커서를 가진 재연결이 필요합니다.
 
 공통 생성 요청으로 변환하는 구현과 검증 범위는 [#155 팔로우](07-domain-event-integration.md), [#156 권한 변경·구독](08-role-subscription-integration.md),
-[#157 플레이리스트 생성·콘텐츠 추가](09-playlist-event-integration.md), [#159 DM](11-direct-message-integration.md)에 정리했습니다.
-이 여섯 종류 외의 업무 이벤트는 [#45](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/45)의 후속 연동입니다.
+[#157 플레이리스트 생성·콘텐츠 추가](09-playlist-event-integration.md), [#158 시청 시작](13-watching-session-integration.md), [#159 DM](11-direct-message-integration.md)에 정리했습니다.
+나머지 업무 이벤트 연동은 [#45](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/45)에서 관리합니다.
 DM 본문의 `direct-messages` 전송은 [#62 가이드](../conversation/15-direct-message-event-sse.md), 알림 저장·전송 검증은 [DM 알림 테스트](12-direct-message-testing.md)에서 구분합니다. Kafka 구현체는 별도 범위입니다.
 공유 이력과 재연결 복구의 현재 동작은 [SSE 복구 문서](../sse/10-recovery-and-retry.md)에 정리했습니다.
 이번 기능을 위한 외부 알림 생성 API는 추가하지 않았으며, 실제 저장부터 수신까지의 확인 방법은 다음 문서에 정리합니다.

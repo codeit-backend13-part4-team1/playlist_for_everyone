@@ -1,9 +1,10 @@
 package com.codeit.sb13.playlist_for_everyone.domain.notification.sse;
 
-import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationCreateRequestedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.Notification;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.repository.NotificationRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationTargetReader;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationFixtureCleanup;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationTaskTracker;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.request.PlaylistCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.dto.response.PlaylistResponse;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistContentAddedEvent;
@@ -17,14 +18,18 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.mockito.ArgumentCaptor;
 import org.mockito.stubbing.Answer;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.core.task.TaskDecorator;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -35,6 +40,7 @@ import org.springframework.test.context.event.ApplicationEvents;
 import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -57,10 +63,11 @@ import static org.mockito.Mockito.*;
  *
  * <p>테스트 전체를 @Transactional로 감싸지 않는다. 커밋·롤백 시점을 확인하는 사례는
  * TransactionTemplate으로 업무 경계를 제어하고, 실패 처리 사례는 서비스 자체의 트랜잭션을 사용한다.
- * 알림은 별도의 REQUIRES_NEW 트랜잭션으로 저장된다.
+ * 알림 목록은 한 작업 스레드에서 순차 처리하고, 수신자마다 REQUIRES_NEW 트랜잭션으로 저장된다.
+ * 실제 실행기의 작업 완료 후 결과를 검증하고 DB를 정리하여 비동기 저장과 삭제가 경합하지 않게 한다.
  *
  * <p>ApplicationEvents에는 롤백된 업무의 발행 기록도 남는다. 이벤트 기록과 함께
- * 알림 생성 요청·DB 저장·SSE 발행 요청 여부를 확인하여 커밋 후 소비 여부를 구분한다.
+ * 작업 제출·DB 저장·SSE 발행 요청 여부를 확인하여 커밋 후 소비 여부를 구분한다.
  */
 @SpringBootTest(properties = {
         "spring.flyway.enabled=true",
@@ -74,8 +81,15 @@ import static org.mockito.Mockito.*;
 @DisplayName("플레이리스트 업무 이벤트 기반 알림 통합 테스트")
 public class NotificationPlaylistIntegrationTest {
 
+    @RegisterExtension
+    static final NotificationFixtureCleanup FIXTURE_CLEANUP = new NotificationFixtureCleanup();
+
     @Container
     static final PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:16");
+
+    @Container
+    static final GenericContainer<?> redis = new GenericContainer<>("redis:7.4-alpine")
+            .withExposedPorts(6379);
 
     @DynamicPropertySource
     static void
@@ -84,6 +98,8 @@ public class NotificationPlaylistIntegrationTest {
         registry.add("spring.datasource.username", postgres::getUsername);
         registry.add("spring.datasource.password", postgres::getPassword);
         registry.add("spring.datasource.driver-class-name", postgres::getDriverClassName);
+        registry.add("spring.data.redis.host", redis::getHost);
+        registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
     }
 
     @MockitoBean
@@ -107,6 +123,14 @@ public class NotificationPlaylistIntegrationTest {
     @Autowired
     private MeterRegistry meterRegistry;
 
+    @Autowired
+    @Qualifier("notificationTaskExecutor")
+    private ThreadPoolTaskExecutor notificationTaskExecutor;
+    @Autowired
+    @Qualifier("notificationTaskContextDecorator")
+    private TaskDecorator notificationTaskContextDecorator;
+
+    private NotificationTaskTracker notificationTasks;
     private TransactionTemplate transactionTemplate;
     private final UUID ownerId = UUID.randomUUID();
     private final UUID firstReceiverId = UUID.randomUUID();
@@ -117,6 +141,7 @@ public class NotificationPlaylistIntegrationTest {
 
     @BeforeEach
     void setUp(){
+        notificationTasks = new NotificationTaskTracker(notificationTaskExecutor, notificationTaskContextDecorator);
         transactionTemplate = new TransactionTemplate(transactionManager);
 
         // 알림 저장의 독립 트랜잭션에서도 수신자를 조회할 수 있도록 사용자 준비를 먼저 커밋한다.
@@ -129,6 +154,10 @@ public class NotificationPlaylistIntegrationTest {
 
     @AfterEach
     void cleanUp(){
+        FIXTURE_CLEANUP.cleanUp(notificationTasks, this::deleteFixtures);
+    }
+
+    private void deleteFixtures() {
         transactionTemplate.executeWithoutResult(status ->{
             jdbcTemplate.update("""
                   DELETE FROM notifications
@@ -187,6 +216,7 @@ public class NotificationPlaylistIntegrationTest {
             return response.id();
         });
 
+        notificationTasks.awaitCompletion();
         Long playlistCount = countPlaylistsById(playlistId);
 
         assertThat(playlistCount).isEqualTo(1L);
@@ -229,6 +259,7 @@ public class NotificationPlaylistIntegrationTest {
             verifyNoInteractions(sseEventPublisher);
         });
 
+        notificationTasks.awaitCompletion();
         assertThat(countPlaylistContents(existingPlaylistId, contentId))
                 .isEqualTo(1L);
         assertThat(notificationRepository.findAll())
@@ -265,8 +296,7 @@ public class NotificationPlaylistIntegrationTest {
         assertThat(countPlaylistsById(playlistId)).isZero();
         assertThat(applicationEvents.stream(PlaylistCreatedEvent.class))
                 .containsExactly(new PlaylistCreatedEvent(playlistId, "퇴근 후 영화", ownerId, "홍길동"));
-        assertThat(applicationEvents.stream(NotificationCreateRequestedEvent.class))
-                .isEmpty();
+        assertThat(notificationTasks.hasSubmittedTasks()).isFalse();
         assertThat(notificationRepository.count()).isZero();
         verifyNoInteractions(sseEventPublisher);
     }
@@ -289,15 +319,14 @@ public class NotificationPlaylistIntegrationTest {
         assertThat(countPlaylistContents(existingPlaylistId, contentId)).isZero();
         assertThat(applicationEvents.stream(PlaylistContentAddedEvent.class))
                 .containsExactly(new PlaylistContentAddedEvent(existingPlaylistId, "퇴근 후 영화", contentId, "인셉션", ownerId));
-        assertThat(applicationEvents.stream(NotificationCreateRequestedEvent.class))
-                .isEmpty();
+        assertThat(notificationTasks.hasSubmittedTasks()).isFalse();
         assertThat(notificationRepository.count()).isZero();
         verifyNoInteractions(sseEventPublisher);
     }
 
     @Test
     @DisplayName("팔로워 조회가 실패해도 생성된 플레이리스트를 유지하고 알림 없이 실패를 기록한다.")
-    void keepsPlaylistWhenFollowerLookupFails(ApplicationEvents applicationEvents, CapturedOutput output){
+    void keepsPlaylistWhenFollowerLookupFails(CapturedOutput output){
         insertFollow(firstReceiverId, ownerId);
         insertFollow(secondReceiverId, ownerId);
 
@@ -311,8 +340,7 @@ public class NotificationPlaylistIntegrationTest {
 
         verify(targetReader).findFollowerIds(ownerId);
         assertThat(countPlaylistsById(response.id())).isEqualTo(1L);
-        assertThat(applicationEvents.stream(NotificationCreateRequestedEvent.class))
-                .isEmpty();
+        assertThat(notificationTasks.hasSubmittedTasks()).isFalse();
         assertThat(notificationRepository.count()).isZero();
         verifyNoInteractions(sseEventPublisher);
         assertThat(output.getAll())
@@ -329,7 +357,7 @@ public class NotificationPlaylistIntegrationTest {
     @Test
     @WithMockUser
     @DisplayName("구독자 조회가 실패해도 추가된 콘텐츠 연결을 유지하고 알림 없이 실패를 기록한다.")
-    void keepsPlaylistContentWhenSubscriberLookupFails(ApplicationEvents applicationEvents, CapturedOutput output){
+    void keepsPlaylistContentWhenSubscriberLookupFails(CapturedOutput output){
         insertPlaylist();
         insertContent();
         insertSubscription(firstReceiverId);
@@ -343,8 +371,7 @@ public class NotificationPlaylistIntegrationTest {
 
         verify(targetReader).findSubscriberIds(existingPlaylistId);
         assertThat(countPlaylistContents(existingPlaylistId, contentId)).isEqualTo(1L);
-        assertThat(applicationEvents.stream(NotificationCreateRequestedEvent.class))
-                .isEmpty();
+        assertThat(notificationTasks.hasSubmittedTasks()).isFalse();
         assertThat(notificationRepository.count()).isZero();
         verifyNoInteractions(sseEventPublisher);
         assertThat(output.getAll())
@@ -367,6 +394,7 @@ public class NotificationPlaylistIntegrationTest {
         failFirstNotificationSave();
 
         PlaylistResponse response = playlistService.create(ownerId, new PlaylistCreateRequest("퇴근 후 영화", "함께 볼 영화"));
+        notificationTasks.awaitCompletion();
         assertThat(countPlaylistsById(response.id())).isEqualTo(1L);
         ArgumentCaptor<Notification> saveCaptor = ArgumentCaptor.forClass(Notification.class);
         verify(notificationRepository, times(2)).save(saveCaptor.capture());
@@ -405,6 +433,7 @@ public class NotificationPlaylistIntegrationTest {
 
         playlistService.addContent(existingPlaylistId, contentId, ownerId);
 
+        notificationTasks.awaitCompletion();
         assertThat(countPlaylistContents(existingPlaylistId, contentId)).isEqualTo(1L);
 
         ArgumentCaptor<Notification> saveCaptor = ArgumentCaptor.forClass(Notification.class);

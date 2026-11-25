@@ -39,7 +39,7 @@ public class ChatSessionMessageListener extends RedisMessageListener {
 
         // 경로는 발신 경로 그대로.
         String destination = dto.destination();
-        ContentChatDto change = dto.data();
+        ContentChatDto change = dto.data(); // 여기에서 에러가 생성 됨.
 
         // 메세지로 발신.
         message.convertAndSend(destination, change);

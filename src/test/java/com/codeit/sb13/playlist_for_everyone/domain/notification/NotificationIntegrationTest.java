@@ -5,6 +5,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.follow.dto.respsone.FollowRe
 import com.codeit.sb13.playlist_for_everyone.domain.follow.event.UserFollowedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.repository.FollowRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.follow.service.FollowService;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.config.NotificationDeduplicationProperties;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.command.NotificationCommand;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationCreateRequestedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.dto.event.NotificationSource;
@@ -14,8 +15,12 @@ import com.codeit.sb13.playlist_for_everyone.domain.notification.entity.Notifica
 import com.codeit.sb13.playlist_for_everyone.domain.notification.event.NotificationCreatedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.event.listener.NotificationEventListener;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.repository.NotificationRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.repository.impl.NotificationDeduplicationStore;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.repository.impl.NotificationDeduplicationStore.Reservation;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationService;
 import com.codeit.sb13.playlist_for_everyone.domain.notification.service.NotificationUserReader;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationFixtureCleanup;
+import com.codeit.sb13.playlist_for_everyone.domain.notification.support.NotificationTaskTracker;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.event.PlaylistSubscribedEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.playlist.service.PlaylistService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.Role;
@@ -25,6 +30,7 @@ import com.codeit.sb13.playlist_for_everyone.global.exception.sse.SsePublishExce
 import com.codeit.sb13.playlist_for_everyone.global.exception.user.UserNotFoundException;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEventPublisher;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.event.WatchingSessionStartedEvent;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.validation.ConstraintViolationException;
 import org.junit.jupiter.api.AfterEach;
@@ -32,16 +38,22 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.*;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.core.task.TaskDecorator;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.redis.RedisConnectionFailureException;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -51,10 +63,12 @@ import org.springframework.test.context.event.ApplicationEvents;
 import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -84,7 +98,9 @@ import static org.mockito.Mockito.*;
  * 테스트 전체를 @Transactional로 감싸지 않으며, 직접 발행 사례의 닉네임 변경은 업무 대역이다.
  *
  * <p>ApplicationEvents에는 롤백된 업무의 발행 기록도 남는다. 이 기록만으로 커밋 후 소비를 판단하지 않고,
- * 공통 알림 요청·저장 결과·SSE 발행 요청을 함께 확인한다.
+ * 공통 알림 요청은 실제 리스너 Spy로 관찰하고, 작업 완료 후 저장 결과·SSE 발행 요청을 함께 확인한다.
+ * 작업 스레드의 이벤트를 테스트 스레드의 ApplicationEvents에 의존하여 검증하지 않는다.
+ * 데이터 정리도 작업 완료 뒤 수행하여 사용자 삭제와 알림 저장이 경합하지 않게 한다.
  *
  * <p>입력 검증·사용자 조회·DB 저장의 실패 지점은 실제 저장 서비스를 통해 구분한다.
  * 각 실패가 업무 커밋을 보존하고, 후속 정상 알림의 저장·SSE 발행을 막지 않는지 확인한다.
@@ -101,6 +117,9 @@ import static org.mockito.Mockito.*;
 @DisplayName("알림 공통 생성 통합 테스트")
 class NotificationIntegrationTest {
 
+    @RegisterExtension
+    static final NotificationFixtureCleanup FIXTURE_CLEANUP = new NotificationFixtureCleanup();
+
     // 알림 수신자를 권한 변경 대상과 플레이리스트 소유자로도 사용한다.
     private static final UUID RECEIVER_ID = UUID.randomUUID();
     private static final String TITLE = "새 알림";
@@ -108,6 +127,9 @@ class NotificationIntegrationTest {
 
     @Container
     static final PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:16");
+    @Container
+    static final GenericContainer<?> redis = new GenericContainer<>("redis:7.4-alpine")
+            .withExposedPorts(6379);
 
     @DynamicPropertySource
     static void configurePostgres(DynamicPropertyRegistry registry) {
@@ -115,6 +137,8 @@ class NotificationIntegrationTest {
         registry.add("spring.datasource.username", postgres::getUsername);
         registry.add("spring.datasource.password", postgres::getPassword);
         registry.add("spring.datasource.driver-class-name", postgres::getDriverClassName);
+        registry.add("spring.data.redis.host", redis::getHost);
+        registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
     }
 
     @Autowired
@@ -122,6 +146,12 @@ class NotificationIntegrationTest {
 
     @Autowired
     private NotificationRepository notificationRepository;
+
+    @MockitoSpyBean
+    private NotificationDeduplicationStore deduplicationStore;
+
+    @Autowired
+    private StringRedisTemplate redisTemplate;
 
     @Autowired
     private NotificationUserReader notificationUserReader;
@@ -158,13 +188,22 @@ class NotificationIntegrationTest {
     @MockitoSpyBean
     private NotificationEventListener notificationEventListener;
 
+    @Autowired
+    @Qualifier("notificationTaskExecutor")
+    private ThreadPoolTaskExecutor notificationTaskExecutor;
+    @Autowired
+    @Qualifier("notificationTaskContextDecorator")
+    private TaskDecorator notificationTaskContextDecorator;
+
+    private NotificationTaskTracker notificationTasks;
     private TransactionTemplate transactionTemplate;
     // 팔로워 사용자는 구독 사례에서 subscriberId로 재사용한다.
-    private static final UUID FOLLOWER_ID = UUID.randomUUID();
+    private final UUID followerId = UUID.randomUUID();
     private static final UUID PLAYLIST_ID = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
+        notificationTasks = new NotificationTaskTracker(notificationTaskExecutor, notificationTaskContextDecorator);
         transactionTemplate = new TransactionTemplate(transactionManager);
         // 업무 이벤트 없이 사용자를 준비하고, 팔로우·알림의 독립 트랜잭션에서도 조회할 수 있도록 먼저 커밋한다.
         jdbcTemplate.update("""
@@ -174,19 +213,23 @@ class NotificationIntegrationTest {
         jdbcTemplate.update("""
                 INSERT INTO users (id, email, nickname, role, enabled, created_at)
                 VALUES (?, ?, ?, 'USER', true, CURRENT_TIMESTAMP)
-                """, FOLLOWER_ID, FOLLOWER_ID + "@test.example", "홍길동");
+                """, followerId, followerId + "@test.example", "홍길동");
 
     }
 
     @AfterEach
     void cleanUp() {
+        FIXTURE_CLEANUP.cleanUp(notificationTasks, this::deleteFixtures);
+    }
+
+    private void deleteFixtures() {
         // 사용자를 참조하는 알림·팔로우·구독·플레이리스트를 먼저 지운다.
         // 구독은 플레이리스트도 참조하므로 플레이리스트보다 먼저 삭제한다.
         notificationRepository.deleteAllInBatch();
         followRepository.deleteAllInBatch();
         jdbcTemplate.update("DELETE FROM subscriptions WHERE playlist_id =?", PLAYLIST_ID);
         jdbcTemplate.update("DELETE FROM playlists WHERE id = ?", PLAYLIST_ID);
-        jdbcTemplate.update("DELETE FROM users WHERE id IN (?, ?)", RECEIVER_ID , FOLLOWER_ID);
+        jdbcTemplate.update("DELETE FROM users WHERE id IN (?, ?)", RECEIVER_ID, followerId);
     }
 
     @Test
@@ -254,8 +297,8 @@ class NotificationIntegrationTest {
     }
 
     @Test
-    @DisplayName("팔로우 이벤트를 발행한 트랜잭션의 커밋 후 알림을 저장한다.")
-    void savesNotificationFromFollowEventAfterBusinessCommit(ApplicationEvents applicationEvents) {
+    @DisplayName("같은 팔로우 이벤트를 두 번 커밋해도 알림은 한 번만 저장한다.")
+    void savesOnlyOneNotificationWhenSameFollowEventCommitsTwice() {
         // 이벤트를 직접 발행해 커밋 전후의 소비 시점을 관찰한다. 실제 팔로우 등록은 별도 사례로 검증한다.
         UserFollowedEvent event = new UserFollowedEvent(UUID.randomUUID(), "홍길동", RECEIVER_ID);
         NotificationCreateRequestedEvent expectedRequest = new NotificationCreateRequestedEvent(
@@ -269,13 +312,16 @@ class NotificationIntegrationTest {
         transactionTemplate.executeWithoutResult(status -> {
             eventPublisher.publishEvent(event);
 
-            assertThat(applicationEvents.stream(NotificationCreateRequestedEvent.class)).isEmpty();
+            assertThat(notificationTasks.hasSubmittedTasks()).isFalse();
+            verifyNoInteractions(notificationEventListener);
             assertThat(notificationRepository.count()).isZero();
             verifyNoInteractions(sseEventPublisher);
         });
 
-        assertThat(applicationEvents.stream(NotificationCreateRequestedEvent.class))
-                .containsExactly(expectedRequest);
+        transactionTemplate.executeWithoutResult(status -> eventPublisher.publishEvent(event));
+        notificationTasks.awaitCompletion();
+        assertThat(notificationTasks.submittedTaskCount()).isEqualTo(1);
+        verify(notificationEventListener).handleNotification(expectedRequest);
 
         Notification saved = findOnlyNotification();
         assertThat(saved.getReceiverId()).isEqualTo(expectedRequest.receiverId());
@@ -284,6 +330,41 @@ class NotificationIntegrationTest {
         assertThat(saved.getLevel()).isEqualTo(expectedRequest.level());
 
         verify(sseEventPublisher).publish(any());
+    }
+
+    @Test
+    @DisplayName("이전 토큰으로는 새 선점을 보존하고 현재 토큰으로는 선점 키를 삭제한다.")
+    void preservesNewReservationWhenReleasingStaleReservation() {
+        String actionKey = "follow:%s:%s".formatted(UUID.randomUUID(), UUID.randomUUID());
+        Reservation previous = deduplicationStore.tryReserve(actionKey).orElseThrow();
+
+        // 기존 키가 만료된 뒤 같은 행위가 다시 선점된 상황을 만든다.
+        assertThat(redisTemplate.delete(previous.key())).isTrue();
+        Reservation current = deduplicationStore.tryReserve(actionKey).orElseThrow();
+
+        deduplicationStore.release(previous);
+
+        assertThat(redisTemplate.opsForValue().get(current.key())).isEqualTo(current.token());
+
+        deduplicationStore.release(current);
+
+        assertThat(redisTemplate.opsForValue().get(current.key())).isNull();
+    }
+
+    @Test
+    @DisplayName("같은 행위를 다시 선점하려 해도 기존 제한 시간은 연장되지 않는다.")
+    void doesNotExtendExpirationWhenReservationAlreadyExists() {
+        NotificationDeduplicationStore store = new NotificationDeduplicationStore(
+                redisTemplate, new NotificationDeduplicationProperties(Duration.ofSeconds(60))
+        );
+        String actionKey = "follow:%s:%s".formatted(UUID.randomUUID(), UUID.randomUUID());
+        Reservation reservation = store.tryReserve(actionKey).orElseThrow();
+
+        assertThat(redisTemplate.getExpire(reservation.key())).isBetween(31L, 60L);
+        assertThat(redisTemplate.expire(reservation.key(), Duration.ofSeconds(30))).isTrue();
+
+        assertThat(store.tryReserve(actionKey)).isEmpty();
+        assertThat(redisTemplate.getExpire(reservation.key())).isBetween(1L, 30L);
     }
 
     @ParameterizedTest(name = "{0}")
@@ -623,8 +704,8 @@ class NotificationIntegrationTest {
 
         assertThat(applicationEvents.stream(UserFollowedEvent.class))
                 .containsExactly(event);
-        assertThat(applicationEvents.stream(NotificationCreateRequestedEvent.class))
-                .isEmpty();
+        assertThat(notificationTasks.hasSubmittedTasks()).isFalse();
+        verifyNoInteractions(notificationEventListener);
         assertThat(receiverNickname()).isEqualTo("변경 전");
         assertThat(notificationRepository.count()).isZero();
         verifyNoInteractions(sseEventPublisher);
@@ -641,8 +722,8 @@ class NotificationIntegrationTest {
         eventPublisher.publishEvent(event);
         assertThat(applicationEvents.stream(UserFollowedEvent.class))
                 .containsExactly(event);
-        assertThat(applicationEvents.stream(NotificationCreateRequestedEvent.class))
-                .isEmpty();
+        assertThat(notificationTasks.hasSubmittedTasks()).isFalse();
+        verifyNoInteractions(notificationEventListener);
         assertThat(notificationRepository.count()).isZero();
         verifyNoInteractions(sseEventPublisher);
     }
@@ -650,7 +731,7 @@ class NotificationIntegrationTest {
     @Test
     @DisplayName("실제 팔로우 등록이 커밋되면 대상 사용자에게 알림을 저장하고 SSE 발행을 한 번 요청한다.")
     void savesNotificationAfterActualFollowRegistrationCommits(){
-        FollowCommand command = new FollowCommand(RECEIVER_ID, FOLLOWER_ID);
+        FollowCommand command = new FollowCommand(RECEIVER_ID, followerId);
 
         double attemptsBefore = publishAttempts(meterRegistry, "user_followed");
         long processedBefore = processingCount(meterRegistry, "user_followed");
@@ -679,9 +760,26 @@ class NotificationIntegrationTest {
     }
 
     @Test
+    @DisplayName("Redis 선점에 실패해도 팔로우 커밋을 유지하고 알림을 저장해 SSE 발행을 요청한다.")
+    void savesNotificationWhenRedisReservationFails() {
+        String actionKey = "follow:%s:%s".formatted(followerId, RECEIVER_ID);
+        doThrow(new RedisConnectionFailureException("테스트용 Redis 연결 실패"))
+                .when(deduplicationStore).tryReserve(actionKey);
+
+        FollowResult result = followService.follow(new FollowCommand(RECEIVER_ID, followerId));
+
+        assertThat(result.created()).isTrue();
+        assertThat(followRepository.existsById(result.followDto().id())).isTrue();
+        assertThat(findOnlyNotification().getReceiverId()).isEqualTo(RECEIVER_ID);
+        assertThat(notificationTasks.submittedTaskCount()).isEqualTo(1);
+        verify(sseEventPublisher).publish(any());
+        verify(deduplicationStore, never()).release(any());
+    }
+
+    @Test
     @DisplayName("알림 요청 재발행이 실패해도 커밋된 팔로우를 유지하고 실패를 기록한다.")
     void keepsFollowWhenNotificationRequestPublishFails(CapturedOutput output){
-        // 공통 요청을 수신하는 쪽에서 예외를 던져 실제 업무 이벤트 리스너의 재발행 실패 처리를 확인한다.
+        // 공통 요청을 수신하는 쪽에서 예외를 던져 실제 비동기 프로세서의 재발행 실패 처리를 확인한다.
         doThrow(new IllegalStateException("테스트용 알림 요청 재발행 실패"))
                 .when(notificationEventListener)
                 .handleNotification(any(NotificationCreateRequestedEvent.class));
@@ -695,20 +793,21 @@ class NotificationIntegrationTest {
         double attemptsBefore = publishAttempts(meterRegistry, "user_followed");
         long processedBefore = processingCount(meterRegistry, "user_followed");
 
-        FollowResult result = followService.follow(new FollowCommand(RECEIVER_ID, FOLLOWER_ID));
+        FollowResult result = followService.follow(new FollowCommand(RECEIVER_ID, followerId));
         assertThat(result.created()).isTrue();
         assertThat(followRepository.existsById(result.followDto().id())).isTrue();
         assertThat(followRepository.count()).isEqualTo(1L);
 
+        notificationTasks.awaitCompletion();
         verify(notificationEventListener)
                 .handleNotification(any(NotificationCreateRequestedEvent.class));
         assertThat(notificationRepository.count()).isZero();
 
         verifyNoInteractions(sseEventPublisher);
-        // 팔로우 유지와 함께 도메인 리스너가 예외를 처리하고 기록한 사실까지 확인한다.
+        // 팔로우 유지와 함께 비동기 프로세서가 예외를 처리하고 기록한 사실까지 확인한다.
         assertThat(output.getOut()).contains(
-                "팔로우 알림 변환·재발행 실패.",
-                "followerId=" + FOLLOWER_ID,
+                "팔로우 알림 재발행 실패.",
+                "followerId=" + followerId,
                 "followeeId=" + RECEIVER_ID,
                 "exceptionType=IllegalStateException"
         );
@@ -779,7 +878,7 @@ class NotificationIntegrationTest {
     @DisplayName("실제 구독이 커밋되면 플레이리스트 소유자에게 알림을 저장하고 SSE 알림을 요청한다.")
     void savesNotificationAfterActualPlaylistSubscriptionCommits(){
         insertPlaylist();
-        UUID subscriberId = FOLLOWER_ID;
+        UUID subscriberId = followerId;
 
         double attemptsBefore = publishAttempts(meterRegistry, "playlist_subscribed");
         long processedBefore = processingCount(meterRegistry, "playlist_subscribed");
@@ -826,8 +925,8 @@ class NotificationIntegrationTest {
 
         assertThat(applicationEvents.stream(UserRoleChangedEvent.class))
                 .containsExactly(new UserRoleChangedEvent(RECEIVER_ID, Role.USER, Role.ADMIN));
-        assertThat(applicationEvents.stream(NotificationCreateRequestedEvent.class))
-                .isEmpty();
+        assertThat(notificationTasks.hasSubmittedTasks()).isFalse();
+        verifyNoInteractions(notificationEventListener);
         assertThat(notificationRepository.count()).isZero();
         verifyNoInteractions(sseEventPublisher);
     }
@@ -836,7 +935,7 @@ class NotificationIntegrationTest {
     @DisplayName("실제 구독이 롤백되면 구독 정보와 구독자 수를 되돌리고 알림을 생성하지 않는다.")
     void doesNotSaveNotificationWhenActualPlaylistSubscriptionRollsBack(ApplicationEvents applicationEvents){
         insertPlaylist();
-        UUID subscriberId = FOLLOWER_ID;
+        UUID subscriberId = followerId;
 
         transactionTemplate.executeWithoutResult(status ->{
             playlistService.subscribe(PLAYLIST_ID, subscriberId);
@@ -856,10 +955,49 @@ class NotificationIntegrationTest {
 
         assertThat(applicationEvents.stream(PlaylistSubscribedEvent.class))
                 .containsExactly(new PlaylistSubscribedEvent(PLAYLIST_ID, "퇴근 후 영화", RECEIVER_ID, subscriberId, "홍길동"));
-        assertThat(applicationEvents.stream(NotificationCreateRequestedEvent.class))
-                .isEmpty();
+        assertThat(notificationTasks.hasSubmittedTasks()).isFalse();
+        verifyNoInteractions(notificationEventListener);
         assertThat(notificationRepository.count()).isZero();
         verifyNoInteractions(sseEventPublisher);
+    }
+
+    @Test
+    @DisplayName("트랜잭션 밖의 시청 시작 이벤트로 팔로워 알림을 저장하고 SSE 발행을 요청한다.")
+    void savesWatchSessionNotificationWithoutTransaction(){
+        UUID watcherId = RECEIVER_ID;
+
+        insertFollow(followerId, watcherId);
+
+        eventPublisher.publishEvent(new WatchingSessionStartedEvent(
+                watcherId, "홍길동", UUID.randomUUID(), "인터스텔라"));
+
+        Notification saved = findOnlyNotification();
+        assertThat(saved.getReceiverId()).isEqualTo(followerId);
+        verify(sseEventPublisher).publish(any());
+    }
+
+    @Test
+    @DisplayName("시청 시작 이벤트를 발행한 트랜잭션이 롤백되면 알림 작업을 제출하지 않는다.")
+    void ignoresWatchingSessionStartedEventWhenTransactionRollsBack(){
+        insertFollow(followerId, RECEIVER_ID);
+        WatchingSessionStartedEvent event = new WatchingSessionStartedEvent(RECEIVER_ID, "홍길동", UUID.randomUUID(), "인터스텔라");
+
+        transactionTemplate.executeWithoutResult(status ->{
+            eventPublisher.publishEvent(event);
+            assertThat(notificationTasks.hasSubmittedTasks()).isFalse();
+            status.setRollbackOnly();
+        });
+
+        assertThat(notificationTasks.hasSubmittedTasks()).isFalse();
+        assertThat(notificationRepository.count()).isZero();
+        verifyNoInteractions(sseEventPublisher);
+    }
+
+    private void insertFollow(UUID followerId, UUID watcherId) {
+        jdbcTemplate.update("""
+            INSERT INTO follows (id, follower_id, followee_id, created_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        """, UUID.randomUUID(), followerId, watcherId);
     }
 
     private NotificationCreateRequestedEvent event(UUID receiverId, String title, NotificationLevel level) {
@@ -872,6 +1010,7 @@ class NotificationIntegrationTest {
     }
 
     private Notification findOnlyNotification() {
+        notificationTasks.awaitCompletion();
         // 테스트 전체를 감싸는 영속성 컨텍스트 없이 커밋된 데이터를 다시 조회한다.
         List<Notification> notifications = notificationRepository.findAll();
         assertThat(notifications).hasSize(1);

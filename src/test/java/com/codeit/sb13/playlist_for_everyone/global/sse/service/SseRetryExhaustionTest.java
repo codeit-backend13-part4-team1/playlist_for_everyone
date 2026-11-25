@@ -1,8 +1,10 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.service;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.global.sse.config.SseProperties;
 import com.codeit.sb13.playlist_for_everyone.global.sse.config.SseRetryProperties;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
+import com.codeit.sb13.playlist_for_everyone.global.sse.event.LoginSession;
 import com.codeit.sb13.playlist_for_everyone.global.sse.history.SseHistoryPosition;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.impl.InMemorySseEmitterRepository;
@@ -39,6 +41,8 @@ import static org.mockito.Mockito.*;
 @DisplayName("SSE 재시도 소진 시 연결 서비스와 조정기의 정리")
 class SseRetryExhaustionTest {
 
+    private final LoginSession loginSession = new LoginSession(UUID.randomUUID());
+
     @Mock
     private SseRecoveryService recoveryService;
 
@@ -47,6 +51,9 @@ class SseRetryExhaustionTest {
 
     @Mock
     private ScheduledFuture<?> retryFuture;
+
+    @Mock
+    private UserSessionRepository userSessionRepository;
 
     @ParameterizedTest(name = "complete() 예외 발생={0}")
     @ValueSource(booleans = {false, true})
@@ -63,10 +70,11 @@ class SseRetryExhaustionTest {
         SseDeliveryCoordinator coordinator = new SseDeliveryCoordinator(
                 recoveryService, retryTaskScheduler, retryProperties , new SseConnectionCloser(repository), repository
         );
-        SseConnectionService service = new SseConnectionService(repository, properties, coordinator);
+        SseConnectionService service = new SseConnectionService(repository, properties, coordinator, userSessionRepository);
         DataAccessResourceFailureException failure =
                 new DataAccessResourceFailureException("테스트용 후속 이력 조회 실패");
 
+        when(userSessionRepository.isCurrent(userId, loginSession.id())).thenReturn(true);
         when(retryTaskScheduler.getClock()).thenReturn(Clock.fixed(
                 Instant.parse("2026-11-07T00:00:00Z"), ZoneOffset.UTC
         ));
@@ -77,7 +85,7 @@ class SseRetryExhaustionTest {
         )).thenReturn(upperBound);
 
         try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {
-            SseEmitter emitter = service.connect(userId, lastEventId);
+            SseEmitter emitter = service.connect(userId, lastEventId, loginSession);
             Map<Connection, SseEmitter> connections = repository.findAllByUserId(userId);
             assertThat(connections).hasSize(1);
             Connection connection = connections.keySet().iterator().next();

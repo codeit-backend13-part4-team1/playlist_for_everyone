@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.global.config.SseTransportConfig;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisBrokerRegister;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEventPublisher;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseSubscription;
+import com.codeit.sb13.playlist_for_everyone.global.sse.event.impl.RedisRevokeEventSubscriber;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.impl.RedisSseEventPublisher;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.impl.RedisSseEventSubscriber;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.impl.RedisSseSubscription;
@@ -28,12 +29,14 @@ public class RedisSseTransportConfigTest {
             .withUserConfiguration(SseTransportConfig.class,
                     RedisSseEventPublisher.class,
                     RedisSseEventSubscriber.class,
+                    RedisRevokeEventSubscriber.class,
                     RedisSseSubscription.class
                     )
             .withPropertyValues(
                     "everyone.sse.transport=redis",
                     "everyone.sse.subscription-enabled=true",
-                    "everyone.sse.redis.channel=test:sse:events"
+                    "everyone.sse.redis.channel=test:sse:events",
+                    "everyone.sse.redis.revoke-channel=test:sse:revocations"
             )
             .withBean(StringRedisTemplate.class,
                     () -> mock(StringRedisTemplate.class))

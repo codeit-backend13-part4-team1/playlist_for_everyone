@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.user.controller;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.service.PasswordChangeService;
+import com.codeit.sb13.playlist_for_everyone.domain.user.controller.swagger.UserApi;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.request.*;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserAdministrationService;
@@ -19,13 +20,14 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
-public class UserController {
+public class UserController implements UserApi {
 
 
     private final UserService userService;
     private final UserAdministrationService userAdministrationService;
     private final PasswordChangeService passwordChangeService;
 
+    @Override
     @PostMapping
     public ResponseEntity<UserDto> create(@Valid @RequestBody UserCreateRequest request) {
 
@@ -38,6 +40,7 @@ public class UserController {
      * 관리자 사용자 목록 조회
      * 권한은 SecurityConfig의 URL 규칙(GET /api/users -> ADMIN)으로 확인 한다.
      */
+    @Override
     @GetMapping
     public ResponseEntity<CursorResponse<UserDto>> getUsers(@Valid UserSearchRequest request) {
 
@@ -49,6 +52,7 @@ public class UserController {
     /**
      * 사용자 상세 조회
      */
+    @Override
     @GetMapping("/{userId}")
     public ResponseEntity<UserDto> getUser(@PathVariable("userId") UUID userId) {
 
@@ -60,6 +64,7 @@ public class UserController {
     /**
      * 프로필 변경
      */
+    @Override
     @PatchMapping(value = "/{userId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<UserDto> updateProfile(@PathVariable("userId") UUID userId, @Valid @RequestPart("request") UserUpdateRequest request,
                                                  @RequestPart(value = "image", required = false) MultipartFile image) {
@@ -68,6 +73,7 @@ public class UserController {
         return ResponseEntity.ok(response);
     }
 
+    @Override
     @PatchMapping("/{userId}/role")
     public ResponseEntity<Void> updateRole(@PathVariable("userId") UUID userId,
                                             @Valid @RequestBody UserRoleUpdateRequest request) {
@@ -77,6 +83,7 @@ public class UserController {
         return ResponseEntity.noContent().build();
     }
 
+    @Override
     @PatchMapping("/{userId}/locked")
     public ResponseEntity<Void> updateLocked(@PathVariable("userId") UUID userId,
                                              @Valid @RequestBody UserLockUpdateRequest request) {
@@ -85,6 +92,8 @@ public class UserController {
 
         return ResponseEntity.noContent().build();
     }
+
+    @Override
     @PatchMapping("/{userId}/password")
     public ResponseEntity<Void> changePassword(@PathVariable("userId") UUID userId,
                                                @Valid @RequestBody ChangePasswordRequest request) {
