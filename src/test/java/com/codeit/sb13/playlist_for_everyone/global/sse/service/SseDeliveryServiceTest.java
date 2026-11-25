@@ -24,6 +24,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -430,5 +431,74 @@ class SseDeliveryServiceTest {
         verify(emitter, times(2)).send(any(SseEmitter.SseEventBuilder.class));
         verify(deliveryCoordinator).closeConnection(receiverId, connection);
         verifyNoMoreInteractions(deliveryCoordinator);
+    }
+
+    @Test
+    @DisplayName("느린 SSE 연결이 전송 중이어도 정상 연결의 하트비트와 세션 재검증을 진행한다.")
+    void continuesHeartbeatAndSessionRevalidationWhileOneConnectionIsBlocked() throws IOException, InterruptedException, ExecutionException, TimeoutException {
+        Connection slowConnection = Connection.create();
+        Connection healthyConnection = Connection.create();
+
+        LoginSession loginSession = new LoginSession(UUID.randomUUID());
+
+        SseEmitter slowEmitter = mock(SseEmitter.class);
+        SseEmitter healthyEmitter = mock(SseEmitter.class);
+
+        Map<Connection, SseEmitter> connections = new LinkedHashMap<>();
+        connections.put(slowConnection, slowEmitter);
+        connections.put(healthyConnection, healthyEmitter);
+
+        when(repository.findAll()).thenReturn(Map.of(receiverId, connections));
+        when(repository.findAllLoginSessions()).thenReturn(Map.of(receiverId, Set.of(loginSession)));
+
+        CountDownLatch slowSendStarted = new CountDownLatch(1);
+        CountDownLatch releaseSlowSend = new CountDownLatch(1);
+        CountDownLatch healthySendCalled = new CountDownLatch(1);
+        CountDownLatch sessionLookupCalled = new CountDownLatch(1);
+
+        doAnswer(invocation ->{
+            slowSendStarted.countDown();
+            assertThat(releaseSlowSend.await(10, TimeUnit.SECONDS))
+                    .as("테스트에서 느린 연결의 대기를 해제했다.")
+                    .isTrue();
+            return null;
+        }).when(slowEmitter).send(any(SseEmitter.SseEventBuilder.class));
+
+        doAnswer(invocation ->{
+            healthySendCalled.countDown();
+            return null;
+        }).when(healthyEmitter).send(any(SseEmitter.SseEventBuilder.class));
+
+        when(userSessionRepository.isCurrent(receiverId, loginSession.id()))
+                .thenAnswer(invocation ->{
+                    sessionLookupCalled.countDown();
+                    return true;
+                });
+
+        SseHeartbeatScheduler scheduler = new SseHeartbeatScheduler(service);
+        ExecutorService schedulerThread = Executors.newSingleThreadExecutor();
+        Future<?> tick = schedulerThread.submit(scheduler::sendHeartbeat);
+
+        try {
+            assertThat(slowSendStarted.await(5, TimeUnit.SECONDS))
+                    .as("느린 연결의 send()에 진입했다.")
+                    .isTrue();
+
+            boolean healthySendProgressed = healthySendCalled.await(2, TimeUnit.SECONDS);
+            boolean sessionLookProgressed = sessionLookupCalled.await(2, TimeUnit.SECONDS);
+
+            assertThat(healthySendProgressed && sessionLookProgressed)
+                    .as("느린 전송 대기 중 정상 연결 전송=%s, 세션 조회=%s",
+                            healthySendProgressed,
+                            sessionLookProgressed)
+                    .isTrue();
+        } finally {
+            releaseSlowSend.countDown();
+            try {
+                tick.get(5, TimeUnit.SECONDS);
+            } finally {
+                schedulerThread.shutdownNow();
+            }
+        }
     }
 }
