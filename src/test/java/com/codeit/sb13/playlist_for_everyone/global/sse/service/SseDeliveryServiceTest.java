@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.global.sse.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.global.config.SseHeartbeatConfig;
+import com.codeit.sb13.playlist_for_everyone.global.sse.config.SseRetryProperties;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Event;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.LoginSession;
@@ -18,11 +19,15 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.dao.QueryTimeoutException;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -36,6 +41,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -524,6 +530,107 @@ class SseDeliveryServiceTest {
                         releaseSlowSend.countDown();
                         schedulerThread.shutdownNow();
                     }
+                });
+    }
+
+    @Test
+    @DisplayName("전송 중인 연결의 세션이 폐기되어도 다음 세션을 재검증한다.")
+    void continuesSessionRevalidationWhileRevokedConnectionIsWriting() {
+        SseEmitterRepository localRepository = spy(new InMemorySseEmitterRepository());
+        SseDeliveryCoordinator localCoordinator = new SseDeliveryCoordinator(
+                mock(SseRecoveryService.class), mock(TaskScheduler.class),
+                new SseRetryProperties(Duration.ofSeconds(1), Duration.ofSeconds(30), 3),
+                new SseConnectionCloser(localRepository), localRepository);
+        LoginSession revokedSession = new LoginSession(UUID.randomUUID());
+        LoginSession currentSession = new LoginSession(UUID.randomUUID());
+        Connection slowConnection = Connection.create();
+        Connection currentConnection = Connection.create();
+        CountDownLatch slowSendStarted = new CountDownLatch(1);
+        CountDownLatch releaseSlowSend = new CountDownLatch(1);
+        CountDownLatch revokedSessionChecked = new CountDownLatch(1);
+        CountDownLatch closeAttempted = new CountDownLatch(1);
+        CountDownLatch currentSessionChecked = new CountDownLatch(1);
+
+        SseEmitter slowEmitter = new SseEmitter() {
+            @Override
+            public void send(SseEventBuilder event) throws IOException {
+                writeLock.lock();
+                try {
+                    slowSendStarted.countDown();
+                    if (!releaseSlowSend.await(10, TimeUnit.SECONDS)) {
+                        throw new IOException("느린 전송 대기 시간 초과");
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException(e);
+                } finally {
+                    writeLock.unlock();
+                }
+            }
+
+            @Override
+            public void complete() {
+                closeAttempted.countDown();
+                super.complete();
+            }
+        };
+        SseEmitter currentEmitter = new SseEmitter();
+        localCoordinator.register(receiverId, slowConnection, slowEmitter, revokedSession);
+        localCoordinator.register(receiverId, currentConnection, currentEmitter, currentSession);
+
+        Set<LoginSession> sessions = new LinkedHashSet<>(List.of(revokedSession, currentSession));
+        doReturn(Map.of(receiverId, sessions)).when(localRepository).findAllLoginSessions();
+        when(userSessionRepository.isCurrent(receiverId, revokedSession.id())).thenAnswer(invocation -> {
+            revokedSessionChecked.countDown();
+            return false;
+        });
+        when(userSessionRepository.isCurrent(receiverId, currentSession.id())).thenAnswer(invocation -> {
+            currentSessionChecked.countDown();
+            return true;
+        });
+
+        new ApplicationContextRunner()
+                .withUserConfiguration(SseHeartbeatConfig.class)
+                .withBean(SseEmitterRepository.class, () -> localRepository)
+                .withBean(SseDeliveryCoordinator.class, () -> localCoordinator)
+                .withPropertyValues("everyone.sse.heartbeat.pool-size=2", "everyone.sse.heartbeat.queue-capacity=1")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    SseHeartbeatDispatcher dispatcher = context.getBean(SseHeartbeatDispatcher.class);
+                    SseDeliveryService asyncService = new SseDeliveryService(
+                            localRepository, localCoordinator, userSessionRepository, dispatcher);
+                    SseHeartbeatScheduler scheduler = new SseHeartbeatScheduler(asyncService);
+                    ExecutorService schedulerThread = Executors.newSingleThreadExecutor();
+
+                    try {
+                        dispatcher.submit(receiverId, slowConnection);
+                        assertThat(slowSendStarted.await(5, TimeUnit.SECONDS))
+                                .as("느린 연결의 전송이 쓰기 잠금을 잡았다.")
+                                .isTrue();
+
+                        Future<?> tick = schedulerThread.submit(scheduler::sendHeartbeat);
+                        assertThat(revokedSessionChecked.await(5, TimeUnit.SECONDS))
+                                .as("폐기된 세션을 먼저 조회했다.")
+                                .isTrue();
+                        boolean currentSessionRevalidated = currentSessionChecked.await(2, TimeUnit.SECONDS);
+                        assertThat(currentSessionRevalidated)
+                                .as("느린 전송 대기 중 정상 세션을 조회했다. complete() 진입=%s",
+                                        closeAttempted.getCount() == 0)
+                                .isTrue();
+                        tick.get(2, TimeUnit.SECONDS);
+                    } finally {
+                        releaseSlowSend.countDown();
+                        schedulerThread.shutdown();
+                        if (!schedulerThread.awaitTermination(5, TimeUnit.SECONDS)) {
+                            schedulerThread.shutdownNow();
+                        }
+                    }
+
+                    await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+                        assertThat(localRepository.findByUserIdAndConnection(receiverId, slowConnection)).isEmpty();
+                        assertThat(localRepository.findByUserIdAndConnection(receiverId, currentConnection))
+                                .containsSame(currentEmitter);
+                    });
                 });
     }
 }
