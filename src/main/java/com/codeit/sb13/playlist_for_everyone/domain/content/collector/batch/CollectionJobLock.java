@@ -30,13 +30,20 @@ public class CollectionJobLock {
             }
 
             if (!acquired) {
+                connection.close();
                 return Optional.empty();
             }
 
             return Optional.of(new Handle(connection, key));
-        } finally {
-            if (!acquired) {
-                connection.close();
+        } catch (SQLException | RuntimeException exception) {
+            try (connection) {
+                try {
+                    connection.abort(Runnable::run);
+                } catch (SQLException | RuntimeException abortException) {
+                    exception.addSuppressed(abortException);
+                }
+
+                throw exception;
             }
         }
     }
