@@ -12,7 +12,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.springframework.web.util.DisconnectedClientHelper;
 
-import java.io.IOException;
 import java.util.Map;
 import java.util.UUID;
 
@@ -33,6 +32,8 @@ public class SseDeliveryService {
     private final SseDeliveryCoordinator deliveryCoordinator;
 
     private final UserSessionRepository userSessionRepository;
+
+    private final SseHeartbeatDispatcher heartbeatDispatcher;
 
     /**
      * 수신자의 모든 로컬 연결에 후속 이력 조회를 요청한다. 브로커 메시지는 조회를 깨우는 신호다.
@@ -70,15 +71,14 @@ public class SseDeliveryService {
     }
 
     /**
-     * 모든 로컬 연결에 ID 없는 주석을 보내고, 전송 중 확인된 실패 연결을 정리한다.
+     * 모든 로컬 연결의 하트비트 전송을 전용 실행기에 제출한다.
      * 상대방의 응답을 받는 ping/pong 방식이 아니므로 브라우저 종료를 즉시 확정하는 기능은 아니다.
      */
     public void sendHeartbeatToLocalConnections(){
         sseEmitterRepository.findAll()
                 .forEach((userId, connections) ->
-                        connections.forEach((connection, emitter) ->
-                                sendHeartbeat(userId, connection, emitter)
-                        )
+                        connections.keySet()
+                                .forEach(connection -> heartbeatDispatcher.submit(userId, connection))
                 );
     }
 
@@ -106,28 +106,6 @@ public class SseDeliveryService {
                         deliveryCoordinator.closeConnection(userId, connection));
     }
 
-    private void sendHeartbeat(UUID userId, Connection connection, SseEmitter emitter) {
-        try {
-            // 주석 프레임은 알림/DM 이벤트로 전달되지 않으며 마지막 수신 이벤트 ID도 변경하지 않는다.
-            emitter.send(SseEmitter.event().comment("heartbeat"));
-        } catch (IOException | IllegalStateException e) {
-            // 하트비트 send 실패 경로에서는 내부 참조를 정리한다. 이곳에서 complete를 다시 요청하지 않는다.
-            deliveryCoordinator.cleanupConnection(userId, connection);
-            logSseHeartbeatIssue(userId, connection, e);
-        }
-    }
-
-    /**
-     * 하트비트 전송 중 Spring이 식별한 클라이언트 단절은 DEBUG로만 남긴다.
-     * 모든 I/O 예외가 단절은 아니므로, 나머지 실패는 원인을 확인할 수 있게 WARN에 스택을 남긴다.
-     */
-    private void logSseHeartbeatIssue(UUID userId, Connection connection, Exception e) {
-        if (DisconnectedClientHelper.isClientDisconnectedException(e)){
-            log.debug("SSE 하트비트 전송 중 클라이언트 단절로 연결을 정리했습니다. userId={}, connectionId={}", userId, connection.id());
-            return;
-        }
-        log.warn("SSE 하트비트 전송 실패로 연결을 정리했습니다. userId={}, connectionId={}", userId, connection.id(), e);
-    }
 
     /**
      * 업무 이벤트 전송도 하트비트와 같은 단절 분류 및 DEBUG/WARN 기준을 사용한다.

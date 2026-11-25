@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
+import com.codeit.sb13.playlist_for_everyone.global.config.SseHeartbeatConfig;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Event;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.LoginSession;
@@ -15,6 +16,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.dao.QueryTimeoutException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -22,9 +24,15 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -33,7 +41,7 @@ import static org.mockito.Mockito.*;
 
 /**
  * 전송 서비스가 수신자의 연결을 선택하고, 일부 실패에도 나머지 전송을 계속하는지 검증한다.
- * 전송 테스트는 저장소와 emitter를 Mock으로 대체하고, 서비스 내부 JSON 변환에는 실제 JsonMapper를 사용한다.
+ * 전송 테스트는 저장소와 emitter를 Mock으로 대체한다.
  * 세션별 조회 횟수 검증은 실제 메모리 저장소에 여러 탭을 등록한다.
  * 실제 HTTP 전송과 Spring MVC 메시지 변환기는 실행하지 않는다.
  *
@@ -59,7 +67,19 @@ class SseDeliveryServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new SseDeliveryService(repository, deliveryCoordinator, userSessionRepository);
+        service = createServiceWithSynchronousHeartbeat(repository);
+    }
+
+    private SseDeliveryService createServiceWithSynchronousHeartbeat(SseEmitterRepository emitterRepository) {
+        SseHeartbeatWorker worker = new SseHeartbeatWorker(emitterRepository, deliveryCoordinator);
+        return new SseDeliveryService(
+                emitterRepository, deliveryCoordinator, userSessionRepository, new SseHeartbeatDispatcher(worker));
+    }
+
+    private void stubHeartbeatConnections(Map<UUID, Map<Connection, SseEmitter>> connectionsByUser) {
+        when(repository.findAll()).thenReturn(connectionsByUser);
+        connectionsByUser.forEach((userId, connections) -> connections.forEach((connection, emitter) ->
+                when(repository.findByUserIdAndConnection(userId, connection)).thenReturn(Optional.of(emitter))));
     }
 
     @Test
@@ -221,8 +241,7 @@ class SseDeliveryServiceTest {
         Connection connection = Connection.create();
 
         SseEmitter emitter = mock(SseEmitter.class);
-        when(repository.findAll())
-                .thenReturn(Map.of(userId, Map.of(connection, emitter)));
+        stubHeartbeatConnections(Map.of(userId, Map.of(connection, emitter)));
 
         service.sendHeartbeatToLocalConnections();
 
@@ -246,14 +265,13 @@ class SseDeliveryServiceTest {
         SseEmitter secondEmitter = mock(SseEmitter.class);
         SseEmitter thirdEmitter = mock(SseEmitter.class);
 
-        when(repository.findAll())
-                .thenReturn(Map.of(
-                        firstUserId, Map.of(
-                                Connection.create(), firstEmitter,
-                                Connection.create(), secondEmitter
-                        ),
-                        secondUserId, Map.of(Connection.create(), thirdEmitter)
-                ));
+        stubHeartbeatConnections(Map.of(
+                firstUserId, Map.of(
+                        Connection.create(), firstEmitter,
+                        Connection.create(), secondEmitter
+                ),
+                secondUserId, Map.of(Connection.create(), thirdEmitter)
+        ));
 
         service.sendHeartbeatToLocalConnections();
 
@@ -299,7 +317,7 @@ class SseDeliveryServiceTest {
         connectionsByUser.put(firstUserId, firstUserConnections);
         connectionsByUser.put(secondUserId, Map.of(Connection.create(), otherUserEmitter));
 
-        when(repository.findAll()).thenReturn(connectionsByUser);
+        stubHeartbeatConnections(connectionsByUser);
 
         doThrow(new IOException("하트비트 전송 실패"))
                 .when(failedEmitter)
@@ -341,7 +359,7 @@ class SseDeliveryServiceTest {
         connectionsByUser.put(firstUserId, firstUserConnections);
         connectionsByUser.put(secondUserId, Map.of(Connection.create(), otherUserEmitter));
 
-        when(repository.findAll()).thenReturn(connectionsByUser);
+        stubHeartbeatConnections(connectionsByUser);
 
         doThrow(new IllegalStateException("이미 종료된 연결"))
                 .when(failedEmitter)
@@ -363,8 +381,7 @@ class SseDeliveryServiceTest {
     @DisplayName("같은 로그인 세션의 여러 탭을 한 번만 조회하고 폐기된 세션의 탭만 닫는다.")
     void revalidatesEachLoginSessionOnceAndClosesOnlyRevokedTabs() {
         SseEmitterRepository localRepository = new InMemorySseEmitterRepository();
-        SseDeliveryService localService =
-                new SseDeliveryService(localRepository, deliveryCoordinator, userSessionRepository);
+        SseDeliveryService localService = createServiceWithSynchronousHeartbeat(localRepository);
         UUID userId = UUID.randomUUID();
         UUID otherUserId = UUID.randomUUID();
         LoginSession revokedSession = new LoginSession(UUID.randomUUID());
@@ -405,7 +422,7 @@ class SseDeliveryServiceTest {
         sessions.put(receiverId, Set.of(loginSession));
         sessions.put(otherUserId, Set.of(otherUserSession));
 
-        when(repository.findAll()).thenReturn(Map.of(
+        stubHeartbeatConnections(Map.of(
                 receiverId, Map.of(connection, emitter),
                 otherUserId, Map.of(otherConnection, otherEmitter)
         ));
@@ -435,7 +452,7 @@ class SseDeliveryServiceTest {
 
     @Test
     @DisplayName("느린 SSE 연결이 전송 중이어도 정상 연결의 하트비트와 세션 재검증을 진행한다.")
-    void continuesHeartbeatAndSessionRevalidationWhileOneConnectionIsBlocked() throws IOException, InterruptedException, ExecutionException, TimeoutException {
+    void continuesHeartbeatAndSessionRevalidationWhileOneConnectionIsBlocked() throws IOException {
         Connection slowConnection = Connection.create();
         Connection healthyConnection = Connection.create();
 
@@ -448,15 +465,17 @@ class SseDeliveryServiceTest {
         connections.put(slowConnection, slowEmitter);
         connections.put(healthyConnection, healthyEmitter);
 
-        when(repository.findAll()).thenReturn(Map.of(receiverId, connections));
+        stubHeartbeatConnections(Map.of(receiverId, connections));
         when(repository.findAllLoginSessions()).thenReturn(Map.of(receiverId, Set.of(loginSession)));
 
         CountDownLatch slowSendStarted = new CountDownLatch(1);
         CountDownLatch releaseSlowSend = new CountDownLatch(1);
         CountDownLatch healthySendCalled = new CountDownLatch(1);
         CountDownLatch sessionLookupCalled = new CountDownLatch(1);
+        AtomicReference<String> sendThreadName = new AtomicReference<>();
 
-        doAnswer(invocation ->{
+        doAnswer(invocation -> {
+            sendThreadName.set(Thread.currentThread().getName());
             slowSendStarted.countDown();
             assertThat(releaseSlowSend.await(10, TimeUnit.SECONDS))
                     .as("테스트에서 느린 연결의 대기를 해제했다.")
@@ -475,30 +494,36 @@ class SseDeliveryServiceTest {
                     return true;
                 });
 
-        SseHeartbeatScheduler scheduler = new SseHeartbeatScheduler(service);
-        ExecutorService schedulerThread = Executors.newSingleThreadExecutor();
-        Future<?> tick = schedulerThread.submit(scheduler::sendHeartbeat);
+        new ApplicationContextRunner()
+                .withUserConfiguration(SseHeartbeatConfig.class)
+                .withBean(SseEmitterRepository.class, () -> repository)
+                .withBean(SseDeliveryCoordinator.class, () -> deliveryCoordinator)
+                .withPropertyValues("everyone.sse.heartbeat.pool-size=2", "everyone.sse.heartbeat.queue-capacity=1")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    SseDeliveryService asyncService = new SseDeliveryService(
+                            repository, deliveryCoordinator, userSessionRepository,
+                            context.getBean(SseHeartbeatDispatcher.class));
+                    SseHeartbeatScheduler scheduler = new SseHeartbeatScheduler(asyncService);
+                    ExecutorService schedulerThread = Executors.newSingleThreadExecutor();
+                    Future<?> tick = schedulerThread.submit(scheduler::sendHeartbeat);
 
-        try {
-            assertThat(slowSendStarted.await(5, TimeUnit.SECONDS))
-                    .as("느린 연결의 send()에 진입했다.")
-                    .isTrue();
-
-            boolean healthySendProgressed = healthySendCalled.await(2, TimeUnit.SECONDS);
-            boolean sessionLookProgressed = sessionLookupCalled.await(2, TimeUnit.SECONDS);
-
-            assertThat(healthySendProgressed && sessionLookProgressed)
-                    .as("느린 전송 대기 중 정상 연결 전송=%s, 세션 조회=%s",
-                            healthySendProgressed,
-                            sessionLookProgressed)
-                    .isTrue();
-        } finally {
-            releaseSlowSend.countDown();
-            try {
-                tick.get(5, TimeUnit.SECONDS);
-            } finally {
-                schedulerThread.shutdownNow();
-            }
-        }
+                    try {
+                        assertThat(slowSendStarted.await(5, TimeUnit.SECONDS))
+                                .as("느린 연결의 send()에 진입했다.")
+                                .isTrue();
+                        assertThat(sendThreadName.get()).startsWith("sse-heartbeat-worker-");
+                        assertThat(healthySendCalled.await(2, TimeUnit.SECONDS))
+                                .as("느린 전송 대기 중 정상 연결에 하트비트를 보냈다.")
+                                .isTrue();
+                        assertThat(sessionLookupCalled.await(2, TimeUnit.SECONDS))
+                                .as("느린 전송 대기 중 세션을 조회했다.")
+                                .isTrue();
+                        tick.get(2, TimeUnit.SECONDS);
+                    } finally {
+                        releaseSlowSend.countDown();
+                        schedulerThread.shutdownNow();
+                    }
+                });
     }
 }
