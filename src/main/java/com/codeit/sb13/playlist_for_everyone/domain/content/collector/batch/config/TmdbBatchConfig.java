@@ -1,5 +1,11 @@
-package com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch;
+package com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.config;
 
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.*;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.listener.CollectionCacheEvictJobListener;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.listener.CollectionExecutionOwnerListener;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.listener.CollectionStepMetricsListener;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.reader.TmdbMovieReader;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.reader.TmdbTvReader;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.exception.CollectedContentValidationException;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.ContentCollectionService;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.TmdbClient;
@@ -22,7 +28,10 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.batch.core.job.parameters.InvalidJobParametersException;
 
 @Configuration(proxyBeanMethods = false)
-@Import(CollectionCacheEvictConfig.class)
+@Import({
+        CollectionCacheEvictConfig.class,
+        EcsTaskMetadataConfig.class
+})
 public class TmdbBatchConfig {
 
     @Bean
@@ -30,7 +39,8 @@ public class TmdbBatchConfig {
             JobRepository jobRepository,
             @Qualifier("tmdbMovieCollectionStep") Step movieStep,
             @Qualifier("tmdbTvCollectionStep") Step tvStep,
-            CollectionCacheEvictJobListener cacheEvictJobListener
+            CollectionCacheEvictJobListener cacheEvictJobListener,
+            CollectionExecutionOwnerListener ownerListener
     ) {
         return new JobBuilder("tmdbCollectionJob", jobRepository)
                 .validator(parameters -> {
@@ -53,6 +63,7 @@ public class TmdbBatchConfig {
                 })
 
                 .listener(cacheEvictJobListener)
+                .listener(ownerListener)
                 .start(movieStep)
                 .next(tvStep)
                 .build();

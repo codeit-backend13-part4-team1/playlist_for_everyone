@@ -1,5 +1,6 @@
-package com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch;
+package com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.listener;
 
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.CollectionInsertCounter;
 import com.codeit.sb13.playlist_for_everyone.domain.content.event.ContentCollectionFinishedEvent;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;

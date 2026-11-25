@@ -1,11 +1,16 @@
-package com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch;
+package com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.config;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.ContentCollectionService;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.SportsDbClient;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.SportsDbContentMapper;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.CollectionInsertCounter;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.SportsDbSkipPolicy;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.listener.CollectionCacheEvictJobListener;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.listener.CollectionExecutionOwnerListener;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.listener.CollectionStepMetricsListener;
+import com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch.reader.SportsDbEventReader;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.CollectedContentData;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.SportsDbEventResponse;
-import com.codeit.sb13.playlist_for_everyone.domain.content.collector.exception.CollectedContentValidationException;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.core.job.Job;
 import org.springframework.batch.core.job.builder.JobBuilder;
@@ -23,14 +28,18 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.util.StringUtils;
 
 @Configuration(proxyBeanMethods = false)
-@Import(CollectionCacheEvictConfig.class)
+@Import({
+        CollectionCacheEvictConfig.class,
+        EcsTaskMetadataConfig.class
+})
 public class SportsDbBatchConfig {
 
     @Bean
     public Job sportsDbCollectionJob(
             JobRepository jobRepository,
             @Qualifier("sportsDbCollectionStep") Step step,
-            CollectionCacheEvictJobListener cacheEvictJobListener
+            CollectionCacheEvictJobListener cacheEvictJobListener,
+            CollectionExecutionOwnerListener ownerListener
     ) {
         return new JobBuilder("sportsDbCollectionJob", jobRepository)
                 .validator(parameters -> {
@@ -55,6 +64,7 @@ public class SportsDbBatchConfig {
                     }
                 })
                 .listener(cacheEvictJobListener)
+                .listener(ownerListener)
                 .start(step)
                 .build();
     }
