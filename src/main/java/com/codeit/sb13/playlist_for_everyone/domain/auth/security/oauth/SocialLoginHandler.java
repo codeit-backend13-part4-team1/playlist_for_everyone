@@ -17,6 +17,7 @@ import org.springframework.security.oauth2.core.OAuth2ErrorCodes;
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.io.IOException;
 import java.util.UUID;
@@ -27,13 +28,15 @@ import java.util.UUID;
  * <p>성공하면 Refresh Token 쿠키만 발급하고 콘텐츠 화면으로 이동한다.
  * 토큰은 주소에 넣지 않으며, 프론트가 refresh API로 Access Token을 받는다.
  * 실패하면 사유 코드만 쿼리로 전달하고, 이메일 등 사용자 정보는 주소와 로그에 남기지 않는다.
+ * <p>이동 주소는 설정된 서비스 주소(everyone.oauth2.redirect-base-url) 기준의 절대 주소로 만든다.
+ * 상대 경로를 넘기면 Tomcat이 요청 Host 기준으로 바꾸는데, CloudFront를 거치면 Host가 ALB 주소가 된다.
  */
 @Slf4j
 @Component
 public class SocialLoginHandler implements AuthenticationSuccessHandler, AuthenticationFailureHandler {
 
-    static final String SUCCESS_URL = "/#/contents";
-    static final String FAILURE_URL = "/#/sign-in?error=oauth_failed&error_message=";
+    static final String SUCCESS_PATH = "/#/contents";
+    static final String FAILURE_PATH = "/#/sign-in?error=oauth_failed&error_message=";
 
     private final SocialIdentityExtractor socialIdentityExtractor;
     private final SocialAccountService socialAccountService;
@@ -50,7 +53,7 @@ public class SocialLoginHandler implements AuthenticationSuccessHandler, Authent
         this.socialAccountService = socialAccountService;
         this.loginSessionIssuer = loginSessionIssuer;
         this.refreshTokenCookieFactory = refreshTokenCookieFactory;
-        this.redirectBaseUrl = redirectBaseUrl;
+        this.redirectBaseUrl = StringUtils.trimTrailingCharacter(redirectBaseUrl, '/');
     }
 
     @Override
@@ -73,7 +76,7 @@ public class SocialLoginHandler implements AuthenticationSuccessHandler, Authent
         }
         response.addHeader(HttpHeaders.SET_COOKIE,
                 refreshTokenCookieFactory.create(tokens.refreshToken()).toString());
-        response.sendRedirect(SUCCESS_URL);
+        response.sendRedirect(redirectBaseUrl + SUCCESS_PATH);
     }
 
     /**
@@ -87,7 +90,7 @@ public class SocialLoginHandler implements AuthenticationSuccessHandler, Authent
         logFailure(error, exception);
 
         SecurityContextHolder.clearContext();
-        response.sendRedirect(FAILURE_URL + error.code());
+        response.sendRedirect(redirectBaseUrl + FAILURE_PATH + error.code());
     }
 
     private SocialLoginError resolveError(AuthenticationException exception) {
