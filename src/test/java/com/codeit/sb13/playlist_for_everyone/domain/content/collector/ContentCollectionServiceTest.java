@@ -298,12 +298,11 @@ class ContentCollectionServiceTest {
     }
 
     @Test
-    void 같은_콘텐츠를_재수집해도_기존_정보와_태그를_유지한다() {
+    void 같은_콘텐츠를_재수집하면_변경된_정보와_태그를_반영한다() {
         var original = new CollectedContentData(
                 ContentType.movie, "기존 제목", "기존 설명",
                 "https://example.com/original.jpg", ContentSource.TMDB, "550",
-                List.of("액션")
-        );
+                List.of("액션"));
 
         Content first = service.save(original);
         em.flush();
@@ -312,8 +311,7 @@ class ContentCollectionServiceTest {
         var recollected = new CollectedContentData(
                 ContentType.movie, "새 제목", "새 설명",
                 "https://example.com/new.jpg", ContentSource.TMDB, "550",
-                List.of("드라마", "코미디")
-        );
+                List.of("드라마", "코미디"));
 
         Content second = service.save(recollected);
         em.flush();
@@ -323,13 +321,13 @@ class ContentCollectionServiceTest {
 
         Content found = em.find(Content.class, first.getId());
 
-        assertThat(found.getTitle()).isEqualTo("기존 제목");
-        assertThat(found.getDescription()).isEqualTo("기존 설명");
+        assertThat(found.getTitle()).isEqualTo("새 제목");
+        assertThat(found.getDescription()).isEqualTo("새 설명");
         assertThat(found.getThumbnailUrl())
-                .isEqualTo("https://example.com/original.jpg");
+                .isEqualTo("https://example.com/new.jpg");
         assertThat(found.getTags())
                 .extracting(ContentTag::getTag)
-                .containsExactly("액션");
+                .containsExactlyInAnyOrder("드라마", "코미디");
     }
 
     @Test
