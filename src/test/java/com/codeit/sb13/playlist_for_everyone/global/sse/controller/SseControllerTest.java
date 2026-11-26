@@ -1,5 +1,10 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.controller;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.classic.spi.ThrowableProxy;
+import ch.qos.logback.core.read.ListAppender;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.AccessTokenClaims;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.jwt.JwtTokenProvider;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.RefreshTokenRepository;
@@ -17,6 +22,7 @@ import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseConnectionSer
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
@@ -34,6 +40,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -266,7 +273,12 @@ class SseControllerTest {
     @Test
     @ExtendWith(OutputCaptureExtension.class)
     void disconnectDoesNotLogServerErrorOrWriteErrorBody(CapturedOutput output) throws Exception {
-        dispatchStreamWriteFailure(new IOException("Broken pipe"));
+        List<ILoggingEvent> events = captureWriteFailureLogs(new IOException("Broken pipe"));
+
+        assertThat(events)
+                .filteredOn(ILoggingEvent::getFormattedMessage, "SSE 클라이언트 연결이 종료되었습니다.")
+                .extracting(ILoggingEvent::getLevel)
+                .containsExactly(Level.DEBUG);
 
         assertThat(output.getAll()).doesNotContain(
                 "처리되지 않은 서버 오류가 발생했습니다.",
@@ -276,11 +288,39 @@ class SseControllerTest {
     @Test
     @ExtendWith(OutputCaptureExtension.class)
     void unexpectedWriteFailureIsLoggedWithoutWritingErrorBody(CapturedOutput output) throws Exception {
-        dispatchStreamWriteFailure(new IOException("simulated write failure"));
+        IOException writeFailure = new IOException("simulated write failure");
+        List<ILoggingEvent> events = captureWriteFailureLogs(writeFailure);
 
-        assertThat(output.getAll())
-                .contains("SSE 응답 쓰기 중 예상하지 못한 오류가 발생했습니다.", "simulated write failure")
-                .doesNotContain("Failure in @ExceptionHandler");
+        assertThat(events)
+                .filteredOn(ILoggingEvent::getFormattedMessage, "SSE 응답 쓰기 중 예상하지 못한 오류가 발생했습니다.")
+                .singleElement()
+                .satisfies(event -> {
+                    assertThat(event.getLevel()).isEqualTo(Level.WARN);
+                    assertThat(event.getThrowableProxy()).isInstanceOfSatisfying(
+                            ThrowableProxy.class,
+                            proxy -> assertThat(proxy.getThrowable().getCause()).isSameAs(writeFailure));
+                });
+
+        assertThat(output.getAll()).doesNotContain(
+                "처리되지 않은 서버 오류가 발생했습니다.",
+                "Failure in @ExceptionHandler");
+    }
+
+    private List<ILoggingEvent> captureWriteFailureLogs(IOException cause) throws Exception {
+        Logger logger = (Logger) LoggerFactory.getLogger(SseController.class);
+        Level previousLevel = logger.getLevel();
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            logger.setLevel(Level.DEBUG);
+            dispatchStreamWriteFailure(cause);
+            return List.copyOf(appender.list);
+        } finally {
+            logger.detachAppender(appender);
+            logger.setLevel(previousLevel);
+            appender.stop();
+        }
     }
 
     private void dispatchStreamWriteFailure(IOException cause) throws Exception {
