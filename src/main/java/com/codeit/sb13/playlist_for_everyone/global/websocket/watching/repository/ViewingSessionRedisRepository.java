@@ -358,8 +358,8 @@ public class ViewingSessionRedisRepository {
             return new ViewingSessionInfoDto(
                     UUID.fromString(field.get(0).toString()),
                     Instant.parse(field.get(1).toString()),
-                    UUID.fromString(field.get(2).toString()),
-                    UUID.fromString(field.get(3).toString())
+                    UUID.fromString(field.get(3).toString()),
+                    UUID.fromString(field.get(2).toString())
             );
         }).toList();
     }
