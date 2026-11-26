@@ -83,7 +83,10 @@ public class ContentIndexReader {
             return List.of();
         }
 
-        return null;
+        return contentRepository.findAllByIds(contentIds)
+                .stream()
+                .map(contentDocumentMapper::toContentDocument)
+                .toList();
     }
 
 }

@@ -35,12 +35,13 @@ public class ContentIndexEventListener {
     }
 
     /**
-     * 콘텐츠 수집 완료 이후 검색 캐시를 무효화한다.
-     * TODO: 변경된 콘텐츠 일괄 인덱싱 연동
+     * 콘텐츠 수집 완료 이후 변경된 콘텐츠를 일괄 인덱싱하고
+     * 검색 캐시를 무효화한다.
      */
     @EventListener
-    public void evictAfterCollection(ContentCollectionFinishedEvent event) {
+    public void handleCollection(ContentCollectionFinishedEvent event) {
         if (event.insertedCount() > 0 || event.updatedCount() > 0) {
+            contentIndexService.upsertAll(event.changedContentIds());
             cacheEvictService.clearSearchCache();
         }
     }

@@ -33,6 +33,8 @@ class CollectionCacheEvictJobListenerTest {
         );
 
         when(counter.getCount()).thenReturn(3L);
+        when(counter.getUpdatedCount()).thenReturn(0L);
+        when(counter.getChangedContentIds()).thenReturn(contentIds);
 
         listener.afterJob(execution(status));
 
@@ -50,6 +52,8 @@ class CollectionCacheEvictJobListenerTest {
         var listener = new CollectionCacheEvictJobListener(counter, publisher);
 
         when(counter.getCount()).thenReturn(0L);
+        when(counter.getUpdatedCount()).thenReturn(0L);
+        when(counter.getChangedContentIds()).thenReturn(List.of());
 
         listener.afterJob(execution(status));
 

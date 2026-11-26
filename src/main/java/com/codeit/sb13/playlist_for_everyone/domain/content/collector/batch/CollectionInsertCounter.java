@@ -15,15 +15,15 @@ public class CollectionInsertCounter {
     private final AtomicLong updatedCount = new AtomicLong();
     private final Set<UUID> changedContentIds = ConcurrentHashMap.newKeySet();
 
-    public void recordInserted() {
-        recordAfterCommit(count);
+    public void recordInserted(UUID contentId) {
+        recordAfterCommit(count, contentId);
     }
 
-    public void recordUpdated() {
-        recordAfterCommit(updatedCount);
+    public void recordUpdated(UUID contentId) {
+        recordAfterCommit(updatedCount, contentId);
     }
 
-    private void recordAfterCommit(AtomicLong target) {
+    private void recordAfterCommit(AtomicLong target, UUID contentId) {
         if (!TransactionSynchronizationManager.isActualTransactionActive()
                 || !TransactionSynchronizationManager.isSynchronizationActive()) {
             throw new IllegalStateException(
@@ -36,6 +36,7 @@ public class CollectionInsertCounter {
                     @Override
                     public void afterCommit() {
                         target.incrementAndGet();
+                        changedContentIds.add(contentId);
                     }
                 }
         );

@@ -66,6 +66,12 @@ public class ContentIndexService {
         if (contentIds.isEmpty()) {
             return;
         }
+
+        List<ContentDocument> documents = contentIndexReader.readDocuments(contentIds);
+
+        if (!documents.isEmpty()) {
+            contentIndexWriter.saveAll(documents);
+        }
     }
 
     /**

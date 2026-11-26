@@ -111,9 +111,9 @@ public class TmdbBatchConfig {
                         var result = collectionService.saveForBatch(data);
 
                         if (result.inserted()) {
-                            counter.recordInserted();
+                            counter.recordInserted(result.content().getId());
                         } else if (result.updated()) {
-                            counter.recordUpdated();
+                            counter.recordUpdated(result.content().getId());
                         }
                     }
                 })
@@ -160,9 +160,9 @@ public class TmdbBatchConfig {
                         var result = collectionService.saveForBatch(data);
 
                         if (result.inserted()) {
-                            counter.recordInserted();
+                            counter.recordInserted(result.content().getId());
                         } else if (result.updated()) {
-                            counter.recordUpdated();
+                            counter.recordUpdated(result.content().getId());
                         }
                     }
                 })
