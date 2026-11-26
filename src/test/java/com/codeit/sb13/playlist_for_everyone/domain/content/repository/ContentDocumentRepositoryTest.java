@@ -211,6 +211,105 @@ public class ContentDocumentRepositoryTest {
                 );
     }
 
+    @Test
+    @DisplayName("키워드, 유형, 태그 조건을 모두 충족하는 콘텐츠를 조회한다.")
+    void searchContentIds_multipleConditions() {
+        // given
+        ContentDocument document1 = createDocument(
+                ContentType.tvSeries,
+                "너 말고 다른 연애",
+                "KBS 드라마",
+                List.of("로맨스")
+        );
+
+        ContentDocument document2 = createDocument(
+                ContentType.tvSeries,
+                "굿파트너",
+                "SBS 드라마",
+                List.of("로맨스")
+        );
+
+        ContentDocument document3 = createDocument(
+                ContentType.movie,
+                "연애 이야기",
+                "로맨스 영화",
+                List.of("로맨스")
+        );
+
+        ContentDocument document4 = createDocument(
+                ContentType.tvSeries,
+                "연애의 시작",
+                "코미디 드라마",
+                List.of("코미디")
+        );
+        saveDocuments(document1, document2, document3, document4);
+
+        ContentSearchCondition condition = createCondition(
+                        "연애",
+                        ContentType.tvSeries,
+                        List.of("로맨스")
+                );
+
+        // when
+        List<UUID> result = contentDocumentRepository.searchContentIds(condition);
+
+        // then
+        assertThat(result).containsExactly(UUID.fromString(document1.getId()));
+    }
+
+    @Test
+    @DisplayName("검색 조건이 없으면 전체 콘텐츠를 조회한다.")
+    void searchContentIds_noCondition() {
+        // given
+        ContentDocument document1 = createDocument(
+                ContentType.tvSeries,
+                "굿파트너",
+                "SBS 드라마",
+                List.of("법정")
+        );
+
+        ContentDocument document2 = createDocument(
+                ContentType.movie,
+                "인터스텔라",
+                "우주 탐험 영화",
+                List.of("SF")
+        );
+        saveDocuments(document1, document2);
+
+        ContentSearchCondition condition = createCondition(null, null, null);
+
+        // when
+        List<UUID> result = contentDocumentRepository.searchContentIds(condition);
+
+        // then
+        assertThat(result)
+                .containsExactlyInAnyOrder(
+                        UUID.fromString(document1.getId()),
+                        UUID.fromString(document2.getId())
+                );
+    }
+
+    @Test
+    @DisplayName("검색 조건에 일치하는 콘텐츠가 없으면 빈 목록을 반환한다.")
+    void searchContentIds_noResult() {
+        // given
+        ContentDocument document = createDocument(
+                ContentType.tvSeries,
+                "굿파트너",
+                "SBS 드라마",
+                List.of("법정")
+        );
+        saveDocuments(document);
+
+        ContentSearchCondition condition = createCondition("인터스텔라", null, null);
+
+        // when
+        List<UUID> result = contentDocumentRepository.searchContentIds(condition);
+
+        // then
+        assertThat(result).isEmpty();
+    }
+
     private ContentDocument createDocument (
             ContentType type,
             String title,
