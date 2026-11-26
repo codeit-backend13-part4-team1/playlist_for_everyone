@@ -1,4 +1,4 @@
-package com.codeit.sb13.playlist_for_everyone.domain.content.repository;
+package com.codeit.sb13.playlist_for_everyone.domain.content.repository.elasticsearch;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.document.ContentDocument;
 import org.springframework.data.elasticsearch.repository.ElasticsearchRepository;

@@ -1,7 +1,7 @@
-package com.codeit.sb13.playlist_for_everyone.domain.content.service;
+package com.codeit.sb13.playlist_for_everyone.domain.content.service.elasticsearch;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.document.ContentDocument;
-import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentDocumentRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.content.repository.elasticsearch.ContentDocumentRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;

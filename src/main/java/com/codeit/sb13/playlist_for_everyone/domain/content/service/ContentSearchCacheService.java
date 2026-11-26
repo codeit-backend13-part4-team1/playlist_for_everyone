@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.content.service;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.condition.ContentSearchCondition;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentResult;
+import com.codeit.sb13.playlist_for_everyone.domain.content.service.elasticsearch.ContentSearchQueryService;
 import com.codeit.sb13.playlist_for_everyone.global.config.CacheConfig;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import org.springframework.cache.annotation.Cacheable;

@@ -2,7 +2,9 @@ package com.codeit.sb13.playlist_for_everyone.domain.content.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.document.ContentDocument;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
-import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentDocumentRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.content.repository.elasticsearch.ContentDocumentRepository;
+import com.codeit.sb13.playlist_for_everyone.domain.content.service.elasticsearch.ContentIndexReader;
+import com.codeit.sb13.playlist_for_everyone.domain.content.service.elasticsearch.ContentIndexService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

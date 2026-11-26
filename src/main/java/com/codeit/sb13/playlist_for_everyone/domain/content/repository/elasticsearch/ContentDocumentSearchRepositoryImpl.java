@@ -1,4 +1,4 @@
-package com.codeit.sb13.playlist_for_everyone.domain.content.repository;
+package com.codeit.sb13.playlist_for_everyone.domain.content.repository.elasticsearch;
 
 import co.elastic.clients.elasticsearch._types.FieldValue;
 import co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery;

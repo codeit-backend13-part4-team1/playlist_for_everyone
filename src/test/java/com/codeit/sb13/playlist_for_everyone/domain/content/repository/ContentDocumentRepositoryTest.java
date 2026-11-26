@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.content.repository;
 import com.codeit.sb13.playlist_for_everyone.domain.content.document.ContentDocument;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.condition.ContentSearchCondition;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
+import com.codeit.sb13.playlist_for_everyone.domain.content.repository.elasticsearch.ContentDocumentRepository;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;

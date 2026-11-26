@@ -1,4 +1,4 @@
-package com.codeit.sb13.playlist_for_everyone.domain.content.repository;
+package com.codeit.sb13.playlist_for_everyone.domain.content.repository.elasticsearch;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.condition.ContentSearchCondition;
 
