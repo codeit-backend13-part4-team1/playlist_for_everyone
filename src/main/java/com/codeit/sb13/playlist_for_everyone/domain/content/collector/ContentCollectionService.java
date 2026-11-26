@@ -82,6 +82,12 @@ public class ContentCollectionService {
                 .orElse(null);
 
         if (existing != null) {
+            existing.update(data.title(), data.description(), tags);
+            existing.updateThumbnail(
+                    data.thumbnailUrl(),
+                    existing.getFileInfo()
+            );
+
             return new ContentCollectionResult(existing, false);
         }
 
