@@ -1,19 +1,19 @@
 package com.codeit.sb13.playlist_for_everyone.global.config;
 
+import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.global.sse.config.SseRetryProperties;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.LoginSession;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.impl.InMemorySseEmitterRepository;
-import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseConnectionCloser;
-import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseDeliveryCoordinator;
-import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseHeartbeatDispatcher;
-import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseRecoveryService;
+import com.codeit.sb13.playlist_for_everyone.global.sse.scheduler.SseHeartbeatScheduler;
+import com.codeit.sb13.playlist_for_everyone.global.sse.service.*;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -26,11 +26,7 @@ import java.util.concurrent.TimeUnit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.*;
 
 @DisplayName("SSE 하트비트 전용 실행기")
 class SseHeartbeatConfigTest {
@@ -147,6 +143,77 @@ class SseHeartbeatConfigTest {
             } finally {
                 releaseWorkers.countDown();
             }
+        });
+    }
+
+    @Test
+    @DisplayName("다음 세션 조회가 실패해도 포화로 거절된 연결 종료를 재시도한다.")
+    void retriesRejectedClosureBeforeHeartbeatsWhenSessionLookupFails(){
+        contextRunner.run(context -> {
+            assertThat(context).hasNotFailed();
+            SseHeartbeatDispatcher dispatcher = context.getBean(SseHeartbeatDispatcher.class);
+
+            ThreadPoolTaskExecutor executor = context.getBean("sseHeartbeatTaskExecutor", ThreadPoolTaskExecutor.class);
+
+            CountDownLatch firstTwoStarted = new CountDownLatch(2);
+            CountDownLatch queuedStarted = new CountDownLatch(1);
+            CountDownLatch releaseFirst = new CountDownLatch(1);
+            CountDownLatch releaseRemaining = new CountDownLatch(1);
+
+            Connection first = register(mock(SseEmitter.class), firstTwoStarted, releaseFirst);
+            Connection second = register(mock(SseEmitter.class), firstTwoStarted, releaseRemaining);
+            Connection queued = register(mock(SseEmitter.class), queuedStarted, releaseRemaining);
+
+            UUID revokedUserId = UUID.randomUUID();
+            LoginSession revokedSession = new LoginSession(UUID.randomUUID());
+            Connection revokedConnection = Connection.create();
+            SseEmitter revokedEmitter = mock(SseEmitter.class);
+            coordinator.register(revokedUserId, revokedConnection, revokedEmitter, revokedSession);
+            UserSessionRepository sessions = mock(UserSessionRepository.class);
+            when(sessions.isCurrent(userId, loginSession.id())).thenReturn(true);
+            when(sessions.isCurrent(revokedUserId, revokedSession.id()))
+                    .thenReturn(false)
+                    .thenThrow(new QueryTimeoutException("테스트용 Redis 조회 시간 초과"));
+
+            SseDeliveryService deliveryService = new SseDeliveryService(repository, coordinator, sessions, dispatcher);
+            SseHeartbeatScheduler scheduler = new SseHeartbeatScheduler(deliveryService);
+
+            try {
+                dispatcher.submit(userId, first);
+                dispatcher.submit(userId, second);
+                assertThat(firstTwoStarted.await(5, TimeUnit.SECONDS)).isTrue();
+
+                dispatcher.submit(userId, queued);
+                assertThat(executor.getQueueSize()).isEqualTo(1);
+
+                deliveryService.revalidateLocalSessions();
+                verify(sessions).isCurrent(revokedUserId, revokedSession.id());
+                verify(revokedEmitter, never()).complete();
+
+                assertThat(repository.findByUserIdAndConnection(revokedUserId, revokedConnection))
+                        .containsSame(revokedEmitter);
+
+                releaseFirst.countDown();
+                assertThat(queuedStarted.await(5, TimeUnit.SECONDS)).isTrue();
+                assertThat(executor.getActiveCount()).isEqualTo(2);
+                assertThat(executor.getQueueSize()).isZero();
+
+                scheduler.sendHeartbeat();
+                verify(sessions, times(2))
+                        .isCurrent(revokedUserId, revokedSession.id());
+
+                releaseRemaining.countDown();
+                await().atMost(Duration.ofSeconds(5))
+                        .untilAsserted(() ->
+                                assertThat(repository.findByUserIdAndConnection(revokedUserId, revokedConnection))
+                                        .as("이미 폐기를 확인한 연결은 다음 Redis 조회가 실패해도 종료된다.")
+                                        .isEmpty());
+                verify(revokedEmitter).complete();
+            } finally {
+                releaseFirst.countDown();
+                releaseRemaining.countDown();
+            }
+
         });
     }
 
