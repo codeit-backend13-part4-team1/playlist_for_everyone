@@ -8,9 +8,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Slice;
 import org.springframework.data.domain.SliceImpl;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -50,6 +52,17 @@ public class ContentIndexReader {
                 pageable,
                 ids.hasNext()
         );
+    }
+
+    /**
+     * Elasticsearch 단건 인덱싱에 필요한 콘텐츠 데이터를 조회한다.
+     *
+     * 콘텐츠 및 연관 태그를 조회하고 트랜잭션 내부에서
+     * ContentDocument로 변환하여 반환한다.
+     */
+    @Transactional(readOnly = true)
+    public Optional<ContentDocument> readDocument(UUID contentId) {
+        return null;
     }
 
 }

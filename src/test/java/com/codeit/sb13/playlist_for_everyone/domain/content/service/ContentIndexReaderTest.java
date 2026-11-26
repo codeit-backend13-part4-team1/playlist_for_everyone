@@ -139,4 +139,54 @@ public class ContentIndexReaderTest {
                 .isEqualTo(PageRequest.of(1, 1));
     }
 
+    @Test
+    @DisplayName("콘텐츠 ID로 조회하면 ContentDocument를 반환한다.")
+    void readDocument_findById() {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        Content content = Content.createAdminContent(
+                ContentType.tvSeries,
+                "굿파트너2",
+                "장나라, 김혜윤 주연",
+                null
+        );
+
+        ContentDocument document = ContentDocument.builder()
+                .id(contentId.toString())
+                .title("굿파트너2")
+                .build();
+
+        given(contentRepository.findAllByIds(List.of(contentId)))
+                .willReturn(List.of(content));
+        given(contentDocumentMapper.toContentDocument(content))
+                .willReturn(document);
+
+        // when
+        var result = contentIndexReader.readDocument(contentId);
+
+        // then
+        assertThat(result).isPresent();
+        assertThat(result.get()).isEqualTo(document);
+
+        verify(contentRepository).findAllByIds(List.of(contentId));
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 콘텐츠 ID로 조회하면 빈 Optional을 반환한다.")
+    void readDocument_notFound() {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        given(contentRepository.findAllByIds(List.of(contentId))).willReturn(List.of());
+
+        // when
+        var result = contentIndexReader.readDocument(contentId);
+
+        // then
+        assertThat(result).isEmpty();
+
+        verify(contentRepository).findAllByIds(List.of(contentId));
+    }
+
 }
