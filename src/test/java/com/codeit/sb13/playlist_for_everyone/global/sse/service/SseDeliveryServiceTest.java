@@ -292,6 +292,35 @@ class SseDeliveryServiceTest {
     }
 
     @Test
+    @DisplayName("보류된 종료 요청을 먼저 처리하고 주기마다 하트비트 제출 시작점을 바꾼다.")
+    void rotatesHeartbeatSubmissionOrderAcrossTicks() {
+        UUID otherUserId = UUID.randomUUID();
+        Connection otherConnection = Connection.create();
+
+        Map<UUID, Map<Connection, SseEmitter>> connectionsByUser = new LinkedHashMap<>();
+        connectionsByUser.put(receiverId, Map.of(connection, mock(SseEmitter.class)));
+        connectionsByUser.put(otherUserId, Map.of(otherConnection, mock(SseEmitter.class)));
+        when(repository.findAll()).thenReturn(connectionsByUser);
+
+        SseHeartbeatDispatcher dispatcher = mock(SseHeartbeatDispatcher.class);
+        SseDeliveryService localService = new SseDeliveryService(
+                repository, deliveryCoordinator, userSessionRepository, dispatcher);
+
+        localService.sendHeartbeatToLocalConnections();
+        localService.sendHeartbeatToLocalConnections();
+
+        InOrder order = inOrder(dispatcher);
+        order.verify(dispatcher).retryPendingClosures();
+        order.verify(dispatcher).submit(receiverId, connection);
+        order.verify(dispatcher).submit(otherUserId, otherConnection);
+
+        order.verify(dispatcher).retryPendingClosures();
+        order.verify(dispatcher).submit(otherUserId, otherConnection);
+        order.verify(dispatcher).submit(receiverId, connection);
+        verifyNoMoreInteractions(dispatcher);
+    }
+
+    @Test
     @DisplayName("등록된 연결이 없으면 하트비트 전송은 예외나 연결 삭제 요청 없이 종료한다.")
     void sendHeartbeatWithoutConnectionsDoesNotFail(){
         when(repository.findAll()).thenReturn(Map.of());
