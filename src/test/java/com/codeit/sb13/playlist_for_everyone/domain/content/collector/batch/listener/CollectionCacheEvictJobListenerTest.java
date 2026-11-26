@@ -27,7 +27,7 @@ class CollectionCacheEvictJobListenerTest {
 
         listener.afterJob(execution(status));
 
-        verify(publisher).publishEvent(new ContentCollectionFinishedEvent(3L));
+        verify(publisher).publishEvent(new ContentCollectionFinishedEvent(3L, 0L));
         verifyNoMoreInteractions(publisher);
     }
 

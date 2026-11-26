@@ -23,10 +23,10 @@ public class ContentSearchCacheEvictListener {
         clearSearchCache();
     }
 
-    /** 배치에서 커밋된 신규 콘텐츠가 있으면 캐시 삭제 */
+    /** 배치에서 커밋된 신규 저장 또는 갱신이 있으면 캐시 삭제 */
     @EventListener
     public void evictAfterCollection(ContentCollectionFinishedEvent event) {
-        if (event.insertedCount() > 0) {
+        if (event.changed()) {
             clearSearchCache();
         }
     }

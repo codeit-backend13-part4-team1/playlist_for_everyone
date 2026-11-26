@@ -15,12 +15,13 @@ public class CollectionCacheEvictJobListener implements JobExecutionListener {
 
     @Override
     public void afterJob(JobExecution jobExecution) {
-        long insertedCount = counter.getCount();
+        var event = new ContentCollectionFinishedEvent(
+                counter.getCount(),
+                counter.getUpdatedCount()
+        );
 
-        if (insertedCount > 0) {
-            eventPublisher.publishEvent(
-                    new ContentCollectionFinishedEvent(insertedCount)
-            );
+        if (event.changed()) {
+            eventPublisher.publishEvent(event);
         }
     }
 }

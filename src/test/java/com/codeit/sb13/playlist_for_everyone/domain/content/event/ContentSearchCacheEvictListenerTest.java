@@ -50,19 +50,19 @@ class ContentSearchCacheEvictListenerTest {
                 .withBean(CacheManager.class, () -> cacheManager)
                 .withUserConfiguration(ContentSearchCacheEvictListener.class)
                 .run(context -> {
-                    context.publishEvent(new ContentCollectionFinishedEvent(3L));
+                    context.publishEvent(new ContentCollectionFinishedEvent(3L, 0L));
 
                     verify(cache).clear();
                 });
     }
 
     @Test
-    void 배치에서_신규_저장한_콘텐츠가_없으면_캐시를_삭제하지_않는다() {
+    void 배치에서_신규_저장과_갱신이_없으면_캐시를_삭제하지_않는다() {
         new ApplicationContextRunner()
                 .withBean(CacheManager.class, () -> cacheManager)
                 .withUserConfiguration(ContentSearchCacheEvictListener.class)
                 .run(context -> {
-                    context.publishEvent(new ContentCollectionFinishedEvent(0L));
+                    context.publishEvent(new ContentCollectionFinishedEvent(0L, 0L));
 
                     verifyNoInteractions(cacheManager, cache);
                 });
