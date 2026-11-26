@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.Conten
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.exception.CollectedContentValidationException;
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.CollectedContentData;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
+import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentTag;
 import com.codeit.sb13.playlist_for_everyone.domain.content.event.ContentSearchCacheEvictEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import lombok.RequiredArgsConstructor;
@@ -13,8 +14,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -33,7 +37,7 @@ public class ContentCollectionService {
     public Content save(CollectedContentData data) {
         ContentCollectionResult result = saveContent(data);
 
-        if (result.inserted()) {
+        if (result.changed()) {
             eventPublisher.publishEvent(new ContentSearchCacheEvictEvent());
         }
 
@@ -82,7 +86,7 @@ public class ContentCollectionService {
                 .orElse(null);
 
         if (existing != null) {
-            return new ContentCollectionResult(existing, false);
+            return updateExistingContent(existing, data, tags);
         }
 
         int inserted = contentRepository.insertIfAbsent(
@@ -108,8 +112,36 @@ public class ContentCollectionService {
 
         if (inserted == 1) {
             tags.forEach(saved::addTag);
+            return new ContentCollectionResult(saved, true, false);
         }
 
-        return new ContentCollectionResult(saved, inserted == 1);
+        return updateExistingContent(saved, data, tags);
+    }
+
+    private ContentCollectionResult updateExistingContent(
+            Content existing,
+            CollectedContentData data,
+            List<String> tags
+    ) {
+        var existingTags = existing.getTags().stream()
+                .map(ContentTag::getTag)
+                .collect(Collectors.toSet());
+
+        boolean updated = !Objects.equals(existing.getTitle(), data.title())
+                || !Objects.equals(existing.getDescription(), data.description())
+                || !Objects.equals(existing.getThumbnailUrl(), data.thumbnailUrl())
+                || !existingTags.equals(new HashSet<>(tags));
+
+        if (updated) {
+            existing.update(data.title(), data.description(), tags);
+            // API 썸네일 URL은 갱신하되, 관리자가 업로드한 이미지는 유지한다.
+            // 업로드 이미지가 있으면 콘텐츠 조회 시 해당 이미지를 우선 사용한다.
+            existing.updateThumbnail(
+                    data.thumbnailUrl(),
+                    existing.getFileInfo()
+            );
+        }
+
+        return new ContentCollectionResult(existing, false, updated);
     }
 }

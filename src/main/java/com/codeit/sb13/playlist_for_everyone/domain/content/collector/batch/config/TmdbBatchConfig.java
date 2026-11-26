@@ -112,6 +112,8 @@ public class TmdbBatchConfig {
 
                         if (result.inserted()) {
                             counter.recordInserted();
+                        } else if (result.updated()) {
+                            counter.recordUpdated();
                         }
                     }
                 })
@@ -159,6 +161,8 @@ public class TmdbBatchConfig {
 
                         if (result.inserted()) {
                             counter.recordInserted();
+                        } else if (result.updated()) {
+                            counter.recordUpdated();
                         }
                     }
                 })
