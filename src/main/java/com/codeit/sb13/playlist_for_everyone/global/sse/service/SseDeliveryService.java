@@ -75,6 +75,7 @@ public class SseDeliveryService {
      * 상대방의 응답을 받는 ping/pong 방식이 아니므로 브라우저 종료를 즉시 확정하는 기능은 아니다.
      */
     public void sendHeartbeatToLocalConnections(){
+        heartbeatDispatcher.retryPendingClosures();
         sseEmitterRepository.findAll()
                 .forEach((userId, connections) ->
                         connections.keySet()

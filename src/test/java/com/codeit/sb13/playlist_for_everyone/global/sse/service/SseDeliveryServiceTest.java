@@ -80,7 +80,8 @@ class SseDeliveryServiceTest {
     private SseDeliveryService createServiceWithSynchronousHeartbeat(SseEmitterRepository emitterRepository) {
         SseHeartbeatWorker worker = new SseHeartbeatWorker(emitterRepository, deliveryCoordinator);
         return new SseDeliveryService(
-                emitterRepository, deliveryCoordinator, userSessionRepository, new SseHeartbeatDispatcher(worker));
+                emitterRepository, deliveryCoordinator, userSessionRepository,
+                new SseHeartbeatDispatcher(worker, emitterRepository));
     }
 
     private void stubHeartbeatConnections(Map<UUID, Map<Connection, SseEmitter>> connectionsByUser) {

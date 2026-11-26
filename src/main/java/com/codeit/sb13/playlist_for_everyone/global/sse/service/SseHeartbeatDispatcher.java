@@ -1,10 +1,12 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.service;
 
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
+import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.RejectedExecutionException;
@@ -14,6 +16,7 @@ import java.util.concurrent.RejectedExecutionException;
 public class SseHeartbeatDispatcher {
 
     private final SseHeartbeatWorker heartbeatWorker;
+    private final SseEmitterRepository repository;
     private final Object workLock = new Object();
     private final Map<ConnectionKey, ConnectionWork> submittedConnections = new HashMap<>();
 
@@ -23,6 +26,36 @@ public class SseHeartbeatDispatcher {
 
     public void requestClose(UUID userId, Connection connection) {
         enqueue(new ConnectionKey(userId, connection), true);
+    }
+
+    public void retryPendingClosures() {
+        List<Map.Entry<ConnectionKey, ConnectionWork>> pending;
+        synchronized (workLock) {
+            pending = submittedConnections.entrySet().stream()
+                    .filter(entry -> !entry.getValue().submitted)
+                    .map(entry -> Map.entry(entry.getKey(), entry.getValue()))
+                    .toList();
+        }
+
+        pending.forEach(entry -> {
+            ConnectionKey key = entry.getKey();
+            ConnectionWork work = entry.getValue();
+
+            boolean registered = repository.findByUserIdAndConnection(key.userId(), key.connection())
+                    .isPresent();
+
+            synchronized (workLock) {
+                if (submittedConnections.get(key) != work || work.submitted) {
+                    return;
+                }
+                if (!registered) {
+                    submittedConnections.remove(key);
+                    return;
+                }
+                work.submitted = true;
+            }
+            submitWork(key, work);
+        });
     }
 
     private void enqueue(ConnectionKey key, boolean closeRequested) {
@@ -39,6 +72,10 @@ public class SseHeartbeatDispatcher {
             submittedConnections.put(key, work);
         }
 
+        submitWork(key, work);
+    }
+
+    private void submitWork(ConnectionKey key, ConnectionWork work) {
         try {
             heartbeatWorker.runAsync(() -> runWork(key, work))
                     .whenComplete((unused, failure) -> {
@@ -49,7 +86,16 @@ public class SseHeartbeatDispatcher {
                     });
         } catch (RejectedExecutionException e) {
             synchronized (workLock) {
-                submittedConnections.remove(key, work);
+                if (submittedConnections.get(key) != work) {
+                    return;
+                }
+
+                if (work.closeRequested) {
+                    work.submitted = false;
+                    return;
+                }
+
+                submittedConnections.remove(key);
             }
         }
     }
@@ -101,6 +147,7 @@ public class SseHeartbeatDispatcher {
     }
 
     private static final class ConnectionWork {
+        private boolean submitted = true;
         private boolean closeRequested;
 
         private ConnectionWork(boolean closeRequested) {

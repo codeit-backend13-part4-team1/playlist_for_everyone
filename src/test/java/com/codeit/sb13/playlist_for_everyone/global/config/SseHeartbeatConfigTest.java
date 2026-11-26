@@ -97,7 +97,6 @@ class SseHeartbeatConfigTest {
                 assertThat(executor.getQueueSize()).isEqualTo(1);
 
                 dispatcher.submit(userId, retried);
-                dispatcher.requestClose(userId, retried);
                 verifyNoInteractions(retriedEmitter);
                 assertThat(executor.getQueueSize()).isEqualTo(1);
 
@@ -214,6 +213,52 @@ class SseHeartbeatConfigTest {
                 releaseRemaining.countDown();
             }
 
+        });
+    }
+
+    @Test
+    @DisplayName("이미 제거된 연결의 보류 종료 요청은 대기열을 사용하지 않는다.")
+    void discardsPendingClosureWhenTheConnectionIsAlreadyGone() {
+        contextRunner.run(context -> {
+            assertThat(context).hasNotFailed();
+            SseHeartbeatDispatcher dispatcher = context.getBean(SseHeartbeatDispatcher.class);
+            ThreadPoolTaskExecutor executor =
+                    context.getBean("sseHeartbeatTaskExecutor", ThreadPoolTaskExecutor.class);
+            CountDownLatch firstTwoStarted = new CountDownLatch(2);
+            CountDownLatch queuedStarted = new CountDownLatch(1);
+            CountDownLatch releaseFirst = new CountDownLatch(1);
+            CountDownLatch releaseRemaining = new CountDownLatch(1);
+
+            Connection first = register(mock(SseEmitter.class), firstTwoStarted, releaseFirst);
+            Connection second = register(mock(SseEmitter.class), firstTwoStarted, releaseRemaining);
+            Connection queued = register(mock(SseEmitter.class), queuedStarted, releaseRemaining);
+            Connection disconnected = Connection.create();
+            SseEmitter disconnectedEmitter = mock(SseEmitter.class);
+            coordinator.register(userId, disconnected, disconnectedEmitter, loginSession);
+
+            try {
+                dispatcher.submit(userId, first);
+                dispatcher.submit(userId, second);
+                assertThat(firstTwoStarted.await(5, TimeUnit.SECONDS)).isTrue();
+                dispatcher.submit(userId, queued);
+                assertThat(executor.getQueueSize()).isEqualTo(1);
+
+                dispatcher.requestClose(userId, disconnected);
+                coordinator.cleanupConnection(userId, disconnected);
+                assertThat(repository.findByUserIdAndConnection(userId, disconnected)).isEmpty();
+
+                releaseFirst.countDown();
+                assertThat(queuedStarted.await(5, TimeUnit.SECONDS)).isTrue();
+                assertThat(executor.getActiveCount()).isEqualTo(2);
+
+                dispatcher.retryPendingClosures();
+
+                assertThat(executor.getQueueSize()).isZero();
+                verifyNoInteractions(disconnectedEmitter);
+            } finally {
+                releaseFirst.countDown();
+                releaseRemaining.countDown();
+            }
         });
     }
 

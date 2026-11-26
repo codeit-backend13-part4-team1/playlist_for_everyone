@@ -37,7 +37,8 @@ public class SseHeartbeatConfig {
     }
 
     @Bean
-    public SseHeartbeatDispatcher sseHeartbeatDispatcher(SseHeartbeatWorker heartbeatWorker) {
-        return new SseHeartbeatDispatcher(heartbeatWorker);
+    public SseHeartbeatDispatcher sseHeartbeatDispatcher(
+            SseHeartbeatWorker heartbeatWorker, SseEmitterRepository repository) {
+        return new SseHeartbeatDispatcher(heartbeatWorker, repository);
     }
 }
