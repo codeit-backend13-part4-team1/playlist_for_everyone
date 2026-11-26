@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.content.repository.elastics
 
 import co.elastic.clients.elasticsearch._types.FieldValue;
 import co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery;
+import co.elastic.clients.elasticsearch._types.query_dsl.TextQueryType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.document.ContentDocument;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.condition.ContentSearchCondition;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
@@ -65,6 +66,7 @@ public class ContentDocumentSearchRepositoryImpl implements ContentDocumentSearc
         boolQuery.must(q -> q.multiMatch(m -> m
                 .fields("title", "description")
                 .query(keyword)
+                .type(TextQueryType.Phrase)
         ));
     }
 
