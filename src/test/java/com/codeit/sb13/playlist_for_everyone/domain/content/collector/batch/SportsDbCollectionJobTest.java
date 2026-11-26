@@ -1160,6 +1160,10 @@ class SportsDbCollectionJobTest {
                 .extracting(ContentCollectionFinishedEvent::insertedCount)
                 .containsExactly(0L);
 
+        assertThat(applicationEvents.stream(ContentCollectionFinishedEvent.class).toList())
+                .extracting(ContentCollectionFinishedEvent::updatedCount)
+                .containsExactly(1L);
+
         assertThat(applicationEvents.stream(ContentSearchCacheEvictEvent.class).count())
                 .isZero();
     }
