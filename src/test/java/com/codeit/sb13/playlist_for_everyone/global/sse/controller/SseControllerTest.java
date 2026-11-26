@@ -16,7 +16,10 @@ import com.codeit.sb13.playlist_for_everyone.global.sse.event.LoginSession;
 import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseConnectionService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -26,11 +29,14 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
@@ -252,6 +258,70 @@ class SseControllerTest {
                     .andExpect(status().isOk())
                     .andExpect(request().asyncNotStarted());
             verify(sseConnectionService).connect(userId, null, loginSession);
+        } finally {
+            emitter.complete();
+        }
+    }
+
+    @Test
+    @ExtendWith(OutputCaptureExtension.class)
+    void disconnectDoesNotLogServerErrorOrWriteErrorBody(CapturedOutput output) throws Exception {
+        dispatchStreamWriteFailure(new IOException("Broken pipe"));
+
+        assertThat(output.getAll()).doesNotContain(
+                "처리되지 않은 서버 오류가 발생했습니다.",
+                "Failure in @ExceptionHandler");
+    }
+
+    @Test
+    @ExtendWith(OutputCaptureExtension.class)
+    void unexpectedWriteFailureIsLoggedWithoutWritingErrorBody(CapturedOutput output) throws Exception {
+        dispatchStreamWriteFailure(new IOException("simulated write failure"));
+
+        assertThat(output.getAll())
+                .contains("SSE 응답 쓰기 중 예상하지 못한 오류가 발생했습니다.", "simulated write failure")
+                .doesNotContain("Failure in @ExceptionHandler");
+    }
+
+    private void dispatchStreamWriteFailure(IOException cause) throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID loginSessionId = UUID.randomUUID();
+        String token = "sse-test-token";
+
+        User user = mock(User.class);
+        given(user.getId()).willReturn(userId);
+        given(user.getEmail()).willReturn("sse-test@example.com");
+        given(user.getRole()).willReturn(Role.USER);
+        given(user.isLocked()).willReturn(false);
+        given(jwtTokenProvider.parseAccess(token))
+                .willReturn(new AccessTokenClaims(userId, loginSessionId));
+        given(userSessionRepository.isCurrent(userId, loginSessionId)).willReturn(true);
+        given(userService.getById(userId)).willReturn(user);
+
+        SseEmitter emitter = new SseEmitter(30_000L);
+        emitter.send(SseEmitter.event().comment("connected"));
+        given(sseConnectionService.connect(userId, null, new LoginSession(loginSessionId)))
+                .willReturn(emitter);
+
+        try {
+            MvcResult result = mockMvc.perform(get("/api/sse")
+                            .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                            .accept(MediaType.TEXT_EVENT_STREAM))
+                    .andExpect(status().isOk())
+                    .andExpect(request().asyncStarted())
+                    .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
+                    .andExpect(content().string(containsString(":connected")))
+                    .andReturn();
+
+            assertThat(result.getResponse().isCommitted()).isTrue();
+            byte[] streamBody = result.getResponse().getContentAsByteArray();
+
+            emitter.completeWithError(new AsyncRequestNotUsableException(
+                    "Servlet response write failed", cause));
+
+            mockMvc.perform(asyncDispatch(result))
+                    .andExpect(status().isOk())
+                    .andExpect(content().bytes(streamBody));
         } finally {
             emitter.complete();
         }
