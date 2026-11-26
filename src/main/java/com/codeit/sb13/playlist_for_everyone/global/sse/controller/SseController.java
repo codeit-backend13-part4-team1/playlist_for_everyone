@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.auth.security.SecurityUser;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.ApiErrorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.LoginSession;
 import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseConnectionService;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
@@ -15,6 +16,8 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
+import org.springframework.web.util.DisconnectedClientHelper;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.Map;
@@ -53,6 +56,20 @@ public class SseController {
 
     }
 
+
+    // Spring MVC는 응답 인자를 해석할 때 요청을 처리 완료로 표시한다.
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public void handleUnusableAsyncResponse(
+            AsyncRequestNotUsableException failure,
+            HttpServletResponse response
+    ) {
+        if (DisconnectedClientHelper.isClientDisconnectedException(failure.getCause())) {
+            log.debug("SSE 클라이언트 연결이 종료되었습니다.");
+            return;
+        }
+
+        log.warn("SSE 응답 쓰기 중 예상하지 못한 오류가 발생했습니다.", failure);
+    }
 
     /**
      * 로그인 세션 재검증과 초기 이력 복구 중 발생한 일시적 조회 실패를 503 JSON 응답으로 변환한다.
