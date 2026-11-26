@@ -11,6 +11,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.event.ContentSearchC
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
+import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -712,6 +713,54 @@ class ContentCollectionServiceTest {
         assertThat(tags).containsExactlyInAnyOrder("Soccer", "English Premier League");
 
         server.verify();
+    }
+
+    //
+    @Test
+    void 재수집해도_관리자_업로드_이미지는_유지한다() {
+        var original = new CollectedContentData(
+                ContentType.movie, "기존 제목", "영화 설명",
+                "https://example.com/old.jpg", ContentSource.TMDB, "550",
+                List.of("액션")
+        );
+
+        Content saved = service.save(original);
+
+        var fileInfo = FileInfo.createS3File(
+                "test/admin-thumbnail.jpg",
+                "admin-thumbnail.jpg",
+                "image/jpeg",
+                100L
+        );
+        em.persist(fileInfo);
+
+        saved.updateThumbnail(null, fileInfo);
+
+        var contentId = saved.getId();
+        var fileId = fileInfo.getId();
+
+        em.flush();
+        em.clear();
+
+        var recollected = new CollectedContentData(
+                ContentType.movie, "변경된 제목", "영화 설명",
+                "https://example.com/new.jpg", ContentSource.TMDB, "550",
+                List.of("액션")
+        );
+
+        service.save(recollected);
+
+        em.flush();
+        em.clear();
+
+        Content updated = em.find(Content.class, contentId);
+
+        assertThat(updated.getTitle()).isEqualTo("변경된 제목");
+        assertThat(updated.getThumbnailUrl())
+                .isEqualTo("https://example.com/new.jpg");
+        assertThat(updated.getFileInfo()).isNotNull();
+        assertThat(updated.getFileInfo().getId()).isEqualTo(fileId);
+        assertThat(em.find(FileInfo.class, fileId)).isNotNull();
     }
 
 }

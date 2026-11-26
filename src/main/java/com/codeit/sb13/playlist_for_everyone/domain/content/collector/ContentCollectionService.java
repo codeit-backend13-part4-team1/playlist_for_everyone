@@ -134,6 +134,8 @@ public class ContentCollectionService {
 
         if (updated) {
             existing.update(data.title(), data.description(), tags);
+            // API 썸네일 URL은 갱신하되, 관리자가 업로드한 이미지는 유지한다.
+            // 업로드 이미지가 있으면 콘텐츠 조회 시 해당 이미지를 우선 사용한다.
             existing.updateThumbnail(
                     data.thumbnailUrl(),
                     existing.getFileInfo()
