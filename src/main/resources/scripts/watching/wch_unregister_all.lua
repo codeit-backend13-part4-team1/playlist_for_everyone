@@ -309,8 +309,6 @@ if #ARGV < CURSOR then
     return 0
 end
 
-local user_key
-
 for i = CURSOR, #ARGV do
     session_id = ARGV[i]
     pseudo_continue_logic_function(session_id)
