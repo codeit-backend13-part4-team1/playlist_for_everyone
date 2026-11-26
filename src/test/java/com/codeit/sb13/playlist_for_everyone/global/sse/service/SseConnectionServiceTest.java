@@ -60,7 +60,9 @@ class SseConnectionServiceTest {
                 Duration.ofSeconds(15),
                 Duration.ofMinutes(30)
         );
-        service = new SseConnectionService(repository, properties, deliveryCoordinator, userSessionRepository);
+        service = new SseConnectionService(
+                repository, properties, deliveryCoordinator, userSessionRepository,
+                mock(SseHeartbeatDispatcher.class));
         lenient().when(userSessionRepository.isCurrent(any(UUID.class), eq(loginSession.id()))).thenReturn(true);
     }
 
@@ -109,8 +111,9 @@ class SseConnectionServiceTest {
                 Duration.ofSeconds(15),
                 connectionTimeout
         );
-        SseConnectionService serviceWithCustomTimeout =
-                new SseConnectionService(repository, properties, deliveryCoordinator, userSessionRepository);
+        SseConnectionService serviceWithCustomTimeout = new SseConnectionService(
+                repository, properties, deliveryCoordinator, userSessionRepository,
+                mock(SseHeartbeatDispatcher.class));
 
         SseEmitter emitter = serviceWithCustomTimeout.connect(UUID.randomUUID(), null, loginSession);
 

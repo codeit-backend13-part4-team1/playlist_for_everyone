@@ -86,7 +86,8 @@ public class SseRetryLifecycleTest {
                 repository,
                 properties,
                 coordinator,
-                userSessionRepository);
+                userSessionRepository,
+                mock(SseHeartbeatDispatcher.class));
         when(userSessionRepository.isCurrent(any(UUID.class), eq(loginSession.id()))).thenReturn(true);
     }
 

@@ -71,7 +71,9 @@ public class SseConnectionLifecycleTest {
         // try 블록을 벗어날 때 context.close가 호출되며 실제 종료 이벤트가 발행된다.
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()){
             context.registerBean(SseConnectionService.class,
-                    ()-> new SseConnectionService(repository, properties, deliveryCoordinator, userSessionRepository));
+                    () -> new SseConnectionService(
+                            repository, properties, deliveryCoordinator, userSessionRepository,
+                            mock(SseHeartbeatDispatcher.class)));
 
             context.refresh();
             verify(emitter, never()).complete();
@@ -107,7 +109,9 @@ public class SseConnectionLifecycleTest {
 
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()){
             context.registerBean(SseConnectionService.class,
-                    ()-> new SseConnectionService(repository, properties, deliveryCoordinator, userSessionRepository));
+                    () -> new SseConnectionService(
+                            repository, properties, deliveryCoordinator, userSessionRepository,
+                            mock(SseHeartbeatDispatcher.class)));
             context.registerBean("testLifecycle", Lifecycle.class, () -> lifecycle);
             context.refresh();
 

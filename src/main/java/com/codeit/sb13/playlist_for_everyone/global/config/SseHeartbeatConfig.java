@@ -5,6 +5,7 @@ import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRep
 import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseDeliveryCoordinator;
 import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseHeartbeatDispatcher;
 import com.codeit.sb13.playlist_for_everyone.global.sse.service.SseHeartbeatWorker;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -38,7 +39,13 @@ public class SseHeartbeatConfig {
 
     @Bean
     public SseHeartbeatDispatcher sseHeartbeatDispatcher(
-            SseHeartbeatWorker heartbeatWorker, SseEmitterRepository repository) {
-        return new SseHeartbeatDispatcher(heartbeatWorker, repository);
+            SseHeartbeatWorker heartbeatWorker,
+            SseEmitterRepository repository,
+            @Qualifier("sseHeartbeatTaskExecutor")
+            ThreadPoolTaskExecutor heartbeatExecutor) {
+        return new SseHeartbeatDispatcher(
+                heartbeatWorker,
+                repository,
+                heartbeatExecutor);
     }
 }

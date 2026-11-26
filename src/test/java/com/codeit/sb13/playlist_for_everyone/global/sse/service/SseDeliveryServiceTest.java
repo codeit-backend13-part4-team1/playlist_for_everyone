@@ -21,6 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.dao.QueryTimeoutException;
 import org.springframework.scheduling.TaskScheduler;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
@@ -81,7 +82,7 @@ class SseDeliveryServiceTest {
         SseHeartbeatWorker worker = new SseHeartbeatWorker(emitterRepository, deliveryCoordinator);
         return new SseDeliveryService(
                 emitterRepository, deliveryCoordinator, userSessionRepository,
-                new SseHeartbeatDispatcher(worker, emitterRepository));
+                new SseHeartbeatDispatcher(worker, emitterRepository, mock(ThreadPoolTaskExecutor.class)));
     }
 
     private void stubHeartbeatConnections(Map<UUID, Map<Connection, SseEmitter>> connectionsByUser) {

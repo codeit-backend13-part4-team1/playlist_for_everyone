@@ -1,14 +1,13 @@
 package com.codeit.sb13.playlist_for_everyone.global.sse.service;
 
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
+import com.codeit.sb13.playlist_for_everyone.global.sse.event.ConnectionKey;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.RejectedExecutionException;
 
 @RequiredArgsConstructor
@@ -19,6 +18,8 @@ public class SseHeartbeatDispatcher {
     private final SseEmitterRepository repository;
     private final Object workLock = new Object();
     private final Map<ConnectionKey, ConnectionWork> submittedConnections = new HashMap<>();
+    private boolean shuttingDown;
+    private final ThreadPoolTaskExecutor heartbeatExecutor;
 
     public void submit(UUID userId, Connection connection) {
         enqueue(new ConnectionKey(userId, connection), false);
@@ -28,9 +29,26 @@ public class SseHeartbeatDispatcher {
         enqueue(new ConnectionKey(userId, connection), true);
     }
 
+    public Set<ConnectionKey> shutdown(){
+        Set<ConnectionKey> runningConnections;
+
+        synchronized (workLock){
+            shuttingDown = true;
+            submittedConnections.entrySet()
+                    .removeIf(entry -> !entry.getValue().running);
+
+            runningConnections =  Set.copyOf(submittedConnections.keySet());
+        }
+        heartbeatExecutor.shutdown();
+        return runningConnections;
+    }
+
     public void retryPendingClosures() {
         List<Map.Entry<ConnectionKey, ConnectionWork>> pending;
         synchronized (workLock) {
+            if (shuttingDown) {
+                return;
+            }
             pending = submittedConnections.entrySet().stream()
                     .filter(entry -> !entry.getValue().submitted)
                     .map(entry -> Map.entry(entry.getKey(), entry.getValue()))
@@ -45,7 +63,7 @@ public class SseHeartbeatDispatcher {
                     .isPresent();
 
             synchronized (workLock) {
-                if (submittedConnections.get(key) != work || work.submitted) {
+                if (shuttingDown || submittedConnections.get(key) != work || work.submitted) {
                     return;
                 }
                 if (!registered) {
@@ -61,6 +79,10 @@ public class SseHeartbeatDispatcher {
     private void enqueue(ConnectionKey key, boolean closeRequested) {
         ConnectionWork work;
         synchronized (workLock) {
+            if (shuttingDown){
+                return;
+            }
+
             ConnectionWork existing = submittedConnections.get(key);
             if (existing != null) {
                 if (closeRequested) {
@@ -103,9 +125,10 @@ public class SseHeartbeatDispatcher {
     private void runWork(ConnectionKey key, ConnectionWork work) {
         boolean closeFirst;
         synchronized (workLock) {
-            if (submittedConnections.get(key) != work) {
+            if (shuttingDown || submittedConnections.get(key) != work) {
                 return;
             }
+            work.running = true;
             closeFirst = work.closeRequested;
         }
         if (closeFirst) {
@@ -124,7 +147,7 @@ public class SseHeartbeatDispatcher {
 
     private boolean finishSendAndCheckForClose(ConnectionKey key, ConnectionWork work) {
         synchronized (workLock) {
-            if (work.closeRequested) {
+            if (!shuttingDown && work.closeRequested) {
                 return true;
             }
 
@@ -143,12 +166,10 @@ public class SseHeartbeatDispatcher {
         }
     }
 
-    private record ConnectionKey(UUID userId, Connection connection) {
-    }
-
     private static final class ConnectionWork {
         private boolean submitted = true;
         private boolean closeRequested;
+        private boolean running;
 
         private ConnectionWork(boolean closeRequested) {
             this.closeRequested = closeRequested;

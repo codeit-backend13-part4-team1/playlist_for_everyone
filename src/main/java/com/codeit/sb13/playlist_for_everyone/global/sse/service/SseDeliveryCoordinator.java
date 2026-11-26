@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.global.sse.service;
 
 import com.codeit.sb13.playlist_for_everyone.global.sse.config.SseRetryProperties;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
+import com.codeit.sb13.playlist_for_everyone.global.sse.event.ConnectionKey;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.LoginSession;
 import com.codeit.sb13.playlist_for_everyone.global.sse.history.SseHistoryPosition;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
@@ -280,13 +281,6 @@ public class SseDeliveryCoordinator {
             return emitterRepository.findByUserIdAndConnection(key.userId(), key.connection());
         }
         return detachState(key, state);
-    }
-
-    private record ConnectionKey(
-            UUID userId,
-            Connection connection
-    ){
-
     }
 
     /** 이력 목록을 캐시하지 않는 연결 단위 상태. pendingDelivery는 개수가 아니라 재조회 필요 여부다. */
