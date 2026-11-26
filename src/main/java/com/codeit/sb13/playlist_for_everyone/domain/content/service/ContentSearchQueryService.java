@@ -6,6 +6,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.Content
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSearchResult;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
+import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentDocumentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
@@ -13,6 +14,7 @@ import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.v
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.util.Comparator;
 import java.util.List;
@@ -24,6 +26,7 @@ import java.util.UUID;
 public class ContentSearchQueryService {
 
     private final ContentRepository contentRepository;
+    private final ContentDocumentRepository contentDocumentRepository;
     private final ViewingSessionService viewingSessionService;
     private final ContentMapper contentMapper;
 
@@ -31,17 +34,33 @@ public class ContentSearchQueryService {
     public CursorResponse<ContentResult<ContentDto>> search(
             ContentSearchCondition condition
     ) {
-        if ("watcherCount".equals(condition.sortBy())) {
-            return searchByWatcherCount(condition);
+        List<UUID> contentIds = searchContentIds(condition);
+
+        // 검색 조건에 일치하는 콘텐츠가 없는 경우
+        if (contentIds != null && contentIds.isEmpty()) {
+            return new CursorResponse<>(
+                    List.of(),
+                    null,
+                    null,
+                    false,
+                    0L,
+                    condition.sortBy(),
+                    condition.sortDirection()
+            );
         }
 
-        return searchByDatabase(condition);
+        if ("watcherCount".equals(condition.sortBy())) {
+            return searchByWatcherCount(condition, contentIds);
+        }
+
+        return searchByDatabase(condition, contentIds);
     }
 
     private CursorResponse<ContentResult<ContentDto>> searchByDatabase(
-            ContentSearchCondition condition
+            ContentSearchCondition condition,
+            List<UUID> contentIds
     ) {
-        List<ContentSearchResult> results = contentRepository.searchByDatabase(condition);
+        List<ContentSearchResult> results = contentRepository.searchByDatabase(condition, contentIds);
 
         // 다음 페이지 존재 여부 확인
         boolean hasNext = results.size() > condition.limit();
@@ -72,7 +91,7 @@ public class ContentSearchQueryService {
         List<ContentResult<ContentDto>> contents = toContentResults(page, Map.of());
 
         // 전체 검색 결과 개수 조회
-        long totalCount = contentRepository.countBySearchCondition(condition);
+        long totalCount = contentRepository.countBySearchCondition(contentIds);
 
         return new CursorResponse<>(
                 contents,
@@ -86,10 +105,11 @@ public class ContentSearchQueryService {
     }
 
     private CursorResponse<ContentResult<ContentDto>> searchByWatcherCount(
-            ContentSearchCondition condition
+            ContentSearchCondition condition,
+            List<UUID> matchedContentIds
     ) {
         List<ContentSearchResult> results =
-                contentRepository.searchForWatcherCount(condition);
+                contentRepository.searchForWatcherCount(matchedContentIds);
 
         // 전체 검색 결과의 콘텐츠 ID 추출
         List<UUID> contentIds = results.stream()
@@ -178,7 +198,7 @@ public class ContentSearchQueryService {
         List<ContentResult<ContentDto>> contents = toContentResults(page, viewerCounts);
 
         // 전체 검색 결과 개수 조회
-        long totalCount = contentRepository.countBySearchCondition(condition);
+        long totalCount = results.size();
 
         return new CursorResponse<>(
                 contents,
@@ -189,6 +209,26 @@ public class ContentSearchQueryService {
                 condition.sortBy(),
                 condition.sortDirection()
         );
+    }
+
+    // 검색 조건에 일치하는 콘텐츠 ID 조회
+    private List<UUID> searchContentIds(
+            ContentSearchCondition condition
+    ) {
+        // 검색 조건이 없으면 Elasticsearch 조회 생략
+        if (!hasSearchCondition(condition)) {
+            return null;
+        }
+
+        return contentDocumentRepository.searchContentIds(condition);
+    }
+
+    // 키워드, 유형, 태그 검색 조건 존재 여부 확인
+    private boolean hasSearchCondition(ContentSearchCondition condition) {
+        return StringUtils.hasText(condition.keywordLike())
+                || condition.typeEqual() != null
+                || (condition.tagsIn() != null
+                && !condition.tagsIn().isEmpty());
     }
 
     private List<ContentResult<ContentDto>> toContentResults(

@@ -6,6 +6,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.Content
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
+import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentDocumentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.viewing.ViewingSessionService;
@@ -33,6 +34,9 @@ class ContentSearchQueryServiceTest {
 
     @Mock
     private ContentRepository contentRepository;
+
+    @Mock
+    private ContentDocumentRepository contentDocumentRepository;
 
     @Mock
     private ViewingSessionService viewingSessionService;
@@ -84,7 +88,7 @@ class ContentSearchQueryServiceTest {
     @DisplayName("콘텐츠 검색 시 요청한 개수만 반환하고 다음 페이지 커서를 생성한다.")
     void searchContents_returnsCursorPageWithNextCursor() {
         // given
-        given(contentRepository.searchByDatabase(condition))
+        given(contentRepository.searchByDatabase(condition, null))
                 .willReturn(List.of(
                         new ContentSearchResult(content1, 5.0, 2),
                         new ContentSearchResult(content2, 4.5, 3),
@@ -98,6 +102,8 @@ class ContentSearchQueryServiceTest {
         assertThat(result.data()).hasSize(2);
         assertThat(result.hasNext()).isTrue();
         assertThat(result.nextCursor()).isEqualTo("4.5");
+
+        verifyNoInteractions(contentDocumentRepository);
     }
 
     @Test
@@ -110,7 +116,7 @@ class ContentSearchQueryServiceTest {
         queryService.search(condition);
 
         // then
-        verify(contentRepository).searchByDatabase(condition);
+        verify(contentRepository).searchByDatabase(condition, null);
         verifyNoInteractions(viewingSessionService);
     }
 
@@ -124,11 +130,9 @@ class ContentSearchQueryServiceTest {
         queryService.search(condition);
 
         // then
-        verify(contentRepository)
-                .searchForWatcherCount(condition);
-
-        verify(contentRepository).searchForWatcherCount(condition);
-        verify(contentRepository, never()).searchByDatabase(any());
+        verify(contentRepository).searchForWatcherCount(null);
+        verify(contentRepository, never()).searchByDatabase(any(), any());
+        verify(contentRepository, never()).countBySearchCondition(any());
     }
 
     @Test
@@ -137,7 +141,7 @@ class ContentSearchQueryServiceTest {
         // given
         ContentSearchCondition condition = conditionWithSortBy("watcherCount");
 
-        given(contentRepository.searchForWatcherCount(condition))
+        given(contentRepository.searchForWatcherCount(null))
                 .willReturn(List.of(
                         new ContentSearchResult(content1, 5.0, 2),
                         new ContentSearchResult(content2, 4.5, 3),
@@ -171,8 +175,8 @@ class ContentSearchQueryServiceTest {
                 eq(content3), any(), eq(3.0), eq(1), eq(15L)
         );
 
-        verify(contentRepository).searchForWatcherCount(condition);
-        verify(contentRepository, never()).searchByDatabase(any());
+        verify(contentRepository).searchForWatcherCount(null);
+        verify(contentRepository, never()).searchByDatabase(any(), any());
     }
 
     private ContentSearchCondition conditionWithSortBy(String sortBy) {

@@ -90,6 +90,10 @@ public class ContentSearchRepositoryTest {
                 .build();
     }
 
+    private UUID movie1Id;
+    private UUID movie2Id;
+    private UUID sport3Id;
+
     @BeforeEach
     void setUp() {
         Content movie1 = createContent(ContentType.movie, "영화시리즈1", "설명1");
@@ -118,46 +122,34 @@ public class ContentSearchRepositoryTest {
         ).forEach(em::persist);
 
         em.flush();
+
+        movie1Id = movie1.getId();
+        movie2Id = movie2.getId();
+        sport3Id = sport3.getId();
+
         em.clear();
     }
 
     @Test
-    @DisplayName("콘텐츠 타입, 키워드, 태그 조건을 모두 만족하는 콘텐츠를 검색한다")
-    void searchContents_byMultipleConditions() {
+    @DisplayName("전달받은 콘텐츠 ID에 해당하는 콘텐츠만 조회한다.")
+    void searchContents_byContentIds() {
         // given
-        Content movie = createContent(
-                ContentType.movie,
-                "액션시리즈",
-                "액션 영화 설명"
-        );
-        movie.addTag("액션");
-        movie.addTag("스릴러");
-
-        em.persist(movie);
-        em.flush();
-        em.clear();
+        List<UUID> contentIds = List.of(movie1Id, movie2Id);
 
         ContentSearchCondition condition = new ContentSearchCondition(
-                ContentType.movie,
-                "시리즈",
-                List.of("액션"),
-                null,
-                null,
-                10,
-                SortDirection.DESCENDING,
-                "createdAt"
+                null, null, null, null, null,
+                10, SortDirection.DESCENDING, "createdAt"
         );
 
         // when
-        var result = contentRepository.searchByDatabase(condition);
+        var result = contentRepository.searchByDatabase(
+                condition, contentIds
+        );
 
         // then
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).content().getTitle()).isEqualTo("액션시리즈");
-        assertThat(result.get(0).content().getType()).isEqualTo(ContentType.movie);
-        assertThat(result.get(0).content().getTags())
-                .extracting(ContentTag::getTag)
-                .contains("액션");
+        assertThat(result)
+                .extracting(searchResult -> searchResult.content().getId())
+                .containsExactlyInAnyOrder(movie1Id, movie2Id);
     }
 
     @Test
@@ -204,18 +196,18 @@ public class ContentSearchRepositoryTest {
         em.clear();
 
         ContentSearchCondition condition = new ContentSearchCondition(
-                ContentType.movie,
-                "정렬테스트",
-                null,
-                null,
-                null,
-                10,
-                SortDirection.DESCENDING,
-                "createdAt"
+                null, null, null, null, null,
+                10, SortDirection.DESCENDING, "createdAt"
+        );
+
+        List<UUID> contentIds = List.of(
+                oldest.getId(),
+                middle.getId(),
+                latest.getId()
         );
 
         // when
-        var result = contentRepository.searchByDatabase(condition);
+        var result = contentRepository.searchByDatabase(condition, contentIds);
 
         // then
         assertThat(result)
@@ -243,7 +235,7 @@ public class ContentSearchRepositoryTest {
         );
 
         // when
-        var result = contentRepository.searchByDatabase(condition);
+        var result = contentRepository.searchByDatabase(condition, null);
 
         // then
         assertThat(result).hasSize(6);
@@ -264,18 +256,16 @@ public class ContentSearchRepositoryTest {
     void searchContents_withReviews() {
         // given
         ContentSearchCondition condition = new ContentSearchCondition(
-                ContentType.movie,
-                "영화시리즈1",
-                null,
-                null,
-                null,
+                null, null, null, null, null,
                 10,
                 SortDirection.DESCENDING,
                 "createdAt"
         );
 
+        List<UUID> contentIds = List.of(movie1Id);
+
         // when
-        var result = contentRepository.searchByDatabase(condition);
+        var result = contentRepository.searchByDatabase(condition, contentIds);
 
         // then
         assertThat(result).hasSize(1);
@@ -288,18 +278,16 @@ public class ContentSearchRepositoryTest {
     void searchContents_withoutReviews() {
         // given
         ContentSearchCondition condition = new ContentSearchCondition(
-                ContentType.sport,
-                "스포츠3",
-                null,
-                null,
-                null,
+                null, null, null, null, null,
                 10,
                 SortDirection.DESCENDING,
                 "createdAt"
         );
 
+        List<UUID> contentIds = List.of(sport3Id);
+
         // when
-        var result = contentRepository.searchByDatabase(condition);
+        var result = contentRepository.searchByDatabase(condition, contentIds);
 
         // then
         assertThat(result).hasSize(1);
@@ -316,7 +304,7 @@ public class ContentSearchRepositoryTest {
                 2, SortDirection.DESCENDING, "rate"
         );
 
-        var firstPage = contentRepository.searchByDatabase(firstCondition);
+        var firstPage = contentRepository.searchByDatabase(firstCondition, null);
 
         // limit + 1개 조회하므로 실제 페이지의 마지막 콘텐츠는 index 1
         ContentSearchResult lastContent = firstPage.get(1);
@@ -333,7 +321,7 @@ public class ContentSearchRepositoryTest {
         );
 
         // when
-        var result = contentRepository.searchByDatabase(nextCondition);
+        var result = contentRepository.searchByDatabase(nextCondition, null);
 
         // then
         assertThat(result)
@@ -346,22 +334,13 @@ public class ContentSearchRepositoryTest {
     }
 
     @Test
-    @DisplayName("콘텐츠 검색 시 필터 조건에 일치하는 전체 콘텐츠 수를 조회한다.")
-    void countContents_bySearchCondition() {
+    @DisplayName("전달받은 콘텐츠 ID에 해당하는 전체 콘텐츠 수를 조회한다.")
+    void countContents_byContentIds() {
         // given
-        ContentSearchCondition condition = new ContentSearchCondition(
-                ContentType.movie,
-                "시리즈",
-                null,
-                null,
-                null,
-                2,
-                SortDirection.DESCENDING,
-                "rate"
-        );
+        List<UUID> contentIds = List.of(movie1Id, movie2Id);
 
         // when
-        long count = contentRepository.countBySearchCondition(condition);
+        long count = contentRepository.countBySearchCondition(contentIds);
 
         // then
         assertThat(count).isEqualTo(2L);
@@ -371,19 +350,10 @@ public class ContentSearchRepositoryTest {
     @DisplayName("시청자 수 정렬을 위한 검색 조건에 맞는 콘텐츠를 조회한다")
     void searchContents_ByWatcherCount() {
         // given
-        ContentSearchCondition condition = new ContentSearchCondition(
-                ContentType.movie,
-                "시리즈",
-                null,
-                null,
-                null,
-                2,
-                SortDirection.DESCENDING,
-                "watcherCount"
-        );
+        List<UUID> contentIds = List.of(movie1Id, movie2Id);
 
         // when
-        List<ContentSearchResult> results = contentRepository.searchForWatcherCount(condition);
+        List<ContentSearchResult> results = contentRepository.searchForWatcherCount(contentIds);
 
         // then
         assertThat(results)
@@ -421,18 +391,14 @@ public class ContentSearchRepositoryTest {
                 .toList();
 
         ContentSearchCondition firstCondition = new ContentSearchCondition(
-                ContentType.movie,
-                "동일평점",
-                null,
-                null,
-                null,
+                null, null, null, null, null,
                 2,
                 direction,
                 "rate"
         );
 
         // when - 첫 페이지
-        List<ContentSearchResult> firstResults = contentRepository.searchByDatabase(firstCondition);
+        List<ContentSearchResult> firstResults = contentRepository.searchByDatabase(firstCondition, sortedIds);
 
         List<UUID> firstPageIds = firstResults.stream()
                 .limit(2)
@@ -442,9 +408,7 @@ public class ContentSearchRepositoryTest {
         ContentSearchResult lastContent = firstResults.get(1);
 
         ContentSearchCondition nextCondition = new ContentSearchCondition(
-                ContentType.movie,
-                "동일평점",
-                null,
+                null, null, null,
                 String.valueOf(lastContent.averageRating()),
                 lastContent.content().getId(),
                 2,
@@ -454,7 +418,7 @@ public class ContentSearchRepositoryTest {
 
         // when - 다음 페이지
         List<ContentSearchResult> secondResults =
-                contentRepository.searchByDatabase(nextCondition);
+                contentRepository.searchByDatabase(nextCondition, sortedIds);
 
         List<UUID> secondPageIds = secondResults.stream()
                 .limit(2)
@@ -474,6 +438,24 @@ public class ContentSearchRepositoryTest {
         // 두 페이지를 합쳤을 때 중복·누락이 없는지 확인
         assertThat(Stream.concat(firstPageIds.stream(), secondPageIds.stream()).toList())
                 .containsExactlyElementsOf(sortedIds);
+    }
+
+    @Test
+    @DisplayName("콘텐츠 ID 조건이 없으면 전체 콘텐츠를 조회한다.")
+    void searchContents_withoutContentIds() {
+        // given
+        ContentSearchCondition condition = new ContentSearchCondition(
+                null, null, null, null, null,
+                10,
+                SortDirection.DESCENDING,
+                "createdAt"
+        );
+
+        // when
+        var result = contentRepository.searchByDatabase(condition, null);
+
+        // then
+        assertThat(result).hasSize(6);
     }
 
 }
