@@ -6,8 +6,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * 현재 서버의 연결에 하트비트를 보내도록 주기적으로 전송 서비스를 호출한다.
- * 연결 순회와 실패 정리는 서비스에 맡겨 스케줄 실행 책임과 전송 책임을 분리한다.
+ * 현재 서버의 연결을 대상으로 하트비트 작업 제출과 로그인 세션 재검증을 주기적으로 시작한다.
+ * 실제 하트비트 쓰기는 sseHeartbeatTaskExecutor의 워커가 처리한다.
  */
 @Component
 @RequiredArgsConstructor

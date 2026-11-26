@@ -29,6 +29,12 @@ public class SseHeartbeatDispatcher {
         enqueue(new ConnectionKey(userId, connection), true);
     }
 
+    /**
+     * 신규 작업과 보류된 종료 요청의 재제출을 차단하고, 시작하지 않은 작업을 폐기한다.
+     * 실행기에 종료를 요청해 실행 중인 워커에 인터럽트를 전달한다.
+     *
+     * @return 종료를 판정한 시점에 워커가 사용 중이던 연결 키의 스냅샷
+     */
     public Set<ConnectionKey> shutdown(){
         Set<ConnectionKey> runningConnections;
 

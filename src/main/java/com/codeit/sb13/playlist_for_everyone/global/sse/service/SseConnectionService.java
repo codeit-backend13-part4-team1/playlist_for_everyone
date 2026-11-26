@@ -99,11 +99,10 @@ public class SseConnectionService {
     }
 
     /**
-     * 애플리케이션 종료 이벤트를 받아 현재 서버의 연결에 종료를 요청한다.
+     * 하트비트 실행기에 먼저 종료를 요청하고 현재 서버의 연결을 정리한다.
      *
-     * <p>스케줄러 자원 종료는 Spring이 담당한다. 이 이벤트를 받았다는 사실만으로
-     * 이미 실행 중인 하트비트까지 모두 종료됐다고 가정하지 않는다.
-     * complete 호출은 MVC의 비동기 종료 처리를 유도하며, 완료 콜백의 즉시 실행을 보장하지 않는다.
+     * <p>워커가 사용 중이던 연결은 쓰기 잠금을 기다리지 않도록 상태·예약·저장소 참조만 정리한다.
+     * 나머지 연결은 complete로 종료를 요청한 뒤 같은 방식으로 정리한다.
      */
     @EventListener(ContextClosedEvent.class)
     public void onContextClosed(){
@@ -129,6 +128,7 @@ public class SseConnectionService {
                         }));
     }
 
+    /** 직접 호출하면 모든 로컬 연결에 완료를 요청하고 상태·예약·저장소 참조를 정리한다. */
     public void closeAllLocalConnections(){
         closeLocalConnections(Set.of());
     }
