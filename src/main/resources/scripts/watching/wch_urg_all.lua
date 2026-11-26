@@ -23,6 +23,7 @@ local user_key_prefix = ARGV[2]
 local session_key_prefix = ARGV[3]
 local content_counter_key_prefix = ARGV[4]
 local delimiter = ARGV[5]
+local ttl = tonumber(ARGV[6])
 
 if not session_id or session_id == '' then
     error('sessionId가 비어 있습니다.')
@@ -149,8 +150,7 @@ local function count_current_viewing_user_update(content_id)
             count = count + 1
         end
     end
-
-    redis.call('SET', content_counter_key, count)
+    redis.call('SET', content_counter_key, count, 'PX', ttl)
 end
 
 for i = 6, #ARGV do

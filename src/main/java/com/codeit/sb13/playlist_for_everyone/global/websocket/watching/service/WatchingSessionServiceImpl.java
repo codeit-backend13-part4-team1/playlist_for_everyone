@@ -116,15 +116,20 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
         }
 
         // 3. 메세지 전송을 위한 리소스 조회 및 메세지 전송
-        User user = userService.getById(auth.getUserId());
-        sendViewingSessionMessage(subscription, ChangeType.JOIN, user, content);
-        // 4. 알림 발송
-        eventPublisher.publishEvent(new WatchingSessionStartedEvent(
-                user.getId(),
-                user.getName(),
-                content.id(),
-                content.title()
-        ));
+        try{
+            User user = userService.getById(auth.getUserId());
+            sendViewingSessionMessage(subscription, ChangeType.JOIN, user, content);
+            // 4. 알림 발송
+            eventPublisher.publishEvent(new WatchingSessionStartedEvent(
+                    user.getId(),
+                    user.getName(),
+                    content.id(),
+                    content.title()
+            ));
+        } catch (RuntimeException e) {
+            log.warn("[{}] 시청 세션 메세지 발신 실패, user: {}, session : {}, contentId : {}",
+                    this.getClass().getSimpleName(), auth.getUserId(), subscription.id(), content.id());
+        }
     }
 
     /**
@@ -175,9 +180,14 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
             content = contentService.getById(contentId);
         }
 
-        // 3. 메세지 전송을 위한 리소스 조회 및 메세지 전송
-        User user = userService.getById(auth.getUserId());
-        sendViewingSessionMessage(subscription, ChangeType.LEAVE, user, content);
+        try {
+            // 3. 메세지 전송을 위한 리소스 조회 및 메세지 전송
+            User user = userService.getById(auth.getUserId());
+            sendViewingSessionMessage(subscription, ChangeType.LEAVE, user, content);
+        } catch (RuntimeException e) {
+            log.warn("[{}] 시청 세션 메세지 발신 실패, user: {}, session : {}, contentId : {}",
+                    this.getClass().getSimpleName(), auth.getUserId(), subscription.id(), content.id());
+        }
     }
 
     // viewing 세션 초기 정보 전송 메세지 조립용 매서드
@@ -384,10 +394,10 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
 
                     log.info("chatSessionList : {}", chattingSubscriptionList);
 
-                    if (!viewingSubscriptionList.isEmpty()){
+                    if (viewingSubscriptionList == null || !viewingSubscriptionList.isEmpty()){
                         viewingSessionService.leaveAll(viewingSubscriptionList, contentId);
                     }
-                    if (!chattingSubscriptionList.isEmpty()) {
+                    if (chattingSubscriptionList == null || !chattingSubscriptionList.isEmpty()) {
                         chattingSessionService.leaveAll(chattingSubscriptionList, contentId);
                     }
                 }

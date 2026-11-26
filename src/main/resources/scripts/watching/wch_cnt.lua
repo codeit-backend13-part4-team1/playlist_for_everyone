@@ -8,8 +8,6 @@ local content_count_key = content_count_prefix .. content_id
 
 local count = redis.call('GET',content_count_key)
 
-redis.log(redis.LOG_NOTICE, content_count_key, count)
-
 if not count then
     return 0
 end

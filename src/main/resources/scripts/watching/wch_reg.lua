@@ -63,6 +63,11 @@ local function query_key_pair_to_content(_session_subscription_pair)
     local session_key = session_key_prefix .. session_id
     local content_user_pair = redis.call('HGET', session_key, subscription_id)
 
+    -- 세션이 만료된 경우
+    if not content_user_pair then
+        return nil, nil
+    end
+
     local content_id, user_id = parse_contained_string(content_user_pair)
 
     return content_id, user_id

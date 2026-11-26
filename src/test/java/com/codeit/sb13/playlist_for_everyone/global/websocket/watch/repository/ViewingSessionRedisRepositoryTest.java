@@ -62,14 +62,11 @@ public class ViewingSessionRedisRepositoryTest {
         log.info("[WatcherRegistryTest] 테스트 세팅 완료");
     }
 
-    // 필요한 import
-// import org.junit.jupiter.api.DisplayName;
-// import org.junit.jupiter.api.Test;
-// import java.util.List;
-// import java.util.UUID;
-// import static org.assertj.core.api.Assertions.assertThat;
+    @AfterEach
+    void tearDown() {
+        factory.destroy();
+    }
 
-// 테스트 설정 전제: 구독 TTL과 시청자 카운터 TTL은 모두 3초
 
     @Test
     @DisplayName("같은 콘텐츠에 서로 다른 사용자 두 명이 등록하면 시청자 수는 2명이다")

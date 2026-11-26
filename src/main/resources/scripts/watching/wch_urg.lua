@@ -12,6 +12,7 @@ local user_key_prefix = ARGV[2]
 local session_key_prefix = ARGV[3]
 local content_counter_key_prefix = ARGV[4]
 local delimiter = ARGV[5]
+local ttl = tonumber(ARGV[6])
 
 -- redis 키
 local session_key = session_key_prefix .. session_id
@@ -22,7 +23,6 @@ local session_subscription_pair = session_id .. delimiter .. subscription_id
 -- ttl 변수들
 local time = redis.call('TIME')
 local now = time[1] * 1000 + math.floor(time[2] / 1000)
-
 -- 기타 변수들
 local update_flag = false
 
@@ -68,24 +68,19 @@ local content_counter_key = content_counter_key_prefix .. content_id
 
 
 -- [UTIL] key_pair 에 연결된 content_id, user_id 반환
-local function query_key_pair_to_content(
-    _session_subscription_pair
-)
+local function query_key_pair_to_content(_session_subscription_pair)
 
-    local session_id, subscription_id =
-        parse_contained_string(
-            _session_subscription_pair
-        )
+    local session_id, subscription_id = parse_contained_string(_session_subscription_pair)
 
-    local session_key =
-        session_key_prefix .. session_id
+    local session_key = session_key_prefix .. session_id
 
-    local content_user_pair = redis.call(
-        'HGET', session_key, subscription_id
-    )
+    local content_user_pair = redis.call('HGET', session_key, subscription_id)
 
-    local content_id, user_id =
-        parse_contained_string(content_user_pair)
+    if not content_user_pair then
+        return nil, nil
+    end
+
+    local content_id, user_id = parse_contained_string(content_user_pair)
 
     return content_id, user_id
 end
@@ -95,14 +90,10 @@ end
 -- 하나 이상 보유하고 있다면 true 반환
 local function check_user_existed_in_content(_user_key, _content_id)
 
-    for _, session_subscription_pair in ipairs(
-        redis.call('SMEMBERS', _user_key)
-    ) do
+    -- 유저 인덱스에 속한 구독, 키 멤버.
+    for _, session_subscription_pair in ipairs(redis.call('SMEMBERS', _user_key)) do
 
-        local content_id, user_id =
-            query_key_pair_to_content(
-                session_subscription_pair
-            )
+        local content_id, user_id = query_key_pair_to_content(session_subscription_pair)
 
         if _content_id == content_id then
 
@@ -164,7 +155,9 @@ local function count_current_viewing_user_update(
     redis.call(
         'SET',
         content_counter_key,
-        count
+        count,
+        'PX',
+        ttl
     )
 end
 

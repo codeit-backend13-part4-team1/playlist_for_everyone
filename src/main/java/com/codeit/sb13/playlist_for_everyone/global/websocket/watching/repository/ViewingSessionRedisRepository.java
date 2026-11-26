@@ -173,7 +173,8 @@ public class ViewingSessionRedisRepository {
                 VIEW_USER_KEY_PREFIX,
                 VIEW_SESSION_KEY_PREFIX,
                 VIEW_CONTENT_COUNTER_PREFIX,
-                DELIMITER
+                DELIMITER,
+                String.valueOf(TTL.toMillis())
         );
     }
 
@@ -201,7 +202,8 @@ public class ViewingSessionRedisRepository {
                 VIEW_USER_KEY_PREFIX,
                 VIEW_SESSION_KEY_PREFIX,
                 VIEW_CONTENT_COUNTER_PREFIX,
-                DELIMITER
+                DELIMITER,
+                String.valueOf(TTL.toMillis())
         ));
         args.addAll(subscriptionIds);
 
