@@ -153,7 +153,7 @@ local function count_current_viewing_user_update(content_id)
     redis.call('SET', content_counter_key, count, 'PX', ttl)
 end
 
-for i = 6, #ARGV do
+for i = 7, #ARGV do
     local subscription_id = ARGV[i]
     local value = redis.call('HGET', session_key, subscription_id)
 
