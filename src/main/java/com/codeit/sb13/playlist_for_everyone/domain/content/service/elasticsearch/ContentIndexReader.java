@@ -60,9 +60,15 @@ public class ContentIndexReader {
      * 콘텐츠 및 연관 태그를 조회하고 트랜잭션 내부에서
      * ContentDocument로 변환하여 반환한다.
      */
-    @Transactional(readOnly = true)
+    @Transactional(
+            readOnly = true,
+            propagation = Propagation.REQUIRED
+    )
     public Optional<ContentDocument> readDocument(UUID contentId) {
-        return null;
+        return contentRepository.findAllByIds(List.of(contentId))
+                .stream()
+                .findFirst()
+                .map(contentDocumentMapper::toContentDocument);
     }
 
 }
