@@ -19,12 +19,17 @@ import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabas
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Slice;
 import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import java.util.Comparator;
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -286,6 +291,91 @@ public class ContentRepositoryTest {
 
         assertThat(found.getFileInfo()).isNotNull();
         assertThat(found.getFileInfo().getId()).isEqualTo(fileInfo.getId());
+    }
+
+    @Test
+    @DisplayName("콘텐츠 ID를 오름차순으로 페이징 조회한다.")
+    void findAllIds_success() {
+        // given
+        Content content1 = createContent(
+                ContentType.tvSeries,
+                "너말고다른연애",
+                "KBS 드라마 입니다.",
+                "thumbnail-url"
+        );
+        Content content2 = createContent(
+                ContentType.tvSeries,
+                "굿파트너2",
+                "장나라, 김혜윤 주연",
+                "thumbnail-url2"
+        );
+        Content content3 = createContent(
+                ContentType.movie,
+                "호프",
+                "최신 영화",
+                "thumbnail-url3"
+        );
+
+        contentRepository.saveAllAndFlush(List.of(content1, content2, content3));
+
+        Pageable pageable = PageRequest.of(0, 2);
+
+        // when
+        Slice<UUID> result = contentRepository.findAllIds(pageable);
+
+        // then
+        assertThat(result.getContent()).hasSize(2);
+        assertThat(result.getContent())
+                .isSortedAccordingTo(Comparator.comparing(UUID::toString));
+        assertThat(result.hasNext()).isTrue();
+    }
+
+    @Test
+    @DisplayName("마지막 페이지에서는 hasNext가 false를 반환한다.")
+    void findAllIds_lastPage() {
+        Content content1 = createContent(
+                ContentType.tvSeries,
+                "너말고다른연애",
+                "KBS 드라마 입니다.",
+                "thumbnail-url"
+        );
+        Content content2 = createContent(
+                ContentType.tvSeries,
+                "굿파트너2",
+                "장나라, 김혜윤 주연",
+                "thumbnail-url2"
+        );
+        Content content3 = createContent(
+                ContentType.movie,
+                "호프",
+                "최신 영화",
+                "thumbnail-url3"
+        );
+
+        contentRepository.saveAllAndFlush(List.of(content1, content2, content3));
+
+        Pageable pageable = PageRequest.of(1, 2);
+
+        // when
+        Slice<UUID> result = contentRepository.findAllIds(pageable);
+
+        // then
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.hasNext()).isFalse();
+    }
+
+    @Test
+    @DisplayName("저장된 콘텐츠가 없으면 빈 Slice를 반환한다.")
+    void findAllIds_empty() {
+        // given
+        Pageable pageable = PageRequest.of(0, 2);
+
+        // when
+        Slice<UUID> result = contentRepository.findAllIds(pageable);
+
+        // then
+        assertThat(result.getContent()).isEmpty();
+        assertThat(result.hasNext()).isFalse();
     }
 
 }
