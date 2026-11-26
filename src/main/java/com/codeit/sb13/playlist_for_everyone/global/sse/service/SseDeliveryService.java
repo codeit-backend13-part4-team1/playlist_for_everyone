@@ -77,7 +77,8 @@ public class SseDeliveryService {
     }
 
     /**
-     * 모든 로컬 연결의 하트비트 전송을 전용 실행기에 제출한다.
+     * 보류된 연결 종료 요청을 먼저 재제출한 뒤 로컬 연결의 하트비트를 전용 실행기에 제출한다.
+     * 일반 하트비트의 제출 시작점은 주기마다 옮겨 포화 시 같은 연결이 반복해서 밀릴 가능성을 줄인다.
      * 상대방의 응답을 받는 ping/pong 방식이 아니므로 브라우저 종료를 즉시 확정하는 기능은 아니다.
      */
     public void sendHeartbeatToLocalConnections(){

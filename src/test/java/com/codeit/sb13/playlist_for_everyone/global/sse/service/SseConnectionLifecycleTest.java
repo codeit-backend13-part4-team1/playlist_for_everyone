@@ -37,8 +37,9 @@ import static org.mockito.Mockito.*;
 
 /**
  * 실제 Spring 컨텍스트를 닫아 종료 이벤트 수신, emitter 종료 요청, 조정기의 정리 위임을 확인한다.
- * 하트비트 경합 검증은 실제 워커가 emitter의 쓰기 잠금을 잡은 상태에서 ContextClosedEvent를 직접 발행한다.
- * 잠금을 풀기 전에 이벤트가 반환되고 대기열과 인메모리 저장소가 비워지는지 확인한다.
+ * 하트비트 경합 테스트는 실제 워커가 emitter의 쓰기 잠금을 잡은 상태에서 종료를 시작한다.
+ * ContextClosedEvent 직접 발행은 이벤트 반환과 대기열·저장소 정리를, 실제 close 호출은
+ * 쓰기 잠금을 풀기 전 컨텍스트 종료 반환과 저장소 정리를 검증한다.
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("SSE 연결 종료 생명주기")
