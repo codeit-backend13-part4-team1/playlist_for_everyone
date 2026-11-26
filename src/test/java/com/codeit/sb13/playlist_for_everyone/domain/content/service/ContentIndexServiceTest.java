@@ -97,6 +97,35 @@ class ContentIndexServiceTest {
         verifyNoInteractions(contentDocumentRepository);
     }
 
+    @Test
+    @DisplayName("Elasticsearch 저장 실패 시 인덱싱을 중단하고 예외를 전파한다.")
+    void indexAll_saveFailed() {
+        // given
+        Pageable pageable = PageRequest.of(0, 500);
+
+        List<ContentDocument> documents =
+                List.of(createDocument("콘텐츠1"));
+
+        Slice<ContentDocument> slice = new SliceImpl<>(documents, pageable, true);
+
+        given(contentIndexReader.readDocuments(pageable))
+                .willReturn(slice);
+
+        given(contentDocumentRepository.saveAll(documents))
+                .willThrow(new RuntimeException("Elasticsearch 저장 실패"));
+
+        // when & then
+        assertThatThrownBy(() -> contentIndexService.indexAll())
+            .isInstanceOf(RuntimeException.class)
+                .hasMessage("Elasticsearch 저장 실패");
+
+        verify(contentIndexReader).readDocuments(pageable);
+        verify(contentDocumentRepository).saveAll(documents);
+
+        // 저장 실패 이후 다음 배치를 조회하지 않는지 검증verifyNoMoreInteractions(contentIndexReader);
+        verifyNoMoreInteractions(contentDocumentRepository);
+    }
+
     private ContentDocument createDocument(String title) {
         return ContentDocument.builder()
                 .id(UUID.randomUUID().toString())

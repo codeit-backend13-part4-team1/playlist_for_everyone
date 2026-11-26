@@ -27,7 +27,34 @@ public class ContentIndexService {
      * DB 조회 트랜잭션이 종료된 후 Elasticsearch에 저장한다.
      */
     public void indexAll() {
+        Pageable pageable = PageRequest.of(0, BATCH_SIZE);
+        long totalIndexed = 0;
 
+        while (true) {
+            // 배치 단위로 콘텐츠 및 태그를 조회하고 Document로 변환
+            Slice<ContentDocument> documents = contentIndexReader.readDocuments(pageable);
+
+            // 인덱싱할 콘텐츠가 없으면 종료
+            if (documents.isEmpty()) {
+                break;
+            }
+
+            // DB 조회 트랜잭션 외부에서 Elasticsearch 일괄 저장
+            contentDocumentRepository.saveAll(documents.getContent());
+            // 누적 인덱싱 건수 집계 및 진행 상황 기록
+            totalIndexed += documents.getNumberOfElements();
+
+            log.info("콘텐츠 인덱싱 진행: {}건", totalIndexed);
+
+            // 다음 페이지가 없으면 인덱싱 종료
+            if (!documents.hasNext()) {
+                break;
+            }
+
+            pageable = documents.nextPageable();
+        }
+
+        log.info("콘텐츠 인덱싱 완료: 총 {}건", totalIndexed);
     }
 
 }

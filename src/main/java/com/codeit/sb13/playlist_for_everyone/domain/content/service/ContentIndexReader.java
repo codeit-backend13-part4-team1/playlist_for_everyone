@@ -37,7 +37,19 @@ public class ContentIndexReader {
             return new SliceImpl<>(List.of(), pageable, false);
         }
 
-        return null;
+        // 콘텐츠 및 연관 데이터를 일괄 조회하여 N+1 문제 방지
+        // 트랜잭션 내부에서 ContentDocument로 변환
+        List<ContentDocument> documents = contentRepository.findAllByIds(ids.getContent())
+        .stream()
+                .map(contentDocumentMapper::toContentDocument)
+                .toList();
+
+        // 기존 페이지 정보와 다음 페이지 존재 여부를 유지하여 반환
+        return new SliceImpl<>(
+                documents,
+                pageable,
+                ids.hasNext()
+        );
     }
 
 }
