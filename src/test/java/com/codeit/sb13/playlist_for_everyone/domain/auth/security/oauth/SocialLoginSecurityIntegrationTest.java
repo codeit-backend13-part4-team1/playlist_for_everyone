@@ -41,7 +41,8 @@ class SocialLoginSecurityIntegrationTest {
 
     private static final String SESSION_COOKIE = "OAUTH_SESSION";
     private static final String SESSION_NAMESPACE = "everyone:oauth:session";
-    private static final String FAILURE_URL = "/#/sign-in?error=oauth_failed&error_message=";
+    // 프록시 뒤에서도 요청 Host와 무관하게 설정된 서비스 주소로 이동해야 한다. (application-test.yaml의 redirect-base-url)
+    private static final String FAILURE_URL = "https://everyone.test/#/sign-in?error=oauth_failed&error_message=";
 
     @Container
     static final GenericContainer<?> redis =

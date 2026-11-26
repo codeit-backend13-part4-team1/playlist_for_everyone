@@ -106,6 +106,8 @@ public class SportsDbBatchConfig {
 
                         if (result.inserted()) {
                             counter.recordInserted();
+                        } else if (result.updated()) {
+                            counter.recordUpdated();
                         }
                     }
                 })

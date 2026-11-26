@@ -1099,4 +1099,72 @@ class SportsDbCollectionJobTest {
         assertThat(restarted.getId()).isNotEqualTo(execution.getId());
         assertThat(restarted.getJobParameters()).isEqualTo(parameters);
     }
+
+    @Test
+    void 기존_경기만_갱신해도_배치_종료_이벤트를_발행한다() throws Exception {
+        var original = new SportsDbEventResponse(
+                "446002", "기존 경기명", "Soccer",
+                "English Premier League", "2014-2015",
+                "2014-08-16", null
+        );
+        var changed = new SportsDbEventResponse(
+                "446002", "변경된 경기명", "Soccer",
+                "English Premier League", "2014-2015",
+                "2014-08-16", null
+        );
+
+        when(sportsDbClient.getEventsBySeason("4328", "2014-2015"))
+                .thenReturn(
+                        new SportsDbEventsResponse(List.of(original)),
+                        new SportsDbEventsResponse(List.of(changed))
+                );
+
+        var firstParameters = new JobParametersBuilder()
+                .addString("leagueId", "4328")
+                .addString("season", "2014-2015")
+                .addString("run.id", UUID.randomUUID().toString())
+                .toJobParameters();
+
+        var firstExecution = jobOperator.start(job, firstParameters);
+
+        assertThat(firstExecution.getStatus()).isEqualTo(BatchStatus.COMPLETED);
+
+        var firstSaved = contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.THE_SPORTS_DB,
+                ContentType.sport,
+                "446002"
+        ).orElseThrow();
+
+        applicationEvents.clear();
+
+        var secondParameters = new JobParametersBuilder()
+                .addString("leagueId", "4328")
+                .addString("season", "2014-2015")
+                .addString("run.id", UUID.randomUUID().toString())
+                .toJobParameters();
+
+        var secondExecution = jobOperator.start(job, secondParameters);
+
+        assertThat(secondExecution.getStatus()).isEqualTo(BatchStatus.COMPLETED);
+
+        var updated = contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.THE_SPORTS_DB,
+                ContentType.sport,
+                "446002"
+        ).orElseThrow();
+
+        assertThat(updated.getId()).isEqualTo(firstSaved.getId());
+        assertThat(updated.getTitle()).isEqualTo("변경된 경기명");
+
+        assertThat(applicationEvents.stream(ContentCollectionFinishedEvent.class).toList())
+                .extracting(ContentCollectionFinishedEvent::insertedCount)
+                .containsExactly(0L);
+
+        assertThat(applicationEvents.stream(ContentCollectionFinishedEvent.class).toList())
+                .extracting(ContentCollectionFinishedEvent::updatedCount)
+                .containsExactly(1L);
+
+        assertThat(applicationEvents.stream(ContentSearchCacheEvictEvent.class).count())
+                .isZero();
+    }
 }

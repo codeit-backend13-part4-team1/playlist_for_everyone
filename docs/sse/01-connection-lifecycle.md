@@ -101,6 +101,22 @@ SSE 시작 전 503 공통 JSON 오류로 바꿉니다. 모든 데이터 접근 �
 종료 위임: [SseConnectionCloser](../../src/main/java/com/codeit/sb13/playlist_for_everyone/global/sse/service/SseConnectionCloser.java).
 검증 범위는 [기본 테스트](05-testing.md)와 [이력·종료 테스트](12-history-testing.md)에 정리했습니다.
 
+## 활성 SSE 연결 수 조회
+
+`everyone.sse.connections.active`는 요청을 처리한 서버 인스턴스의 SSE 저장소에 등록된 연결 수를 보여주는 Gauge입니다.
+서버 시작 직후 연결이 없으면 `0`이고, 같은 사용자가 같은 서버에 탭 두 개를 열면 `2`입니다.
+완료·타임아웃·오류 처리로 연결이 저장소에서 제거되면 값이 줄어듭니다. 여러 서버에서 운영할 때는 각 인스턴스의 값을 조회합니다.
+
+`ACCESS_TOKEN`에 관리자 액세스 토큰을 설정하고 다음과 같이 조회합니다.
+
+```bash
+curl -i \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  http://localhost:8080/actuator/metrics/everyone.sse.connections.active
+```
+
+응답의 `measurements` 배열에서 `statistic`이 `VALUE`인 항목의 `value`가 활성 연결 수입니다.
+
 ---
 
 [← 전체 흐름](00-overall-flow.md) · [목차](README.md) · [다음: 전송과 하트비트 →](02-delivery-heartbeat.md)

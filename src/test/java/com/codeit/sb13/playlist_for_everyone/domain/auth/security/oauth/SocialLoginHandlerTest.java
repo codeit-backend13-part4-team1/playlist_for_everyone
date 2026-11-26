@@ -37,6 +37,7 @@ import static org.mockito.Mockito.verify;
 class SocialLoginHandlerTest {
 
     private static final UUID USER_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
+    private static final String BASE_URL = "https://everyone.test";
     private static final SocialIdentity IDENTITY =
             new SocialIdentity(SocialProvider.GOOGLE, "google-sub", "test@gmail.com", "테스트", true);
 
@@ -58,7 +59,7 @@ class SocialLoginHandlerTest {
     void setUp() {
         // 쿠키 속성은 실제 팩터리로 만들어 운영과 같은 Set-Cookie를 검증한다.
         handler = new SocialLoginHandler(socialIdentityExtractor, socialAccountService,
-                loginSessionIssuer, new RefreshTokenCookieFactory(Duration.ofDays(7), true));
+                loginSessionIssuer, new RefreshTokenCookieFactory(Duration.ofDays(7), true), BASE_URL);
         request = new MockHttpServletRequest();
         response = new MockHttpServletResponse();
     }
@@ -69,7 +70,7 @@ class SocialLoginHandlerTest {
     }
 
     @Test
-    @DisplayName("로그인에 성공하면 Refresh 쿠키를 발급하고 콘텐츠 화면으로 이동한다.")
+    @DisplayName("로그인에 성공하면 Refresh 쿠키를 발급하고 설정된 서비스 주소의 콘텐츠 화면으로 이동한다.")
     void 로그인에_성공하면_Refresh_쿠키를_발급하고_콘텐츠_화면으로_이동한다() throws Exception {
         given(socialIdentityExtractor.extract(authentication)).willReturn(IDENTITY);
         given(socialAccountService.resolveUserId(IDENTITY)).willReturn(USER_ID);
@@ -78,7 +79,7 @@ class SocialLoginHandlerTest {
 
         handler.onAuthenticationSuccess(request, response, authentication);
 
-        assertThat(response.getRedirectedUrl()).isEqualTo("/#/contents");
+        assertThat(response.getRedirectedUrl()).isEqualTo(BASE_URL + "/#/contents");
         assertThat(response.getHeader(HttpHeaders.SET_COOKIE))
                 .startsWith("REFRESH_TOKEN=refresh-token;")
                 .contains("HttpOnly");
@@ -100,7 +101,7 @@ class SocialLoginHandlerTest {
         handler.onAuthenticationSuccess(request, response, authentication);
 
         assertThat(response.getRedirectedUrl())
-                .isEqualTo("/#/sign-in?error=oauth_failed&error_message=" + error.code());
+                .isEqualTo(BASE_URL + "/#/sign-in?error=oauth_failed&error_message=" + error.code());
         assertThat(response.getHeader(HttpHeaders.SET_COOKIE)).isNull();
         verify(loginSessionIssuer, never()).issue(any());
     }
@@ -115,7 +116,7 @@ class SocialLoginHandlerTest {
         handler.onAuthenticationSuccess(request, response, authentication);
 
         assertThat(response.getRedirectedUrl())
-                .isEqualTo("/#/sign-in?error=oauth_failed&error_message=login_failed");
+                .isEqualTo(BASE_URL + "/#/sign-in?error=oauth_failed&error_message=login_failed");
         assertThat(response.getHeader(HttpHeaders.SET_COOKIE)).isNull();
     }
 
@@ -126,7 +127,7 @@ class SocialLoginHandlerTest {
                 new OAuth2AuthenticationException(new OAuth2Error("access_denied")));
 
         assertThat(response.getRedirectedUrl())
-                .isEqualTo("/#/sign-in?error=oauth_failed&error_message=access_denied");
+                .isEqualTo(BASE_URL + "/#/sign-in?error=oauth_failed&error_message=access_denied");
     }
 
     @Test
@@ -136,7 +137,7 @@ class SocialLoginHandlerTest {
                 new OAuth2AuthenticationException(new OAuth2Error("invalid_token_response")));
 
         assertThat(response.getRedirectedUrl())
-                .isEqualTo("/#/sign-in?error=oauth_failed&error_message=login_failed");
+                .isEqualTo(BASE_URL + "/#/sign-in?error=oauth_failed&error_message=login_failed");
     }
 
     @Test
