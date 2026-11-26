@@ -39,7 +39,7 @@ local session_life_key = session_key_prefix .. "life" -- tmp
 local user_active_key = user_key_prefix .. "active" -- tmp
 local content_counter_key = content_key_prefix .. "counter"
 
-
+local fresh_user_flag = false
 
 ------------------------------------- UTIL -----------------------------------------
 
@@ -250,7 +250,6 @@ local function content_counter_update(_content_key, _content_id)
     end
 end
 
-
 -------------------- sub logic --------------------
 -- [USER] 세션 정보가 저장 된 후, 유저 정보 조정.
 -- 에러시 활성 유저 정보 조정 필요.
@@ -258,6 +257,12 @@ local function update_user_container(_user_id, _session_id)
     local user_key = user_key_prefix .. _user_id
     -- 유저 - 세션 동기화.
     session_sync(user_key)
+
+    -- 유저 정보 체크(처음 접속한 사용라 라면, true 반환)
+    local check, check_list = pcall(redis.call, 'ZRANGE', user_key, 0, -1)
+    if not check or #check_list < 1 then
+        fresh_user_flag = true
+    end
 
     -- 유저 정보 추가, 활성 유저 추가.
     add_to_index(user_key, _session_id)
@@ -304,4 +309,8 @@ update_content_container(content_id, session_id)
 -- 현재 작성된 복구 로직만 있는걸로 간주한다.
 
 -- 사용자가 새로 들어온 것이가에 따라 체크 간주 필요.
-return 0
+local res = 0
+if fresh_user_flag then
+    res = 1
+end
+return res

@@ -438,6 +438,19 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
         }
     }
 
+    @Override
+    public void refresh(UUID sessionId){
+        WSSession session = getSessionOrExcept(sessionId.toString());
+        List<WSSubscription> subscriptions = session.getAllSubscriptions();
+
+        List<UUID> subscriptionKeys = subscriptions.stream()
+                .filter(s -> VIEW_DESTINATION_PATTERN.check(s.destination()))
+                .map(WSSubscription::uuid)
+                .toList();
+
+        viewingSessionService.refresh(subscriptionKeys);
+    }
+
     /*
      * 공용 편의 매서드
      */

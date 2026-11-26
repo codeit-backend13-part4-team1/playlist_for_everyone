@@ -16,6 +16,7 @@ import org.springframework.retry.support.RetrySynchronizationManager;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -46,6 +47,7 @@ public class ViewingSessionRedisRepository {
     private final RedisScript<Long> deleteFromContentScript;
     private final RedisScript<List> countMultipleContentsScript;
     private final RedisScript<Long> unregisterAllScript;
+    private final RedisScript<List> watcherCurrentViewerCountScript;
 
     @RequiredArgsConstructor
     static public class SetKey{
@@ -73,7 +75,9 @@ public class ViewingSessionRedisRepository {
             @Qualifier("lua-count-multiple-contents")
             RedisScript<List> countMultipleContents,
             @Qualifier("lua-script-unregister-all")
-            RedisScript<Long> unregisterAllScript
+            RedisScript<Long> unregisterAllScript,
+            @Qualifier("lua-script-query-current-viewer")
+            RedisScript<List> watcherCurrentViewerCountScript
     ){
         this.redis = redis;
         this.registerScript = registerScript;
@@ -83,6 +87,7 @@ public class ViewingSessionRedisRepository {
         this.deleteFromContentScript = deleteFromContentScript;
         this.countMultipleContentsScript = countMultipleContents;
         this.unregisterAllScript = unregisterAllScript;
+        this.watcherCurrentViewerCountScript = watcherCurrentViewerCountScript;
     }
 
     /*
@@ -101,10 +106,10 @@ public class ViewingSessionRedisRepository {
     /**
      * 시청 세션 등록 매서드.
      * 시청 세션을 등록하며, 유저별 첫 시청 세션 참여인지 여부를 반환한다.
-     * @param contentId 컨텐츠 id.
-     * @param userId 유저 id.
-     * @param sessionId 세션 id.
-     * @param subscriptionId 구독 id.
+     * @param subscriptionKey 구독 id.
+     * @param contentKey 컨텐츠 id.
+     * @param userKey 유저 id.
+     * @param ctime 구독 생성 시간.
      */
     @Retryable(
             retryFor = {
@@ -114,39 +119,38 @@ public class ViewingSessionRedisRepository {
             },
             backoff = @Backoff(delay = 100, multiplier = 3)
     )
-    public void register(
-            String contentId,
-            String userId,
-            String sessionId,
-            String subscriptionId
+    public boolean register(
+            UUID subscriptionKey,
+            UUID contentKey,
+            UUID userKey,
+            Instant ctime
     ){
         // NPE 검사.
-        validate(contentId, userId, sessionId, subscriptionId);
+        validate(subscriptionKey, contentKey, userKey);
 
         /**
-         * Key - contentId, userId, sessionId, subscriptionId.
-         * Argv - contentKeyPrefix, userKeyPrefix, sessionKeyPrefix, counterPrefix, delimiter, ttl
+         * Key - sessionUUID, contentId, userId
+         * Argv - sessionKeyPrefix, contentKeyPrefix, userKeyPrefix, delimiter, ttl, ctime
          * 인자를 주입해야 한다.
          * return 0 -> 이미 구독한 사용자, 1 -> 신규 사용자, 기타 -> error(RedisCommandExecutionException)
          */
         Long res = redis.execute(registerScript,
-                List.of(contentId, userId, sessionId, subscriptionId),
+                List.of(subscriptionKey.toString(), contentKey.toString(), userKey.toString()),
+                VIEW_SESSION_KEY_PREFIX,
                 VIEW_CONTENT_KEY_PREFIX,
                 VIEW_USER_KEY_PREFIX,
-                VIEW_SESSION_KEY_PREFIX,
-                VIEW_CONTENT_COUNTER_PREFIX,
                 DELIMITER,
-                String.valueOf(TTL.toMillis())
+                String.valueOf(TTL.toMillis()),
+                ctime.toString()
         );
-        log.info("register contentId:{}, userId:{}, result: {}", contentId, userId, res);
 
+        return res.equals(1L);
     }
 
 
     /**
      * 세션 등록 취소 매서드
-     * @param sessionId 세션 id
-     * @param subscriptionId 구독 id
+     * @param subscriptionKey 세션 key
      */
     @Retryable(
             retryFor = {
@@ -157,32 +161,28 @@ public class ViewingSessionRedisRepository {
             backoff = @Backoff(delay = 100, multiplier = 3)
     )
     public void unregister(
-            String sessionId,
-            String subscriptionId
+            UUID subscriptionKey
     ){
-        validate(sessionId, subscriptionId);
+        validate(subscriptionKey);
 
         /**
-         * Key - sessionId, subscriptionId
+         * Key - subscriptionKey
          * Argv - contentKeyPrefix, userKeyPrefix, sessionKeyPrefix, counterPrefix, delimiter
          * return 0 or Error
          */
-        Long res = redis.execute(unregisterScript,
-                List.of(sessionId, subscriptionId),
+        redis.execute(unregisterScript,
+                List.of(subscriptionKey.toString()),
+                VIEW_SESSION_KEY_PREFIX,
                 VIEW_CONTENT_KEY_PREFIX,
                 VIEW_USER_KEY_PREFIX,
-                VIEW_SESSION_KEY_PREFIX,
-                VIEW_CONTENT_COUNTER_PREFIX,
-                DELIMITER,
-                String.valueOf(TTL.toMillis())
+                DELIMITER
         );
     }
 
 
     /**
      * 여러 구독들에 대한 등록 취소 매서드
-     * @param sessionId 세션 id
-     * @param subscriptionIds 구독 id 목록
+     * @param subscriptionKeys 구독 id 목록
      */
     @Retryable(
             retryFor = {
@@ -193,26 +193,25 @@ public class ViewingSessionRedisRepository {
             backoff = @Backoff(delay = 100, multiplier = 3)
     )
     public void unregisterAll(
-            String sessionId,
-            List<String> subscriptionIds
+            List<UUID> subscriptionKeys
     ){
         //  인자 요소 리스트
         List<String> args = new ArrayList<>(List.of(
+                VIEW_SESSION_KEY_PREFIX,
                 VIEW_CONTENT_KEY_PREFIX,
                 VIEW_USER_KEY_PREFIX,
-                VIEW_SESSION_KEY_PREFIX,
-                VIEW_CONTENT_COUNTER_PREFIX,
-                DELIMITER,
-                String.valueOf(TTL.toMillis())
+                DELIMITER
         ));
-        args.addAll(subscriptionIds);
+        args.addAll(
+                subscriptionKeys.stream().map(UUID::toString).toList()
+        );
 
         /**
-         * Keys - sessionId
-         * ARGV - contentKeyPrefix, userKeyPrefix, sessionKeyPrefix, counterPrefix, delimiter, subscriptions
+         * Keys - {}
+         * ARGV - contentKeyPrefix, userKeyPrefix, sessionKeyPrefix, counterPrefix, delimiter
          * return 0
          */
-        redis.execute(unregisterAllScript, List.of(sessionId), args.toArray());
+        redis.execute(unregisterAllScript, List.of(), args.toArray());
 
     }
 
@@ -225,22 +224,27 @@ public class ViewingSessionRedisRepository {
             },
             backoff = @Backoff(delay = 100, multiplier = 2)
     )
-    public void refresh(String sessionId){
-        validate(sessionId);
+    public void refresh(List<UUID> subscriptionKeys){
+
+        //  인자 요소 리스트
+        List<String> args = new ArrayList<>(List.of(
+                VIEW_SESSION_KEY_PREFIX,
+                VIEW_CONTENT_KEY_PREFIX,
+                VIEW_USER_KEY_PREFIX,
+                DELIMITER
+        ));
+        args.addAll(
+                subscriptionKeys.stream().map(UUID::toString).toList()
+        );
 
         /**
          * Keys - sessionId
          * ARGV - contentKeyPrefix, userKeyPrefix, sessionKeyPrefix, counterPrefix, delimiter, ttl
-         * return 1
+         * return 0
          */
-        Long res = redis.execute(refreshScript,
-                List.of(sessionId),
-                VIEW_CONTENT_KEY_PREFIX,
-                VIEW_USER_KEY_PREFIX,
-                VIEW_SESSION_KEY_PREFIX,
-                VIEW_CONTENT_COUNTER_PREFIX,
-                DELIMITER,
-                String.valueOf(TTL.toMillis())
+        redis.execute(refreshScript,
+                List.of(),
+                args.toArray()
         );
     }
 
@@ -255,17 +259,16 @@ public class ViewingSessionRedisRepository {
     public void deleteWithContentId(UUID contentId){
 
         /**
-         * key - contentId
-         * argv - contentKeyPrefix, userKeyPrefix, sessionKeyPrefix, counterPrefix, delimiter, ttl
-         * return 1
+         * Keys - {}
+         * ARGV - contentKeyPrefix, userKeyPrefix, sessionKeyPrefix, counterPrefix, delimiter
+         * return 0
          */
-        Long res = redis.execute(
+        redis.execute(
                 deleteFromContentScript,
                 List.of(contentId.toString()),
+                VIEW_SESSION_KEY_PREFIX,
                 VIEW_CONTENT_KEY_PREFIX,
                 VIEW_USER_KEY_PREFIX,
-                VIEW_SESSION_KEY_PREFIX,
-                VIEW_CONTENT_COUNTER_PREFIX,
                 DELIMITER
         );
     }
@@ -282,7 +285,7 @@ public class ViewingSessionRedisRepository {
 
         return redis.execute(countScript,
                 List.of(contentId),
-                VIEW_CONTENT_COUNTER_PREFIX
+                VIEW_CONTENT_KEY_PREFIX
         );
     }
 
@@ -306,6 +309,7 @@ public class ViewingSessionRedisRepository {
         if(contents.isEmpty()) return Map.of();
 
         List<?> query = redis.execute(countMultipleContentsScript,
+                List.of(),
                 contents,
                 VIEW_CONTENT_COUNTER_PREFIX
         );
@@ -320,6 +324,33 @@ public class ViewingSessionRedisRepository {
                         item -> Long.valueOf((String) item.get(1)),
                         (existing, replacement) -> existing // 중복 제거용 세 번째 인자.
                 ));
+    }
+
+
+    /**
+     * 컨텐츠에 대한 현재 시청자 id 리스트를 List 로 반환.
+     * @param contentId 조회 대상용 유저 리스트
+     */
+    @Retryable(
+            retryFor = {
+                    RedisCommandExecutionException.class,
+                    RedisConnectionFailureException.class,
+                    QueryTimeoutException.class
+            },
+            backoff = @Backoff(delay = 100, multiplier = 2)
+    )
+    public List<UUID> currentViewerIdList(String contentId){
+        List<?> query = redis.execute(
+                watcherCurrentViewerCountScript,
+                List.of(contentId),
+                VIEW_CONTENT_KEY_PREFIX,
+                VIEW_USER_KEY_PREFIX,
+                VIEW_SESSION_KEY_PREFIX,
+                VIEW_CONTENT_COUNTER_PREFIX,
+                DELIMITER
+        );
+
+        return query.stream().map(id -> (UUID) id).toList();
     }
 
 
@@ -360,8 +391,8 @@ public class ViewingSessionRedisRepository {
      */
 
     // 커스텀 예외를 작성한다면 여기에.
-    private void validate(String ...args){
-        for (String arg : args){
+    private void validate(Object ...args){
+        for (Object arg : args){
             check(arg);
         }
     }

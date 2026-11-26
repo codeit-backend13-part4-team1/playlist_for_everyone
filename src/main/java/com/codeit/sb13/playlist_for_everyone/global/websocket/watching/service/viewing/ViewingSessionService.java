@@ -48,9 +48,9 @@ public interface ViewingSessionService {
 
     /**
      * 인자로 받은 세션 id 에 대한 세션 룸 내에서의 수명을 갱신하는 매서드
-     * @param sessionId 세션 id
+     * @param subscriptionKeys 구독 uuid 들
      */
-    void refresh(String sessionId);
+    void refresh(List<UUID> subscriptionKeys);
 
     /**
      * 컨텐츠 id 를 대상으로 현재 시청자 수를 카운트 하는 매서드
@@ -66,4 +66,9 @@ public interface ViewingSessionService {
     Map<UUID, Long> getCurrentViewerCountWithContents(List<UUID> contentIdList);
 
 
+    /**
+     * 인자로 받은 컨텐츠에 대해 현재 시청중인 시청자 id 의 리스트를 반환하는 매서드.
+     * @param contentId 대상이 되는 컨텐츠 id
+     */
+    List<UUID> getCurrentViewerIdList(UUID contentId);
 }

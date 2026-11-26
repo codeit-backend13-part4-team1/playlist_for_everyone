@@ -16,9 +16,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.ModelAttribute;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.UUID;
@@ -188,6 +186,18 @@ public interface ContentApi {
     ResponseEntity<Void> delete(
             @Parameter(description = "삭제할 콘텐츠 ID", required = true)
             @PathVariable UUID contentId
+    );
+
+
+    @GetMapping("/{contentId}/watching-sessions")
+    ResponseEntity<?> getCurrentInfoByContent(
+            @PathVariable UUID contentId,
+            @RequestParam(value = "watcherNameLike", required = false) String userName,
+            @RequestParam(value = "cursor", required = false) String cursor,
+            @RequestParam(value = "idAfter", required = false) UUID idAfter,
+            @RequestParam(value = "limit") Integer limit,
+            @RequestParam(value = "sortDirection",defaultValue = "ASCENDING") String sortDirection,
+            @RequestParam(value = "sortBy", defaultValue = "createdAt") String sortBy
     );
 
 }

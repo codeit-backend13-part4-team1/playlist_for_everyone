@@ -43,12 +43,12 @@ public class ViewingSessionServiceImpl implements ViewingSessionService{
         synchronized (locks.lock(contentId)) {
             ViewingSessionRoom room = viewingSessionRepository.findOrCreate(contentId);
             // 3. 세션 룸에 구독 등록
-            // 글로벌 todo - UUID 등록으로 간편하게 변경되도록 변경.
+            // 글로벌
             viewingSessionPresence.register(
-                    contentId.toString(),
-                    userId.toString(),
-                    subscription.sessionId(),
-                    subscription.id()
+                    subscription.uuid(),
+                    contentId,
+                    userId,
+                    subscription.createdAt()
             );
             // 4. 메세지 수신을 위한 브로커 등록 -> 단일이라면 redis 등록이 없어진다.
             // todo - UUID 등록으로 간편하게 되도록 변경
@@ -71,7 +71,7 @@ public class ViewingSessionServiceImpl implements ViewingSessionService{
             ViewingSessionRoom room = getRoomOrException(contentId);
 
             room.leave(subscription);
-            viewingSessionPresence.unregister(subscription.sessionId(), subscription.id());
+            viewingSessionPresence.unregister(subscription.uuid());
             redisTopicRegistry.unregister(subscription.sessionId(), subscription.id());
         }
     }
@@ -88,8 +88,9 @@ public class ViewingSessionServiceImpl implements ViewingSessionService{
         // tmp
         String sessionId = subscriptions.get(0).sessionId();
         List<String> subscriptionIds = subscriptions.stream().map(WSSubscription::id).collect(Collectors.toList());
+        List<UUID> subscriptionKeys = subscriptions.stream().map(WSSubscription::uuid).toList();
         // todo. - 글로벌, topic 저장소를 UUID 기준으로 변경하면서 변경.
-        viewingSessionPresence.unregisterAll(sessionId ,subscriptionIds);
+        viewingSessionPresence.unregisterAll(subscriptionKeys);
         redisTopicRegistry.unregisterAll(sessionId, subscriptionIds);
     }
 
@@ -124,8 +125,8 @@ public class ViewingSessionServiceImpl implements ViewingSessionService{
     }
 
     @Override
-    public void refresh(String sessionId) {
-        viewingSessionPresence.refresh(sessionId);
+    public void refresh(List<UUID> subscriptionKeys) {
+        viewingSessionPresence.refresh(subscriptionKeys);
     }
 
     @Override
@@ -140,6 +141,13 @@ public class ViewingSessionServiceImpl implements ViewingSessionService{
                         .map(UUID::toString)
                         .toList());
     }
+
+    @Override
+    public List<UUID> getCurrentViewerIdList(UUID contentId) {
+        return viewingSessionPresence.currentViewerIdList(contentId.toString());
+    }
+
+
 
     private ViewingSessionRoom getRoomOrException(UUID contentId){
         return viewingSessionRepository.find(contentId)
