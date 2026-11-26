@@ -207,3 +207,7 @@ everyone:
         # 같은 환경의 서버끼리 공유한다. dev/prod 프로필에 따라 자동 분리되지 않는다.
         # 공통 인증·콘텐츠 이벤트의 채널은 이 설정으로 바뀌지 않는다.
         channel: ${EVERYONE_DM_WEBSOCKET_REDIS_CHANNEL:everyone:dm:events}
+
+  elasticsearch:
+    index:
+      initialize: ${EVERYONE_ELASTICSEARCH_INDEX_INITIALIZE:false}
