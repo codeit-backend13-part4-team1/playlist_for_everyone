@@ -27,6 +27,8 @@ public class SseHeartbeatConfig {
         executor.setQueueCapacity(properties.queueCapacity());
         executor.setThreadNamePrefix("sse-heartbeat-worker-");
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.AbortPolicy());
+        // 종료 이벤트에서 디스패처가 실행기를 직접 종료하므로 Spring의 워커 완료 대기를 건너뛴다.
+        executor.setAcceptTasksAfterContextClose(true);
 
         return executor;
     }
