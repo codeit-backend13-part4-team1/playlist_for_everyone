@@ -97,6 +97,8 @@ dependencies {
 
 	// Elasticsearch
 	implementation 'org.springframework.boot:spring-boot-starter-data-elasticsearch'
+	testImplementation 'org.springframework.boot:spring-boot-starter-data-elasticsearch-test'
+	testImplementation 'org.testcontainers:testcontainers-elasticsearch'
 
 	testCompileOnly 'org.projectlombok:lombok'
 	testAnnotationProcessor 'org.projectlombok:lombok'

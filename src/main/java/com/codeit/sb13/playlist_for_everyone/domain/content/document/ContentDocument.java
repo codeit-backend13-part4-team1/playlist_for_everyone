@@ -1,10 +1,12 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.document;
 
+import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import lombok.Getter;
 import org.springframework.data.annotation.Id;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.NoArgsConstructor;
+import org.springframework.data.elasticsearch.annotations.DateFormat;
 import org.springframework.data.elasticsearch.annotations.Document;
 import org.springframework.data.elasticsearch.annotations.Field;
 import org.springframework.data.elasticsearch.annotations.FieldType;
@@ -21,14 +23,14 @@ import java.util.UUID;
 // 검색용 데이터 모델
 public class ContentDocument {
 
-    // 정확한 식별자 조회
+    // 콘텐츠 식별자 및 보조 정렬 기준
     @Id
     @Field(type = FieldType.Keyword)
-    private UUID id;
+    private String id;
 
     // 정확한 유형 필터링
     @Field(type = FieldType.Keyword)
-    private String type;
+    private ContentType type;
 
     // 검색
     @Field(type = FieldType.Text)
@@ -43,7 +45,10 @@ public class ContentDocument {
     private List<String> tags;
 
     // 생성일 정렬 및 커서
-    @Field(type = FieldType.Date)
+    @Field(
+            type = FieldType.Date,
+            format = DateFormat.date_hour_minute_second_fraction
+    )
     private LocalDateTime createdAt;
 
 }
