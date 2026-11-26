@@ -8,6 +8,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentSource
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentTag;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.event.cache.ContentSearchCacheEvictEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.content.event.elasticsearch.ContentIndexDeleteEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.content.event.elasticsearch.ContentIndexUpsertEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentDetailProjection;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
@@ -131,7 +133,7 @@ public class ContentWriterTest {
         );
 
         assertThat(result.fileKey()).isEqualTo(fileInfo.getKey());
-        verify(eventPublisher).publishEvent(any(ContentSearchCacheEvictEvent.class));
+        verify(eventPublisher).publishEvent(any(ContentIndexUpsertEvent.class));
     }
 
     @Test
@@ -238,7 +240,7 @@ public class ContentWriterTest {
                 "thumbnail-url",
                 4.5, 3, 0L);
 
-        verify(eventPublisher).publishEvent(any(ContentSearchCacheEvictEvent.class));
+        verify(eventPublisher).publishEvent(any(ContentIndexUpsertEvent.class));
     }
 
     @Test
@@ -501,7 +503,7 @@ public class ContentWriterTest {
         inOrder.verify(contentRepository).flush();
         inOrder.verify(fileService).delete(fileId);
 
-        verify(eventPublisher).publishEvent(any(ContentSearchCacheEvictEvent.class));
+        verify(eventPublisher).publishEvent(any(ContentIndexDeleteEvent.class));
         verify(webSocketEventFactory).contentDeleteEvent(contentId);
     }
 
@@ -554,7 +556,7 @@ public class ContentWriterTest {
         verify(contentRepository).delete(content);
         verify(fileService, never()).delete(any());
 
-        verify(eventPublisher).publishEvent(any(ContentSearchCacheEvictEvent.class));
+        verify(eventPublisher).publishEvent(any(ContentIndexDeleteEvent.class));
         verify(webSocketEventFactory).contentDeleteEvent(contentId);
     }
 

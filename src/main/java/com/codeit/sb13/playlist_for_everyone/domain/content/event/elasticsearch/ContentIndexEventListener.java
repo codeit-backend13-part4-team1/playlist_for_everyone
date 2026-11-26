@@ -1,7 +1,10 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.event.elasticsearch;
 
+import com.codeit.sb13.playlist_for_everyone.domain.content.event.ContentCollectionFinishedEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentSearchCacheEvictService;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.elasticsearch.ContentIndexService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -11,6 +14,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
 public class ContentIndexEventListener {
 
     private final ContentIndexService contentIndexService;
+    private final ContentSearchCacheEvictService cacheEvictService;
 
     /**
      * DB 커밋 이후 콘텐츠 문서를 생성하거나 갱신한다.
@@ -18,6 +22,7 @@ public class ContentIndexEventListener {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handleUpsert(ContentIndexUpsertEvent event) {
         contentIndexService.upsert(event.contentId());
+        cacheEvictService.clearSearchCache();
     }
 
     /**
@@ -26,6 +31,18 @@ public class ContentIndexEventListener {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handleDelete(ContentIndexDeleteEvent event) {
         contentIndexService.delete(event.contentId());
+        cacheEvictService.clearSearchCache();
+    }
+
+    /**
+     * 콘텐츠 수집 완료 이후 검색 캐시를 무효화한다.
+     * TODO: 변경된 콘텐츠 일괄 인덱싱 연동
+     */
+    @EventListener
+    public void evictAfterCollection(ContentCollectionFinishedEvent event) {
+        if (event.insertedCount() > 0 || event.updatedCount() > 0) {
+            cacheEvictService.clearSearchCache();
+        }
     }
 
 }

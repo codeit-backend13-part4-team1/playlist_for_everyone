@@ -5,7 +5,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.collector.exception.
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.CollectedContentData;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentTag;
-import com.codeit.sb13.playlist_for_everyone.domain.content.event.ContentSearchCacheEvictEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.content.event.elasticsearch.ContentIndexUpsertEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -38,7 +38,7 @@ public class ContentCollectionService {
         ContentCollectionResult result = saveContent(data);
 
         if (result.changed()) {
-            eventPublisher.publishEvent(new ContentSearchCacheEvictEvent());
+            eventPublisher.publishEvent(new ContentIndexUpsertEvent(result.content().getId()));
         }
 
         return result.content();
@@ -142,6 +142,6 @@ public class ContentCollectionService {
             );
         }
 
-        return new ContentCollectionResult(saved, inserted == 1);
+        return new ContentCollectionResult(existing, false, updated);
     }
 }
