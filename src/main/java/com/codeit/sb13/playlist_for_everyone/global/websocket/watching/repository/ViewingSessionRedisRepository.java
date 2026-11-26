@@ -1,5 +1,6 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository;
 
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.ViewingSessionInfoDto;
 import io.lettuce.core.RedisCommandExecutionException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -231,7 +232,8 @@ public class ViewingSessionRedisRepository {
                 VIEW_SESSION_KEY_PREFIX,
                 VIEW_CONTENT_KEY_PREFIX,
                 VIEW_USER_KEY_PREFIX,
-                DELIMITER
+                DELIMITER,
+                String.valueOf(TTL.toMillis())
         ));
         args.addAll(
                 subscriptionKeys.stream().map(UUID::toString).toList()
@@ -308,10 +310,12 @@ public class ViewingSessionRedisRepository {
 
         if(contents.isEmpty()) return Map.of();
 
+        List<String> args = new ArrayList<>();
+        args.add(VIEW_CONTENT_KEY_PREFIX);
+        args.addAll(contents);
         List<?> query = redis.execute(countMultipleContentsScript,
                 List.of(),
-                contents,
-                VIEW_CONTENT_COUNTER_PREFIX
+                args.toArray()
         );
 
         if (query == null || query.size() != contents.size()) {
@@ -320,8 +324,8 @@ public class ViewingSessionRedisRepository {
 
         return query.stream().map(item -> (List<?>) item)
                 .collect(Collectors.toMap(
-                        item -> UUID.fromString((String) item.get(0)),
-                        item -> Long.valueOf((String) item.get(1)),
+                        item -> UUID.fromString(item.get(0).toString()),
+                        item -> (Long) item.get(1),
                         (existing, replacement) -> existing // 중복 제거용 세 번째 인자.
                 ));
     }
@@ -339,18 +343,25 @@ public class ViewingSessionRedisRepository {
             },
             backoff = @Backoff(delay = 100, multiplier = 2)
     )
-    public List<UUID> currentViewerIdList(String contentId){
+    public List<ViewingSessionInfoDto> currentViewerIdList(String contentId){
         List<?> query = redis.execute(
                 watcherCurrentViewerCountScript,
                 List.of(contentId),
+                VIEW_SESSION_KEY_PREFIX,
                 VIEW_CONTENT_KEY_PREFIX,
                 VIEW_USER_KEY_PREFIX,
-                VIEW_SESSION_KEY_PREFIX,
-                VIEW_CONTENT_COUNTER_PREFIX,
                 DELIMITER
         );
 
-        return query.stream().map(id -> (UUID) id).toList();
+        return query.stream().map(item -> {
+            List<?> field =  (List<?>) item;
+            return new ViewingSessionInfoDto(
+                    UUID.fromString(field.get(0).toString()),
+                    Instant.parse(field.get(1).toString()),
+                    UUID.fromString(field.get(2).toString()),
+                    UUID.fromString(field.get(3).toString())
+            );
+        }).toList();
     }
 
 

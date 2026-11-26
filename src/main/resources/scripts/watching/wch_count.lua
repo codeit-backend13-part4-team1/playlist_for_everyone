@@ -16,7 +16,7 @@ local content_id = KEYS[1]
 local content_key_prefix = ARGV[1]
 local content_counter_key = content_key_prefix .. "counter"
 
-local count = redis.call('HGET', content_count_key, content_id)
+local count = redis.call('HGET', content_counter_key, content_id)
 
 if not count then
     return 0

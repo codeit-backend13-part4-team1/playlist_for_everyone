@@ -5,6 +5,7 @@ import com.codeit.sb13.playlist_for_everyone.global.service.lock.Locks;
 import com.codeit.sb13.playlist_for_everyone.global.service.redis.RedisTopicRegistry;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSubscription;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.ViewSessionMessageListener;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.ViewingSessionInfoDto;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.entity.ViewingSessionRoom;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.ViewingSessionRedisRepository;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.repository.viewing.ViewingSessionRepository;
@@ -143,7 +144,7 @@ public class ViewingSessionServiceImpl implements ViewingSessionService{
     }
 
     @Override
-    public List<UUID> getCurrentViewerIdList(UUID contentId) {
+    public List<ViewingSessionInfoDto> getCurrentViewerIdList(UUID contentId) {
         return viewingSessionPresence.currentViewerIdList(contentId.toString());
     }
 

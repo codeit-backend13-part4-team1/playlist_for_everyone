@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.viewing;
 
 import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSubscription;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.ViewingSessionInfoDto;
 
 import java.util.List;
 import java.util.Map;
@@ -70,5 +71,5 @@ public interface ViewingSessionService {
      * 인자로 받은 컨텐츠에 대해 현재 시청중인 시청자 id 의 리스트를 반환하는 매서드.
      * @param contentId 대상이 되는 컨텐츠 id
      */
-    List<UUID> getCurrentViewerIdList(UUID contentId);
+    List<ViewingSessionInfoDto> getCurrentViewerIdList(UUID contentId);
 }

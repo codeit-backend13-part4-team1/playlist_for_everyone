@@ -58,7 +58,7 @@ public class WatcherScriptConfig {
     @Bean("lua-script-query-current-viewer")
     public RedisScript<List> watcherCurrentViewerCountScript(){
         return RedisScript.of(
-                "scripts/watching/wch_query_viewer_by_content.lua",
+                new ClassPathResource("scripts/watching/wch_query_viewer_by_content.lua"),
                 List.class
         );
     }

@@ -181,10 +181,10 @@ public class WatchingSessionEventListenerTest {
             eventListener.watchRefreshEvent(event);
 
             // then
-            verify(viewService, times(1))
-                    .refresh(sessionId);
+            verify(watchingSessionService, times(1))
+                    .refresh(UUID.fromString(sessionId));
 
-            verifyNoMoreInteractions(viewService);
+            verifyNoMoreInteractions(watchingSessionService);
 
             verifyNoInteractions(
                     watchingSessionService,
