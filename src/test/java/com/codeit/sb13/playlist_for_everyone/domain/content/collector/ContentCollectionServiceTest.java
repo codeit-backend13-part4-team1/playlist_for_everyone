@@ -517,6 +517,35 @@ class ContentCollectionServiceTest {
     }
 
     @Test
+    void 수집_콘텐츠가_갱신되면_캐시_무효화_이벤트를_발행한다() {
+        var original = new CollectedContentData(
+                ContentType.movie, "기존 제목", "기존 설명",
+                "https://example.com/original.jpg", ContentSource.TMDB, "550",
+                List.of("액션")
+        );
+
+        Content first = service.save(original);
+        em.flush();
+        em.clear();
+        applicationEvents.clear();
+
+        var recollected = new CollectedContentData(
+                ContentType.movie, "새 제목", "새 설명",
+                "https://example.com/new.jpg", ContentSource.TMDB, "550",
+                List.of("드라마")
+        );
+
+        Content updated = service.save(recollected);
+        em.flush();
+
+        assertThat(updated.getId()).isEqualTo(first.getId());
+        assertThat(applicationEvents
+                .stream(ContentSearchCacheEvictEvent.class)
+                .count())
+                .isEqualTo(1L);
+    }
+
+    @Test
     void 중복_콘텐츠를_수집하면_캐시_무효화_이벤트를_발행하지_않는다() {
         var data = new CollectedContentData(
                 ContentType.movie, "테스트 영화", "영화 설명",
