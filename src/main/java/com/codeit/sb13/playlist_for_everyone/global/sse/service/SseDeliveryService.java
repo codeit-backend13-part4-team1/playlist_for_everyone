@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.global.sse.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
+import com.codeit.sb13.playlist_for_everyone.global.sse.event.ConnectionKey;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.LoginSession;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
@@ -12,8 +13,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.springframework.web.util.DisconnectedClientHelper;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 현재 서버의 메모리에 등록된 연결로 업무 이벤트와 하트비트를 전송한다.
@@ -34,6 +38,8 @@ public class SseDeliveryService {
     private final UserSessionRepository userSessionRepository;
 
     private final SseHeartbeatDispatcher heartbeatDispatcher;
+
+    private final AtomicInteger nextHeartbeatStartIndex = new AtomicInteger();
 
     /**
      * 수신자의 모든 로컬 연결에 후속 이력 조회를 요청한다. 브로커 메시지는 조회를 깨우는 신호다.
@@ -76,11 +82,26 @@ public class SseDeliveryService {
      */
     public void sendHeartbeatToLocalConnections(){
         heartbeatDispatcher.retryPendingClosures();
+        List<ConnectionKey> connections = new ArrayList<>();
         sseEmitterRepository.findAll()
-                .forEach((userId, connections) ->
-                        connections.keySet()
-                                .forEach(connection -> heartbeatDispatcher.submit(userId, connection))
-                );
+                .forEach((userId, emitters) ->
+                        emitters.keySet()
+                                .forEach(connection ->
+                                        connections.add(new ConnectionKey(userId, connection))));
+
+        int connectionsCount = connections.size();
+        if (connectionsCount == 0){
+            return;
+        }
+
+        int index = nextHeartbeatStartIndex.getAndUpdate(previous -> (previous + 1) % connectionsCount) % connectionsCount;
+
+        for (int submitted = 0; submitted < connectionsCount; submitted++) {
+            ConnectionKey key = connections.get(index);
+
+            heartbeatDispatcher.submit(key.userId(), key.connection());
+            index = (index + 1) % connectionsCount;
+        }
     }
 
     public void revalidateLocalSessions(){
