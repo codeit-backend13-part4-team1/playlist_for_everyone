@@ -1,12 +1,10 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.event;
 
-import com.codeit.sb13.playlist_for_everyone.domain.content.event.cache.ContentSearchCacheEvictListener;
 import com.codeit.sb13.playlist_for_everyone.domain.content.event.elasticsearch.ContentIndexDeleteEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.content.event.elasticsearch.ContentIndexEventListener;
 import com.codeit.sb13.playlist_for_everyone.domain.content.event.elasticsearch.ContentIndexUpsertEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentSearchCacheEvictService;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.elasticsearch.ContentIndexService;
-import com.codeit.sb13.playlist_for_everyone.global.config.CacheConfig;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -15,11 +13,10 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
-import org.springframework.cache.CacheManager;
 
+import java.util.List;
 import java.util.UUID;
 
-import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -76,12 +73,18 @@ class ContentIndexEventListenerTest {
 
     @Test
     void 배치에서_신규_저장한_콘텐츠가_있으면_캐시를_삭제한다() {
+        var contentIds = List.of(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID()
+        );
+
         new ApplicationContextRunner()
                 .withBean(ContentIndexService.class, () -> contentIndexService)
                 .withBean(ContentSearchCacheEvictService.class, () -> cacheEvictService)
                 .withUserConfiguration(ContentIndexEventListener.class)
                 .run(context -> {
-                    context.publishEvent(new ContentCollectionFinishedEvent(3L, 0L));
+                    context.publishEvent(new ContentCollectionFinishedEvent(3L, 0L, contentIds));
 
                     verify(cacheEvictService).clearSearchCache();
                 });
@@ -94,7 +97,7 @@ class ContentIndexEventListenerTest {
                 .withBean(ContentSearchCacheEvictService.class, () -> cacheEvictService)
                 .withUserConfiguration(ContentIndexEventListener.class)
                 .run(context -> {
-                    context.publishEvent(new ContentCollectionFinishedEvent(0L, 0L));
+                    context.publishEvent(new ContentCollectionFinishedEvent(0L, 0L, List.of()));
 
                     verifyNoInteractions(contentIndexService, cacheEvictService);
                 });
@@ -102,12 +105,18 @@ class ContentIndexEventListenerTest {
 
     @Test
     void 배치에서_기존_콘텐츠만_갱신해도_캐시를_삭제한다() {
+        var contentIds = List.of(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID()
+        );
+
         new ApplicationContextRunner()
                 .withBean(ContentIndexService.class, () -> contentIndexService)
                 .withBean(ContentSearchCacheEvictService.class, () -> cacheEvictService)
                 .withUserConfiguration(ContentIndexEventListener.class)
                 .run(context -> {
-                    context.publishEvent(new ContentCollectionFinishedEvent(0L, 2L));
+                    context.publishEvent(new ContentCollectionFinishedEvent(0L, 2L, contentIds));
 
                     verify(cacheEvictService).clearSearchCache();
                 });

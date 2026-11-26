@@ -10,6 +10,9 @@ import org.springframework.batch.core.job.JobInstance;
 import org.springframework.batch.core.job.parameters.JobParametersBuilder;
 import org.springframework.context.ApplicationEventPublisher;
 
+import java.util.List;
+import java.util.UUID;
+
 import static org.mockito.Mockito.*;
 
 class CollectionCacheEvictJobListenerTest {
@@ -23,11 +26,17 @@ class CollectionCacheEvictJobListenerTest {
         var publisher = mock(ApplicationEventPublisher.class);
         var listener = new CollectionCacheEvictJobListener(counter, publisher);
 
+        var contentIds = List.of(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID()
+        );
+
         when(counter.getCount()).thenReturn(3L);
 
         listener.afterJob(execution(status));
 
-        verify(publisher).publishEvent(new ContentCollectionFinishedEvent(3L, 0L));
+        verify(publisher).publishEvent(new ContentCollectionFinishedEvent(3L, 0L, contentIds));
         verifyNoMoreInteractions(publisher);
     }
 
