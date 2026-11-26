@@ -59,9 +59,9 @@ MVC가 비동기 응답을 관리하고, 전송 시 같은 HTTP 응답에 데이
 알림 삭제 필터와 연결별 제한된 후속 조회 재시도를 제공합니다.
 
 브로커 발행 성공이 브라우저 수신 확인은 아닙니다. Outbox와 모든 장애 상황의 정확히 한 번 전달은 제공하지 않습니다.
-업무 이벤트를 알림으로 바꾸는 책임은 알림 도메인에 있습니다. [#155 팔로우](../notification/07-domain-event-integration.md),
-[#156 권한 변경·구독](../notification/08-role-subscription-integration.md), [#157 플레이리스트 생성·콘텐츠 추가](../notification/09-playlist-event-integration.md)의 연동 가이드를 참고합니다.
-이 다섯 종류 외의 업무 이벤트 연동(#45), DM 본문 연동, Kafka 구현체, 연결 수 제한·모니터링(#107)은 후속 작업입니다.
+팔로우, 권한 변경, 플레이리스트 구독·생성·콘텐츠 추가, 시청 시작, DM 수신은 알림 도메인이 `notifications` 이벤트로 전달합니다. DM 수신자는 메시지 본문을 별도의 `direct-messages` 이벤트로도 받습니다. [업무 이벤트별 알림](../notification/README.md) · [DM 본문 전송](../conversation/15-direct-message-event-sse.md)
+
+로그인 세션이 폐기되면 해당 연결을 정리합니다. 관리자는 Actuator에서 각 서버의 활성 연결 수를 조회할 수 있습니다. 연결 수 제한은 별도 과제이며 현재 서버 간 전송은 Redis를 사용합니다. [활성 연결 지표](01-connection-lifecycle.md#활성-sse-연결-수-조회) · [세션 폐기 흐름](../auth/03-extension-points.md)
 이력 보관 초기값은 운영 부하를 측정해 조정해야 합니다.
 
 ---
