@@ -68,4 +68,19 @@ class ContentSearchCacheEvictListenerTest {
                 });
     }
 
+    @Test
+    void 배치에서_기존_콘텐츠만_갱신해도_캐시를_삭제한다() {
+        given(cacheManager.getCache(CacheConfig.CONTENT_SEARCH))
+                .willReturn(cache);
+
+        new ApplicationContextRunner()
+                .withBean(CacheManager.class, () -> cacheManager)
+                .withUserConfiguration(ContentSearchCacheEvictListener.class)
+                .run(context -> {
+                    context.publishEvent(new ContentCollectionFinishedEvent(0L, 2L));
+
+                    verify(cache).clear();
+                });
+    }
+
 }

@@ -48,4 +48,30 @@ class CollectionInsertCounterTest {
 
         assertThat(counter.getCount()).isZero();
     }
+
+    @Test
+    void 커밋이_완료된_뒤에만_갱신_건수가_증가한다() {
+        var counter = new CollectionInsertCounter();
+
+        transactionTemplate.executeWithoutResult(status -> {
+            counter.recordUpdated();
+
+            assertThat(counter.getUpdatedCount()).isZero();
+        });
+
+        assertThat(counter.getUpdatedCount()).isEqualTo(1L);
+        assertThat(counter.getCount()).isZero();
+    }
+
+    @Test
+    void 롤백하면_갱신_건수가_증가하지_않는다() {
+        var counter = new CollectionInsertCounter();
+
+        transactionTemplate.executeWithoutResult(status -> {
+            counter.recordUpdated();
+            status.setRollbackOnly();
+        });
+
+        assertThat(counter.getUpdatedCount()).isZero();
+    }
 }
