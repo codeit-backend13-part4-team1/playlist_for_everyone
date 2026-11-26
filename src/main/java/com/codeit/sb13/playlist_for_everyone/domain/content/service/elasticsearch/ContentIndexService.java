@@ -1,13 +1,14 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.service.elasticsearch;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.document.ContentDocument;
-import com.codeit.sb13.playlist_for_everyone.domain.content.repository.elasticsearch.ContentDocumentRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Slice;
 import org.springframework.stereotype.Service;
+
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -18,7 +19,7 @@ public class ContentIndexService {
     private static final int BATCH_SIZE = 500;
 
     private final ContentIndexReader contentIndexReader;
-    private final ContentDocumentRepository contentDocumentRepository;
+    private final ContentIndexWriter contentIndexWriter;
 
     /**
      * 기존 PostgreSQL 콘텐츠 데이터를 Elasticsearch에 일괄 인덱싱한다.
@@ -40,7 +41,7 @@ public class ContentIndexService {
             }
 
             // DB 조회 트랜잭션 외부에서 Elasticsearch 일괄 저장
-            contentDocumentRepository.saveAll(documents.getContent());
+            contentIndexWriter.saveAll(documents.getContent());
             // 누적 인덱싱 건수 집계 및 진행 상황 기록
             totalIndexed += documents.getNumberOfElements();
 
@@ -55,6 +56,20 @@ public class ContentIndexService {
         }
 
         log.info("콘텐츠 인덱싱 완료: 총 {}건", totalIndexed);
+    }
+
+    /**
+     * 콘텐츠의 최신 정보를 Elasticsearch에 반영한다.
+     */
+    public void upsert(UUID contentId) {
+
+    }
+
+    /**
+     * Elasticsearch에서 콘텐츠 문서를 삭제한다.
+     */
+    public void delete(UUID contentId) {
+
     }
 
 }

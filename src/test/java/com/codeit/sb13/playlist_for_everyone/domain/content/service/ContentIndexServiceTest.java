@@ -2,9 +2,9 @@ package com.codeit.sb13.playlist_for_everyone.domain.content.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.document.ContentDocument;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
-import com.codeit.sb13.playlist_for_everyone.domain.content.repository.elasticsearch.ContentDocumentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.elasticsearch.ContentIndexReader;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.elasticsearch.ContentIndexService;
+import com.codeit.sb13.playlist_for_everyone.domain.content.service.elasticsearch.ContentIndexWriter;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,10 +19,12 @@ import org.springframework.data.domain.SliceImpl;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -33,7 +35,7 @@ class ContentIndexServiceTest {
     private ContentIndexReader contentIndexReader;
 
     @Mock
-    private ContentDocumentRepository contentDocumentRepository;
+    private ContentIndexWriter contentIndexWriter;
 
     @InjectMocks
     private ContentIndexService contentIndexService;
@@ -66,14 +68,14 @@ class ContentIndexServiceTest {
         // then
         InOrder inOrder = inOrder(
                 contentIndexReader,
-                contentDocumentRepository
+                contentIndexWriter
         );
 
         inOrder.verify(contentIndexReader).readDocuments(firstPage);
-        inOrder.verify(contentDocumentRepository).saveAll(firstDocuments);
+        inOrder.verify(contentIndexWriter).saveAll(firstDocuments);
 
         inOrder.verify(contentIndexReader).readDocuments(secondPage);
-        inOrder.verify(contentDocumentRepository).saveAll(secondDocuments);
+        inOrder.verify(contentIndexWriter).saveAll(secondDocuments);
 
         inOrder.verifyNoMoreInteractions();
     }
@@ -96,7 +98,6 @@ class ContentIndexServiceTest {
 
         // then
         verify(contentIndexReader).readDocuments(pageable);
-        verifyNoInteractions(contentDocumentRepository);
     }
 
     @Test
@@ -113,19 +114,76 @@ class ContentIndexServiceTest {
         given(contentIndexReader.readDocuments(pageable))
                 .willReturn(slice);
 
-        given(contentDocumentRepository.saveAll(documents))
-                .willThrow(new RuntimeException("Elasticsearch 저장 실패"));
+        willThrow(new RuntimeException("Elasticsearch 저장 실패"))
+                .given(contentIndexWriter)
+                .saveAll(documents);
 
         // when & then
         assertThatThrownBy(() -> contentIndexService.indexAll())
-            .isInstanceOf(RuntimeException.class)
+                .isInstanceOf(RuntimeException.class)
                 .hasMessage("Elasticsearch 저장 실패");
 
         verify(contentIndexReader).readDocuments(pageable);
-        verify(contentDocumentRepository).saveAll(documents);
+        verify(contentIndexWriter).saveAll(documents);
 
         // 저장 실패 이후 다음 배치를 조회하지 않는지 검증verifyNoMoreInteractions(contentIndexReader);
-        verifyNoMoreInteractions(contentDocumentRepository);
+        verifyNoMoreInteractions(contentIndexWriter);
+    }
+
+    @Test
+    @DisplayName("콘텐츠의 최신 정보를 조회하여 Elasticsearch에 저장한다.")
+    void upsert_success() {
+        // given
+        ContentDocument document = createDocument("콘텐츠1");
+        UUID contentId = UUID.fromString(document.getId());
+
+        given(contentIndexReader.readDocument(contentId))
+                .willReturn(Optional.of(document));
+
+        // when
+        contentIndexService.upsert(contentId);
+
+        // then
+        InOrder inOrder = inOrder(
+                contentIndexReader,
+                contentIndexWriter
+        );
+
+        inOrder.verify(contentIndexReader).readDocument(contentId);
+        inOrder.verify(contentIndexWriter).save(document);
+
+        verify(contentIndexWriter, never()).delete(any());
+    }
+
+    @Test
+    @DisplayName("콘텐츠가 존재하지 않으면 인덱싱하지 않는다.")
+    void upsert_contentNotFound() {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        given(contentIndexReader.readDocument(contentId))
+                .willReturn(Optional.empty());
+
+        // when
+        contentIndexService.upsert(contentId);
+
+        // then
+        verify(contentIndexReader).readDocument(contentId);
+        verifyNoInteractions(contentIndexWriter);
+    }
+
+    @Test
+    @DisplayName("콘텐츠 ID에 해당하는 Elasticsearch 문서를 삭제한다.")
+    void delete_success() {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        // when
+        contentIndexService.delete(contentId);
+
+        // then
+        verify(contentIndexWriter).delete(contentId);
+        verifyNoInteractions(contentIndexReader);
     }
 
     private ContentDocument createDocument(String title) {
