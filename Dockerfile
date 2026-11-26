@@ -21,6 +21,7 @@ COPY --from=build --chown=app:app /workspace/app.jar app.jar
 USER app
 
 ENV SPRING_PROFILES_ACTIVE=prod
+ENV TZ=Asia/Seoul
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0"
 
 EXPOSE 8080

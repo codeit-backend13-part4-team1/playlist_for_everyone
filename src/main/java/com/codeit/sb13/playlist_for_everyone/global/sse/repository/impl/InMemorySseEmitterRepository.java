@@ -111,6 +111,15 @@ public class InMemorySseEmitterRepository implements SseEmitterRepository {
                 );
     }
 
+    @Override
+    public long countActiveConnections() {
+        return sseEmitters.values()
+                .stream()
+                .map(Map::size)
+                .mapToLong(i -> i)
+                .sum();
+    }
+
     private Map<Connection, SseEmitter> convertToEmitterMap(Map<Connection, SseEmitterEntry> connections, Predicate<UUID> loginSessionFilter) {
         return connections.entrySet()
                 .stream()

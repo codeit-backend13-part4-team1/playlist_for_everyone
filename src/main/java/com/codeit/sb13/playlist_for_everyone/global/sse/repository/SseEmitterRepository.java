@@ -56,5 +56,7 @@ public interface SseEmitterRepository {
 
     Map<UUID, Set<LoginSession>> findAllLoginSessions();
 
+    long countActiveConnections();
+
 
 }
