@@ -156,7 +156,7 @@ class ContentIndexServiceTest {
     }
 
     @Test
-    @DisplayName("콘텐츠가 존재하지 않으면 인덱싱하지 않는다.")
+    @DisplayName("콘텐츠가 존재하지 않으면 Elasticsearch에 남아 있는 문서를 삭제한다.")
     void upsert_contentNotFound() {
         // given
         UUID contentId = UUID.randomUUID();
@@ -169,7 +169,7 @@ class ContentIndexServiceTest {
 
         // then
         verify(contentIndexReader).readDocument(contentId);
-        verifyNoInteractions(contentIndexWriter);
+        verify(contentIndexWriter).delete(contentId);
     }
 
     @Test

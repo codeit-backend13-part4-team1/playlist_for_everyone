@@ -62,14 +62,18 @@ public class ContentIndexService {
      * 콘텐츠의 최신 정보를 Elasticsearch에 반영한다.
      */
     public void upsert(UUID contentId) {
-
+        contentIndexReader.readDocument(contentId)
+                .ifPresentOrElse(
+                        contentIndexWriter::save,
+                        () -> contentIndexWriter.delete(contentId)
+                );
     }
 
     /**
      * Elasticsearch에서 콘텐츠 문서를 삭제한다.
      */
     public void delete(UUID contentId) {
-
+        contentIndexWriter.delete(contentId);
     }
 
 }
