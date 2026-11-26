@@ -1,5 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.event;
 
+import com.codeit.sb13.playlist_for_everyone.domain.content.event.cache.ContentSearchCacheEvictEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.content.event.cache.ContentSearchCacheEvictListener;
 import com.codeit.sb13.playlist_for_everyone.global.config.CacheConfig;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

@@ -1,5 +1,6 @@
-package com.codeit.sb13.playlist_for_everyone.domain.content.event;
+package com.codeit.sb13.playlist_for_everyone.domain.content.event.cache;
 
+import com.codeit.sb13.playlist_for_everyone.domain.content.event.ContentCollectionFinishedEvent;
 import com.codeit.sb13.playlist_for_everyone.global.config.CacheConfig;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.Cache;
