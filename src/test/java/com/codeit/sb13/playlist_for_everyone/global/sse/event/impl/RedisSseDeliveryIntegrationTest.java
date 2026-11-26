@@ -374,14 +374,18 @@ public class RedisSseDeliveryIntegrationTest {
 
                 new SseHeartbeatScheduler(sseDeliveryService).sendHeartbeat();
 
-                verify(emitterOnA).complete();
-                assertThat(sseEmitterRepository.findByUserIdAndConnection(userId, connectionOnA)).isEmpty();
+                await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+                    verify(emitterOnA).complete();
+                    assertThat(sseEmitterRepository.findByUserIdAndConnection(userId, connectionOnA)).isEmpty();
+                });
                 assertThat(repositoryOnB.findByUserIdAndConnection(userId, connectionOnB)).contains(emitterOnB);
 
                 new SseHeartbeatScheduler(serviceOnB).sendHeartbeat();
 
-                verify(emitterOnB).complete();
-                assertThat(repositoryOnB.findByUserIdAndConnection(userId, connectionOnB)).isEmpty();
+                await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+                    verify(emitterOnB).complete();
+                    assertThat(repositoryOnB.findByUserIdAndConnection(userId, connectionOnB)).isEmpty();
+                });
             } finally {
                 deliveryCoordinator.cleanupConnection(userId, connectionOnA);
                 coordinatorOnB.cleanupConnection(userId, connectionOnB);

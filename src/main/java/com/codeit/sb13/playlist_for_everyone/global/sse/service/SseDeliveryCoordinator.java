@@ -241,6 +241,11 @@ public class SseDeliveryCoordinator {
         }
     }
 
+    /** 폐기가 확인된 연결의 업무 전송과 재시도를 중단하고, HTTP 종료에 사용할 emitter는 유지한다. */
+    public void stopDelivery(UUID userId, Connection connection) {
+        detachConnection(new ConnectionKey(userId, connection));
+    }
+
     /**
      * 등록 완료를 기다린 뒤 실제 emitter 보관처인 저장소에서 조회한다.
      * 상태가 바뀌었거나 저장소 연결이 없으면 빈 결과로 전송을 중단한다. 후자는 남은 상태·예약도 정리한다.

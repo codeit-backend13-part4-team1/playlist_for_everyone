@@ -20,11 +20,18 @@ public class SseHeartbeatWorker {
     private final SseDeliveryCoordinator deliveryCoordinator;
 
     @Async("sseHeartbeatTaskExecutor")
-    public CompletableFuture<Void> send(UUID userId, Connection connection) {
+    public CompletableFuture<Void> runAsync(Runnable task) {
+        task.run();
+        return CompletableFuture.completedFuture(null);
+    }
+
+    public void send(UUID userId, Connection connection) {
         repository.findByUserIdAndConnection(userId, connection)
                 .ifPresent(emitter -> sendHeartbeat(userId, connection, emitter));
+    }
 
-        return CompletableFuture.completedFuture(null);
+    public void close(UUID userId, Connection connection) {
+        deliveryCoordinator.closeConnection(userId, connection);
     }
 
     private void sendHeartbeat(UUID userId, Connection connection, SseEmitter emitter) {

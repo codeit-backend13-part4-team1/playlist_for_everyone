@@ -15,6 +15,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -410,8 +411,12 @@ class SseDeliveryServiceTest {
         verify(userSessionRepository).isCurrent(userId, currentSession.id());
         verify(userSessionRepository).isCurrent(otherUserId, otherUserSession.id());
         verifyNoMoreInteractions(userSessionRepository);
-        verify(deliveryCoordinator).closeConnection(userId, firstTab);
-        verify(deliveryCoordinator).closeConnection(userId, secondTab);
+        InOrder firstTabOrder = inOrder(deliveryCoordinator);
+        firstTabOrder.verify(deliveryCoordinator).stopDelivery(userId, firstTab);
+        firstTabOrder.verify(deliveryCoordinator).closeConnection(userId, firstTab);
+        InOrder secondTabOrder = inOrder(deliveryCoordinator);
+        secondTabOrder.verify(deliveryCoordinator).stopDelivery(userId, secondTab);
+        secondTabOrder.verify(deliveryCoordinator).closeConnection(userId, secondTab);
         verifyNoMoreInteractions(deliveryCoordinator);
     }
 
@@ -452,7 +457,9 @@ class SseDeliveryServiceTest {
 
         verify(userSessionRepository, times(2)).isCurrent(receiverId, loginSession.id());
         verify(emitter, times(2)).send(any(SseEmitter.SseEventBuilder.class));
-        verify(deliveryCoordinator).closeConnection(receiverId, connection);
+        InOrder closureOrder = inOrder(deliveryCoordinator);
+        closureOrder.verify(deliveryCoordinator).stopDelivery(receiverId, connection);
+        closureOrder.verify(deliveryCoordinator).closeConnection(receiverId, connection);
         verifyNoMoreInteractions(deliveryCoordinator);
     }
 

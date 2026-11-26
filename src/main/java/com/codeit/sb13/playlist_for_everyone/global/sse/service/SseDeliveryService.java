@@ -87,7 +87,7 @@ public class SseDeliveryService {
                 .forEach((userId, value) -> value
                         .stream()
                         .filter(loginSession -> isNotCurrentSession(userId, loginSession))
-                        .forEach(loginSession -> revoke(userId, loginSession)));
+                        .forEach(loginSession -> closeRevokedLocalConnections(userId, loginSession)));
     }
 
     private boolean isNotCurrentSession(UUID userId, LoginSession loginSession) {
@@ -106,6 +106,14 @@ public class SseDeliveryService {
                         deliveryCoordinator.closeConnection(userId, connection));
     }
 
+    private void closeRevokedLocalConnections(UUID userId, LoginSession loginSession) {
+        sseEmitterRepository.findByUserIdAndLoginSessionId(userId, loginSession)
+                .keySet()
+                .forEach(connection -> {
+                    deliveryCoordinator.stopDelivery(userId, connection);
+                    heartbeatDispatcher.requestClose(userId, connection);
+                });
+    }
 
     /**
      * 업무 이벤트 전송도 하트비트와 같은 단절 분류 및 DEBUG/WARN 기준을 사용한다.
