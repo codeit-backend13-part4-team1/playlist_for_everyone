@@ -131,6 +131,47 @@ class ContentIndexServiceTest {
     }
 
     @Test
+    @DisplayName("변경된 콘텐츠 문서를 일괄 저장한다.")
+    void upsertAll_success() {
+        // given
+        List<UUID> contentIds = List.of(
+                UUID.randomUUID(),
+                UUID.randomUUID()
+        );
+
+        List<ContentDocument> documents = List.of(
+                createDocument("콘텐츠1"),
+                createDocument("콘텐츠2")
+        );
+
+        given(contentIndexReader.readDocuments(contentIds)).willReturn(documents);
+
+        // when
+        contentIndexService.upsertAll(contentIds);
+
+        // then
+        InOrder inOrder = inOrder(contentIndexReader, contentIndexWriter);
+
+        inOrder.verify(contentIndexReader).readDocuments(contentIds);
+        inOrder.verify(contentIndexWriter).saveAll(documents);
+
+        verifyNoMoreInteractions(contentIndexReader, contentIndexWriter);
+    }
+
+    @Test
+    @DisplayName("콘텐츠 ID 목록이 비어 있으면 인덱싱하지 않는다.")
+    void upsertAll_emptyIds() {
+        // given
+        List<UUID> contentIds = List.of();
+
+        // when
+        contentIndexService.upsertAll(contentIds);
+
+        // then
+        verifyNoInteractions(contentIndexReader, contentIndexWriter);
+    }
+
+    @Test
     @DisplayName("콘텐츠의 최신 정보를 조회하여 Elasticsearch에 저장한다.")
     void upsert_success() {
         // given

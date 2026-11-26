@@ -8,6 +8,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Slice;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.UUID;
 
 @Slf4j
@@ -56,6 +57,15 @@ public class ContentIndexService {
         }
 
         log.info("콘텐츠 인덱싱 완료: 총 {}건", totalIndexed);
+    }
+
+    /**
+     * 변경된 콘텐츠 문서를 일괄 생성하거나 갱신한다.
+     */
+    public void upsertAll(List<UUID> contentIds) {
+        if (contentIds.isEmpty()) {
+            return;
+        }
     }
 
     /**

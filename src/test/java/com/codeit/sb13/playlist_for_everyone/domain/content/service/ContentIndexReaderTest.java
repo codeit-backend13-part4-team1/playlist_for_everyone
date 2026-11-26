@@ -189,4 +189,57 @@ public class ContentIndexReaderTest {
         verify(contentRepository).findAllByIds(List.of(contentId));
     }
 
+    @Test
+    @DisplayName("콘텐츠 ID 목록에 해당하는 문서를 일괄 조회한다.")
+    void readDocumentsByIds_success() {
+        // given
+        UUID contentId1 = UUID.randomUUID();
+        UUID contentId2 = UUID.randomUUID();
+
+        List<UUID> contentIds = List.of(contentId1, contentId2);
+
+        Content content1 = Content.createAdminContent(
+                ContentType.tvSeries,
+                "굿파트너2",
+                "장나라, 김혜윤 주연",
+                null
+        );
+        Content content2 = Content.createAdminContent(
+                ContentType.tvSeries,
+                "사내맞선",
+                "안효섭, 김세정 주연",
+                null
+        );
+
+        ContentDocument document1 = ContentDocument.builder()
+                .id(contentId1.toString())
+                .type(ContentType.tvSeries)
+                .title("굿파트너2")
+                .description("장나라, 김혜윤 주연")
+                .build();
+        ContentDocument document2 = ContentDocument.builder()
+                .id(contentId1.toString())
+                .type(ContentType.tvSeries)
+                .title("사내맞선")
+                .description("안효섭, 김세정 주연")
+                .build();
+
+        given(contentRepository.findAllByIds(contentIds))
+                .willReturn(List.of(content1, content2));
+        given(contentDocumentMapper.toContentDocument(content1))
+                .willReturn(document1);
+        given(contentDocumentMapper.toContentDocument(content2))
+                .willReturn(document2);
+
+        // when
+        List<ContentDocument> result = contentIndexReader.readDocuments(contentIds);
+
+        // then
+        assertThat(result).containsExactlyInAnyOrder(document1, document2);
+
+        verify(contentRepository).findAllByIds(contentIds);
+        verify(contentDocumentMapper).toContentDocument(content1);
+        verify(contentDocumentMapper).toContentDocument(content2);
+    }
+
 }

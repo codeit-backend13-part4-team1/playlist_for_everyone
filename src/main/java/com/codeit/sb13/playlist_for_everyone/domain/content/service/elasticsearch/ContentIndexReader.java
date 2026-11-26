@@ -62,13 +62,28 @@ public class ContentIndexReader {
      */
     @Transactional(
             readOnly = true,
-            propagation = Propagation.REQUIRED
+            propagation = Propagation.REQUIRES_NEW
     )
     public Optional<ContentDocument> readDocument(UUID contentId) {
         return contentRepository.findAllByIds(List.of(contentId))
                 .stream()
                 .findFirst()
                 .map(contentDocumentMapper::toContentDocument);
+    }
+
+    /**
+     * 변경된 콘텐츠의 일괄 인덱싱에 필요한 데이터를 조회한다.
+     */
+    @Transactional(
+            readOnly = true,
+            propagation = Propagation.REQUIRES_NEW
+    )
+    public List<ContentDocument> readDocuments(List<UUID> contentIds) {
+        if (contentIds.isEmpty()) {
+            return List.of();
+        }
+
+        return null;
     }
 
 }
