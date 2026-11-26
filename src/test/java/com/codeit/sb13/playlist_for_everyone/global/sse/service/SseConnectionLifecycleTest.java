@@ -203,6 +203,56 @@ public class SseConnectionLifecycleTest {
                 });
     }
 
+    @Test
+    @DisplayName("하트비트 쓰기가 막혀 있어도 실제 컨텍스트 종료가 반환된다.")
+    void contextCloseReturnsWhileHeartbeatWriteIsBlocked() {
+        SseEmitterRepository localRepository = new InMemorySseEmitterRepository();
+        SseDeliveryCoordinator localCoordinator = new SseDeliveryCoordinator(
+                mock(SseRecoveryService.class), mock(TaskScheduler.class),
+                new SseRetryProperties(Duration.ofSeconds(1), Duration.ofSeconds(30), 3),
+                new SseConnectionCloser(localRepository), localRepository);
+        UUID userId = UUID.randomUUID();
+        Connection connection = Connection.create();
+        LoginSession session = new LoginSession(UUID.randomUUID());
+
+        CountDownLatch workerStarted = new CountDownLatch(1);
+        CountDownLatch closeAttempted = new CountDownLatch(1);
+        CompletableFuture<Void> releaseWrites = new CompletableFuture<>();
+        localCoordinator.register(userId, connection,
+                blockingEmitter(workerStarted, closeAttempted, releaseWrites), session);
+
+        new ApplicationContextRunner()
+                .withUserConfiguration(SseHeartbeatConfig.class, SseConnectionService.class)
+                .withBean(SseEmitterRepository.class, () -> localRepository)
+                .withBean(SseDeliveryCoordinator.class, () -> localCoordinator)
+                .withBean(UserSessionRepository.class, () -> userSessionRepository)
+                .withBean(SseProperties.class,
+                        () -> new SseProperties(Duration.ofSeconds(15), Duration.ofMinutes(30)))
+                .withPropertyValues("everyone.sse.heartbeat.pool-size=2",
+                        "everyone.sse.heartbeat.queue-capacity=1")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    SseHeartbeatDispatcher dispatcher = context.getBean(SseHeartbeatDispatcher.class);
+                    ExecutorService closeThread = Executors.newSingleThreadExecutor();
+
+                    try {
+                        dispatcher.submit(userId, connection);
+                        assertThat(workerStarted.await(5, TimeUnit.SECONDS)).isTrue();
+
+                        Future<?> close = closeThread.submit(context.getSourceApplicationContext()::close);
+
+                        close.get(3, TimeUnit.SECONDS);
+                        assertThat(localRepository.findAll()).isEmpty();
+                    } finally {
+                        releaseWrites.complete(null);
+                        closeThread.shutdown();
+                        if (!closeThread.awaitTermination(5, TimeUnit.SECONDS)) {
+                            closeThread.shutdownNow();
+                        }
+                    }
+                });
+    }
+
     private SseEmitter blockingEmitter(
             CountDownLatch workersStarted, CountDownLatch closeAttempted, CompletableFuture<Void> releaseWrites) {
         return new SseEmitter() {
