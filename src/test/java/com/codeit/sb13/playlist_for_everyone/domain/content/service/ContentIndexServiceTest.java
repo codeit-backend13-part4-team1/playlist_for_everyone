@@ -3,9 +3,11 @@ package com.codeit.sb13.playlist_for_everyone.domain.content.service;
 import com.codeit.sb13.playlist_for_everyone.domain.content.document.ContentDocument;
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentIndexBatch;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
+import com.codeit.sb13.playlist_for_everyone.domain.content.service.elasticsearch.ContentIndexLock;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.elasticsearch.ContentIndexReader;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.elasticsearch.ContentIndexService;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.elasticsearch.ContentIndexWriter;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -13,6 +15,8 @@ import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
@@ -22,6 +26,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -39,8 +44,41 @@ class ContentIndexServiceTest {
     @Mock
     private ContentIndexWriter contentIndexWriter;
 
-    @InjectMocks
+    @Mock
+    private RedissonClient redissonClient;
+
+    @Mock
+    private RLock lock;
+
     private ContentIndexService contentIndexService;
+
+    @BeforeEach
+    void setUp() {
+        ReentrantLock testLock = new ReentrantLock();
+
+        lenient().when(redissonClient.getLock("everyone:lock:content:index"))
+                .thenReturn(lock);
+
+        // 실제 스레드 간 상호 배제 동작을 재현한다.
+        lenient().doAnswer(invocation -> {
+            testLock.lock();
+            return null;
+        }).when(lock).lock();
+
+        lenient().doAnswer(invocation -> {
+            testLock.unlock();
+            return null;
+        }).when(lock).unlock();
+
+        ContentIndexLock contentIndexLock =
+                new ContentIndexLock(redissonClient);
+
+        contentIndexService = new ContentIndexService(
+                contentIndexReader,
+                contentIndexWriter,
+                contentIndexLock
+        );
+    }
 
     @Test
     @DisplayName("마지막 콘텐츠 ID를 기준으로 여러 배치를 순차적으로 인덱싱한다.")
