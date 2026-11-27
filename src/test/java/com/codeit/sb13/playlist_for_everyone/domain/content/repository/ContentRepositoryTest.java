@@ -378,4 +378,61 @@ public class ContentRepositoryTest {
         assertThat(result.hasNext()).isFalse();
     }
 
+    @Test
+    @DisplayName("이전 배치의 콘텐츠가 삭제되어도 다음 콘텐츠 ID를 누락 없이 조회한다.")
+    void findAllIdsAfter_deletedContent() {
+        // given
+        contentRepository.saveAllAndFlush(List.of(
+                Content.createAdminContent(
+                        ContentType.tvSeries,
+                        "콘텐츠1",
+                        "테스트 설명1",
+                        null
+                ),
+                Content.createAdminContent(
+                        ContentType.tvSeries,
+                        "콘텐츠2",
+                        "테스트 설명2",
+                        null
+                ),
+                Content.createAdminContent(
+                        ContentType.tvSeries,
+                        "콘텐츠3",
+                        "테스트 설명3",
+                        null
+                )
+        ));
+
+        Pageable pageable = PageRequest.of(0, 2);
+
+        // 삭제 전 전체 ID 확인
+        List<UUID> allIds = contentRepository
+                .findAllIds(PageRequest.of(0, 3))
+                .getContent();
+
+        assertThat(allIds).hasSize(3);
+
+        // 첫 번째 배치 조회
+        Slice<UUID> firstBatch = contentRepository.findAllIds(pageable);
+
+        assertThat(firstBatch.getContent())
+                .containsExactly(allIds.get(0), allIds.get(1));
+        assertThat(firstBatch.hasNext()).isTrue();
+
+        UUID lastId = firstBatch.getContent().get(1);
+
+        // 이미 조회한 콘텐츠 삭제
+        contentRepository.deleteById(allIds.get(0));
+        contentRepository.flush();
+
+        // when
+        Slice<UUID> secondBatch =
+                contentRepository.findAllIdsAfter(lastId, pageable);
+
+        // then
+        assertThat(secondBatch.getContent())
+                .containsExactly(allIds.get(2));
+        assertThat(secondBatch.hasNext()).isFalse();
+    }
+
 }

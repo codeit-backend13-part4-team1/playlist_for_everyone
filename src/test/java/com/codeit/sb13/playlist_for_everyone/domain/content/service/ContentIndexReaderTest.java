@@ -81,7 +81,53 @@ public class ContentIndexReaderTest {
     }
 
     @Test
-    @DisplayName("조회된 콘텐츠 ID가 없으면 빈 Slice를 반환한다.")
+    @DisplayName("마지막 콘텐츠 ID를 기준으로 다음 배치를 조회한다.")
+    void readDocuments_afterLastId() {
+        // given
+        UUID lastId = UUID.fromString(
+                "00000000-0000-0000-0000-000000000001"
+        );
+        UUID contentId = UUID.fromString(
+                "00000000-0000-0000-0000-000000000002"
+        );
+
+        Pageable pageable = PageRequest.of(0, 500);
+
+        Content content = Content.createAdminContent(
+                ContentType.tvSeries,
+                "굿파트너2",
+                "장나라, 김혜윤 주연",
+                null
+        );
+        ContentDocument document = ContentDocument.builder()
+                .id(contentId.toString())
+                .title("굿파트너2")
+                .build();
+
+        Slice<UUID> ids = new SliceImpl<>(
+                List.of(contentId), pageable, false
+        );
+
+        given(contentRepository.findAllIdsAfter(lastId, pageable)).willReturn(ids);
+        given(contentRepository.findAllByIds(List.of(contentId))).willReturn(List.of(content));
+        given(contentDocumentMapper.toContentDocument(content)).willReturn(document);
+
+        // when
+        ContentIndexBatch result = contentIndexReader.readDocuments(lastId, pageable);
+
+        // then
+        assertThat(result.documents()).containsExactly(document);
+        assertThat(result.lastId()).isEqualTo(contentId);
+        assertThat(result.hasNext()).isFalse();
+
+        verify(contentRepository).findAllIdsAfter(lastId, pageable);
+        verify(contentRepository, never()).findAllIds(any());
+        verify(contentRepository).findAllByIds(List.of(contentId));
+        verify(contentDocumentMapper).toContentDocument(content);
+    }
+
+    @Test
+    @DisplayName("조회된 콘텐츠 ID가 없으면 빈 배치를 반환한다.")
     void readDocuments_empty() {
         // given
         Pageable pageable = PageRequest.of(0, 500);
@@ -240,6 +286,37 @@ public class ContentIndexReaderTest {
         verify(contentRepository).findAllByIds(contentIds);
         verify(contentDocumentMapper).toContentDocument(content1);
         verify(contentDocumentMapper).toContentDocument(content2);
+    }
+
+    @Test
+    @DisplayName("ID 조회 이후 콘텐츠가 삭제되어도 마지막 ID와 다음 배치 정보를 유지한다.")
+    void readDocuments_deletedContent() {
+        // given
+        UUID contentId = UUID.randomUUID();
+        Pageable pageable = PageRequest.of(0, 1);
+
+        Slice<UUID> ids = new SliceImpl<>(
+                List.of(contentId), pageable, true
+        );
+
+        given(contentRepository.findAllIds(pageable))
+                .willReturn(ids);
+
+        given(contentRepository.findAllByIds(List.of(contentId)))
+                .willReturn(List.of());
+
+        // when
+        ContentIndexBatch result =
+                contentIndexReader.readDocuments(null, pageable);
+
+        // then
+        assertThat(result.documents()).isEmpty();
+        assertThat(result.lastId()).isEqualTo(contentId);
+        assertThat(result.hasNext()).isTrue();
+
+        verify(contentRepository).findAllIds(pageable);
+        verify(contentRepository).findAllByIds(List.of(contentId));
+        verifyNoInteractions(contentDocumentMapper);
     }
 
 }
