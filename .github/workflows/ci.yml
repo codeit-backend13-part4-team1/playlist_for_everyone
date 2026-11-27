@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
-  # Elasticsearch 테스트 환경
+    # Elasticsearch 및 Redis 테스트 환경
     services:
       elasticsearch:
         image: docker.elastic.co/elasticsearch/elasticsearch:9.2.0
@@ -38,6 +38,16 @@ jobs:
           --health-interval=10s
           --health-timeout=5s
           --health-retries=20
+
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
 
     env:
       EVERYONE_ELASTICSEARCH_URIS: http://localhost:9200
