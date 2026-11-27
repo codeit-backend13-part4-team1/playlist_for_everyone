@@ -53,9 +53,9 @@ HTTP 요청 → 공통 JWT 인증 → FollowController → FollowService
 | 인증·인가 경계 | 공통 필터가 인증, 서비스 Guard가 취소 소유자 판단 |
 | HTTP 보안 통합 | [#76](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/76)의 실제 JWT·필터·서비스·PostgreSQL 통합 테스트 32개 검증 완료 |
 | Swagger | Principal 숨김, Bearer 인증 연결, 응답 설명 및 생성된 OpenAPI·실제 UI 화면 확인 완료 |
-| CSRF | 현재 공통 설정에서 비활성화. 공통 기반은 [#35](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/35), 팔로우 연동·검증은 [#114](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/114) |
+| CSRF | 등록·취소 요청에는 공통 CSRF 보호 적용. 공통 설정은 [#35](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/35), 팔로우 연동·검증은 [#114](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/114) |
 | 생성 이벤트 | JWT 테스트에서 발행 값을, 서비스 통합 테스트의 전용 리스너에서 커밋 후 수신을 확인 |
-| 알림 연동 | [#155](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/155)의 실제 팔로우 등록 → 알림 저장·SSE 발행 요청 검증. [권한 변경·구독은 #156](../notification/08-role-subscription-integration.md), [팔로워 대상 플레이리스트 생성·구독자 대상 콘텐츠 추가는 #157](../notification/09-playlist-event-integration.md)에 연결되어 있으며, 나머지 업무 이벤트는 상위 #45의 후속 연동 |
+| 알림 연동 | 팔로우 관계가 커밋되면 대상 사용자에게 알림을 보내고, 시청 시작·플레이리스트 생성 시에는 팔로워를 수신자로 조회합니다. [팔로우 알림](../notification/07-domain-event-integration.md) · [시청 시작](../notification/13-watching-session-integration.md) · [플레이리스트 생성](../notification/09-playlist-event-integration.md) |
 
 검증 범위와 완료·후속 상태, 실행 방법은 [테스트 읽기와 실행](05-testing.md)에서 확인합니다.
 변경을 시작할 때는 [FollowService 계약](../../src/main/java/com/codeit/sb13/playlist_for_everyone/domain/follow/service/FollowService.java)과 해당 주제의 테스트를 함께 확인합니다.

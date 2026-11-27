@@ -11,6 +11,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
 import com.codeit.sb13.playlist_for_everyone.global.config.SecurityConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.SseConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.SseEventPublisherConfig;
+import com.codeit.sb13.playlist_for_everyone.global.config.SseHeartbeatConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.SseRetryConfig;
 import com.codeit.sb13.playlist_for_everyone.global.controller.GlobalExceptionHandler;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.ApiErrorResponse;
@@ -84,6 +85,7 @@ import static org.mockito.Mockito.doAnswer;
                 SseDeliveryService.class,
                 InMemorySseEmitterRepository.class,
                 SseConfig.class,
+                SseHeartbeatConfig.class,
                 SseRetryConfig.class,
                 SecurityConfig.class,
                 SseDeliveryCoordinator.class,

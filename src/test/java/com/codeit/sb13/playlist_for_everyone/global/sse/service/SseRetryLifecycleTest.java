@@ -86,7 +86,8 @@ public class SseRetryLifecycleTest {
                 repository,
                 properties,
                 coordinator,
-                userSessionRepository);
+                userSessionRepository,
+                mock(SseHeartbeatDispatcher.class));
         when(userSessionRepository.isCurrent(any(UUID.class), eq(loginSession.id()))).thenReturn(true);
     }
 
@@ -348,7 +349,8 @@ public class SseRetryLifecycleTest {
         UUID lastEventId = UUID.randomUUID();
         LoginSession newLoginSession = new LoginSession(UUID.randomUUID());
         SseHistoryPosition upperBound = new SseHistoryPosition("1000-0");
-        SseDeliveryService deliveryService = new SseDeliveryService(repository, coordinator, userSessionRepository);
+        SseDeliveryService deliveryService = new SseDeliveryService(
+                repository, coordinator, userSessionRepository, mock(SseHeartbeatDispatcher.class));
         stubRecoveryAndRetrySchedule(userId, lastEventId, upperBound);
 
         try (MockedConstruction<SseEmitter> ignored = mockConstruction(SseEmitter.class)) {

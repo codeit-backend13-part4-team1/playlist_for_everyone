@@ -151,6 +151,9 @@ everyone:
     read-timeout: 10s
 
   sse:
+    heartbeat:
+      pool-size: ${EVERYONE_SSE_HEARTBEAT_POOL_SIZE:4}
+      queue-capacity: ${EVERYONE_SSE_HEARTBEAT_QUEUE_CAPACITY:100}
     # 환경변수 미지정 시 아래 기본값을 사용한다. 연결 설정은 SseProperties, 전송 설정은 SseTransportProperties가 검증한다.
     # 하트비트 작업 완료 후 다음 실행까지 대기하는 시간. 0보다 커야 한다.
     heartbeat-interval: ${EVERYONE_SSE_HEARTBEAT_INTERVAL:15s}

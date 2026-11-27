@@ -2,15 +2,7 @@
 
 로컬 실행, 공통코드 사용법, 테스트 방법을 정리한 문서입니다. 프로젝트 소개는 [README](../README.md)에서 관리합니다.
 
-> **문서 기준 안내:** 아래에는 공통 기반을 처음 준비하던 시점의 설명이 일부 남아 있습니다.
-> 도메인 구현 현황과 개발용 보안 전환 설명은 최신 코드와 다를 수 있습니다.
-> 현재 SSE 연결·공유 이력·Redis 분산 전송·복구·인증·테스트는 [SSE 구현 가이드](sse/README.md), 알림 생성·전송·조회·읽음 처리와 JWT 인증은 [알림 구현 가이드](notification/README.md)를 기준으로 확인합니다.
-> 팔로우 등록·취소·조회와 인증·이벤트의 구현 및 검증 범위는 [팔로우 구현 가이드](follow/README.md)를 참고합니다.
-> 대화방 생성·조회, DM 조회·읽음·WebSocket 송수신·생성 이벤트·SSE와 검증은 [대화방·DM 구현 가이드](conversation/README.md)를 참고합니다.
-
 ## 현재 개발 상태
-
-공통 기반 위에 도메인 기능을 추가하고 있습니다. 아래 팔로우·알림·공통 보안 설명은 현재 코드에 맞췄으며, 다른 기능의 최신 범위는 해당 코드와 이슈를 함께 확인합니다.
 
 | 구분 | 현재 상태 |
 | --- | --- |
@@ -19,17 +11,17 @@
 | 팔로우 | 등록·취소·조회, 중복 복구와 생성 이벤트 구현. #76의 실제 JWT HTTP 통합 검증 및 Swagger 정리 완료 |
 | 대화방·DM | #58 생성·중복 복구, #59 대화방 조회, #60 DM 조회·읽음, #61 WebSocket·Redis, #62 생성 이벤트·SSE·복구, #159 알림 연동 구현. [전체 흐름](conversation/README.md), [DM 알림](notification/11-direct-message-integration.md) 참고 |
 | DM WebSocket 협업 | [송수신·트랜잭션](conversation/11-websocket-flow.md), [보안·공통 오류와 콘텐츠 확장](conversation/12-websocket-security-errors.md), [테스트](conversation/13-websocket-testing.md), [다중 서버 수동 검증](conversation/14-websocket-multi-node.md) 참고 |
-| 로컬 인프라 | Docker Compose에 PostgreSQL과 Redis 서비스 정의 |
+| 콘텐츠와 플레이리스트 | 콘텐츠 검색·리뷰, 플레이리스트 관리·구독·커서 조회. Redis에 검색 결과를 캐시하고 S3에 업로드한 이미지를 저장 |
+| 수집 | Spring Batch로 TMDB·TheSportsDB 수집, 재수집 시 변경 반영, 예약 실행·중단 복구. [정기 수집 설정](#콘텐츠-정기-수집) |
+| 개발·배포 | 로컬은 Docker Compose로 PostgreSQL과 Redis 실행. 운영은 GitHub Actions로 ECR에 이미지 게시 후 ECS Fargate에 배포. [배포 가이드](DEPLOYMENT.md) |
 | 공통 보안 | JWT 필터와 경로별 인증·인가 적용. 팔로우·알림 API는 인증 필요, 쿠키 기반 CSRF 보호 활성화 |
 | SSE | 다중 연결·하트비트·종료 정리, 공유 이력 저장·재연결 복구, 연결별 후속 조회·제한된 재시도. [SSE 구현 가이드](sse/README.md) 참고 |
 | 알림 전송 | 공통 생성 요청 → 독립 저장·커밋 → 공유 이력 → Pub/Sub → 이력 조회·삭제 필터 → SSE 수신. [알림 전송 흐름](notification/01-creation-and-delivery.md) 참고 |
 | 업무 이벤트 알림 | [#155 팔로우](notification/07-domain-event-integration.md)·[#156 권한 변경·구독](notification/08-role-subscription-integration.md)·[#157 플레이리스트](notification/09-playlist-event-integration.md)·[#159 DM](notification/11-direct-message-integration.md)은 업무 커밋 후 알림 처리. [#158 시청 시작](notification/13-watching-session-integration.md)은 트랜잭션 밖에서도 이벤트 처리 |
 | 알림 수신자 | 사용자 조회 컴포넌트를 통해 User 연관관계로 저장. 요청·응답의 수신자 UUID 계약 유지. [연관관계와 검증](notification/06-receiver-association.md) 참고 |
 | 알림 조회·읽음 | JWT 사용자를 수신자 조건으로 사용하여 목록·전체 개수를 조회하고 알림 삭제로 읽음 처리. [조회·인증 흐름](notification/03-query-and-security.md) 참고 |
-| SSE·알림 후속 | 나머지 업무 이벤트 알림 연동(#45), Kafka·연결 수 제한·보관 초기값의 운영 부하 검증. DM 본문 SSE는 #62, DM 알림은 #159에서 구현 |
-| 후속 기능 | 팔로우 CSRF 연동·검증은 #114, 알림 CSRF 연동·검증은 #124. 다른 기능의 진행 상태는 개별 이슈 참고 |
-
-라이브러리 의존성과 로컬 인프라를 준비한 상태와 기능 구현 완료를 구분합니다. Redis 서비스는 Compose에 포함되어 있으며, 이를 사용하는 캐시·세션 기능은 구현 전입니다. Kafka와 Elasticsearch는 현재 Compose에 포함되어 있지 않습니다.
+| 실시간 연결 관리 | 로그인 세션 폐기 시 WebSocket·SSE 연결 종료. 서버별 활성 SSE 연결 수는 [Actuator 지표](sse/01-connection-lifecycle.md#활성-sse-연결-수-조회)에서 확인 |
+| 로그인 | Google·Kakao 및 이메일 로그인, Redis로 로그인 세션·Refresh Token 관리, 임시 비밀번호 메일로 비밀번호 초기화. [인증 가이드](auth/01-login-session.md) · [비밀번호 초기화](auth/05-password-reset.md) · [소셜 로그인](auth/06-social-login.md) |
 
 패키지 기준 경로는 `src/main/java/com/codeit/sb13/playlist_for_everyone`입니다.
 
@@ -191,9 +183,9 @@ Swagger UI와 OpenAPI 문서의 GET 조회는 `dev`가 활성화되고 `prod`는
 | `EVERYONE_FLYWAY_ENABLED` | `true` | Flyway 활성화 |
 | `EVERYONE_DOCKER_COMPOSE_ENABLED` | `true` | 개발 환경 Compose 자동 연동 |
 | `EVERYONE_OPENAPI_SERVER_URL` | `https://your-domain.example.com` | `prod`의 OpenAPI 서버 URL 예시. `dev`는 로컬 주소 사용 |
-| `EVERYONE_AWS_REGION` | `ap-northeast-2` | 향후 S3 연동에 사용할 리전 설정 |
-| `EVERYONE_AWS_ENDPOINT` | 빈 값 | 향후 S3 연동에 사용할 엔드포인트 설정 |
-| `EVERYONE_S3_BUCKET` | 빈 값 | 향후 S3 연동에 사용할 버킷 설정 |
+| `EVERYONE_AWS_REGION` | `ap-northeast-2` | S3 버킷의 AWS 리전 |
+| `EVERYONE_AWS_ENDPOINT` | 빈 값 | 사용자 지정 S3 엔드포인트(선택) |
+| `EVERYONE_S3_BUCKET` | 빈 값 | 업로드한 파일을 저장할 버킷 |
 | `EVERYONE_TMDB_ACCESS_TOKEN` | 빈 값 (실행 전 설정 필요) | TMDB 인증 토큰. 실제 조회에는 유효한 토큰 필요 |
 | `EVERYONE_SPORTSDB_API_KEY` | `123` | TheSportsDB API 키. 생략하면 공개 무료 키 `123` 사용 |
 
@@ -206,7 +198,7 @@ SSE 환경변수를 생략하면 위 기본값을 사용합니다. 개발에서�
 DM 채널의 환경별 지정 예시, 공통 WebSocket 이벤트와의 차이, 테스트 프로필의 구독 비활성화는 [DM WebSocket 환경 설정](conversation/10-websocket-settings.md)을 참고합니다.
 기존 `.env.dev`에는 `.env.example`의 추가 항목이 자동 반영되지 않습니다. 필요한 값을 직접 추가합니다.
 
-S3 관련 값은 현재 공통 설정에 선언되어 있지만 실제 S3 연동 기능은 구현 전입니다.
+프로필 이미지와 콘텐츠 썸네일의 업로드를 테스트할 때는 사용할 S3 버킷과 접근 권한을 준비합니다.
 
 | 프로필 | 데이터베이스 | JPA DDL | Flyway | Compose | 설정 입력 |
 | --- | --- | --- | --- | --- | --- |
@@ -834,13 +826,8 @@ GET /actuator/metrics/content.collection.items.write?tag=job:sportsDbCollectionJ
 
 브랜치명과 커밋 메시지 형식은 팀에서 합의한 규칙을 따릅니다. 현재 이 문서에서 별도 형식을 정하지 않습니다.
 
-다음 항목은 후속 작업으로 관리합니다.
+후속 작업은 각 이슈에서 추적합니다.
 
-- 도메인별 API·서비스·엔티티와 PostgreSQL/Flyway 검증
-- 활성화된 공통 CSRF 기반을 사용하는 팔로우 연동·검증(#114), 알림 연동·검증(#124)
-- 목록 API의 커서 규칙 확정과 직렬화·페이징 테스트
-- Redis 기반 캐시·세션 기능 구현과 데이터 보관 정책 결정
-- 배치, S3 등 기능별 구현과 필요한 인프라 추가. DM WebSocket 구현·검증 범위는 [대화방 가이드](conversation/README.md), 연결 유지 중 인증 자연 만료는 #208 참고
-- 팔로우(#155)·권한 변경·구독(#156)·플레이리스트 생성·콘텐츠 추가(#157)·DM(#159) 외 업무 이벤트의 알림 연동(#45), SSE Kafka 구현체, 이력 보관 초기값의 운영 부하 검증, [동시 연결 수 제한·모니터링 #107](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/107)
-- 배포 파이프라인 구성
-
+- 팔로우·알림 API의 실제 CSRF 토큰 연동 검증. [팔로우 #114](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/114) · [알림 #124](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/124)
+- 열린 WebSocket 연결에서 인증의 자연 만료 처리. [대화방 보안 가이드](conversation/12-websocket-security-errors.md#로그인-세션-무효화와-후속-범위)
+- SSE 연결 수 제한과 이력 보관 설정의 운영 부하 검증. [연결 관리 #107](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/107) · [이력 운영 가이드](sse/11-history-operations.md)

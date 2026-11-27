@@ -1,23 +1,10 @@
-# 3. 확장 지점과 후속 작업
+# 3. 로그인 세션 폐기와 실시간 연결 종료
 
-이번 범위는 HTTP 요청입니다.
-이미 열려 있는 SSE·웹소켓 연결은 세션이 종료되어도 유지됩니다.
-아래 지점을 이용해 후속 작업에서 연결할 수 있습니다.
+새 로그인으로 세션을 교체하거나 관리자가 권한을 변경하거나 계정을 잠그면 인증 도메인이 `UserSessionRevokedEvent`를 발행합니다. 이벤트에는 사용자 ID, **폐기된** 로그인 세션 ID, 사유가 들어갑니다. 각 서버는 앞의 두 ID가 모두 일치하는 연결을 종료하므로 새 로그인으로 연 연결은 유지됩니다. [사유별 세션 처리](02-force-logout.md)
 
-## 제공하는 지점
-
-| 지점 | 용도 |
+| 연결 | 서버가 폐기 이벤트를 처리하는 방법 |
 | --- | --- |
-| `UserSessionRevokedEvent(userId, revokedSessionId, reason)` | 세션이 종료되었음을 알립니다. 중복 로그인·권한 변경·계정 잠금 모두 이 이벤트로 모입니다. |
-| `UserSessionRepository.isCurrent(userId, sid)` | 연결 등록 직후 재확인이나 하트비트에서 세션 유효성을 확인할 수 있습니다. |
-| `JwtTokenProvider.parseAccess(token)` | 토큰에서 사용자 ID와 `sid`를 함께 꺼냅니다. |
+| WebSocket | `everyone.websocket.event.multiple=true`이면 Redis 채널로 전파하고, 구독 중인 서버가 자기 서버의 세션을 찾아 종료합니다. `false`이면 이벤트를 받은 로컬 서버가 처리합니다. [다중 서버 설정](../conversation/10-websocket-settings.md#공통-websocket-이벤트와의-관계) |
+| SSE | SSE 리스너가 전용 Redis 채널로 폐기 정보를 발행합니다. 각 구독 서버는 해당 로그인으로 등록한 탭별 연결을 정리합니다. [연결 생명주기](../sse/01-connection-lifecycle.md) |
 
-## 이벤트를 받을 때 주의할 점
-
-`UserSessionRevokedEvent`는 일반 이벤트입니다. `@EventListener`로 받습니다.
-
-권한 변경·계정 잠금에서는 이 이벤트가 이미 커밋이 끝난 `AFTER_COMMIT` 단계에서 발행됩니다.
-이 시점에는 진행 중인 트랜잭션이 없으므로 `@TransactionalEventListener`는 기본 설정으로 실행되지 않습니다.
-
-현재는 같은 서버 안에서만 발행합니다.
-서버가 여러 대이면 연결이 다른 서버에 있을 수 있으므로, Redis 채널 등으로 전파하는 작업이 필요합니다.
+SSE는 연결을 등록한 직후 Redis의 현재 로그인 세션을 다시 확인합니다. 폐기 신호를 놓친 경우에는 하트비트 점검에서 폐기를 확인해 연결을 정리합니다. WebSocket의 인증 자연 만료 처리 범위는 [WebSocket 보안 가이드](../conversation/12-websocket-security-errors.md#로그인-세션-무효화와-후속-범위)를 참고합니다.
