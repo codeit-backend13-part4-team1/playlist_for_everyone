@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.batch.core.BatchStatus;
@@ -15,10 +16,12 @@ import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.infrastructure.item.ExecutionContext;
 
 import java.sql.SQLException;
+import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -58,6 +61,14 @@ class CollectionJobLauncherTest {
                 jobLock,
                 recoveryPolicy
         );
+    }
+
+    private void startScheduled(CollectionJobLauncher target, String provider, Instant scheduledAt) throws Exception {
+        if ("tmdb".equals(provider)) {
+            target.startScheduledTmdb(5L, scheduledAt);
+        } else {
+            target.startScheduledSportsDb("4328", "2014-2015", scheduledAt);
+        }
     }
 
     @Test
@@ -169,10 +180,13 @@ class CollectionJobLauncherTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"tmdb", "sportsdb"})
-    void 종료가_확인된_이전_작업을_복구한_뒤_재시작한다(
-            String provider
-    ) throws Exception {
+    @CsvSource({
+            "tmdb, false",
+            "tmdb, true",
+            "sportsdb, false",
+            "sportsdb, true"
+    })
+    void 종료가_확인된_이전_작업을_복구한_뒤_재시작한다(String provider, boolean scheduled) throws Exception {
         Job job = "tmdb".equals(provider) ? tmdbJob : sportsDbJob;
         var execution = mock(JobExecution.class);
         var recovered = mock(JobExecution.class);
@@ -181,10 +195,18 @@ class CollectionJobLauncherTest {
                 .thenReturn(new ExecutionContext());
         when(jobRepository.findRunningJobExecutions(job.getName()))
                 .thenReturn(Set.of(execution));
+        when(jobRepository.getJobInstance(
+                eq(job.getName()),
+                any(JobParameters.class)
+        )).thenReturn(mock(JobInstance.class));
         when(recoveryPolicy.canRecover(execution)).thenReturn(true);
         when(jobOperator.recover(execution)).thenReturn(recovered);
 
-        start(provider);
+        if (scheduled) {
+            startScheduled(launcher, provider, Instant.parse("2026-11-26T15:00:00Z"));
+        } else {
+            start(provider);
+        }
 
         var order = inOrder(recoveryPolicy, jobOperator, handle);
 
@@ -305,5 +327,90 @@ class CollectionJobLauncherTest {
         } else {
             launcher.startSportsDb("4328", "2014-2015");
         }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"tmdb", "sportsdb"})
+    void 같은_예약을_두_서버가_순차_처리해도_한_번만_실행한다(String provider) throws Exception {
+        Job job = "tmdb".equals(provider) ? tmdbJob : sportsDbJob;
+        var scheduledAt = Instant.parse("2026-11-26T15:00:00Z");
+        var storedParameters = new AtomicReference<JobParameters>();
+        var storedInstance = mock(JobInstance.class);
+
+        when(jobOperator.start(eq(job), any(JobParameters.class)))
+                .thenAnswer(invocation -> {
+                    storedParameters.set(invocation.getArgument(1));
+                    return mock(JobExecution.class);
+                });
+
+        when(jobRepository.getJobInstance(
+                eq(job.getName()),
+                any(JobParameters.class)
+        )).thenAnswer(invocation -> {
+            JobParameters parameters = invocation.getArgument(1);
+
+            return parameters.equals(storedParameters.get())
+                    ? storedInstance
+                    : null;
+        });
+
+        var secondLauncher = new CollectionJobLauncher(
+                jobOperator,
+                tmdbJob,
+                sportsDbJob,
+                jobRepository,
+                jobLock,
+                recoveryPolicy
+        );
+
+        startScheduled(launcher, provider, scheduledAt);
+        startScheduled(secondLauncher, provider, scheduledAt);
+
+        verify(jobOperator, times(1))
+                .start(eq(job), any(JobParameters.class));
+        verify(handle, times(2)).close();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"tmdb", "sportsdb"})
+    void 다음_예약_회차는_새로운_배치로_실행한다(String provider) throws Exception {
+        Job job = "tmdb".equals(provider) ? tmdbJob : sportsDbJob;
+        var firstScheduledAt = Instant.parse("2026-11-26T15:00:00Z");
+        var nextScheduledAt = Instant.parse("2026-11-27T15:00:00Z");
+
+        startScheduled(launcher, provider, firstScheduledAt);
+        startScheduled(launcher, provider, nextScheduledAt);
+
+        var captor = ArgumentCaptor.forClass(JobParameters.class);
+        verify(jobOperator, times(2)).start(eq(job), captor.capture());
+
+        assertThat(captor.getAllValues())
+                .extracting(parameters -> parameters.getString("run.id"))
+                .containsExactly(
+                        "scheduled-" + firstScheduledAt,
+                        "scheduled-" + nextScheduledAt
+                );
+
+        verify(handle, times(2)).close();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"tmdb", "sportsdb"})
+    void 수동_수집은_호출할_때마다_별도로_실행한다(String provider) throws Exception {
+        Job job = "tmdb".equals(provider) ? tmdbJob : sportsDbJob;
+
+        start(provider);
+        start(provider);
+
+        var captor = ArgumentCaptor.forClass(JobParameters.class);
+        verify(jobOperator, times(2)).start(eq(job), captor.capture());
+
+        assertThat(captor.getAllValues())
+                .extracting(parameters -> parameters.getString("run.id"))
+                .doesNotHaveDuplicates();
+
+        verify(jobRepository, never())
+                .getJobInstance(anyString(), any(JobParameters.class));
+        verify(handle, times(2)).close();
     }
 }
