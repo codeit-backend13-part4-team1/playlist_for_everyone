@@ -105,7 +105,9 @@ public class SportsDbBatchConfig {
                         var result = collectionService.saveForBatch(data);
 
                         if (result.inserted()) {
-                            counter.recordInserted();
+                            counter.recordInserted(result.content().getId());
+                        } else if (result.updated()) {
+                            counter.recordUpdated(result.content().getId());
                         }
                     }
                 })

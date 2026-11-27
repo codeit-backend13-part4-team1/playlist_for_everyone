@@ -63,17 +63,15 @@ public class ChattingSessionServiceImpl implements ChattingSessionService {
     public void leaveAll(List<WSSubscription> subscriptions, UUID contentId) {
         Objects.requireNonNull(contentId);
 
+        /* 컨텐츠 락은 외부에서 걸어서, 다중작업을 한번에 할 수 있도록 변경.*/
+        ChattingSessionRoom room = getRoomOrException(contentId);
+        // 해당 구독을 한번제 저장소에서 지울 수 있도록
+        room.leaveAll(subscriptions);
 
-        synchronized (locks.lock(contentId)) {
-            ChattingSessionRoom room = getRoomOrException(contentId);
-            // 해당 구독을 한번제 저장소에서 지울 수 있도록
-            room.leaveAll(subscriptions);
-
-            //tmp
-            String sessionId = subscriptions.get(0).sessionId();
-            List<String> subscriptionIds = subscriptions.stream().map(WSSubscription::id).collect(Collectors.toList());
-            redisTopicRegistry.unregisterAll(sessionId, subscriptionIds);
-        }
+        //tmp
+        String sessionId = subscriptions.get(0).sessionId();
+        List<String> subscriptionIds = subscriptions.stream().map(WSSubscription::id).collect(Collectors.toList());
+        redisTopicRegistry.unregisterAll(sessionId, subscriptionIds);
     }
 
     // 여러 인스턴스에서 동일 로직 수행 시, 로직 사이에 동일 id 로 세션 등록이 들어오면, 생성한 등록을 삭제 해 버릴 가능성 있음.
@@ -81,20 +79,17 @@ public class ChattingSessionServiceImpl implements ChattingSessionService {
     public List<WSSubscription> destroy(UUID contentId) {
         List<WSSubscription> res;
 
-        synchronized (locks.lock(contentId)) {
-            try {
-                ChattingSessionRoom room = getRoomOrException(contentId);
-                // 저장소에서 세션 해지 및, 토픽 등록 해제.
-                redisTopicRegistry.disconnectWithContentId(room.topic());
+        try {
+            ChattingSessionRoom room = getRoomOrException(contentId);
+            // 저장소에서 세션 해지 및, 토픽 등록 해제.
+            redisTopicRegistry.disconnectWithContentId(room.topic());
 
-                res = room.getAll();
-                room.clear();
-                chattingSessionRepository.remove(room);
-                return res;
-            } catch (WebSocketSessionRegisterException e) {
-                return List.of();
-            }
-
+            res = room.getAll();
+            room.clear();
+            chattingSessionRepository.remove(room);
+            return res;
+        } catch (WebSocketSessionRegisterException e) {
+            return List.of();
         }
     }
 

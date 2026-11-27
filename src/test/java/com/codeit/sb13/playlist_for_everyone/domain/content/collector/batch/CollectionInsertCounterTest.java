@@ -25,9 +25,10 @@ class CollectionInsertCounterTest {
     @Test
     void 커밋이_완료된_뒤에만_신규_건수가_증가한다() {
         var counter = new CollectionInsertCounter();
+        UUID contentId = UUID.randomUUID();
 
         transactionTemplate.executeWithoutResult(status -> {
-            counter.recordInserted();
+            counter.recordInserted(contentId);
 
             // 아직 커밋되지 않았으므로 집계하지 않는다.
             assertThat(counter.getCount()).isZero();
@@ -35,17 +36,48 @@ class CollectionInsertCounterTest {
 
         // 트랜잭션이 커밋된 이후
         assertThat(counter.getCount()).isEqualTo(1L);
+        assertThat(counter.getChangedContentIds()).containsExactly(contentId);
     }
 
     @Test
     void 롤백하면_신규_건수가_증가하지_않는다() {
         var counter = new CollectionInsertCounter();
+        UUID contentId = UUID.randomUUID();
 
         transactionTemplate.executeWithoutResult(status -> {
-            counter.recordInserted();
+            counter.recordInserted(contentId);
             status.setRollbackOnly();
         });
 
         assertThat(counter.getCount()).isZero();
+    }
+
+    @Test
+    void 커밋이_완료된_뒤에만_갱신_건수가_증가한다() {
+        var counter = new CollectionInsertCounter();
+        UUID contentId = UUID.randomUUID();
+
+        transactionTemplate.executeWithoutResult(status -> {
+            counter.recordUpdated(contentId);
+
+            assertThat(counter.getUpdatedCount()).isZero();
+        });
+
+        assertThat(counter.getUpdatedCount()).isEqualTo(1L);
+        assertThat(counter.getCount()).isZero();
+        assertThat(counter.getChangedContentIds()).containsExactly(contentId);
+    }
+
+    @Test
+    void 롤백하면_갱신_건수가_증가하지_않는다() {
+        var counter = new CollectionInsertCounter();
+        UUID contentId = UUID.randomUUID();
+
+        transactionTemplate.executeWithoutResult(status -> {
+            counter.recordUpdated(contentId);
+            status.setRollbackOnly();
+        });
+
+        assertThat(counter.getUpdatedCount()).isZero();
     }
 }

@@ -2,15 +2,7 @@
 
 로컬 실행, 공통코드 사용법, 테스트 방법을 정리한 문서입니다. 프로젝트 소개는 [README](../README.md)에서 관리합니다.
 
-> **문서 기준 안내:** 아래에는 공통 기반을 처음 준비하던 시점의 설명이 일부 남아 있습니다.
-> 도메인 구현 현황과 개발용 보안 전환 설명은 최신 코드와 다를 수 있습니다.
-> 현재 SSE 연결·공유 이력·Redis 분산 전송·복구·인증·테스트는 [SSE 구현 가이드](sse/README.md), 알림 생성·전송·조회·읽음 처리와 JWT 인증은 [알림 구현 가이드](notification/README.md)를 기준으로 확인합니다.
-> 팔로우 등록·취소·조회와 인증·이벤트의 구현 및 검증 범위는 [팔로우 구현 가이드](follow/README.md)를 참고합니다.
-> 대화방 생성·조회, DM 조회·읽음·WebSocket 송수신·생성 이벤트·SSE와 검증은 [대화방·DM 구현 가이드](conversation/README.md)를 참고합니다.
-
 ## 현재 개발 상태
-
-공통 기반 위에 도메인 기능을 추가하고 있습니다. 아래 팔로우·알림·공통 보안 설명은 현재 코드에 맞췄으며, 다른 기능의 최신 범위는 해당 코드와 이슈를 함께 확인합니다.
 
 | 구분 | 현재 상태 |
 | --- | --- |
@@ -19,17 +11,17 @@
 | 팔로우 | 등록·취소·조회, 중복 복구와 생성 이벤트 구현. #76의 실제 JWT HTTP 통합 검증 및 Swagger 정리 완료 |
 | 대화방·DM | #58 생성·중복 복구, #59 대화방 조회, #60 DM 조회·읽음, #61 WebSocket·Redis, #62 생성 이벤트·SSE·복구, #159 알림 연동 구현. [전체 흐름](conversation/README.md), [DM 알림](notification/11-direct-message-integration.md) 참고 |
 | DM WebSocket 협업 | [송수신·트랜잭션](conversation/11-websocket-flow.md), [보안·공통 오류와 콘텐츠 확장](conversation/12-websocket-security-errors.md), [테스트](conversation/13-websocket-testing.md), [다중 서버 수동 검증](conversation/14-websocket-multi-node.md) 참고 |
-| 로컬 인프라 | Docker Compose에 PostgreSQL과 Redis 서비스 정의 |
+| 콘텐츠와 플레이리스트 | 콘텐츠 검색·리뷰, 플레이리스트 관리·구독·커서 조회. Redis에 검색 결과를 캐시하고 S3에 업로드한 이미지를 저장 |
+| 수집 | Spring Batch로 TMDB·TheSportsDB 수집, 재수집 시 변경 반영, 예약 실행·중단 복구. [정기 수집 설정](#콘텐츠-정기-수집) |
+| 개발·배포 | 로컬은 Docker Compose로 PostgreSQL과 Redis 실행. 운영은 GitHub Actions로 ECR에 이미지 게시 후 ECS Fargate에 배포. [배포 가이드](DEPLOYMENT.md) |
 | 공통 보안 | JWT 필터와 경로별 인증·인가 적용. 팔로우·알림 API는 인증 필요, 쿠키 기반 CSRF 보호 활성화 |
 | SSE | 다중 연결·하트비트·종료 정리, 공유 이력 저장·재연결 복구, 연결별 후속 조회·제한된 재시도. [SSE 구현 가이드](sse/README.md) 참고 |
 | 알림 전송 | 공통 생성 요청 → 독립 저장·커밋 → 공유 이력 → Pub/Sub → 이력 조회·삭제 필터 → SSE 수신. [알림 전송 흐름](notification/01-creation-and-delivery.md) 참고 |
 | 업무 이벤트 알림 | [#155 팔로우](notification/07-domain-event-integration.md)·[#156 권한 변경·구독](notification/08-role-subscription-integration.md)·[#157 플레이리스트](notification/09-playlist-event-integration.md)·[#159 DM](notification/11-direct-message-integration.md)은 업무 커밋 후 알림 처리. [#158 시청 시작](notification/13-watching-session-integration.md)은 트랜잭션 밖에서도 이벤트 처리 |
 | 알림 수신자 | 사용자 조회 컴포넌트를 통해 User 연관관계로 저장. 요청·응답의 수신자 UUID 계약 유지. [연관관계와 검증](notification/06-receiver-association.md) 참고 |
 | 알림 조회·읽음 | JWT 사용자를 수신자 조건으로 사용하여 목록·전체 개수를 조회하고 알림 삭제로 읽음 처리. [조회·인증 흐름](notification/03-query-and-security.md) 참고 |
-| SSE·알림 후속 | 나머지 업무 이벤트 알림 연동(#45), Kafka·연결 수 제한·보관 초기값의 운영 부하 검증. DM 본문 SSE는 #62, DM 알림은 #159에서 구현 |
-| 후속 기능 | 팔로우 CSRF 연동·검증은 #114, 알림 CSRF 연동·검증은 #124. 다른 기능의 진행 상태는 개별 이슈 참고 |
-
-라이브러리 의존성과 로컬 인프라를 준비한 상태와 기능 구현 완료를 구분합니다. Redis 서비스는 Compose에 포함되어 있으며, 이를 사용하는 캐시·세션 기능은 구현 전입니다. Kafka와 Elasticsearch는 현재 Compose에 포함되어 있지 않습니다.
+| 실시간 연결 관리 | 로그인 세션 폐기 시 WebSocket·SSE 연결 종료. 서버별 활성 SSE 연결 수는 [Actuator 지표](sse/01-connection-lifecycle.md#활성-sse-연결-수-조회)에서 확인 |
+| 로그인 | Google·Kakao 및 이메일 로그인, Redis로 로그인 세션·Refresh Token 관리, 임시 비밀번호 메일로 비밀번호 초기화. [인증 가이드](auth/01-login-session.md) · [비밀번호 초기화](auth/05-password-reset.md) · [소셜 로그인](auth/06-social-login.md) |
 
 패키지 기준 경로는 `src/main/java/com/codeit/sb13/playlist_for_everyone`입니다.
 
@@ -191,9 +183,9 @@ Swagger UI와 OpenAPI 문서의 GET 조회는 `dev`가 활성화되고 `prod`는
 | `EVERYONE_FLYWAY_ENABLED` | `true` | Flyway 활성화 |
 | `EVERYONE_DOCKER_COMPOSE_ENABLED` | `true` | 개발 환경 Compose 자동 연동 |
 | `EVERYONE_OPENAPI_SERVER_URL` | `https://your-domain.example.com` | `prod`의 OpenAPI 서버 URL 예시. `dev`는 로컬 주소 사용 |
-| `EVERYONE_AWS_REGION` | `ap-northeast-2` | 향후 S3 연동에 사용할 리전 설정 |
-| `EVERYONE_AWS_ENDPOINT` | 빈 값 | 향후 S3 연동에 사용할 엔드포인트 설정 |
-| `EVERYONE_S3_BUCKET` | 빈 값 | 향후 S3 연동에 사용할 버킷 설정 |
+| `EVERYONE_AWS_REGION` | `ap-northeast-2` | S3 버킷의 AWS 리전 |
+| `EVERYONE_AWS_ENDPOINT` | 빈 값 | 사용자 지정 S3 엔드포인트(선택) |
+| `EVERYONE_S3_BUCKET` | 빈 값 | 업로드한 파일을 저장할 버킷 |
 | `EVERYONE_TMDB_ACCESS_TOKEN` | 빈 값 (실행 전 설정 필요) | TMDB 인증 토큰. 실제 조회에는 유효한 토큰 필요 |
 | `EVERYONE_SPORTSDB_API_KEY` | `123` | TheSportsDB API 키. 생략하면 공개 무료 키 `123` 사용 |
 
@@ -206,7 +198,7 @@ SSE 환경변수를 생략하면 위 기본값을 사용합니다. 개발에서�
 DM 채널의 환경별 지정 예시, 공통 WebSocket 이벤트와의 차이, 테스트 프로필의 구독 비활성화는 [DM WebSocket 환경 설정](conversation/10-websocket-settings.md)을 참고합니다.
 기존 `.env.dev`에는 `.env.example`의 추가 항목이 자동 반영되지 않습니다. 필요한 값을 직접 추가합니다.
 
-S3 관련 값은 현재 공통 설정에 선언되어 있지만 실제 S3 연동 기능은 구현 전입니다.
+프로필 이미지와 콘텐츠 썸네일의 업로드를 테스트할 때는 사용할 S3 버킷과 접근 권한을 준비합니다.
 
 | 프로필 | 데이터베이스 | JPA DDL | Flyway | Compose | 설정 입력 |
 | --- | --- | --- | --- | --- | --- |
@@ -511,7 +503,7 @@ IntelliJ에서 `TmdbClientLiveTest`의 실행 설정에
 - `maxPages=5`이면 영화와 TV를 각각 최대 5페이지씩 수집합니다.
 - 실제 마지막 페이지에 도달하면 설정한 페이지 수보다 먼저 종료합니다.
 - 같은 출처·타입·외부 ID의 콘텐츠는 중복 저장하지 않습니다.
-- 기존에 저장된 콘텐츠의 정보는 덮어쓰지 않습니다.
+- 재수집 시 기존 콘텐츠의 제목·설명·API 썸네일 URL·태그를 최신 수집 데이터와 비교해 변경된 경우 갱신합니다.
 
 앱 시작 시 배치는 자동 실행하지 않습니다.
 정기 실행 설정은 아래 콘텐츠 정기 수집 항목을 참고합니다.
@@ -599,7 +591,7 @@ RUN_SPORTSDB_LIVE_TEST=true ./gradlew test --tests '*SportsDbClientLiveTest' --r
 - 실제 존재하는 리그·시즌인지는 파라미터 검증에서 확인하지 않습니다.
 - API가 반환한 경기 목록을 처리하며, 시즌 전체 경기 수집을 보장하지 않습니다.
 - 동일한 출처·타입·외부 ID의 콘텐츠는 중복 저장하지 않습니다.
-- 재수집 시 기존 콘텐츠와 태그는 덮어쓰지 않습니다.
+- 재수집 시 기존 콘텐츠의 제목·설명·API 썸네일 URL·태그를 최신 수집 데이터와 비교해 변경된 경우 갱신합니다.
 
 앱 시작 시 배치는 자동 실행하지 않습니다.
 정기 실행 설정은 아래 콘텐츠 정기 수집 항목을 참고합니다.
@@ -720,17 +712,30 @@ cron은 `초 분 시 일 월 요일` 순서입니다.
 - 콘텐츠 수집 전용 스케줄러를 사용하며, 스레드는 1개입니다.
 - 실행 직전에 같은 Job의 PostgreSQL 세션 잠금을 획득합니다. 잠금을 얻지 못하면 해당 예약 처리를 건너뜁니다.
 - 스포츠 실행 여부는 리그·시즌별이 아니라 스포츠 Job 전체를 기준으로 확인합니다.
-- 신규 수집에는 새로운 `run.id`를 부여합니다. 중단된 작업을 재시작할 때는 기존 Job 파라미터를 사용합니다.
+- 정기 수집은 cron이 계산한 예약 시각으로 `run.id`를 만듭니다. 실제 실행이 늦어져도 원래 예약 시각을 사용합니다.
+- 같은 Job과 예약 시각이면 같은 JobInstance로 식별합니다. 예를 들어 한국 시간 00:00 예약은 `scheduled-2026-11-26T15:00:00Z` 형식의 실행 ID를 사용합니다.
+- 이미 등록된 예약 회차는 신규 실행을 생략합니다. 중단된 작업의 복구·재시작은 기존 복구 기준에 따라 처리합니다.
+- 정기 수집의 페이지 수와 리그·시즌은 JobInstance 식별 기준에서 제외합니다. 서버별 수집 설정이 달라도 같은 Job의 같은 예약 회차를 별도로 실행하지 않습니다.
+- 수동 실행 메서드는 호출마다 새로운 UUID를 사용하므로 같은 범위를 다시 수집할 수 있습니다.
+- 중단된 작업을 재시작할 때는 기존 Job 파라미터와 저장된 읽기 위치를 사용합니다.
 - 종료가 확인된 태스크의 중단 작업과 재시작 대기 작업은 다음 예약에서 재개합니다. 일반 실패 이력의 자동 재시작은 적용하지 않습니다.
-- 재수집하더라도 기존 콘텐츠와 태그는 중복 저장하거나 덮어쓰지 않습니다.
-- 수집 배치는 실제 커밋된 신규 콘텐츠가 있을 때 Job 종료 후 검색 목록 캐시를 한 번 비웁니다. 중간에 실패해도 이미 커밋한 신규 콘텐츠가 있으면 비웁니다.
-- 신규 저장이 없는 재수집에서는 캐시를 비우지 않습니다.
+- 같은 출처·타입·외부 ID의 콘텐츠는 기존 콘텐츠 ID를 유지하며 갱신합니다.
+- 제목·설명·API 썸네일 URL·태그를 비교하고, 값이 같으면 갱신하지 않습니다. 태그 순서만 다른 경우도 동일하게 처리합니다.
+- 태그는 최신 수집 목록에 맞춥니다. 기존에만 있던 태그는 삭제하고 새로운 태그는 추가합니다.
+- 관리자 직접 등록 콘텐츠는 재수집 갱신 대상에 포함하지 않습니다.
+- 수집 콘텐츠의 제목·설명·태그를 관리자가 수정한 경우, 다음 재수집에서 수집 데이터로 덮어써질 수 있습니다.
+- 관리자가 업로드한 이미지는 유지합니다. API 썸네일 URL도 갱신하지만, 업로드 이미지가 있으면 조회 시 해당 이미지를 우선 사용합니다.
+- 실제 커밋된 신규 저장 건수와 갱신 건수를 각각 집계하고, 변경이 있으면 Job 종료 후 검색 목록 캐시를 한 번 비웁니다. Job이 실패해도 이미 커밋된 변경이 있으면 비웁니다.
+- 신규 저장과 갱신이 모두 없으면 캐시를 비우지 않습니다.
 - 프로세스가 강제 종료되어 Job 종료 처리가 실행되지 않으면 즉시 캐시를 비우지 못할 수 있습니다. 검색 캐시는 현재 5분 후 만료됩니다.
 
 정기 수집은 TMDB·스포츠 Job별로 PostgreSQL 세션 잠금을 사용합니다.
 같은 DB에 연결한 여러 서버가 예약을 실행하더라도,
 잠금을 얻은 서버만 수집 실행과 복구를 진행합니다.
 잠금은 동기 방식의 배치 실행이 반환될 때까지 유지합니다.
+세션 잠금은 동시 실행을 제한하고, 예약 회차 확인은 잠금 해제 후의 중복 실행을 방지합니다.
+다른 서버가 같은 예약을 뒤늦게 처리해도 DB에 등록된 JobInstance를 확인해 신규 실행을 생략합니다.
+이 처리는 서버들이 같은 배치 메타데이터 DB와 동일한 cron·시간대 설정을 사용하는 것을 기준으로 합니다.
 
 배치 시작 전 실행 주체의 ECS 클러스터와 태스크 정보를
 Job 실행 컨텍스트에 기록합니다.
@@ -765,8 +770,16 @@ ECS에서 종료 여부를 확인할 수 없는 실행은 운영자가 상태를
 아래 테스트는 실제 API와 DB 대신 Mock을 사용하므로 Docker 없이 실행할 수 있습니다.
 
 ```bash
-./gradlew test --tests '*CollectionSchedulePropertiesTest' --tests '*CollectionScheduleConfigTest' --tests '*CollectionSchedulerTest' --tests '*CollectionJobLauncherTest'
+./gradlew test \
+  --tests '*CollectionSchedulePropertiesTest' \
+  --tests '*CollectionScheduleConfigTest' \
+  --tests '*CollectionSchedulerTest' \
+  --tests '*CollectionScheduledTaskTest' \
+  --tests '*CollectionJobLauncherTest'
 ```
+
+계산된 예약 시각 전달, 같은 예약의 순차 중복 실행 방지,
+다음 예약 회차와 수동 수집의 개별 실행을 검증합니다.
 
 설정값 검증, 활성화 여부에 따른 등록, cron 예약,
 배치 실행 파라미터 전달, 이미 실행 중인 Job의 추가 실행 방지를 확인합니다.
@@ -780,6 +793,7 @@ PostgreSQL 통합 테스트에서는 서버 간 잠금 경쟁,
 잠금 연결 종료 후에도 살아 있는 ECS 태스크의 복구 보류,
 저장된 읽기 위치에서의 재시작과 실행 주체 갱신,
 재시작 요청 실패 후 다음 예약에서의 재개를 검증합니다.
+서로 다른 실행기가 같은 예약을 순차 요청해도 JobInstance와 JobExecution이 각각 하나만 생성되는지 확인합니다.
 PostgreSQL은 실제 컨테이너를 사용하고 ECS 응답은 Mock을 사용합니다.
 이 테스트에는 Docker가 필요합니다.
 
@@ -829,13 +843,8 @@ GET /actuator/metrics/content.collection.items.write?tag=job:sportsDbCollectionJ
 
 브랜치명과 커밋 메시지 형식은 팀에서 합의한 규칙을 따릅니다. 현재 이 문서에서 별도 형식을 정하지 않습니다.
 
-다음 항목은 후속 작업으로 관리합니다.
+후속 작업은 각 이슈에서 추적합니다.
 
-- 도메인별 API·서비스·엔티티와 PostgreSQL/Flyway 검증
-- 활성화된 공통 CSRF 기반을 사용하는 팔로우 연동·검증(#114), 알림 연동·검증(#124)
-- 목록 API의 커서 규칙 확정과 직렬화·페이징 테스트
-- Redis 기반 캐시·세션 기능 구현과 데이터 보관 정책 결정
-- 배치, S3 등 기능별 구현과 필요한 인프라 추가. DM WebSocket 구현·검증 범위는 [대화방 가이드](conversation/README.md), 연결 유지 중 인증 자연 만료는 #208 참고
-- 팔로우(#155)·권한 변경·구독(#156)·플레이리스트 생성·콘텐츠 추가(#157)·DM(#159) 외 업무 이벤트의 알림 연동(#45), SSE Kafka 구현체, 이력 보관 초기값의 운영 부하 검증, [동시 연결 수 제한·모니터링 #107](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/107)
-- 배포 파이프라인 구성
-
+- 팔로우·알림 API의 실제 CSRF 토큰 연동 검증. [팔로우 #114](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/114) · [알림 #124](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/124)
+- 열린 WebSocket 연결에서 인증의 자연 만료 처리. [대화방 보안 가이드](conversation/12-websocket-security-errors.md#로그인-세션-무효화와-후속-범위)
+- SSE 연결 수 제한과 이력 보관 설정의 운영 부하 검증. [연결 관리 #107](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/107) · [이력 운영 가이드](sse/11-history-operations.md)

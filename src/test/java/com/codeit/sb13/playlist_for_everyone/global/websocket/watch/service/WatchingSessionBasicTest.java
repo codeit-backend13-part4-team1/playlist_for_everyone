@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.global.websocket.watch.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
+import com.codeit.sb13.playlist_for_everyone.global.service.lock.SpreadLock;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSession;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSubscription;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistry;
@@ -77,7 +78,8 @@ public class WatchingSessionBasicTest {
                 userService,
                 contentService,
                 mapper,
-                eventPublisher
+                eventPublisher,
+                new SpreadLock()
         );
     }
 
@@ -205,10 +207,6 @@ public class WatchingSessionBasicTest {
             }
 
         }
-
-    }
-
-    void cleanUpWithContentStub(){
 
     }
 

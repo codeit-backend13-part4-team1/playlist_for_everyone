@@ -7,10 +7,11 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentSource;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentTag;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
-import com.codeit.sb13.playlist_for_everyone.domain.content.event.ContentSearchCacheEvictEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.content.event.elasticsearch.ContentIndexUpsertEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
+import com.codeit.sb13.playlist_for_everyone.global.file.entity.FileInfo;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -298,12 +299,11 @@ class ContentCollectionServiceTest {
     }
 
     @Test
-    void 같은_콘텐츠를_재수집해도_기존_정보와_태그를_유지한다() {
+    void 같은_콘텐츠를_재수집하면_변경된_정보와_태그를_반영한다() {
         var original = new CollectedContentData(
                 ContentType.movie, "기존 제목", "기존 설명",
                 "https://example.com/original.jpg", ContentSource.TMDB, "550",
-                List.of("액션")
-        );
+                List.of("액션"));
 
         Content first = service.save(original);
         em.flush();
@@ -312,8 +312,7 @@ class ContentCollectionServiceTest {
         var recollected = new CollectedContentData(
                 ContentType.movie, "새 제목", "새 설명",
                 "https://example.com/new.jpg", ContentSource.TMDB, "550",
-                List.of("드라마", "코미디")
-        );
+                List.of("드라마", "코미디"));
 
         Content second = service.save(recollected);
         em.flush();
@@ -323,13 +322,13 @@ class ContentCollectionServiceTest {
 
         Content found = em.find(Content.class, first.getId());
 
-        assertThat(found.getTitle()).isEqualTo("기존 제목");
-        assertThat(found.getDescription()).isEqualTo("기존 설명");
+        assertThat(found.getTitle()).isEqualTo("새 제목");
+        assertThat(found.getDescription()).isEqualTo("새 설명");
         assertThat(found.getThumbnailUrl())
-                .isEqualTo("https://example.com/original.jpg");
+                .isEqualTo("https://example.com/new.jpg");
         assertThat(found.getTags())
                 .extracting(ContentTag::getTag)
-                .containsExactly("액션");
+                .containsExactlyInAnyOrder("드라마", "코미디");
     }
 
     @Test
@@ -513,7 +512,36 @@ class ContentCollectionServiceTest {
         em.flush();
 
         assertThat(applicationEvents
-                .stream(ContentSearchCacheEvictEvent.class)
+                .stream(ContentIndexUpsertEvent.class)
+                .count())
+                .isEqualTo(1L);
+    }
+
+    @Test
+    void 수집_콘텐츠가_갱신되면_캐시_무효화_이벤트를_발행한다() {
+        var original = new CollectedContentData(
+                ContentType.movie, "기존 제목", "기존 설명",
+                "https://example.com/original.jpg", ContentSource.TMDB, "550",
+                List.of("액션")
+        );
+
+        Content first = service.save(original);
+        em.flush();
+        em.clear();
+        applicationEvents.clear();
+
+        var recollected = new CollectedContentData(
+                ContentType.movie, "새 제목", "새 설명",
+                "https://example.com/new.jpg", ContentSource.TMDB, "550",
+                List.of("드라마")
+        );
+
+        Content updated = service.save(recollected);
+        em.flush();
+
+        assertThat(updated.getId()).isEqualTo(first.getId());
+        assertThat(applicationEvents
+                .stream(ContentIndexUpsertEvent.class)
                 .count())
                 .isEqualTo(1L);
     }
@@ -537,7 +565,7 @@ class ContentCollectionServiceTest {
         em.flush();
 
         assertThat(applicationEvents
-                .stream(ContentSearchCacheEvictEvent.class)
+                .stream(ContentIndexUpsertEvent.class)
                 .count())
                 .isZero();
     }
@@ -569,7 +597,7 @@ class ContentCollectionServiceTest {
 
         assertThat(result.getId()).isEqualTo(existing.getId());
         assertThat(applicationEvents
-                .stream(ContentSearchCacheEvictEvent.class)
+                .stream(ContentIndexUpsertEvent.class)
                 .count())
                 .isZero();
     }
@@ -589,7 +617,7 @@ class ContentCollectionServiceTest {
         assertThat(result.inserted()).isTrue();
         assertThat(result.content().getId()).isNotNull();
         assertThat(applicationEvents
-                .stream(ContentSearchCacheEvictEvent.class)
+                .stream(ContentIndexUpsertEvent.class)
                 .count())
                 .isZero();
     }
@@ -613,7 +641,7 @@ class ContentCollectionServiceTest {
         assertThat(result.inserted()).isFalse();
         assertThat(result.content().getId()).isEqualTo(existing.getId());
         assertThat(applicationEvents
-                .stream(ContentSearchCacheEvictEvent.class)
+                .stream(ContentIndexUpsertEvent.class)
                 .count())
                 .isZero();
     }
@@ -685,6 +713,54 @@ class ContentCollectionServiceTest {
         assertThat(tags).containsExactlyInAnyOrder("Soccer", "English Premier League");
 
         server.verify();
+    }
+
+    //
+    @Test
+    void 재수집해도_관리자_업로드_이미지는_유지한다() {
+        var original = new CollectedContentData(
+                ContentType.movie, "기존 제목", "영화 설명",
+                "https://example.com/old.jpg", ContentSource.TMDB, "550",
+                List.of("액션")
+        );
+
+        Content saved = service.save(original);
+
+        var fileInfo = FileInfo.createS3File(
+                "test/admin-thumbnail.jpg",
+                "admin-thumbnail.jpg",
+                "image/jpeg",
+                100L
+        );
+        em.persist(fileInfo);
+
+        saved.updateThumbnail(null, fileInfo);
+
+        var contentId = saved.getId();
+        var fileId = fileInfo.getId();
+
+        em.flush();
+        em.clear();
+
+        var recollected = new CollectedContentData(
+                ContentType.movie, "변경된 제목", "영화 설명",
+                "https://example.com/new.jpg", ContentSource.TMDB, "550",
+                List.of("액션")
+        );
+
+        service.save(recollected);
+
+        em.flush();
+        em.clear();
+
+        Content updated = em.find(Content.class, contentId);
+
+        assertThat(updated.getTitle()).isEqualTo("변경된 제목");
+        assertThat(updated.getThumbnailUrl())
+                .isEqualTo("https://example.com/new.jpg");
+        assertThat(updated.getFileInfo()).isNotNull();
+        assertThat(updated.getFileInfo().getId()).isEqualTo(fileId);
+        assertThat(em.find(FileInfo.class, fileId)).isNotNull();
     }
 
 }

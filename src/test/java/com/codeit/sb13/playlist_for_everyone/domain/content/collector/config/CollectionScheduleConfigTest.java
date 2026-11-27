@@ -14,6 +14,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.ScheduledAnnotationBeanPostProcessor;
 import org.springframework.scheduling.config.CronTask;
+import org.springframework.scheduling.config.TriggerTask;
+import org.springframework.scheduling.support.CronTrigger;
 
 import javax.sql.DataSource;
 
@@ -96,8 +98,11 @@ class CollectionScheduleConfigTest {
                     assertThat(tasks).hasSize(1);
 
                     var task = tasks.iterator().next().getTask();
-                    assertThat(task).isInstanceOf(CronTask.class);
-                    assertThat(((CronTask) task).getExpression())
+                    assertThat(task).isInstanceOf(TriggerTask.class);
+
+                    var trigger = ((TriggerTask) task).getTrigger();
+                    assertThat(trigger).isInstanceOf(CronTrigger.class);
+                    assertThat(((CronTrigger) trigger).getExpression())
                             .isEqualTo(cron);
                 });
     }
@@ -155,9 +160,10 @@ class CollectionScheduleConfigTest {
                     );
 
                     assertThat(processor.getScheduledTasks())
-                            .extracting(task ->
-                                    ((CronTask) task.getTask()).getExpression()
-                            )
+                            .extracting(task -> {
+                                var triggerTask = (TriggerTask) task.getTask();
+                                return ((CronTrigger) triggerTask.getTrigger()).getExpression();
+                            })
                             .containsExactlyInAnyOrder(
                                     "0 0 3 * * *",
                                     "0 0 4 * * *"

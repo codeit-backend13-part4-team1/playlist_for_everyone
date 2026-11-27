@@ -12,7 +12,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.collector.dto.*;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentSource;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.event.ContentCollectionFinishedEvent;
-import com.codeit.sb13.playlist_for_everyone.domain.content.event.ContentSearchCacheEvictEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.content.event.cache.ContentSearchCacheEvictEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
@@ -24,10 +24,12 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.job.Job;
 import org.springframework.batch.core.job.JobExecution;
+import org.springframework.batch.core.job.builder.JobBuilder;
 import org.springframework.batch.core.job.parameters.InvalidJobParametersException;
 import org.springframework.batch.core.job.parameters.JobParametersBuilder;
 import org.springframework.batch.core.launch.JobOperator;
 import org.springframework.batch.core.repository.JobRepository;
+import org.springframework.batch.core.step.Step;
 import org.springframework.batch.core.step.StepExecution;
 import org.springframework.batch.infrastructure.item.ExecutionContext;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -56,6 +58,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import javax.sql.DataSource;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -137,6 +140,10 @@ class SportsDbCollectionJobTest {
 
     @Autowired
     private ContentCollectionService collectionService;
+
+    @Autowired
+    @Qualifier("sportsDbCollectionStep")
+    private Step sportsDbCollectionStep;
 
     @TestConfiguration(proxyBeanMethods = false)
     static class MetricsTestConfig {
@@ -1098,5 +1105,128 @@ class SportsDbCollectionJobTest {
         assertThat(restarted.getStatus()).isEqualTo(BatchStatus.COMPLETED);
         assertThat(restarted.getId()).isNotEqualTo(execution.getId());
         assertThat(restarted.getJobParameters()).isEqualTo(parameters);
+    }
+
+    @Test
+    void 기존_경기만_갱신해도_배치_종료_이벤트를_발행한다() throws Exception {
+        var original = new SportsDbEventResponse(
+                "446002", "기존 경기명", "Soccer",
+                "English Premier League", "2014-2015",
+                "2014-08-16", null
+        );
+        var changed = new SportsDbEventResponse(
+                "446002", "변경된 경기명", "Soccer",
+                "English Premier League", "2014-2015",
+                "2014-08-16", null
+        );
+
+        when(sportsDbClient.getEventsBySeason("4328", "2014-2015"))
+                .thenReturn(
+                        new SportsDbEventsResponse(List.of(original)),
+                        new SportsDbEventsResponse(List.of(changed))
+                );
+
+        var firstParameters = new JobParametersBuilder()
+                .addString("leagueId", "4328")
+                .addString("season", "2014-2015")
+                .addString("run.id", UUID.randomUUID().toString())
+                .toJobParameters();
+
+        var firstExecution = jobOperator.start(job, firstParameters);
+
+        assertThat(firstExecution.getStatus()).isEqualTo(BatchStatus.COMPLETED);
+
+        var firstSaved = contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.THE_SPORTS_DB,
+                ContentType.sport,
+                "446002"
+        ).orElseThrow();
+
+        applicationEvents.clear();
+
+        var secondParameters = new JobParametersBuilder()
+                .addString("leagueId", "4328")
+                .addString("season", "2014-2015")
+                .addString("run.id", UUID.randomUUID().toString())
+                .toJobParameters();
+
+        var secondExecution = jobOperator.start(job, secondParameters);
+
+        assertThat(secondExecution.getStatus()).isEqualTo(BatchStatus.COMPLETED);
+
+        var updated = contentRepository.findByProviderAndTypeAndProviderItemId(
+                ContentSource.THE_SPORTS_DB,
+                ContentType.sport,
+                "446002"
+        ).orElseThrow();
+
+        assertThat(updated.getId()).isEqualTo(firstSaved.getId());
+        assertThat(updated.getTitle()).isEqualTo("변경된 경기명");
+
+        assertThat(applicationEvents.stream(ContentCollectionFinishedEvent.class).toList())
+                .extracting(ContentCollectionFinishedEvent::insertedCount)
+                .containsExactly(0L);
+
+        assertThat(applicationEvents.stream(ContentCollectionFinishedEvent.class).toList())
+                .extracting(ContentCollectionFinishedEvent::updatedCount)
+                .containsExactly(1L);
+
+        assertThat(applicationEvents.stream(ContentSearchCacheEvictEvent.class).count())
+                .isZero();
+    }
+
+    @Test
+    void 같은_예약을_순차_요청해도_DB_실행_이력은_하나만_남는다() throws Exception {
+        var event = new SportsDbEventResponse(
+                "279001", "예약 중복 검증 경기", "Soccer",
+                "English Premier League", "2014-2015",
+                "2014-08-16", null
+        );
+
+        when(sportsDbClient.getEventsBySeason("4328", "2014-2015"))
+                .thenReturn(new SportsDbEventsResponse(List.of(event)));
+
+        String jobName = "sportsScheduleTest-" + UUID.randomUUID();
+        var testJob = new JobBuilder(jobName, jobRepository)
+                .start(sportsDbCollectionStep)
+                .build();
+
+        var recoveryPolicy = mock(CollectionExecutionRecoveryPolicy.class);
+
+        var firstLauncher = new CollectionJobLauncher(
+                jobOperator,
+                tmdbJob,
+                testJob,
+                jobRepository,
+                new CollectionJobLock(dataSource),
+                recoveryPolicy
+        );
+
+        var secondLauncher = new CollectionJobLauncher(
+                jobOperator,
+                tmdbJob,
+                testJob,
+                jobRepository,
+                new CollectionJobLock(dataSource),
+                recoveryPolicy
+        );
+
+        var scheduledAt = Instant.parse("2026-11-26T15:30:00Z");
+
+        firstLauncher.startScheduledSportsDb("4328", "2014-2015", scheduledAt);
+
+        // 두 번째 서버의 설정이 달라도 같은 예약 회차는 다시 시작하지 않음.
+        secondLauncher.startScheduledSportsDb("4370", "2026", scheduledAt);
+
+        var instances = jobRepository.getJobInstances(jobName, 0, 10);
+        assertThat(instances).hasSize(1);
+
+        var executions = jobRepository.getJobExecutions(instances.get(0));
+        assertThat(executions).hasSize(1);
+        assertThat(executions.get(0).getStatus())
+                .isEqualTo(BatchStatus.COMPLETED);
+
+        verify(sportsDbClient).getEventsBySeason("4328", "2014-2015");
+        verifyNoMoreInteractions(sportsDbClient);
     }
 }

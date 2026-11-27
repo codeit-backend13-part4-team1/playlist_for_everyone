@@ -1,9 +1,11 @@
 package com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.viewing;
 
 import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSubscription;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.ViewingSessionInfoDto;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -15,9 +17,11 @@ public interface ViewingSessionService {
 
     /**
      * 세션 방에 참가하는 매서드.
+     *
      * @param subscription 구독 정보
+     * @return
      */
-    void join(WSSubscription subscription, UUID contentId);
+    boolean join(WSSubscription subscription, UUID contentId, UUID userId);
 
     /**
      * 참가된 세션 방에서 나가는 매서드.
@@ -48,9 +52,9 @@ public interface ViewingSessionService {
 
     /**
      * 인자로 받은 세션 id 에 대한 세션 룸 내에서의 수명을 갱신하는 매서드
-     * @param sessionId 세션 id
+     * @param subscriptionKeys 구독 uuid 들
      */
-    void refresh(String sessionId);
+    void refresh(List<UUID> subscriptionKeys);
 
     /**
      * 컨텐츠 id 를 대상으로 현재 시청자 수를 카운트 하는 매서드
@@ -66,4 +70,14 @@ public interface ViewingSessionService {
     Map<UUID, Long> getCurrentViewerCountWithContents(List<UUID> contentIdList);
 
 
+    /**
+     * 인자로 받은 컨텐츠에 대해 현재 시청중인 시청자 id 의 리스트를 반환하는 매서드.
+     * @param contentId 대상이 되는 컨텐츠 id
+     */
+    List<ViewingSessionInfoDto> getCurrentViewerIdList(UUID contentId);
+
+    /**
+     * 인자로 받은 유저에 대한 활성 세션 정보를 반환하는 매서드
+     */
+    Optional<ViewingSessionInfoDto> queryViewerId(UUID userId);
 }

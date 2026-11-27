@@ -1,0 +1,25 @@
+package com.codeit.sb13.playlist_for_everyone.domain.watching.dto.request;
+
+import java.time.Instant;
+import java.util.UUID;
+
+public record WatchingSessionRequestByContent(
+        String userName,
+        String cursor,
+        UUID idAfter,
+        int limit,
+        String sortDirection,
+        String sortBy
+) {
+    public WatchingSessionRequestByContent {
+        if (!sortDirection.equals("ASCENDING") && !sortDirection.equals("DESCENDING"))
+            throw new IllegalArgumentException("조회 방향은 ASCENDING 또는 DESCENDING이어야 합니다.");
+        if (!sortBy.equals("createdAt"))
+            throw new IllegalArgumentException("정렬 기준은 createdAt이어야 합니다.");
+        // Instant 파싱 검증
+        if (cursor != null)
+            Instant.parse(cursor);
+        if (limit < 1)
+            throw new IllegalArgumentException("조회 개수는 0보다 커야 합니다.");
+    }
+}

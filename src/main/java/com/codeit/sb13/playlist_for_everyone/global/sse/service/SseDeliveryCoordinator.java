@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.global.sse.service;
 
 import com.codeit.sb13.playlist_for_everyone.global.sse.config.SseRetryProperties;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
+import com.codeit.sb13.playlist_for_everyone.global.sse.event.ConnectionKey;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.LoginSession;
 import com.codeit.sb13.playlist_for_everyone.global.sse.history.SseHistoryPosition;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
@@ -241,6 +242,11 @@ public class SseDeliveryCoordinator {
         }
     }
 
+    /** 폐기가 확인된 연결의 업무 전송과 재시도를 중단하고, HTTP 종료에 사용할 emitter는 유지한다. */
+    public void stopDelivery(UUID userId, Connection connection) {
+        detachConnection(new ConnectionKey(userId, connection));
+    }
+
     /**
      * 등록 완료를 기다린 뒤 실제 emitter 보관처인 저장소에서 조회한다.
      * 상태가 바뀌었거나 저장소 연결이 없으면 빈 결과로 전송을 중단한다. 후자는 남은 상태·예약도 정리한다.
@@ -275,13 +281,6 @@ public class SseDeliveryCoordinator {
             return emitterRepository.findByUserIdAndConnection(key.userId(), key.connection());
         }
         return detachState(key, state);
-    }
-
-    private record ConnectionKey(
-            UUID userId,
-            Connection connection
-    ){
-
     }
 
     /** 이력 목록을 캐시하지 않는 연결 단위 상태. pendingDelivery는 개수가 아니라 재조회 필요 여부다. */

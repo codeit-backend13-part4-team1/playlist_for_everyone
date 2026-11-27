@@ -70,7 +70,9 @@ class SseRetryExhaustionTest {
         SseDeliveryCoordinator coordinator = new SseDeliveryCoordinator(
                 recoveryService, retryTaskScheduler, retryProperties , new SseConnectionCloser(repository), repository
         );
-        SseConnectionService service = new SseConnectionService(repository, properties, coordinator, userSessionRepository);
+        SseConnectionService service = new SseConnectionService(
+                repository, properties, coordinator, userSessionRepository,
+                mock(SseHeartbeatDispatcher.class));
         DataAccessResourceFailureException failure =
                 new DataAccessResourceFailureException("테스트용 후속 이력 조회 실패");
 

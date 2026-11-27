@@ -10,10 +10,11 @@
 | SsePropertiesTest | 연결·하트비트 설정값의 정상값·경계값·실패 |
 | InMemorySseEmitterRepositoryTest | 사용자·로그인 세션별 조회, 등록·중복 거부·단건 조회·삭제·조회 사본·동시 변경 |
 | SseConnectionServiceTest | 같은 로그인 세션의 연결 ID 구분, 등록·복구·정리 위임, 등록 실패 시 기존 연결 보존 |
-| SseDeliveryServiceTest | 수신자별 연결의 조정기 호출, 일반 실패의 종료 위임과 하트비트 실패의 정리 위임 |
-| SseConnectionLifecycleTest | 실제 컨텍스트 종료 이벤트에서 emitter 종료 요청과 조정기 정리 위임 |
-| SseHeartbeatSchedulerTest / SseHeartbeatSchedulingTest | 하트비트 요청과 지정 실행기 등록 |
-| SchedulerConfigTest | 실제 하트비트 실행기 스레드·종료·취소 |
+| SseDeliveryServiceTest | 수신자별 연결의 조정기 호출, 실패 처리 위임, 보류된 종료 요청 우선 처리와 주기별 하트비트 제출 시작점 순환 |
+| SseConnectionLifecycleTest | emitter 종료 요청과 정리 위임, 쓰기가 막힌 상태에서 종료 이벤트 반환과 대기열 폐기, 실제 컨텍스트 종료 반환과 로컬 연결 정리 |
+| SseHeartbeatSchedulerTest / SseHeartbeatSchedulingTest | 하트비트 제출·세션 재검증 호출과 전용 주기 스케줄러 지정 |
+| SchedulerConfigTest | 하트비트 주기 스케줄러의 전용 스레드와 컨텍스트 종료 시 주기 작업 취소 |
+| SseHeartbeatConfigTest | 전송 워커 수·대기열 상한, 포화 시 작업 거절과 보류된 종료 요청의 재제출 |
 | SseControllerTest | 최초 연결·재연결에서 인증된 사용자 ID와 `sid` 전달, 쿼리·응답·ASYNC 종료 계약 |
 | SseStreamingIntegrationTest | 실제 HTTP 프레임과 초기 조회 실패의 503 응답 |
 
@@ -82,8 +83,10 @@ Docker가 필요한 통합 테스트를 실행하기 전에 Docker 엔진을 켭
 
 동시성 테스트는 지정한 경합 상황을 재현하며 모든 가능한 실행 순서를 검증하지 않습니다.
 Mock 예약 작업을 직접 실행한 결과를 실제 대기시간 측정으로 해석하지 않습니다.
-ContextClosedEvent의 정리 검증도 실행 중인 모든 하트비트·I/O가 먼저 끝났다는 보장은 아닙니다.
-이 테스트의 emitter는 Mock이므로 실제 HTTP 종료 여부는 HTTP 통합 테스트와 구분합니다.
+하트비트 종료 테스트는 emitter의 쓰기 잠금을 유지한 상태에서 두 종료 경로를 확인합니다.
+`ContextClosedEvent`를 직접 발행하는 테스트는 이벤트 반환과 대기열·로컬 저장소 정리를 검증합니다.
+실제 `close()`를 호출하는 테스트는 잠금을 풀기 전에 컨텍스트 종료가 반환되고 로컬 저장소가 비워지는지 검증합니다.
+실제 HTTP 스트리밍 동작은 `SseStreamingIntegrationTest`에서 검증합니다.
 실제 부하·메모리 조정은 [운영 가이드](11-history-operations.md)에서 구분합니다.
 
 ---
