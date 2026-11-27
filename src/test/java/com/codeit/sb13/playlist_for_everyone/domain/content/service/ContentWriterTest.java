@@ -28,6 +28,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
@@ -76,7 +77,7 @@ public class ContentWriterTest {
     }
 
     @Test
-    @DisplayName("관리자 콘텐츠를 정상적으로 생성하고 캐시 무효화 이벤트를 발행한다.")
+    @DisplayName("관리자 콘텐츠를 생성하고 색인 이벤트를 발행한다.")
     void create_success() {
         // given
         ContentCreateRequest request = new ContentCreateRequest(
@@ -92,8 +93,13 @@ public class ContentWriterTest {
         String key = "contents/test-thumbnail.jpg";
         given(fileInfo.getKey()).willReturn(key);
 
+        UUID contentId = UUID.randomUUID();
         given(contentRepository.save(any(Content.class)))
-                .willAnswer(invocation -> invocation.getArgument(0));
+                .willAnswer(invocation -> {
+                    Content content = invocation.getArgument(0);
+                    ReflectionTestUtils.setField(content, "id", contentId);
+                    return content;
+                });
 
         // when
         ContentResult result = writer.create(request, file);
@@ -133,7 +139,7 @@ public class ContentWriterTest {
         );
 
         assertThat(result.fileKey()).isEqualTo(fileInfo.getKey());
-        verify(eventPublisher).publishEvent(any(ContentIndexUpsertEvent.class));
+        verify(eventPublisher).publishEvent(new ContentIndexUpsertEvent(contentId));
     }
 
     @Test
@@ -196,7 +202,7 @@ public class ContentWriterTest {
     }
 
     @Test
-    @DisplayName("콘텐츠 수정 시 변경 사항과 집계 정보를 반영하고 캐시 무효화 이벤트를 발행한다.")
+    @DisplayName("콘텐츠 수정 시 변경 사항과 집계 정보를 반영하고 색인 이벤트를 발행한다.")
     void update_success() {
         // given
         UUID contentId = UUID.randomUUID();
@@ -207,6 +213,7 @@ public class ContentWriterTest {
                 "KBS 드라마 입니다.",
                 "thumbnail-url"
         );
+        ReflectionTestUtils.setField(content, "id", contentId);
         content.addTag("드라마");
 
         ContentUpdateRequest request = new ContentUpdateRequest(
@@ -240,7 +247,7 @@ public class ContentWriterTest {
                 "thumbnail-url",
                 4.5, 3, 0L);
 
-        verify(eventPublisher).publishEvent(any(ContentIndexUpsertEvent.class));
+        verify(eventPublisher).publishEvent(new ContentIndexUpsertEvent(contentId));
     }
 
     @Test
@@ -466,7 +473,7 @@ public class ContentWriterTest {
     }
 
     @Test
-    @DisplayName("콘텐츠 삭제 시 연결된 리뷰, 파일, 플레이리스트 콘텐츠를 삭제하고 캐시 무효화 이벤트를 발행한다.")
+    @DisplayName("콘텐츠 삭제 시 연결된 리뷰, 파일, 플레이리스트 콘텐츠를 삭제하고 색인 이벤트를 발행한다.")
     void deleteById_success() {
         // given
         UUID contentId = UUID.randomUUID();
@@ -482,9 +489,9 @@ public class ContentWriterTest {
                 "thumbnail-url",
                 fileInfo
         );
+        ReflectionTestUtils.setField(content, "id", contentId);
 
-        given(contentRepository.findById(contentId))
-                .willReturn(Optional.of(content));
+        given(contentRepository.findById(contentId)).willReturn(Optional.of(content));
 
         // when
         writer.deleteById(contentId);
@@ -503,7 +510,7 @@ public class ContentWriterTest {
         inOrder.verify(contentRepository).flush();
         inOrder.verify(fileService).delete(fileId);
 
-        verify(eventPublisher).publishEvent(any(ContentIndexDeleteEvent.class));
+        verify(eventPublisher).publishEvent(new ContentIndexDeleteEvent(contentId));
         verify(webSocketEventFactory).contentDeleteEvent(contentId);
     }
 
@@ -545,6 +552,7 @@ public class ContentWriterTest {
                 "KBS 드라마 입니다.",
                 "thumbnail-url"
         );
+        ReflectionTestUtils.setField(content, "id", contentId);
 
         given(contentRepository.findById(contentId))
                 .willReturn(Optional.of(content));
@@ -556,7 +564,7 @@ public class ContentWriterTest {
         verify(contentRepository).delete(content);
         verify(fileService, never()).delete(any());
 
-        verify(eventPublisher).publishEvent(any(ContentIndexDeleteEvent.class));
+        verify(eventPublisher).publishEvent(new ContentIndexDeleteEvent(contentId));
         verify(webSocketEventFactory).contentDeleteEvent(contentId);
     }
 
