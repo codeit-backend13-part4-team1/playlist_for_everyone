@@ -25,5 +25,23 @@ services:
       timeout: 5s
       retries: 5
 
+  elasticsearch:
+    image: 'docker.elastic.co/elasticsearch/elasticsearch:9.2.0'
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: 'false'
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+    ports:
+      - '127.0.0.1:${EVERYONE_ELASTICSEARCH_PORT:-9200}:9200'
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    healthcheck:
+          test: ['CMD-SHELL', 'curl -fsS http://localhost:9200/_cluster/health || exit 1']
+          interval: 10s
+          timeout: 5s
+          retries: 5
+          start_period: 30s
+
 volumes:
   postgres-data:
+  elasticsearch-data:

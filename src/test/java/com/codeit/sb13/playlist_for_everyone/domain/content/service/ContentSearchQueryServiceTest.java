@@ -6,6 +6,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.Content
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
+import com.codeit.sb13.playlist_for_everyone.domain.content.repository.elasticsearch.ContentDocumentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.viewing.ViewingSessionService;
@@ -33,6 +34,9 @@ class ContentSearchQueryServiceTest {
 
     @Mock
     private ContentRepository contentRepository;
+
+    @Mock
+    private ContentDocumentRepository contentDocumentRepository;
 
     @Mock
     private ViewingSessionService viewingSessionService;
@@ -81,10 +85,105 @@ class ContentSearchQueryServiceTest {
     }
 
     @Test
+    @DisplayName("키워드 검색 시 Elasticsearch에서 조회한 ID를 DB 조회에 전달한다.")
+    void searchContents_withKeyword() {
+        // given
+        ContentSearchCondition condition = new ContentSearchCondition(
+                null, "드라마", null, null, null,
+                2,
+                SortDirection.DESCENDING,
+                "rate"
+        );
+
+        List<UUID> contentIds = List.of(content1.getId());
+
+        given(contentDocumentRepository.searchContentIds(condition)).willReturn(contentIds);
+        given(contentRepository.searchByDatabase(condition, contentIds))
+                .willReturn(List.of(
+                        new ContentSearchResult(content1, 5.0, 2)
+                ));
+        given(contentRepository.countBySearchCondition(contentIds)).willReturn(1L);
+
+        // when
+        var result = queryService.search(condition);
+
+        // then
+        assertThat(result.data()).hasSize(1);
+        assertThat(result.hasNext()).isFalse();
+
+        InOrder inOrder = inOrder(
+                contentDocumentRepository,
+                contentRepository
+        );
+
+        inOrder.verify(contentDocumentRepository).searchContentIds(condition);
+        inOrder.verify(contentRepository).searchByDatabase(condition, contentIds);
+        inOrder.verify(contentRepository).countBySearchCondition(contentIds);
+
+        verifyNoInteractions(viewingSessionService);
+    }
+
+    @Test
+    @DisplayName("Elasticsearch 검색 결과가 없으면 DB와 Redis를 호출하지 않고 빈 응답을 반환한다.")
+    void searchContents_emptyContentIds() {
+        // given
+        ContentSearchCondition condition = new ContentSearchCondition(
+                null, "없는 콘텐츠", null, null, null,
+                2,
+                SortDirection.DESCENDING,
+                "rate"
+        );
+
+        given(contentDocumentRepository.searchContentIds(condition)).willReturn(List.of());
+
+        // when
+        var result = queryService.search(condition);
+
+        // then
+        assertThat(result.data()).isEmpty();
+        assertThat(result.totalCount()).isZero();
+        assertThat(result.hasNext()).isFalse();
+        assertThat(result.nextCursor()).isNull();
+        assertThat(result.nextIdAfter()).isNull();
+
+        verify(contentDocumentRepository).searchContentIds(condition);
+
+        verifyNoInteractions(
+                contentRepository,
+                viewingSessionService,
+                contentMapper
+        );
+    }
+
+    @Test
+    @DisplayName("콘텐츠 유형만 지정해도 Elasticsearch를 호출한다.")
+    void searchContents_withTypeOnly() {
+        // given
+        ContentSearchCondition condition = new ContentSearchCondition(
+                ContentType.tvSeries, null, null, null, null,
+                2,
+                SortDirection.DESCENDING,
+                "rate"
+        );
+
+        List<UUID> contentIds = List.of(content1.getId());
+
+        given(contentDocumentRepository.searchContentIds(condition)).willReturn(contentIds);
+
+        // when
+        queryService.search(condition);
+
+        // then
+        verify(contentDocumentRepository).searchContentIds(condition);
+        verify(contentRepository).searchByDatabase(condition, contentIds);
+        verify(contentRepository).countBySearchCondition(contentIds);
+    }
+
+    @Test
     @DisplayName("콘텐츠 검색 시 요청한 개수만 반환하고 다음 페이지 커서를 생성한다.")
     void searchContents_returnsCursorPageWithNextCursor() {
         // given
-        given(contentRepository.searchByDatabase(condition))
+        given(contentRepository.searchByDatabase(condition, null))
                 .willReturn(List.of(
                         new ContentSearchResult(content1, 5.0, 2),
                         new ContentSearchResult(content2, 4.5, 3),
@@ -98,6 +197,8 @@ class ContentSearchQueryServiceTest {
         assertThat(result.data()).hasSize(2);
         assertThat(result.hasNext()).isTrue();
         assertThat(result.nextCursor()).isEqualTo("4.5");
+
+        verifyNoInteractions(contentDocumentRepository);
     }
 
     @Test
@@ -110,7 +211,7 @@ class ContentSearchQueryServiceTest {
         queryService.search(condition);
 
         // then
-        verify(contentRepository).searchByDatabase(condition);
+        verify(contentRepository).searchByDatabase(condition, null);
         verifyNoInteractions(viewingSessionService);
     }
 
@@ -124,11 +225,9 @@ class ContentSearchQueryServiceTest {
         queryService.search(condition);
 
         // then
-        verify(contentRepository)
-                .searchForWatcherCount(condition);
-
-        verify(contentRepository).searchForWatcherCount(condition);
-        verify(contentRepository, never()).searchByDatabase(any());
+        verify(contentRepository).searchForWatcherCount(null);
+        verify(contentRepository, never()).searchByDatabase(any(), any());
+        verify(contentRepository, never()).countBySearchCondition(any());
     }
 
     @Test
@@ -137,7 +236,7 @@ class ContentSearchQueryServiceTest {
         // given
         ContentSearchCondition condition = conditionWithSortBy("watcherCount");
 
-        given(contentRepository.searchForWatcherCount(condition))
+        given(contentRepository.searchForWatcherCount(null))
                 .willReturn(List.of(
                         new ContentSearchResult(content1, 5.0, 2),
                         new ContentSearchResult(content2, 4.5, 3),
@@ -171,8 +270,8 @@ class ContentSearchQueryServiceTest {
                 eq(content3), any(), eq(3.0), eq(1), eq(15L)
         );
 
-        verify(contentRepository).searchForWatcherCount(condition);
-        verify(contentRepository, never()).searchByDatabase(any());
+        verify(contentRepository).searchForWatcherCount(null);
+        verify(contentRepository, never()).searchByDatabase(any(), any());
     }
 
     private ContentSearchCondition conditionWithSortBy(String sortBy) {

@@ -17,7 +17,8 @@ public class CollectionCacheEvictJobListener implements JobExecutionListener {
     public void afterJob(JobExecution jobExecution) {
         var event = new ContentCollectionFinishedEvent(
                 counter.getCount(),
-                counter.getUpdatedCount()
+                counter.getUpdatedCount(),
+                counter.getChangedContentIds()
         );
 
         if (event.changed()) {

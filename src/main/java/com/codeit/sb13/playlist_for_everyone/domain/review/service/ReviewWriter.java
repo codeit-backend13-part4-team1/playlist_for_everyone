@@ -1,7 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.review.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
-import com.codeit.sb13.playlist_for_everyone.domain.content.event.ContentSearchCacheEvictEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.content.event.cache.ContentSearchCacheEvictEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewCreateRequest;
 import com.codeit.sb13.playlist_for_everyone.domain.review.dto.request.ReviewUpdateRequest;
