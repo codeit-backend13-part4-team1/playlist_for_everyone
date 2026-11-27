@@ -8,6 +8,7 @@ import org.springframework.batch.core.job.parameters.JobParametersBuilder;
 import org.springframework.batch.core.launch.JobOperator;
 import org.springframework.batch.core.repository.JobRepository;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -57,6 +58,18 @@ public class CollectionJobLauncher {
                 .toJobParameters();
 
         startWithLock(sportsDbCollectionJob, SPORTS_DB_LOCK_KEY, parameters);
+    }
+
+    public void startScheduledTmdb(long maxPages, Instant scheduledAt) throws Exception {
+        startTmdb(maxPages);
+    }
+
+    public void startScheduledSportsDb(
+            String leagueId,
+            String season,
+            Instant scheduledAt
+    ) throws Exception {
+        startSportsDb(leagueId, season);
     }
 
     /**

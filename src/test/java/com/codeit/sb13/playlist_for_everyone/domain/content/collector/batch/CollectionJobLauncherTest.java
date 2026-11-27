@@ -15,10 +15,12 @@ import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.infrastructure.item.ExecutionContext;
 
 import java.sql.SQLException;
+import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -58,6 +60,14 @@ class CollectionJobLauncherTest {
                 jobLock,
                 recoveryPolicy
         );
+    }
+
+    private void startScheduled(CollectionJobLauncher target, String provider, Instant scheduledAt) throws Exception {
+        if ("tmdb".equals(provider)) {
+            target.startScheduledTmdb(5L, scheduledAt);
+        } else {
+            target.startScheduledSportsDb("4328", "2014-2015", scheduledAt);
+        }
     }
 
     @Test
@@ -305,5 +315,47 @@ class CollectionJobLauncherTest {
         } else {
             launcher.startSportsDb("4328", "2014-2015");
         }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"tmdb", "sportsdb"})
+    void 같은_예약을_두_서버가_순차_처리해도_한_번만_실행한다(String provider) throws Exception {
+        Job job = "tmdb".equals(provider) ? tmdbJob : sportsDbJob;
+        var scheduledAt = Instant.parse("2026-11-26T15:00:00Z");
+        var storedParameters = new AtomicReference<JobParameters>();
+        var storedInstance = mock(JobInstance.class);
+
+        when(jobOperator.start(eq(job), any(JobParameters.class)))
+                .thenAnswer(invocation -> {
+                    storedParameters.set(invocation.getArgument(1));
+                    return mock(JobExecution.class);
+                });
+
+        when(jobRepository.getJobInstance(
+                eq(job.getName()),
+                any(JobParameters.class)
+        )).thenAnswer(invocation -> {
+            JobParameters parameters = invocation.getArgument(1);
+
+            return parameters.equals(storedParameters.get())
+                    ? storedInstance
+                    : null;
+        });
+
+        var secondLauncher = new CollectionJobLauncher(
+                jobOperator,
+                tmdbJob,
+                sportsDbJob,
+                jobRepository,
+                jobLock,
+                recoveryPolicy
+        );
+
+        startScheduled(launcher, provider, scheduledAt);
+        startScheduled(secondLauncher, provider, scheduledAt);
+
+        verify(jobOperator, times(1))
+                .start(eq(job), any(JobParameters.class));
+        verify(handle, times(2)).close();
     }
 }
