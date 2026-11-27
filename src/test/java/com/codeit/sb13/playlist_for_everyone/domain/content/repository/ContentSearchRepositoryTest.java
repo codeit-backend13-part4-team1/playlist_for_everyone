@@ -458,4 +458,92 @@ public class ContentSearchRepositoryTest {
         assertThat(result).hasSize(6);
     }
 
+    @Test
+    @DisplayName("대량의 콘텐츠 ID를 전달해도 전체 콘텐츠 수를 조회한다.")
+    void countContents_withLargeContentIds() {
+        // given
+        List<UUID> contentIds = createLargeContentIds();
+
+        // when
+        long count = contentRepository.countBySearchCondition(contentIds);
+
+        // then
+        assertThat(count).isEqualTo(3L);
+    }
+
+    @Test
+    @DisplayName("대량의 콘텐츠 ID를 전달해도 평점순으로 콘텐츠를 조회한다.")
+    void searchContents_withLargeContentIds() {
+        // given
+        List<UUID> contentIds = createLargeContentIds();
+
+        ContentSearchCondition condition = new ContentSearchCondition(
+                null, null, null, null, null,
+                1, SortDirection.DESCENDING, "rate"
+        );
+
+        // when
+        var result = contentRepository.searchByDatabase(
+                condition, contentIds
+        );
+
+        // then
+        assertThat(result)
+                .extracting(searchResult -> searchResult.content().getId())
+                .containsExactly(movie1Id, movie2Id);
+    }
+
+    @Test
+    @DisplayName("대량의 콘텐츠 ID를 전달해도 시청자 수 정렬 대상 콘텐츠를 조회한다.")
+    void searchContents_byWatcherCountWithLargeContentIds() {
+        // given
+        List<UUID> contentIds = createLargeContentIds();
+
+        // when
+        var result = contentRepository.searchForWatcherCount(contentIds);
+
+        // then
+        assertThat(result)
+                .extracting(searchResult -> searchResult.content().getId())
+                .containsExactlyInAnyOrder(
+                        movie1Id, movie2Id, sport3Id
+                );
+    }
+
+    @Test
+    @DisplayName("콘텐츠 ID 목록이 비어 있으면 검색 결과를 반환하지 않는다.")
+    void searchContents_withEmptyContentIds() {
+        // given
+        List<UUID> contentIds = List.of();
+
+        ContentSearchCondition condition = new ContentSearchCondition(
+                null, null, null, null, null,
+                10, SortDirection.DESCENDING, "createdAt"
+        );
+
+        // when & then
+        assertThat(contentRepository.searchByDatabase(
+                condition, contentIds
+        )).isEmpty();
+
+        assertThat(contentRepository.countBySearchCondition(
+                contentIds
+        )).isZero();
+
+        assertThat(contentRepository.searchForWatcherCount(
+                contentIds
+        )).isEmpty();
+    }
+
+    /**
+     * PostgreSQL 바인드 매개변수 제한을 검증하기 위해 70,000개의 후보 ID를 생성한다.
+     * 실제 콘텐츠 ID를 목록 마지막에 배치하여 후보 ID 절삭으로 인한 조회 누락도 검증한다.
+     */
+    private List<UUID> createLargeContentIds() {
+        return Stream.concat(
+                Stream.generate(UUID::randomUUID).limit(69_997),
+                Stream.of(movie1Id, movie2Id, sport3Id)
+        ).toList();
+    }
+
 }
