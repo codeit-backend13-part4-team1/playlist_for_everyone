@@ -3,7 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.global.config;
 import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
 import org.redisson.config.Config;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.data.redis.autoconfigure.DataRedisConnectionDetails;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
@@ -16,13 +16,16 @@ public class RedissonConfig {
     @Bean(destroyMethod = "shutdown")
     @Lazy
     public RedissonClient redisson(
-            @Value("${spring.data.redis.host:localhost}") String host,
-            @Value("${spring.data.redis.port:6379}") int port
+            DataRedisConnectionDetails connectionDetails
     ) {
+        var standalone = connectionDetails.getStandalone();
+
         Config config = new Config();
 
         config.useSingleServer()
-                .setAddress("redis://" + host + ":" + port);
+                .setAddress("redis://" + standalone.getHost()
+                        + ":" + standalone.getPort())
+                .setDatabase(standalone.getDatabase());
 
         return Redisson.create(config);
     }
