@@ -21,7 +21,7 @@
 | 알림 수신자 | 사용자 조회 컴포넌트를 통해 User 연관관계로 저장. 요청·응답의 수신자 UUID 계약 유지. [연관관계와 검증](notification/06-receiver-association.md) 참고 |
 | 알림 조회·읽음 | JWT 사용자를 수신자 조건으로 사용하여 목록·전체 개수를 조회하고 알림 삭제로 읽음 처리. [조회·인증 흐름](notification/03-query-and-security.md) 참고 |
 | 실시간 연결 관리 | 로그인 세션 폐기 시 WebSocket·SSE 연결 종료. 서버별 활성 SSE 연결 수는 [Actuator 지표](sse/01-connection-lifecycle.md#활성-sse-연결-수-조회)에서 확인 |
-| 로그인 | Google·Kakao 및 이메일 로그인, Redis로 로그인 세션·Refresh Token 관리. [인증 가이드](auth/01-login-session.md) |
+| 로그인 | Google·Kakao 및 이메일 로그인, Redis로 로그인 세션·Refresh Token 관리, 임시 비밀번호 메일로 비밀번호 초기화. [인증 가이드](auth/01-login-session.md) · [비밀번호 초기화](auth/05-password-reset.md) · [소셜 로그인](auth/06-social-login.md) |
 
 패키지 기준 경로는 `src/main/java/com/codeit/sb13/playlist_for_everyone`입니다.
 
