@@ -54,8 +54,8 @@ public class ReviewMapper {
         ReviewAuthorDto author = dto.author();
 
         ReviewAuthorDto updatedAuthor = new ReviewAuthorDto(
-                author.authorId(),
-                author.nickname(),
+                author.userId(),
+                author.name(),
                 profileImageUrl
         );
 
