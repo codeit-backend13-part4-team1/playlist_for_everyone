@@ -5,6 +5,7 @@ import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.Viewi
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -72,4 +73,9 @@ public interface ViewingSessionService {
      * @param contentId 대상이 되는 컨텐츠 id
      */
     List<ViewingSessionInfoDto> getCurrentViewerIdList(UUID contentId);
+
+    /**
+     * 인자로 받은 유저에 대한 활성 세션 정보를 반환하는 매서드
+     */
+    Optional<ViewingSessionInfoDto> queryViewerId(UUID userId);
 }

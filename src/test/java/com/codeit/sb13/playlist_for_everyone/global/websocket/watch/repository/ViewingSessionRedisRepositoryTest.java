@@ -233,6 +233,40 @@ public class ViewingSessionRedisRepositoryTest {
                 .isEqualTo(sessionA.toString());
     }
 
+    @Test
+    @DisplayName("사용자 ID로 활성 세션의 정보 네 필드를 조회한다")
+    void queryViewerIdReturnsActiveSessionInfo() {
+        Instant createdAt = Instant.now();
+        repository.register(sessionA, contentA, userA, createdAt);
+
+        assertThat(repository.queryViewerId(userA.toString()))
+                .hasValueSatisfying(info -> {
+                    assertThat(info.subscriptionId()).isEqualTo(sessionA);
+                    assertThat(info.createdAt()).isEqualTo(createdAt);
+                    assertThat(info.userId()).isEqualTo(userA);
+                    assertThat(info.contentId()).isEqualTo(contentA);
+                });
+    }
+
+    @Test
+    @DisplayName("활성 세션이 없는 사용자를 조회하면 빈 결과를 반환한다")
+    void queryViewerIdReturnsEmptyForUserWithoutActiveSession() {
+        register(sessionA, contentA, userA);
+
+        assertThat(repository.queryViewerId(userB.toString())).isEmpty();
+    }
+
+    @Test
+    @DisplayName("활성 세션의 중앙 수명이 만료되면 빈 결과를 반환한다")
+    void queryViewerIdReturnsEmptyForExpiredActiveSession() {
+        register(sessionA, contentA, userA);
+        assertThat(repository.queryViewerId(userA.toString())).isPresent();
+
+        template.opsForZSet().add(SESSION_LIFE, sessionA.toString(), 0.0);
+
+        assertThat(repository.queryViewerId(userA.toString())).isEmpty();
+    }
+
     private boolean register(UUID sessionId, UUID contentId, UUID userId) {
         return repository.register(sessionId, contentId, userId, Instant.now());
     }

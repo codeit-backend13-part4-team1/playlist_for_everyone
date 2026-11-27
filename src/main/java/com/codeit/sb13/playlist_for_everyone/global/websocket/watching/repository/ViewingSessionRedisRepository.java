@@ -369,6 +369,48 @@ public class ViewingSessionRedisRepository {
     }
 
 
+    /**
+     * 사용자 id 에 대해 활성 세션(현재 시청) 의 정보를 반환하는 매서드
+     */
+    @Retryable(
+            retryFor = {
+                    RedisCommandExecutionException.class,
+                    RedisConnectionFailureException.class,
+                    QueryTimeoutException.class
+            },
+            backoff = @Backoff(delay = 100, multiplier = 2)
+    )public Optional<ViewingSessionInfoDto> queryViewerId(String userId){
+        List<?> query = redis.execute(
+                watcherQueryViewerScript,
+                List.of(userId),
+                VIEW_SESSION_KEY_PREFIX,
+                VIEW_CONTENT_KEY_PREFIX,
+                VIEW_USER_KEY_PREFIX,
+                DELIMITER
+        );
+
+        if (query == null || query.isEmpty())
+            return Optional.empty();
+
+        if (query.size() != 4){
+            log.warn("[{}] 세션 정보 저장 형식 에러 - {} - {}",
+                    this.getClass().getSimpleName() ,
+                    userId,
+                    query
+            );
+            return Optional.empty();
+        }
+
+        return Optional.of(new ViewingSessionInfoDto(
+                UUID.fromString(query.get(0).toString()),
+                Instant.parse(query.get(1).toString()),
+                UUID.fromString(query.get(3).toString()),
+                UUID.fromString(query.get(2).toString())
+        ));
+    }
+
+
+
     /*
      * RECOVER 매서드
      */

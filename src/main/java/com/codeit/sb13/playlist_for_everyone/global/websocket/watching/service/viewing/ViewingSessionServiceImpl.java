@@ -13,10 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -149,6 +146,10 @@ public class ViewingSessionServiceImpl implements ViewingSessionService{
     }
 
 
+    @Override
+    public Optional<ViewingSessionInfoDto> queryViewerId(UUID userId) {
+        return viewingSessionPresence.queryViewerId(userId.toString());
+    }
 
     private ViewingSessionRoom getRoomOrException(UUID contentId){
         return viewingSessionRepository.find(contentId)

@@ -189,15 +189,4 @@ public interface ContentApi {
     );
 
 
-    @GetMapping("/{contentId}/watching-sessions")
-    ResponseEntity<?> getCurrentInfoByContent(
-            @PathVariable UUID contentId,
-            @RequestParam(value = "watcherNameLike", required = false) String userName,
-            @RequestParam(value = "cursor", required = false) String cursor,
-            @RequestParam(value = "idAfter", required = false) UUID idAfter,
-            @RequestParam(value = "limit") Integer limit,
-            @RequestParam(value = "sortDirection",defaultValue = "ASCENDING") String sortDirection,
-            @RequestParam(value = "sortBy", defaultValue = "createdAt") String sortBy
-    );
-
 }

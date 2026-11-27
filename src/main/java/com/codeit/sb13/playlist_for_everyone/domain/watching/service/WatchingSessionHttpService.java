@@ -171,10 +171,45 @@ public class WatchingSessionHttpService {
 
     /**
      * 사용자 id 를 기반으로 현재 시청중인 세션에 대한 정보를 반환하는 매서드
+     *
+     * @return
      */
     @Transactional(readOnly = true)
-    public void getWatchingSessionByUserId(UUID userId) {
+    public WatchingSessionDto getWatchingSessionByUserId(UUID userId) {
         // 1. 유저 정보를 바탕으로, 현재 활성 세션을 검증, 반환.
+        ViewingSessionInfoDto dto = viewingSessionService.queryViewerId(userId)
+                .orElse(null);
+
+        WatchingSessionDto result = null;
+
+        if (dto != null) {
+            // 2. 정보 조회
+            UserSummary user = userRepository.findWithProfileImageById(dto.userId())
+                    .stream().map(userMapper::toSummary).findFirst().orElse(null);
+            ContentSummary content = contentReader.getSummariesByIds(List.of(dto.contentId()))
+                    .stream().map(ContentResult::dto).findFirst().orElse(null);
+
+            // 3. 객체 조립
+            if (user != null && content != null)
+                result = new WatchingSessionDto(
+                        dto.subscriptionId(),
+                        dto.createdAt(),
+                        new Watcher(user.userId(), user.name(), user.profileImageUrl()),
+                        new WatchContent(
+                                content.contentId(),
+                                content.type(),
+                                content.title(),
+                                content.description(),
+                                content.thumbnailUrl(),
+                                content.tags(),
+                                content.averageRating(),
+                                content.reviewCount())
+                );
+
+        }
+
+
+        return result;
     }
 
 }

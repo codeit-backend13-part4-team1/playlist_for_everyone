@@ -16,7 +16,6 @@ import jakarta.validation.Valid;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestPart;
@@ -168,9 +167,4 @@ public interface UserApi {
     })
     ResponseEntity<Void> changePassword(@Parameter(description = "사용자 ID (본인)") @PathVariable("userId") UUID userId,
                                         @Valid @RequestBody ChangePasswordRequest request);
-
-    @GetMapping("/{watcherId}/watching-sessions")
-    void getWatchingSessionByUser(
-            @PathVariable UUID watcherId
-    );
 }

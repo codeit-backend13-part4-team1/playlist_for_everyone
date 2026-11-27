@@ -200,10 +200,58 @@ class ViewingSessionRedisRepositoryScriptTest {
                 .containsExactly(new ViewingSessionInfoDto(
                         sessionA,
                         ctime,
-                        contentA,
-                        userA
+                        userA,
+                        contentA
                 ));
     }
+
+    @Test
+    @DisplayName("사용자의 활성 세션을 조회하면 세션 정보 네 필드를 반환한다")
+    void queryViewerIdReturnsSelectedActiveSession() {
+        Instant createdAt = Instant.now();
+        repository.register(sessionA, contentA, userA, createdAt);
+        register(sessionB, contentB, userA);
+
+        // 같은 사용자의 구독이 여러 개여도 활성 세션으로 지정된 구독을 반환한다.
+        redis.opsForHash().put(ACTIVE_USERS, userA.toString(), sessionA.toString());
+
+        assertThat(repository.queryViewerId(userA.toString()))
+                .hasValueSatisfying(info -> {
+                    assertThat(info.subscriptionId()).isEqualTo(sessionA);
+                    assertThat(info.createdAt()).isEqualTo(createdAt);
+                    assertThat(info.userId()).isEqualTo(userA);
+                    assertThat(info.contentId()).isEqualTo(contentA);
+                });
+    }
+
+    @Test
+    @DisplayName("활성 세션이 없는 사용자는 빈 결과를 반환한다")
+    void queryViewerIdReturnsEmptyWithoutActiveSession() {
+        assertThat(repository.queryViewerId(userA.toString())).isEmpty();
+    }
+
+    @Test
+    @DisplayName("활성 세션이 남아 있어도 중앙 수명이 만료되면 빈 결과를 반환한다")
+    void queryViewerIdReturnsEmptyForExpiredSession() {
+        register(sessionA, contentA, userA);
+        assertThat(repository.queryViewerId(userA.toString())).isPresent();
+
+        redis.opsForZSet().add(SESSION_LIFE, sessionA.toString(), 0.0);
+
+        assertThat(repository.queryViewerId(userA.toString())).isEmpty();
+    }
+
+    @Test
+    @DisplayName("활성 정보가 다른 사용자의 세션을 가리키면 빈 결과를 반환한다")
+    void queryViewerIdReturnsEmptyForAnotherUsersSession() {
+        register(sessionA, contentA, userA);
+        assertThat(repository.queryViewerId(userA.toString())).isPresent();
+
+        redis.opsForHash().put(ACTIVE_USERS, userB.toString(), sessionA.toString());
+
+        assertThat(repository.queryViewerId(userB.toString())).isEmpty();
+    }
+
 
     private boolean register(UUID sessionId, UUID contentId, UUID userId) {
         return repository.register(sessionId, contentId, userId, Instant.now());
