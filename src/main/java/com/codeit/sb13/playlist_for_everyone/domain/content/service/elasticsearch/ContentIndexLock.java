@@ -5,6 +5,7 @@ import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Component;
 
+import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
 /**
@@ -19,23 +20,32 @@ import java.util.function.Supplier;
 public class ContentIndexLock {
     // 초기 색인, 일괄 색인, 단건 색인 및 삭제 작업이 공유하는 락 키
     private static final String LOCK_KEY = "everyone:lock:content:index";
+    // 분산 락 획득 최대 대기 시간(초)
+    private static final long WAIT_TIME = 30L;
 
     private final RedissonClient redissonClient;
 
     /**
      * 분산 락을 획득한 후 반환값이 있는 작업을 실행한다.
-     * DB 조회부터 Elasticsearch 저장·삭제까지 락을 유지해야 한다.
+     * DB 조회부터 Elasticsearch 저장·삭제까지 락을 유지한다.
+     *
+     * @throws IllegalArgumentException 락 획득 시간 초과 또는 인터럽트 발생 시
      */
     public <T> T execute(Supplier<T> action) {
         RLock lock = redissonClient.getLock(LOCK_KEY);
 
-        // Watchdog을 통해 락 만료 시간을 자동 갱신한다.
-        lock.lock();
+        try {
+            if (!lock.tryLock(WAIT_TIME, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("콘텐츠 색인 락 획득 시간 초과");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("콘텐츠 색인 락 획득 중 인터럽트 발생", e);
+        }
 
         try {
             return action.get();
         } finally {
-            // 작업 중 예외가 발생하더라도 락 해제를 시도한다.
             lock.unlock();
         }
     }

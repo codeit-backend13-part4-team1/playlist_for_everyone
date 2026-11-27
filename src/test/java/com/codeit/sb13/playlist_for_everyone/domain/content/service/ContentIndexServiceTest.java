@@ -12,7 +12,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.api.RLock;
@@ -53,25 +52,24 @@ class ContentIndexServiceTest {
     private ContentIndexService contentIndexService;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws InterruptedException {
         ReentrantLock testLock = new ReentrantLock();
 
         lenient().when(redissonClient.getLock("everyone:lock:content:index"))
                 .thenReturn(lock);
 
         // 실제 스레드 간 상호 배제 동작을 재현한다.
-        lenient().doAnswer(invocation -> {
-            testLock.lock();
-            return null;
-        }).when(lock).lock();
+        lenient().when(lock.tryLock(30L, TimeUnit.SECONDS))
+                .thenAnswer(invocation ->
+                        testLock.tryLock(30L, TimeUnit.SECONDS)
+                );
 
         lenient().doAnswer(invocation -> {
             testLock.unlock();
             return null;
         }).when(lock).unlock();
 
-        ContentIndexLock contentIndexLock =
-                new ContentIndexLock(redissonClient);
+        ContentIndexLock contentIndexLock = new ContentIndexLock(redissonClient);
 
         contentIndexService = new ContentIndexService(
                 contentIndexReader,
