@@ -57,7 +57,7 @@ public class WatchingSessionEventListenerTest {
 
     WatchingSessionEventListener eventListener;
 
-    String sessionId = "test-session";
+    String sessionId = UUID.randomUUID().toString();
     String subscriptionId = "test-subscription";
 
     UUID contentId = UUID.randomUUID();
@@ -187,7 +187,7 @@ public class WatchingSessionEventListenerTest {
             verifyNoMoreInteractions(watchingSessionService);
 
             verifyNoInteractions(
-                    watchingSessionService,
+                    viewService,
                     chatService
             );
         }

@@ -7,7 +7,11 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentU
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentSearchService;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
+import com.codeit.sb13.playlist_for_everyone.domain.watching.dto.CursorResponseWatchingSessionDto;
+import com.codeit.sb13.playlist_for_everyone.domain.watching.dto.request.WatchingSessionRequestByContent;
+import com.codeit.sb13.playlist_for_everyone.domain.watching.service.WatchingSessionHttpService;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
+import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.WatchingSessionDto;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -25,6 +29,7 @@ public class ContentController implements ContentApi {
 
     private final ContentService contentService;
     private final ContentSearchService contentSearchService;
+    private final WatchingSessionHttpService watchingSessionService;
 
     @Override
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -81,9 +86,20 @@ public class ContentController implements ContentApi {
         @RequestParam(value = "sortDirection",defaultValue = "ASCENDING") String sortDirection,
         @RequestParam(value = "sortBy", defaultValue = "createdAt") String sortBy
     ){
+        CursorResponseWatchingSessionDto<WatchingSessionDto> response =
+                watchingSessionService.getCurrentSessionInfo(
+                        contentId,
+                        new WatchingSessionRequestByContent(
+                                userName,
+                                cursor,
+                                idAfter,
+                                limit,
+                                sortDirection,
+                                sortBy
+                        )
+                );
 
-
-        return ResponseEntity.ok().build();
+        return ResponseEntity.ok(response);
     }
 
 }

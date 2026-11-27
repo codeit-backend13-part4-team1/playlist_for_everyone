@@ -9,6 +9,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentSearchService;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
+import com.codeit.sb13.playlist_for_everyone.domain.watching.service.WatchingSessionHttpService;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import com.codeit.sb13.playlist_for_everyone.global.exception.content.ContentNotFoundException;
@@ -61,6 +62,9 @@ public class ContentControllerTest {
 
     @MockitoBean
     private ContentSearchService contentSearchService;
+
+    @MockitoBean
+    private WatchingSessionHttpService watchingSessionService;
 
     @Test
     @WithMockUser(roles = "ADMIN")

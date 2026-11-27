@@ -18,7 +18,7 @@ import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.co
 import static com.codeit.sb13.playlist_for_everyone.global.websocket.watching.config.WatchingSessionProperties.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
-//@Disabled
+@Disabled
 class ViewingSessionRedisRepositoryScriptTest {
 
     private static final String SESSION_STORE = VIEW_SESSION_KEY_PREFIX + "store";

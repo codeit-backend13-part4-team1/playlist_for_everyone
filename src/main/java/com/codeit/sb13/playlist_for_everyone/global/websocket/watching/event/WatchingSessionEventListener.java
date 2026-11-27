@@ -93,7 +93,7 @@ public class WatchingSessionEventListener {
     public void watchRefreshEvent(WatchingSessionRefreshEvent event){
         try {
             SessionInfo info = Objects.requireNonNull(event.info());
-            watchingSessionService.refresh(UUID.fromString(Objects.requireNonNull(info.session())));
+            watchingSessionService.refresh(Objects.requireNonNull(info.session()));
         } catch (RuntimeException e) {
             log.error("[{}] 비즈니스 로직 처리 중 에러 발생",
                     this.getClass().getSimpleName(),

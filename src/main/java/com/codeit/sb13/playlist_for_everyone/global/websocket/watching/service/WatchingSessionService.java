@@ -17,5 +17,5 @@ public interface WatchingSessionService {
      * 인자로 받은 세션 id 에 대해 세션 등록 수명을 갱싢하는 매서드
      * @param sessionId 세션 id
      */
-    void refresh(UUID sessionId);
+    void refresh(String sessionId);
 }

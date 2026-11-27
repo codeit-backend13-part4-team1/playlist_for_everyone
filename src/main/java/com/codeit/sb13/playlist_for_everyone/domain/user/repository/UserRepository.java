@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -32,4 +33,12 @@ public interface UserRepository extends JpaRepository<User, UUID>, UserCustomRep
      */
     @Query("SELECT u FROM User u LEFT JOIN FETCH u.profileImage WHERE u.id = :userId")
     Optional<User> findWithProfileImageById(@Param("userId") UUID userId);
+
+    /**
+     * 사용자 정보 일괄 조회
+     *
+     * 이미지가 없는 사용자도 조회 되도록 LEFT JOIN 으로 가져온다
+     */
+    @Query("SELECT u FROM User u LEFT JOIN FETCH u.profileImage WHERE u.id in :userIds")
+    List<User> findAllWithProfileImage(@Param("userIds") List<UUID> userIds);
 }

@@ -439,8 +439,8 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
     }
 
     @Override
-    public void refresh(UUID sessionId){
-        WSSession session = getSessionOrExcept(sessionId.toString());
+    public void refresh(String sessionId){
+        WSSession session = getSessionOrExcept(sessionId);
         List<WSSubscription> subscriptions = session.getAllSubscriptions();
 
         List<UUID> subscriptionKeys = subscriptions.stream()
