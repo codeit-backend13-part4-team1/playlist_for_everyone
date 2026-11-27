@@ -24,7 +24,8 @@ def dependencyVersions = [
 	querydsl: '5.1.0',
 	s3Mock: '5.2.3',
 	springdoc: '3.1.1',
-	springRetry: '2.0.13'
+	springRetry: '2.0.13',
+	redisson: '3.52.0'
 ]
 
 dependencies {
@@ -52,6 +53,9 @@ dependencies {
 	runtimeOnly 'org.postgresql:postgresql'
 	runtimeOnly 'com.h2database:h2'
 	developmentOnly 'org.springframework.boot:spring-boot-h2console'
+
+	// 콘텐츠 색인 동시성 제어를 위한 분산 락
+	implementation "org.redisson:redisson:${dependencyVersions.redisson}"
 
 	// 로컬 개발용 Docker Compose 연동
 	developmentOnly 'org.springframework.boot:spring-boot-docker-compose'
