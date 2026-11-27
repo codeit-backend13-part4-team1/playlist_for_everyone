@@ -2,8 +2,10 @@ package com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.collector.config.CollectionScheduleProperties;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.scheduling.annotation.SchedulingConfigurer;
+import org.springframework.scheduling.config.ScheduledTaskRegistrar;
 
-public class CollectionScheduler {
+public class CollectionScheduler implements SchedulingConfigurer {
 
     private final CollectionJobLauncher launcher;
     private final CollectionScheduleProperties properties;
@@ -35,5 +37,9 @@ public class CollectionScheduler {
                 properties.getSportsdb().getLeagueId(),
                 properties.getSportsdb().getSeason()
         );
+    }
+
+    @Override
+    public void configureTasks(ScheduledTaskRegistrar taskRegistrar) {
     }
 }
