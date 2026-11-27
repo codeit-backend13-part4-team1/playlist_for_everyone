@@ -1,11 +1,11 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.service.elasticsearch;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.document.ContentDocument;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentIndexBatch;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Slice;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -25,35 +25,35 @@ public class ContentIndexService {
     /**
      * 기존 PostgreSQL 콘텐츠 데이터를 Elasticsearch에 일괄 인덱싱한다.
      *
+     * Keyset 페이징을 적용하여 콘텐츠 삭제로 인한 조회 누락을 방지한다.
      * 대량의 데이터를 한 번에 조회하지 않도록 배치 단위로 처리하며,
      * DB 조회 트랜잭션이 종료된 후 Elasticsearch에 저장한다.
      */
     public void indexAll() {
         Pageable pageable = PageRequest.of(0, BATCH_SIZE);
+        UUID lastId = null;
         long totalIndexed = 0;
 
         while (true) {
-            // 배치 단위로 콘텐츠 및 태그를 조회하고 Document로 변환
-            Slice<ContentDocument> documents = contentIndexReader.readDocuments(pageable);
-
-            // 인덱싱할 콘텐츠가 없으면 종료
-            if (documents.isEmpty()) {
-                break;
-            }
+            // 마지막 콘텐츠 ID를 기준으로 배치 조회
+            ContentIndexBatch batch = contentIndexReader.readDocuments(lastId, pageable);
 
             // DB 조회 트랜잭션 외부에서 Elasticsearch 일괄 저장
-            contentIndexWriter.saveAll(documents.getContent());
-            // 누적 인덱싱 건수 집계 및 진행 상황 기록
-            totalIndexed += documents.getNumberOfElements();
+            if (!batch.documents().isEmpty()) {
+                contentIndexWriter.saveAll(batch.documents());
 
-            log.info("콘텐츠 인덱싱 진행: {}건", totalIndexed);
+                totalIndexed += batch.documents().size();
 
-            // 다음 페이지가 없으면 인덱싱 종료
-            if (!documents.hasNext()) {
+                log.info("콘텐츠 인덱싱 진행: {}건", totalIndexed);
+            }
+
+            // 다음 배치가 없으면 인덱싱 종료
+            if (!batch.hasNext()) {
                 break;
             }
 
-            pageable = documents.nextPageable();
+            // 다음 배치 조회 기준 갱신
+            lastId = batch.lastId();
         }
 
         log.info("콘텐츠 인덱싱 완료: 총 {}건", totalIndexed);

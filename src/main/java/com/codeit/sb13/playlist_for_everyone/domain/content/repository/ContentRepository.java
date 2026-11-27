@@ -46,6 +46,21 @@ public interface ContentRepository extends JpaRepository<Content, UUID>, Content
     @Query("SELECT c.id FROM Content c ORDER BY c.id ASC")
     Slice<UUID> findAllIds(Pageable pageable);
 
+    /**
+     * 초기 색인을 위해 마지막으로 조회한 콘텐츠 ID 이후의 ID 목록을 조회한다.
+     * Offset 페이징으로 인한 콘텐츠 삭제 시 조회 누락을 방지한다.
+     */
+    @Query("""
+        SELECT c.id
+        FROM Content c
+        WHERE c.id > :lastId
+        ORDER BY c.id ASC
+        """)
+    Slice<UUID> findAllIdsAfter(
+            @Param("lastId") UUID lastId,
+            Pageable pageable
+    );
+
     /** 콘텐츠 및 연관 태그·파일 정보 일괄 조회 */
     @EntityGraph(attributePaths = {"fileInfo", "tags"})
     @Query("SELECT DISTINCT c FROM Content c WHERE c.id IN :contentIds")

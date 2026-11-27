@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.document.ContentDocument;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentIndexBatch;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.elasticsearch.ContentIndexReader;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.elasticsearch.ContentIndexService;
@@ -14,8 +15,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Slice;
-import org.springframework.data.domain.SliceImpl;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -41,26 +40,29 @@ class ContentIndexServiceTest {
     private ContentIndexService contentIndexService;
 
     @Test
-    @DisplayName("여러 페이지의 콘텐츠를 순차적으로 인덱싱한다.")
+    @DisplayName("마지막 콘텐츠 ID를 기준으로 여러 배치를 순차적으로 인덱싱한다.")
     void indexAll_multiplePages() {
         // given
-        Pageable firstPage = PageRequest.of(0, 500);
-        Pageable secondPage = PageRequest.of(1, 500);
+        Pageable pageable = PageRequest.of(0, 500);
 
         List<ContentDocument> firstDocuments = List.of(createDocument("콘텐츠1"));
-
         List<ContentDocument> secondDocuments = List.of(createDocument("콘텐츠2"));
 
-        Slice<ContentDocument> firstSlice = new SliceImpl<>(
-                firstDocuments, firstPage, true
+        UUID firstLastId = UUID.fromString(firstDocuments.get(0).getId());
+        UUID secondLastId = UUID.fromString(secondDocuments.get(0).getId());
+
+        ContentIndexBatch firstBatch = new ContentIndexBatch(
+                firstDocuments, firstLastId, true
         );
 
-        Slice<ContentDocument> secondSlice = new SliceImpl<>(
-                secondDocuments, secondPage, false
+        ContentIndexBatch secondBatch = new ContentIndexBatch(
+                secondDocuments, secondLastId, false
         );
 
-        given(contentIndexReader.readDocuments(firstPage)).willReturn(firstSlice);
-        given(contentIndexReader.readDocuments(secondPage)).willReturn(secondSlice);
+        given(contentIndexReader.readDocuments(null, pageable))
+                .willReturn(firstBatch);
+        given(contentIndexReader.readDocuments(firstLastId, pageable))
+                .willReturn(secondBatch);
 
         // when
         contentIndexService.indexAll();
@@ -71,13 +73,12 @@ class ContentIndexServiceTest {
                 contentIndexWriter
         );
 
-        inOrder.verify(contentIndexReader).readDocuments(firstPage);
+        inOrder.verify(contentIndexReader).readDocuments(null, pageable);
         inOrder.verify(contentIndexWriter).saveAll(firstDocuments);
-
-        inOrder.verify(contentIndexReader).readDocuments(secondPage);
+        inOrder.verify(contentIndexReader).readDocuments(firstLastId, pageable);
         inOrder.verify(contentIndexWriter).saveAll(secondDocuments);
 
-        inOrder.verifyNoMoreInteractions();
+        verifyNoMoreInteractions(contentIndexReader, contentIndexWriter);
     }
 
     @Test
@@ -86,18 +87,17 @@ class ContentIndexServiceTest {
         // given
         Pageable pageable = PageRequest.of(0, 500);
 
-        Slice<ContentDocument> slice = new SliceImpl<>(
-                List.of(), pageable, false
+        ContentIndexBatch batch = new ContentIndexBatch(
+                List.of(), null, false
         );
 
-        given(contentIndexReader.readDocuments(pageable))
-                .willReturn(slice);
+        given(contentIndexReader.readDocuments(null, pageable)).willReturn(batch);
 
         // when
         contentIndexService.indexAll();
 
         // then
-        verify(contentIndexReader).readDocuments(pageable);
+        verify(contentIndexReader).readDocuments(null, pageable);
     }
 
     @Test
@@ -106,13 +106,16 @@ class ContentIndexServiceTest {
         // given
         Pageable pageable = PageRequest.of(0, 500);
 
-        List<ContentDocument> documents =
-                List.of(createDocument("콘텐츠1"));
+        List<ContentDocument> documents = List.of(createDocument("콘텐츠1"));
 
-        Slice<ContentDocument> slice = new SliceImpl<>(documents, pageable, true);
+        UUID lastId = UUID.fromString(documents.get(0).getId());
 
-        given(contentIndexReader.readDocuments(pageable))
-                .willReturn(slice);
+        ContentIndexBatch batch = new ContentIndexBatch(
+                documents, lastId, true
+        );
+
+        given(contentIndexReader.readDocuments(null, pageable))
+                .willReturn(batch);
 
         willThrow(new RuntimeException("Elasticsearch 저장 실패"))
                 .given(contentIndexWriter)
@@ -123,11 +126,11 @@ class ContentIndexServiceTest {
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("Elasticsearch 저장 실패");
 
-        verify(contentIndexReader).readDocuments(pageable);
+        verify(contentIndexReader).readDocuments(null, pageable);
         verify(contentIndexWriter).saveAll(documents);
 
-        // 저장 실패 이후 다음 배치를 조회하지 않는지 검증verifyNoMoreInteractions(contentIndexReader);
-        verifyNoMoreInteractions(contentIndexWriter);
+        // 저장 실패 이후 다음 배치를 조회하지 않는지 검증
+        verifyNoMoreInteractions(contentIndexReader, contentIndexWriter);
     }
 
     @Test
@@ -225,6 +228,47 @@ class ContentIndexServiceTest {
         // then
         verify(contentIndexWriter).delete(contentId);
         verifyNoInteractions(contentIndexReader);
+    }
+
+    @Test
+    @DisplayName("배치 내 콘텐츠가 모두 삭제되어도 다음 배치의 인덱싱을 계속한다.")
+    void indexAll_emptyBatchWithNext() {
+        // given
+        Pageable pageable = PageRequest.of(0, 500);
+        UUID firstLastId = UUID.randomUUID();
+
+        List<ContentDocument> documents = List.of(createDocument("콘텐츠2"));
+
+        UUID secondLastId = UUID.fromString(documents.get(0).getId());
+
+        ContentIndexBatch firstBatch = new ContentIndexBatch(
+                List.of(), firstLastId, true
+        );
+
+        ContentIndexBatch secondBatch = new ContentIndexBatch(
+                documents, secondLastId, false
+        );
+
+        given(contentIndexReader.readDocuments(null, pageable))
+                .willReturn(firstBatch);
+        given(contentIndexReader.readDocuments(firstLastId, pageable))
+                .willReturn(secondBatch);
+
+        // when
+        contentIndexService.indexAll();
+
+        // then
+        InOrder inOrder = inOrder(
+                contentIndexReader,
+                contentIndexWriter
+        );
+
+        inOrder.verify(contentIndexReader).readDocuments(null, pageable);
+        inOrder.verify(contentIndexReader).readDocuments(firstLastId, pageable);
+        inOrder.verify(contentIndexWriter).saveAll(documents);
+
+        verify(contentIndexWriter, never()).saveAll(List.of());
+        verifyNoMoreInteractions(contentIndexReader, contentIndexWriter);
     }
 
     private ContentDocument createDocument(String title) {

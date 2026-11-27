@@ -1,6 +1,7 @@
 package com.codeit.sb13.playlist_for_everyone.domain.content.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.content.document.ContentDocument;
+import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentIndexBatch;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentDocumentMapper;
@@ -66,14 +67,15 @@ public class ContentIndexReaderTest {
         given(contentDocumentMapper.toContentDocument(content)).willReturn(document);
 
         // when
-        Slice<ContentDocument> result = contentIndexReader.readDocuments(pageable);
+        ContentIndexBatch result = contentIndexReader.readDocuments(null, pageable);
 
         // then
-        assertThat(result.getContent()).containsExactly(document);
+        assertThat(result.documents()).containsExactly(document);
+        assertThat(result.lastId()).isEqualTo(contentId);
         assertThat(result.hasNext()).isFalse();
-        assertThat(result.getPageable()).isEqualTo(pageable);
 
         verify(contentRepository).findAllIds(pageable);
+        verify(contentRepository, never()).findAllIdsAfter(any(), any());
         verify(contentRepository).findAllByIds(List.of(contentId));
         verify(contentDocumentMapper).toContentDocument(content);
     }
@@ -89,12 +91,12 @@ public class ContentIndexReaderTest {
         given(contentRepository.findAllIds(pageable)).willReturn(ids);
 
         // when
-        Slice<ContentDocument> result = contentIndexReader.readDocuments(pageable);
+        ContentIndexBatch result = contentIndexReader.readDocuments(null, pageable);
 
         // then
-        assertThat(result.getContent()).isEmpty();
+        assertThat(result.documents()).isEmpty();
+        assertThat(result.lastId()).isNull();
         assertThat(result.hasNext()).isFalse();
-        assertThat(result.getPageable()).isEqualTo(pageable);
 
         verify(contentRepository).findAllIds(pageable);
         verify(contentRepository, never()).findAllByIds(anyCollection());
@@ -102,7 +104,7 @@ public class ContentIndexReaderTest {
     }
 
     @Test
-    @DisplayName("다음 배치가 존재하면 hasNext가 true를 반환한다.")
+    @DisplayName("다음 배치가 존재하면 마지막 콘텐츠 ID와 hasNext가 true를 반환한다.")
     void readDocuments_hasNext() {
         // given
         UUID contentId = UUID.randomUUID();
@@ -129,14 +131,12 @@ public class ContentIndexReaderTest {
         given(contentDocumentMapper.toContentDocument(content)).willReturn(document);
 
         // when
-        Slice<ContentDocument> result = contentIndexReader.readDocuments(pageable);
+        ContentIndexBatch result = contentIndexReader.readDocuments(null, pageable);
 
         // then
-        assertThat(result.getContent()).containsExactly(document);
+        assertThat(result.documents()).containsExactly(document);
+        assertThat(result.lastId()).isEqualTo(contentId);
         assertThat(result.hasNext()).isTrue();
-        assertThat(result.getPageable()).isEqualTo(pageable);
-        assertThat(result.nextPageable())
-                .isEqualTo(PageRequest.of(1, 1));
     }
 
     @Test
@@ -218,7 +218,7 @@ public class ContentIndexReaderTest {
                 .description("장나라, 김혜윤 주연")
                 .build();
         ContentDocument document2 = ContentDocument.builder()
-                .id(contentId1.toString())
+                .id(contentId2.toString())
                 .type(ContentType.tvSeries)
                 .title("사내맞선")
                 .description("안효섭, 김세정 주연")
