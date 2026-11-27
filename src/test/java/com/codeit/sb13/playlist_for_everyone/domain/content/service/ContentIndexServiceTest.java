@@ -20,7 +20,10 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
@@ -271,9 +274,139 @@ class ContentIndexServiceTest {
         verifyNoMoreInteractions(contentIndexReader, contentIndexWriter);
     }
 
+    @Test
+    @DisplayName("동시 수정 시 이전 스냅샷이 최신 색인 문서를 덮어쓰지 않는다.")
+    void upsert_concurrentUpdate() throws Exception {
+        // given
+        UUID contentId = UUID.randomUUID();
+
+        ContentDocument oldDocument = createDocument(contentId, "이전 제목");
+        ContentDocument newDocument = createDocument(contentId, "최신 제목");
+
+        AtomicReference<ContentDocument> dbDocument = new AtomicReference<>(oldDocument);
+        AtomicReference<ContentDocument> indexedDocument = new AtomicReference<>();
+
+        CountDownLatch oldSaveStarted = new CountDownLatch(1);
+        CountDownLatch releaseOldSave = new CountDownLatch(1);
+        CountDownLatch newSaveCompleted = new CountDownLatch(1);
+
+        given(contentIndexReader.readDocument(contentId))
+                .willAnswer(invocation ->
+                        Optional.of(dbDocument.get()));
+
+        doAnswer(invocation -> {
+            oldSaveStarted.countDown();
+            assertThat(releaseOldSave.await(5, TimeUnit.SECONDS)).isTrue();
+            indexedDocument.set(oldDocument);
+            return null;
+        }).when(contentIndexWriter).save(oldDocument);
+
+        doAnswer(invocation -> {
+            indexedDocument.set(newDocument);
+            newSaveCompleted.countDown();
+            return null;
+        }).when(contentIndexWriter).save(newDocument);
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        try {
+            // when
+            Future<?> first = executor.submit(
+                    () -> contentIndexService.upsert(contentId)
+            );
+
+            assertThat(oldSaveStarted.await(5, TimeUnit.SECONDS)).isTrue();
+
+            // 첫 번째 색인이 지연되는 동안 DB의 최신 정보가 변경된다.
+            dbDocument.set(newDocument);
+
+            Future<?> second = executor.submit(
+                    () -> contentIndexService.upsert(contentId)
+            );
+
+            // 분산 락이 없다면 최신 문서가 먼저 저장된다.
+            newSaveCompleted.await(1, TimeUnit.SECONDS);
+
+            releaseOldSave.countDown();
+
+            first.get(5, TimeUnit.SECONDS);
+            second.get(5, TimeUnit.SECONDS);
+
+            // then
+            assertThat(indexedDocument.get()).isEqualTo(newDocument);
+
+        } finally {
+            releaseOldSave.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    @DisplayName("수정과 삭제가 동시에 발생해도 삭제된 색인 문서가 다시 생성되지 않는다.")
+    void upsert_concurrentDelete() throws Exception {
+        // given
+        UUID contentId = UUID.randomUUID();
+        ContentDocument document = createDocument(contentId, "콘텐츠1");
+
+        AtomicReference<ContentDocument> indexedDocument = new AtomicReference<>(document);
+
+        CountDownLatch saveStarted = new CountDownLatch(1);
+        CountDownLatch releaseSave = new CountDownLatch(1);
+        CountDownLatch deleteCompleted = new CountDownLatch(1);
+
+        given(contentIndexReader.readDocument(contentId)).willReturn(Optional.of(document));
+
+        doAnswer(invocation -> {
+            saveStarted.countDown();
+            assertThat(releaseSave.await(5, TimeUnit.SECONDS)).isTrue();
+            indexedDocument.set(document);
+            return null;
+        }).when(contentIndexWriter).save(document);
+
+        doAnswer(invocation -> {
+            indexedDocument.set(null);
+            deleteCompleted.countDown();
+            return null;
+        }).when(contentIndexWriter).delete(contentId);
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        try {
+            // when
+            Future<?> upsertFuture = executor.submit(
+                    () -> contentIndexService.upsert(contentId)
+            );
+
+            assertThat(saveStarted.await(5, TimeUnit.SECONDS)).isTrue();
+
+            Future<?> deleteFuture = executor.submit(
+                    () -> contentIndexService.delete(contentId)
+            );
+
+            // 분산 락이 없다면 이전 스냅샷 저장보다 삭제가 먼저 완료된다.
+            deleteCompleted.await(1, TimeUnit.SECONDS);
+
+            releaseSave.countDown();
+
+            upsertFuture.get(5, TimeUnit.SECONDS);
+            deleteFuture.get(5, TimeUnit.SECONDS);
+
+            // then
+            assertThat(indexedDocument.get()).isNull();
+
+        } finally {
+            releaseSave.countDown();
+            executor.shutdownNow();
+        }
+    }
+
     private ContentDocument createDocument(String title) {
+        return createDocument(UUID.randomUUID(), title);
+    }
+
+    private ContentDocument createDocument(UUID contentId, String title) {
         return ContentDocument.builder()
-                .id(UUID.randomUUID().toString())
+                .id(contentId.toString())
                 .type(ContentType.tvSeries)
                 .title(title)
                 .description("테스트 콘텐츠 설명")
