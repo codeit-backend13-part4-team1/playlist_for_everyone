@@ -90,13 +90,15 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
         ContentDto content = contentService.getById(contentId);
         WSSubscription subscription;
 
+        boolean notice_flag = false;
+
         // 세션에 대해 구독 작업이 직렬화 되도록 sync
         synchronized (session) {
             // 1. 구독 등록
             subscription = session.subscribe(subscriptionId, destination);
             try {
                 // 2. 비즈니스 로직 등록
-                viewingSessionService.join(subscription, contentId, auth.getUserId());
+                notice_flag = viewingSessionService.join(subscription, contentId, auth.getUserId());
             } catch (RuntimeException e) {
                 log.error("[{}] 구독 등록 실패 - contentId : {}, sessionId : {}, subscriptionId : {}",
                         this.getClass().getSimpleName(),
@@ -120,12 +122,14 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
             User user = userService.getById(auth.getUserId());
             sendViewingSessionMessage(subscription, ChangeType.JOIN, user, content);
             // 4. 알림 발송
-            eventPublisher.publishEvent(new WatchingSessionStartedEvent(
-                    user.getId(),
-                    user.getName(),
-                    content.id(),
-                    content.title()
-            ));
+            if (notice_flag) {
+                eventPublisher.publishEvent(new WatchingSessionStartedEvent(
+                        user.getId(),
+                        user.getName(),
+                        content.id(),
+                        content.title()
+                ));
+            }
         } catch (RuntimeException e) {
             log.warn("[{}] 시청 세션 메세지 발신 실패, user: {}, session : {}, contentId : {}",
                     this.getClass().getSimpleName(), auth.getUserId(), subscription.id(), content.id());
@@ -394,11 +398,19 @@ public class WatchingSessionServiceImpl implements WatchingSessionService {
 
                     log.info("chatSessionList : {}", chattingSubscriptionList);
 
-                    if (viewingSubscriptionList == null || !viewingSubscriptionList.isEmpty()){
-                        viewingSessionService.leaveAll(viewingSubscriptionList, contentId);
+                    if (viewingSubscriptionList != null && !viewingSubscriptionList.isEmpty()){
+                        try {
+                            viewingSessionService.leaveAll(viewingSubscriptionList, contentId);
+                        } catch (RuntimeException e) {
+                            log.error("viewingSessionService.leaveAll error : {}, contentId : {}", e.getMessage(), contentId);
+                        }
                     }
-                    if (chattingSubscriptionList == null || !chattingSubscriptionList.isEmpty()) {
-                        chattingSessionService.leaveAll(chattingSubscriptionList, contentId);
+                    if (chattingSubscriptionList != null && !chattingSubscriptionList.isEmpty()) {
+                        try {
+                            chattingSessionService.leaveAll(chattingSubscriptionList, contentId);
+                        } catch (RuntimeException e) {
+                            log.error("chattingSessionService.leaveAll error : {}, contentId : {}", e.getMessage(), contentId);
+                        }
                     }
                 }
             }

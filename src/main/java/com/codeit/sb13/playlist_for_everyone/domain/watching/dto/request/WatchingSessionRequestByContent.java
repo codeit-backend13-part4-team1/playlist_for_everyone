@@ -19,5 +19,7 @@ public record WatchingSessionRequestByContent(
         // Instant 파싱 검증
         if (cursor != null)
             Instant.parse(cursor);
+        if (limit < 1)
+            throw new IllegalArgumentException("조회 개수는 0보다 커야 합니다.");
     }
 }

@@ -17,9 +17,11 @@ public interface ViewingSessionService {
 
     /**
      * 세션 방에 참가하는 매서드.
+     *
      * @param subscription 구독 정보
+     * @return
      */
-    void join(WSSubscription subscription, UUID contentId, UUID userId);
+    boolean join(WSSubscription subscription, UUID contentId, UUID userId);
 
     /**
      * 참가된 세션 방에서 나가는 매서드.

@@ -41,4 +41,6 @@ public interface UserRepository extends JpaRepository<User, UUID>, UserCustomRep
      */
     @Query("SELECT u FROM User u LEFT JOIN FETCH u.profileImage WHERE u.id in :userIds")
     List<User> findAllWithProfileImage(@Param("userIds") List<UUID> userIds);
+
+    Optional<User> findByName(String name);
 }

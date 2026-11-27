@@ -31,18 +31,19 @@ public class ViewingSessionServiceImpl implements ViewingSessionService{
     private final Locks locks;
 
     @Override
-    public void join(WSSubscription subscription, UUID contentId, UUID userId) {
+    public boolean join(WSSubscription subscription, UUID contentId, UUID userId) {
         // 1. 인자 체크
         Objects.requireNonNull(subscription);
         Objects.requireNonNull(contentId);
 
+        boolean fresh_user = false;
 
         // 2. 룸에 대한 락 획득
         synchronized (locks.lock(contentId)) {
             ViewingSessionRoom room = viewingSessionRepository.findOrCreate(contentId);
             // 3. 세션 룸에 구독 등록
             // 글로벌
-            viewingSessionPresence.register(
+            fresh_user = viewingSessionPresence.register(
                     subscription.uuid(),
                     contentId,
                     userId,
@@ -58,6 +59,7 @@ public class ViewingSessionServiceImpl implements ViewingSessionService{
 
             room.join(subscription);
         }
+        return fresh_user;
     }
 
     @Override

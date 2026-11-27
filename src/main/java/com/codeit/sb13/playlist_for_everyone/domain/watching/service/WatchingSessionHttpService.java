@@ -4,6 +4,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.Content
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSummary;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentReader;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserSummary;
+import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.mapper.UserSummaryMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.user.repository.UserRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.watching.dto.CursorResponseWatchingSessionDto;
@@ -71,7 +72,18 @@ public class WatchingSessionHttpService {
         List<ViewingSessionInfoDto> sortedList = new ArrayList<>(originList);
         sortedList.sort(ascending ? order : order.reversed());
 
-        //c3. limit 에 따라 트리밍
+        // 3.a. 이름 필터가 있다면 검색, 필터링
+        if (request.userName() != null) {
+            userRepository.findByName(request.userName())
+                    .ifPresent(
+                            user -> sortedList
+                                    .removeIf(dto -> !dto.userId()
+                                            .equals(user.getId())
+                                    )
+                    );
+        }
+
+        // 3.b. limit 에 따라 트리밍
         int start = 0;
 
         if (request.cursor() != null) {
@@ -123,7 +135,8 @@ public class WatchingSessionHttpService {
             Map<UUID, ContentSummary> contentMap = contentReader.getSummariesByIds(targetContentList)
                     .stream().map(ContentResult::dto).collect(Collectors.toMap(
                             ContentSummary::contentId,
-                            s -> s
+                            s -> s,
+                            (s1, s2) -> s1
                     ));
 
             // 4.2. 페이지에 들어갈 객체 조립
