@@ -7,11 +7,8 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentU
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentSearchService;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
-import com.codeit.sb13.playlist_for_everyone.domain.watching.dto.CursorResponseWatchingSessionDto;
-import com.codeit.sb13.playlist_for_everyone.domain.watching.dto.request.WatchingSessionRequestByContent;
 import com.codeit.sb13.playlist_for_everyone.domain.watching.service.WatchingSessionHttpService;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
-import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.dto.watcher.WatchingSessionDto;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
