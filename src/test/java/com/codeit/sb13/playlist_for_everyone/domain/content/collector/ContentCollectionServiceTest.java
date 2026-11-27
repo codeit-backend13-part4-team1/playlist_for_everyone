@@ -7,7 +7,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.entity.Content;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentSource;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentTag;
 import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
-import com.codeit.sb13.playlist_for_everyone.domain.content.event.ContentSearchCacheEvictEvent;
+import com.codeit.sb13.playlist_for_everyone.domain.content.event.elasticsearch.ContentIndexUpsertEvent;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
 import com.codeit.sb13.playlist_for_everyone.global.config.JpaAuditingConfig;
 import com.codeit.sb13.playlist_for_everyone.global.config.QueryDslConfig;
@@ -512,7 +512,7 @@ class ContentCollectionServiceTest {
         em.flush();
 
         assertThat(applicationEvents
-                .stream(ContentSearchCacheEvictEvent.class)
+                .stream(ContentIndexUpsertEvent.class)
                 .count())
                 .isEqualTo(1L);
     }
@@ -541,7 +541,7 @@ class ContentCollectionServiceTest {
 
         assertThat(updated.getId()).isEqualTo(first.getId());
         assertThat(applicationEvents
-                .stream(ContentSearchCacheEvictEvent.class)
+                .stream(ContentIndexUpsertEvent.class)
                 .count())
                 .isEqualTo(1L);
     }
@@ -565,7 +565,7 @@ class ContentCollectionServiceTest {
         em.flush();
 
         assertThat(applicationEvents
-                .stream(ContentSearchCacheEvictEvent.class)
+                .stream(ContentIndexUpsertEvent.class)
                 .count())
                 .isZero();
     }
@@ -597,7 +597,7 @@ class ContentCollectionServiceTest {
 
         assertThat(result.getId()).isEqualTo(existing.getId());
         assertThat(applicationEvents
-                .stream(ContentSearchCacheEvictEvent.class)
+                .stream(ContentIndexUpsertEvent.class)
                 .count())
                 .isZero();
     }
@@ -617,7 +617,7 @@ class ContentCollectionServiceTest {
         assertThat(result.inserted()).isTrue();
         assertThat(result.content().getId()).isNotNull();
         assertThat(applicationEvents
-                .stream(ContentSearchCacheEvictEvent.class)
+                .stream(ContentIndexUpsertEvent.class)
                 .count())
                 .isZero();
     }
@@ -641,7 +641,7 @@ class ContentCollectionServiceTest {
         assertThat(result.inserted()).isFalse();
         assertThat(result.content().getId()).isEqualTo(existing.getId());
         assertThat(applicationEvents
-                .stream(ContentSearchCacheEvictEvent.class)
+                .stream(ContentIndexUpsertEvent.class)
                 .count())
                 .isZero();
     }

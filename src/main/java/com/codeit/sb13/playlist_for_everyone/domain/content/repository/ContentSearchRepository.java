@@ -4,13 +4,17 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.dto.condition.Conten
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentSearchResult;
 
 import java.util.List;
+import java.util.UUID;
 
 public interface ContentSearchRepository {
 
-    List<ContentSearchResult> searchByDatabase(ContentSearchCondition condition);
+    /** 생성일 또는 평점 기준 콘텐츠 목록 조회 */
+    List<ContentSearchResult> searchByDatabase(ContentSearchCondition condition, List<UUID> contentIds);
 
-    List<ContentSearchResult> searchForWatcherCount(ContentSearchCondition condition);
+    /** 시청자 수 정렬을 위한 콘텐츠 목록 조회 */
+    List<ContentSearchResult> searchForWatcherCount(List<UUID> contentIds);
 
-    long countBySearchCondition(ContentSearchCondition condition);
+    /** 검색 조건에 일치하는 콘텐츠 개수 조회 */
+    long countBySearchCondition(List<UUID> contentIds);
 
 }

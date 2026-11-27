@@ -29,14 +29,12 @@ public class ContentSearchRepositoryImpl implements ContentSearchRepository {
     private final JPAQueryFactory queryFactory;
 
     @Override
-    public long countBySearchCondition(ContentSearchCondition condition) {
+    public long countBySearchCondition(List<UUID> contentIds) {
         Long count = queryFactory
                 .select(content.count())
                 .from(content)
                 .where(
-                        typeContains(condition.typeEqual()),
-                        keywordContains(condition.keywordLike()),
-                        tagsInContains(condition.tagsIn())
+                        contentIdIn(contentIds)
                 )
                 .fetchOne();
 
@@ -50,7 +48,8 @@ public class ContentSearchRepositoryImpl implements ContentSearchRepository {
      */
     @Override
     public List<ContentSearchResult> searchByDatabase(
-            ContentSearchCondition condition
+            ContentSearchCondition condition,
+            List<UUID> contentIds
     ) {
         // 리뷰 수 및 평점
         NumberExpression<Double> rating = ratingExpression();
@@ -65,9 +64,7 @@ public class ContentSearchRepositoryImpl implements ContentSearchRepository {
                         ))
                 .from(content)
                 .where(
-                        typeContains(condition.typeEqual()),
-                        keywordContains(condition.keywordLike()),
-                        tagsInContains(condition.tagsIn()),
+                        contentIdIn(contentIds),
                         cursorCondition(condition, rating)
                 )
                 .orderBy(
@@ -89,7 +86,7 @@ public class ContentSearchRepositoryImpl implements ContentSearchRepository {
     // 시청자 수를 서비스에서 별도로 Redis 값을 가져오기 위한 메서드
     @Override
     public List<ContentSearchResult> searchForWatcherCount(
-            ContentSearchCondition condition
+            List<UUID> contentIds
     ) {
         NumberExpression<Double> rating = ratingExpression();
         NumberExpression<Long> reviewCount = reviewCountExpression();
@@ -103,47 +100,25 @@ public class ContentSearchRepositoryImpl implements ContentSearchRepository {
                 ))
                 .from(content)
                 .where(
-                        typeContains(condition.typeEqual()),
-                        keywordContains(condition.keywordLike()),
-                        tagsInContains(condition.tagsIn())
+                        contentIdIn(contentIds)
                 )
                 .fetch();
     }
 
-    // 콘텐츠 타입 필터 (null이면 조건 제외)
-    private BooleanExpression typeContains(ContentType type) {
-        return type != null
-                ? content.type.eq(type)
-                : null;
-    }
-
-    // 제목 또는 설명에 키워드가 포함된 콘텐츠 검색 (대소문자 무시)
-    private BooleanExpression keywordContains(String keyword) {
-        if (!StringUtils.hasText(keyword)) {
+    private BooleanExpression contentIdIn(List<UUID> contentIds) {
+        if (contentIds == null) {
             return null;
         }
 
-        return content.title.containsIgnoreCase(keyword)
-                .or(content.description.containsIgnoreCase(keyword));
-    }
-
-    // 요청한 태그 중 하나 이상을 가진 콘텐츠 검색
-    // EXISTS 서브쿼리로 콘텐츠 중복 조회 방지
-    private BooleanExpression tagsInContains(List<String> tags) {
-        if (tags == null || tags.isEmpty()) {
-            return null;
+        if (contentIds.isEmpty()) {
+            return Expressions.FALSE;
         }
 
-        QContentTag contentTag = QContentTag.contentTag;
-
-        return JPAExpressions
-                .selectOne()
-                .from(contentTag)
-                .where(
-                        contentTag.content.eq(content),
-                        contentTag.tag.in(tags)
-                )
-                .exists();
+        return Expressions.booleanTemplate(
+                "array_contains({0}, {1})",
+                Expressions.constant(contentIds.toArray(UUID[]::new)),
+                content.id
+        );
     }
 
     // 콘텐츠별 리뷰 수 조회 (리뷰가 없으면 0)
