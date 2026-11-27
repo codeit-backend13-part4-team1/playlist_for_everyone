@@ -101,5 +101,4 @@ public class UserController implements UserApi {
 
         return ResponseEntity.noContent().build();
     }
-
 }

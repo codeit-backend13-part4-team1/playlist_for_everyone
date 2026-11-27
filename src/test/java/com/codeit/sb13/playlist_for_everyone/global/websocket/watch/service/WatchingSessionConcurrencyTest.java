@@ -5,6 +5,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.Content
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.entity.User;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
+import com.codeit.sb13.playlist_for_everyone.global.service.lock.SpreadLock;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSession;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.entity.WSSubscription;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.registry.session.WebSocketSessionRegistry;
@@ -90,6 +91,8 @@ public class WatchingSessionConcurrencyTest {
 
     WatchingSessionService watchingSessionService;
 
+    UUID userId = UUID.randomUUID();
+
     private enum SessionType {
         VIEWING,
         CHATTING
@@ -116,7 +119,8 @@ public class WatchingSessionConcurrencyTest {
                 userService,
                 contentService,
                 mapper,
-                eventPublisher
+                eventPublisher,
+                new SpreadLock()
         );
     }
 
@@ -1390,7 +1394,7 @@ public class WatchingSessionConcurrencyTest {
 
                 case VIEWING ->
                         verify(viewingSessionService, times(1))
-                                .join(subscription, contentId);
+                                .join(subscription, contentId, auth.getUserId());
 
                 case CHATTING ->
                         verify(chattingSessionService, times(1))
@@ -1430,7 +1434,7 @@ public class WatchingSessionConcurrencyTest {
                     );
 
                     verify(viewingSessionService, times(1))
-                            .join(subscription, contentId);
+                            .join(subscription, contentId, userId);
                 }
 
                 case LEAVE -> {
@@ -1595,7 +1599,7 @@ public class WatchingSessionConcurrencyTest {
                 case VIEWING ->
                         doAnswer(answer)
                                 .when(viewingSessionService)
-                                .join(subscription, contentId);
+                                .join(subscription, contentId, userId);
 
                 case CHATTING ->
                         doAnswer(answer)
@@ -1697,8 +1701,6 @@ public class WatchingSessionConcurrencyTest {
      * Viewing 메시지 조립 및 이벤트 발행에 필요한 Stub.
      */
     void sendViewingMessageStub(UUID contentId) {
-
-        UUID userId = UUID.randomUUID();
 
         ContentDto content = mock(ContentDto.class);
 

@@ -7,6 +7,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.dto.request.ContentU
 import com.codeit.sb13.playlist_for_everyone.domain.content.dto.response.ContentDto;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentSearchService;
 import com.codeit.sb13.playlist_for_everyone.domain.content.service.ContentService;
+import com.codeit.sb13.playlist_for_everyone.domain.watching.service.WatchingSessionHttpService;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +26,7 @@ public class ContentController implements ContentApi {
 
     private final ContentService contentService;
     private final ContentSearchService contentSearchService;
+    private final WatchingSessionHttpService watchingSessionService;
 
     @Override
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -70,5 +72,4 @@ public class ContentController implements ContentApi {
 
         return ResponseEntity.noContent().build();
     }
-
 }
