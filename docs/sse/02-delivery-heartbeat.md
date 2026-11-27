@@ -77,13 +77,22 @@ DisconnectedClientHelper가 식별한 클라이언트 단절은 스택 없이 DE
 ```
 
 응답을 받는 ping/pong이 아니라 실제 쓰기 실패를 통해 단절을 알아채는 방식입니다.
-`send`의 IOException·IllegalStateException은 해당 상태·예약·저장소 참조를 정리하고 다음 연결로 진행합니다.
-이 경로에서 complete를 추가 호출하지는 않습니다. 일반 이벤트 전송의 [종료 요청](01-connection-lifecycle.md#종료-요청과-참조-정리)과 구분합니다.
+`send`의 IOException·IllegalStateException은 실패한 연결의 상태·예약·저장소 참조를 정리합니다.
 
-fixedDelay이므로 전송에 2초가 걸리면 기본값에서 다음 시작은 이전 시작으로부터 약 17초 뒤입니다.
-하트비트가 HTTP 연결 타임아웃을 갱신하지는 않습니다.
-전용 sseHeartbeatTaskScheduler는 스레드 한 개이며, 재시도 전용 실행기와 별개입니다.
-defaultCandidate=false인 빈을 이름으로 지정하여 사용합니다.
+`sseHeartbeatTaskScheduler`는 스레드 한 개에서 로컬 연결별 작업을 제출하고 로그인 세션을 재검증합니다.
+`fixedDelay`는 이 스케줄러 작업이 끝난 시점부터 다음 실행까지의 간격입니다.
+실제 쓰기는 전용 `sseHeartbeatTaskExecutor`의 워커에서 실행합니다.
+연결마다 대기하거나 실행 중인 작업은 하나입니다. 풀과 대기열이 가득 차면 해당 주기의 하트비트를 건너뜁니다.
+
+주기적 재검증에서 폐기를 확인하면 업무 이벤트 전송 상태와 예약을 정리한 뒤 워커에 종료를 요청합니다.
+이미 대기 중인 작업은 종료를 우선하고, 전송이 진행 중이면 해당 워커가 전송 후 `complete()`를 호출합니다.
+포화로 거절된 하트비트는 해당 주기에 건너뜁니다. 거절된 종료 요청은 연결별로 보존합니다.
+다음 주기에 보류된 종료를 일반 하트비트보다 먼저 재제출합니다. 종료 여부는 이전에 확인한 세션 폐기 결과에 따릅니다.
+그사이에 연결이 저장소에서 제거됐다면 보류된 종료 요청도 정리합니다.
+
+일반 하트비트는 주기마다 제출 시작점을 한 칸씩 옮깁니다. 실행기가 포화될 때 같은 연결이 반복해서 뒤로 밀릴 가능성을 줄입니다.
+
+서버 종료 시 대기 작업 폐기와 연결 정리 순서는 [초기 실패와 서버 종료](01-connection-lifecycle.md#초기-실패와-서버-종료)를 참고합니다.
 
 ## 설정값과 허용 범위
 
@@ -92,9 +101,13 @@ defaultCandidate=false인 빈을 이름으로 지정하여 사용합니다.
 | 설정 | 환경변수 | 기본값 | 허용 범위 |
 | --- | --- | --- | --- |
 | heartbeat-interval | EVERYONE_SSE_HEARTBEAT_INTERVAL | 15s | 0보다 큰 값 |
+| heartbeat.pool-size | EVERYONE_SSE_HEARTBEAT_POOL_SIZE | 4 | 2 이상 |
+| heartbeat.queue-capacity | EVERYONE_SSE_HEARTBEAT_QUEUE_CAPACITY | 100 | 0 이상 |
 | connection-timeout | EVERYONE_SSE_CONNECTION_TIMEOUT | 30m | 1ms 이상 |
 
-연결 제한 시간은 emitter 생성 시 밀리초로 전달합니다. 500us처럼 0ms가 되는 값은 거부합니다.
+대기열이 0이면 작업을 받을 수 있는 워커가 있을 때만 제출이 성공합니다.
+연결 제한 시간은 emitter 생성 시 밀리초로 전달하는 비동기 요청 제한 시간입니다. 500us처럼 0ms가 되는 값은 거부합니다.
+하트비트 전송은 이 제한 시간을 갱신하지 않습니다. 소켓 쓰기가 기다릴 수 있는 시간은 서블릿 I/O 설정에 따릅니다.
 최종 바인딩 값이 누락되거나 유효하지 않으면 시작에 실패합니다.
 [이력·재시도 설정](11-history-operations.md)은 별도 페이지에서 확인합니다.
 

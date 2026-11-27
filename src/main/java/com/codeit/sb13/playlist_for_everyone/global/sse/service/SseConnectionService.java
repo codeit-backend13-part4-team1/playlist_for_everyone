@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.global.sse.service;
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.global.sse.config.SseProperties;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
+import com.codeit.sb13.playlist_for_everyone.global.sse.event.ConnectionKey;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.LoginSession;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +17,7 @@ import org.springframework.web.util.DisconnectedClientHelper;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -44,6 +46,7 @@ public class SseConnectionService {
     private final SseProperties sseProperties;
     private final SseDeliveryCoordinator deliveryCoordinator;
     private final UserSessionRepository userSessionRepository;
+    private final SseHeartbeatDispatcher heartbeatDispatcher;
 
     /**
      * 새 연결을 등록한 뒤 로그인 세션을 재검증하고 ID 없는 주석과 초기 복구 데이터를 준비한다.
@@ -96,28 +99,38 @@ public class SseConnectionService {
     }
 
     /**
-     * 애플리케이션 종료 이벤트를 받아 현재 서버의 연결에 종료를 요청한다.
+     * 하트비트 실행기에 먼저 종료를 요청하고 현재 서버의 연결을 정리한다.
      *
-     * <p>스케줄러 자원 종료는 Spring이 담당한다. 이 이벤트를 받았다는 사실만으로
-     * 이미 실행 중인 하트비트까지 모두 종료됐다고 가정하지 않는다.
-     * complete 호출은 MVC의 비동기 종료 처리를 유도하며, 완료 콜백의 즉시 실행을 보장하지 않는다.
+     * <p>워커가 사용 중이던 연결은 쓰기 잠금을 기다리지 않도록 상태·예약·저장소 참조만 정리한다.
+     * 나머지 연결은 complete로 종료를 요청한 뒤 같은 방식으로 정리한다.
      */
     @EventListener(ContextClosedEvent.class)
-    public void closeAllLocalConnections(){
+    public void onContextClosed(){
+        Set<ConnectionKey> runningConnections = heartbeatDispatcher.shutdown();
+        closeLocalConnections(runningConnections);
+    }
+
+    private void closeLocalConnections( Set<ConnectionKey> runningConnections ){
         sseEmitterRepository.findAll()
-                .forEach((userId , connections )->{
-                    connections.forEach((connection, emitter)->{
-                        try {
-                            emitter.complete();
-                        }catch (RuntimeException e){
-                            // 한 연결의 종료 실패 때문에 다른 사용자의 연결 정리가 중단되지 않게 한다.
-                            log.warn("SSE 연결 종료에 실패했습니다. userId={}, connectionId={}", userId, connection.id(),e);
-                        }finally {
-                            // 콜백 실행 여부나 complete 성공 여부에 의존하지 않고 상태·예약·저장소 참조를 정리한다.
-                            cleanupConnection(userId, connection);
-                        }
-                    });
-                });
+                .forEach((userId, connections) ->
+                        connections.forEach((connection, emitter) ->{
+                            try {
+                                if (!runningConnections.contains(new ConnectionKey(userId, connection))) {
+                                    emitter.complete();
+                                }
+                            } catch(RuntimeException e){
+                                // 한 연결의 종료 실패 때문에 다른 사용자의 연결 정리가 중단되지 않게 한다.
+                                log.warn("SSE 연결 종료에 실패했습니다. userId={}, connectionId={}", userId, connection.id(), e);
+                            }finally{
+                                // 콜백 실행 여부나 complete 성공 여부에 의존하지 않고 상태·예약·저장소 참조를 정리한다.
+                                cleanupConnection(userId, connection);
+                            }
+                        }));
+    }
+
+    /** 직접 호출하면 모든 로컬 연결에 완료를 요청하고 상태·예약·저장소 참조를 정리한다. */
+    public void closeAllLocalConnections(){
+        closeLocalConnections(Set.of());
     }
 
     /**

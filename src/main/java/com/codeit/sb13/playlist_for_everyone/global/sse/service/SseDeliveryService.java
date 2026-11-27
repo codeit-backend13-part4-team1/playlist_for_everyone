@@ -2,6 +2,7 @@ package com.codeit.sb13.playlist_for_everyone.global.sse.service;
 
 import com.codeit.sb13.playlist_for_everyone.domain.auth.repository.UserSessionRepository;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.Connection;
+import com.codeit.sb13.playlist_for_everyone.global.sse.event.ConnectionKey;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.LoginSession;
 import com.codeit.sb13.playlist_for_everyone.global.sse.event.SseEvent;
 import com.codeit.sb13.playlist_for_everyone.global.sse.repository.SseEmitterRepository;
@@ -12,9 +13,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.springframework.web.util.DisconnectedClientHelper;
 
-import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 현재 서버의 메모리에 등록된 연결로 업무 이벤트와 하트비트를 전송한다.
@@ -33,6 +36,10 @@ public class SseDeliveryService {
     private final SseDeliveryCoordinator deliveryCoordinator;
 
     private final UserSessionRepository userSessionRepository;
+
+    private final SseHeartbeatDispatcher heartbeatDispatcher;
+
+    private final AtomicInteger nextHeartbeatStartIndex = new AtomicInteger();
 
     /**
      * 수신자의 모든 로컬 연결에 후속 이력 조회를 요청한다. 브로커 메시지는 조회를 깨우는 신호다.
@@ -70,16 +77,32 @@ public class SseDeliveryService {
     }
 
     /**
-     * 모든 로컬 연결에 ID 없는 주석을 보내고, 전송 중 확인된 실패 연결을 정리한다.
+     * 보류된 연결 종료 요청을 먼저 재제출한 뒤 로컬 연결의 하트비트를 전용 실행기에 제출한다.
+     * 일반 하트비트의 제출 시작점은 주기마다 옮겨 포화 시 같은 연결이 반복해서 밀릴 가능성을 줄인다.
      * 상대방의 응답을 받는 ping/pong 방식이 아니므로 브라우저 종료를 즉시 확정하는 기능은 아니다.
      */
     public void sendHeartbeatToLocalConnections(){
+        heartbeatDispatcher.retryPendingClosures();
+        List<ConnectionKey> connections = new ArrayList<>();
         sseEmitterRepository.findAll()
-                .forEach((userId, connections) ->
-                        connections.forEach((connection, emitter) ->
-                                sendHeartbeat(userId, connection, emitter)
-                        )
-                );
+                .forEach((userId, emitters) ->
+                        emitters.keySet()
+                                .forEach(connection ->
+                                        connections.add(new ConnectionKey(userId, connection))));
+
+        int connectionsCount = connections.size();
+        if (connectionsCount == 0){
+            return;
+        }
+
+        int index = nextHeartbeatStartIndex.getAndUpdate(previous -> (previous + 1) % connectionsCount) % connectionsCount;
+
+        for (int submitted = 0; submitted < connectionsCount; submitted++) {
+            ConnectionKey key = connections.get(index);
+
+            heartbeatDispatcher.submit(key.userId(), key.connection());
+            index = (index + 1) % connectionsCount;
+        }
     }
 
     public void revalidateLocalSessions(){
@@ -87,7 +110,7 @@ public class SseDeliveryService {
                 .forEach((userId, value) -> value
                         .stream()
                         .filter(loginSession -> isNotCurrentSession(userId, loginSession))
-                        .forEach(loginSession -> revoke(userId, loginSession)));
+                        .forEach(loginSession -> closeRevokedLocalConnections(userId, loginSession)));
     }
 
     private boolean isNotCurrentSession(UUID userId, LoginSession loginSession) {
@@ -106,27 +129,13 @@ public class SseDeliveryService {
                         deliveryCoordinator.closeConnection(userId, connection));
     }
 
-    private void sendHeartbeat(UUID userId, Connection connection, SseEmitter emitter) {
-        try {
-            // 주석 프레임은 알림/DM 이벤트로 전달되지 않으며 마지막 수신 이벤트 ID도 변경하지 않는다.
-            emitter.send(SseEmitter.event().comment("heartbeat"));
-        } catch (IOException | IllegalStateException e) {
-            // 하트비트 send 실패 경로에서는 내부 참조를 정리한다. 이곳에서 complete를 다시 요청하지 않는다.
-            deliveryCoordinator.cleanupConnection(userId, connection);
-            logSseHeartbeatIssue(userId, connection, e);
-        }
-    }
-
-    /**
-     * 하트비트 전송 중 Spring이 식별한 클라이언트 단절은 DEBUG로만 남긴다.
-     * 모든 I/O 예외가 단절은 아니므로, 나머지 실패는 원인을 확인할 수 있게 WARN에 스택을 남긴다.
-     */
-    private void logSseHeartbeatIssue(UUID userId, Connection connection, Exception e) {
-        if (DisconnectedClientHelper.isClientDisconnectedException(e)){
-            log.debug("SSE 하트비트 전송 중 클라이언트 단절로 연결을 정리했습니다. userId={}, connectionId={}", userId, connection.id());
-            return;
-        }
-        log.warn("SSE 하트비트 전송 실패로 연결을 정리했습니다. userId={}, connectionId={}", userId, connection.id(), e);
+    private void closeRevokedLocalConnections(UUID userId, LoginSession loginSession) {
+        sseEmitterRepository.findByUserIdAndLoginSessionId(userId, loginSession)
+                .keySet()
+                .forEach(connection -> {
+                    deliveryCoordinator.stopDelivery(userId, connection);
+                    heartbeatDispatcher.requestClose(userId, connection);
+                });
     }
 
     /**
