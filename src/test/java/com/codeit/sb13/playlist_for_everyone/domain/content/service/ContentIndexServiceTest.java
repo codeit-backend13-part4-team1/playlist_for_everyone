@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -49,20 +50,27 @@ class ContentIndexServiceTest {
     @Mock
     private RLock lock;
 
+    private CountDownLatch secondLockAttempt;
     private ContentIndexService contentIndexService;
 
     @BeforeEach
     void setUp() throws InterruptedException {
         ReentrantLock testLock = new ReentrantLock();
+        AtomicInteger lockAttempts = new AtomicInteger(0);
+        secondLockAttempt = new CountDownLatch(1);
 
         lenient().when(redissonClient.getLock("everyone:lock:content:index"))
                 .thenReturn(lock);
 
-        // 실제 스레드 간 상호 배제 동작을 재현한다.
+        // 두 번째 작업의 락 획득 시도를 감지한다.
         lenient().when(lock.tryLock(30L, TimeUnit.SECONDS))
-                .thenAnswer(invocation ->
-                        testLock.tryLock(30L, TimeUnit.SECONDS)
-                );
+                .thenAnswer(invocation -> {
+                    if (lockAttempts.incrementAndGet() == 2) {
+                        secondLockAttempt.countDown();
+                    }
+
+                    return testLock.tryLock(30L, TimeUnit.SECONDS);
+                });
 
         lenient().doAnswer(invocation -> {
             testLock.unlock();
@@ -360,8 +368,12 @@ class ContentIndexServiceTest {
                     () -> contentIndexService.upsert(contentId)
             );
 
-            // 분산 락이 없다면 최신 문서가 먼저 저장된다.
-            newSaveCompleted.await(1, TimeUnit.SECONDS);
+            // 두 번째 작업이 락 획득을 시도했는지 확인한다.
+            assertThat(secondLockAttempt.await(3, TimeUnit.SECONDS))
+                    .isTrue();
+
+            // 첫 번째 저장이 완료되기 전에는 최신 문서가 저장되지 않는다.
+            assertThat(newSaveCompleted.getCount()).isEqualTo(1L);
 
             releaseOldSave.countDown();
 
@@ -419,8 +431,13 @@ class ContentIndexServiceTest {
                     () -> contentIndexService.delete(contentId)
             );
 
-            // 분산 락이 없다면 이전 스냅샷 저장보다 삭제가 먼저 완료된다.
-            deleteCompleted.await(1, TimeUnit.SECONDS);
+            // 삭제 작업이 락 획득을 시도했는지 확인한다.
+            assertThat(secondLockAttempt.await(3, TimeUnit.SECONDS))
+                    .isTrue();
+
+            // 첫 번째 저장이 완료되기 전에는 삭제되지 않는다.
+            assertThat(deleteCompleted.getCount()).isEqualTo(1L);
+
 
             releaseSave.countDown();
 
