@@ -106,9 +106,19 @@ public class ContentSearchRepositoryImpl implements ContentSearchRepository {
     }
 
     private BooleanExpression contentIdIn(List<UUID> contentIds) {
-        return contentIds == null
-                ? null
-                : content.id.in(contentIds);
+        if (contentIds == null) {
+            return null;
+        }
+
+        if (contentIds.isEmpty()) {
+            return Expressions.FALSE;
+        }
+
+        return Expressions.booleanTemplate(
+                "array_contains({0}, {1})",
+                Expressions.constant(contentIds.toArray(UUID[]::new)),
+                content.id
+        );
     }
 
     // 콘텐츠별 리뷰 수 조회 (리뷰가 없으면 0)
