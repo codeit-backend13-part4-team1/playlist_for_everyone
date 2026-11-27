@@ -1,6 +1,7 @@
 # 인증 구현 가이드
 
 모두의 플리의 로그인, JWT, 로그인 세션, 강제 로그아웃 구조를 설명합니다.
+비밀번호 초기화는 [5. 비밀번호 초기화](05-password-reset.md), Google·Kakao 로그인은 [6. 소셜 로그인](06-social-login.md)을 참고합니다.
 
 HTTP 인증은 각 요청의 로그인 세션을 검증합니다. 이미 열린 연결은 폐기 이벤트를 받은 서버가 종료합니다. [WebSocket·SSE 세션 폐기 흐름](03-extension-points.md)
 

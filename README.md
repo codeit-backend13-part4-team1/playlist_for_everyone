@@ -94,7 +94,7 @@ curl -fsS http://localhost:8080/actuator/health
 | 주제 | 문서 |
 | --- | --- |
 | 개발과 배포 | [로컬 설정·테스트](docs/DEVELOPMENT.md) · [운영 환경과 ECS 배포](docs/DEPLOYMENT.md) |
-| 인증 | [로그인 세션과 JWT](docs/auth/01-login-session.md) · [강제 로그아웃](docs/auth/02-force-logout.md) |
+| 인증 | [로그인 세션과 JWT](docs/auth/01-login-session.md) · [강제 로그아웃](docs/auth/02-force-logout.md) · [비밀번호 초기화](docs/auth/05-password-reset.md) · [소셜 로그인](docs/auth/06-social-login.md) |
 | 수집과 성능 검증 | [콘텐츠 정기 수집 설정](docs/DEVELOPMENT.md#콘텐츠-정기-수집) · [도메인별 부하 테스트 결과](docs/loadtest/loadtest-results.md) |
 | 실시간 통신 | [SSE 연결·분산 전송·복구](docs/sse/README.md) · [대화방과 DM](docs/conversation/README.md) |
 | 사용자 활동 | [알림 생성과 전달](docs/notification/README.md) · [팔로우와 이벤트](docs/follow/README.md) |
