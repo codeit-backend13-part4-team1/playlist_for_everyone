@@ -211,3 +211,6 @@ everyone:
   elasticsearch:
     index:
       initialize: ${EVERYONE_ELASTICSEARCH_INDEX_INITIALIZE:false}
+    async:
+      pool-size: ${EVERYONE_ELASTICSEARCH_ASYNC_POOL_SIZE:1}
+      queue-capacity: ${EVERYONE_ELASTICSEARCH_ASYNC_QUEUE_CAPACITY:100}
