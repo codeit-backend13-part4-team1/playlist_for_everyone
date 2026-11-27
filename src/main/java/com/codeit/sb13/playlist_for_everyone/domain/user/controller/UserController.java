@@ -6,6 +6,7 @@ import com.codeit.sb13.playlist_for_everyone.domain.user.dto.request.*;
 import com.codeit.sb13.playlist_for_everyone.domain.user.dto.response.UserDto;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserAdministrationService;
 import com.codeit.sb13.playlist_for_everyone.domain.user.service.UserService;
+import com.codeit.sb13.playlist_for_everyone.domain.watching.service.WatchingSessionHttpService;
 import com.codeit.sb13.playlist_for_everyone.global.dto.response.CursorResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +27,7 @@ public class UserController implements UserApi {
     private final UserService userService;
     private final UserAdministrationService userAdministrationService;
     private final PasswordChangeService passwordChangeService;
+    private final WatchingSessionHttpService watchingSessionService;
 
     @Override
     @PostMapping
@@ -102,4 +104,12 @@ public class UserController implements UserApi {
         return ResponseEntity.noContent().build();
     }
 
+
+    @Override
+    @GetMapping("/{watcherId}/watching-sessions")
+    public void getWatchingSessionByUser(
+        @PathVariable UUID watcherId
+    ){
+
+    }
 }

@@ -60,7 +60,8 @@ class ViewingSessionRedisRepositoryScriptTest {
                 scripts.watcherDeleteWithContentIdScript(),
                 scripts.watcherCountMultipleContentsScript(),
                 scripts.watcherUnregisterAllScript(),
-                scripts.watcherCurrentViewerCountScript()
+                scripts.watcherCurrentViewerCountScript(),
+                scripts.watcherQueryViewerScript()
         );
     }
 

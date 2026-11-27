@@ -169,4 +169,12 @@ public class WatchingSessionHttpService {
         );
     }
 
+    /**
+     * 사용자 id 를 기반으로 현재 시청중인 세션에 대한 정보를 반환하는 매서드
+     */
+    @Transactional(readOnly = true)
+    public void getWatchingSessionByUserId(UUID userId) {
+        // 1. 유저 정보를 바탕으로, 현재 활성 세션을 검증, 반환.
+    }
+
 }

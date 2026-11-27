@@ -49,6 +49,7 @@ public class ViewingSessionRedisRepository {
     private final RedisScript<List> countMultipleContentsScript;
     private final RedisScript<Long> unregisterAllScript;
     private final RedisScript<List> watcherCurrentViewerCountScript;
+    private final RedisScript<List> watcherQueryViewerScript;
 
     @RequiredArgsConstructor
     static public class SetKey{
@@ -78,7 +79,9 @@ public class ViewingSessionRedisRepository {
             @Qualifier("lua-script-unregister-all")
             RedisScript<Long> unregisterAllScript,
             @Qualifier("lua-script-query-current-viewer")
-            RedisScript<List> watcherCurrentViewerCountScript
+            RedisScript<List> watcherCurrentViewerCountScript,
+            @Qualifier("lua-script-query-viewer")
+            RedisScript<List> watcherQueryViewerScript
     ){
         this.redis = redis;
         this.registerScript = registerScript;
@@ -89,6 +92,7 @@ public class ViewingSessionRedisRepository {
         this.countMultipleContentsScript = countMultipleContents;
         this.unregisterAllScript = unregisterAllScript;
         this.watcherCurrentViewerCountScript = watcherCurrentViewerCountScript;
+        this.watcherQueryViewerScript = watcherQueryViewerScript;
     }
 
     /*

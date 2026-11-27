@@ -63,4 +63,12 @@ public class WatcherScriptConfig {
         );
     }
 
+    @Bean("lua-script-query-viewer")
+    public RedisScript<List> watcherQueryViewerScript(){
+        return RedisScript.of(
+                new ClassPathResource("scripts/watching/wch_query_viewer_by_user.lua"),
+                List.class
+        );
+    }
+
 }
