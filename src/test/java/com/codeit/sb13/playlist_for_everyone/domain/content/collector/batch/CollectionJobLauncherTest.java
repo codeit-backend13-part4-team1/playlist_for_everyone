@@ -358,4 +358,47 @@ class CollectionJobLauncherTest {
                 .start(eq(job), any(JobParameters.class));
         verify(handle, times(2)).close();
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"tmdb", "sportsdb"})
+    void 다음_예약_회차는_새로운_배치로_실행한다(String provider) throws Exception {
+        Job job = "tmdb".equals(provider) ? tmdbJob : sportsDbJob;
+        var firstScheduledAt = Instant.parse("2026-11-26T15:00:00Z");
+        var nextScheduledAt = Instant.parse("2026-11-27T15:00:00Z");
+
+        startScheduled(launcher, provider, firstScheduledAt);
+        startScheduled(launcher, provider, nextScheduledAt);
+
+        var captor = ArgumentCaptor.forClass(JobParameters.class);
+        verify(jobOperator, times(2)).start(eq(job), captor.capture());
+
+        assertThat(captor.getAllValues())
+                .extracting(parameters -> parameters.getString("run.id"))
+                .containsExactly(
+                        "scheduled-" + firstScheduledAt,
+                        "scheduled-" + nextScheduledAt
+                );
+
+        verify(handle, times(2)).close();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"tmdb", "sportsdb"})
+    void 수동_수집은_호출할_때마다_별도로_실행한다(String provider) throws Exception {
+        Job job = "tmdb".equals(provider) ? tmdbJob : sportsDbJob;
+
+        start(provider);
+        start(provider);
+
+        var captor = ArgumentCaptor.forClass(JobParameters.class);
+        verify(jobOperator, times(2)).start(eq(job), captor.capture());
+
+        assertThat(captor.getAllValues())
+                .extracting(parameters -> parameters.getString("run.id"))
+                .doesNotHaveDuplicates();
+
+        verify(jobRepository, never())
+                .getJobInstance(anyString(), any(JobParameters.class));
+        verify(handle, times(2)).close();
+    }
 }
