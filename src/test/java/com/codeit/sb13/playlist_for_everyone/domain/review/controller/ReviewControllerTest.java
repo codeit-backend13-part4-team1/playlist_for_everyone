@@ -168,7 +168,14 @@ public class ReviewControllerTest {
 
         ReviewListCondition condition = request.toCondition();
 
-        ReviewAuthorDto authorDto = mock(ReviewAuthorDto.class);
+        UUID authorId = UUID.randomUUID();
+        String authorName = "테스트 사용자";
+
+        ReviewAuthorDto authorDto = new ReviewAuthorDto(
+                authorId,
+                authorName,
+                null
+        );
 
         ReviewDto review1 = new ReviewDto(
                 UUID.randomUUID(),
@@ -219,6 +226,10 @@ public class ReviewControllerTest {
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data.length()").value(3))
                 .andExpect(jsonPath("$.data[0].id").value(review1.id().toString()))
+                .andExpect(jsonPath("$.data[0].author.userId").value(authorId.toString()))
+                .andExpect(jsonPath("$.data[0].author.name").value(authorName))
+                .andExpect(jsonPath("$.data[0].author.authorId").doesNotHaveJsonPath())
+                .andExpect(jsonPath("$.data[0].author.nickname").doesNotHaveJsonPath())
                 .andExpect(jsonPath("$.data[1].text").value("볼만한 드라마였어요."))
                 .andExpect(jsonPath("$.data[2].rating").value(3.0))
                 .andExpect(jsonPath("$.hasNext").value(true))
