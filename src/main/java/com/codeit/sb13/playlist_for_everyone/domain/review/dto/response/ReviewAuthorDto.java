@@ -4,8 +4,8 @@ import javax.swing.*;
 import java.util.UUID;
 
 public record ReviewAuthorDto (
-        UUID authorId,
-        String nickname,
+        UUID userId,
+        String name,
         String profileImageUrl
 ) {
 }
