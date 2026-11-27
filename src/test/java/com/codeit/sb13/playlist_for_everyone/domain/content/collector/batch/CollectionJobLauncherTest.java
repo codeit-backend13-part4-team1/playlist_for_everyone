@@ -3,6 +3,7 @@ package com.codeit.sb13.playlist_for_everyone.domain.content.collector.batch;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.batch.core.BatchStatus;
@@ -179,10 +180,13 @@ class CollectionJobLauncherTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"tmdb", "sportsdb"})
-    void 종료가_확인된_이전_작업을_복구한_뒤_재시작한다(
-            String provider
-    ) throws Exception {
+    @CsvSource({
+            "tmdb, false",
+            "tmdb, true",
+            "sportsdb, false",
+            "sportsdb, true"
+    })
+    void 종료가_확인된_이전_작업을_복구한_뒤_재시작한다(String provider, boolean scheduled) throws Exception {
         Job job = "tmdb".equals(provider) ? tmdbJob : sportsDbJob;
         var execution = mock(JobExecution.class);
         var recovered = mock(JobExecution.class);
@@ -191,10 +195,18 @@ class CollectionJobLauncherTest {
                 .thenReturn(new ExecutionContext());
         when(jobRepository.findRunningJobExecutions(job.getName()))
                 .thenReturn(Set.of(execution));
+        when(jobRepository.getJobInstance(
+                eq(job.getName()),
+                any(JobParameters.class)
+        )).thenReturn(mock(JobInstance.class));
         when(recoveryPolicy.canRecover(execution)).thenReturn(true);
         when(jobOperator.recover(execution)).thenReturn(recovered);
 
-        start(provider);
+        if (scheduled) {
+            startScheduled(launcher, provider, Instant.parse("2026-11-26T15:00:00Z"));
+        } else {
+            start(provider);
+        }
 
         var order = inOrder(recoveryPolicy, jobOperator, handle);
 
