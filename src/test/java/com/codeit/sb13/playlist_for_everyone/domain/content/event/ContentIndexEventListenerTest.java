@@ -17,6 +17,7 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import java.util.List;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -54,6 +55,28 @@ class ContentIndexEventListenerTest {
     }
 
     @Test
+    @DisplayName("콘텐츠 생성·수정 색인 실패 시에도 검색 캐시를 무효화한다.")
+    void handleUpsert_indexFailure() {
+        // given
+        UUID contentId = UUID.randomUUID();
+        ContentIndexUpsertEvent event =
+                new ContentIndexUpsertEvent(contentId);
+
+        doThrow(new RuntimeException("색인 실패"))
+                .when(contentIndexService).upsert(contentId);
+
+        // when & then
+        assertThatThrownBy(() -> contentIndexEventListener.handleUpsert(event))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("색인 실패");
+
+        InOrder inOrder = inOrder(contentIndexService, cacheEvictService);
+
+        inOrder.verify(contentIndexService).upsert(contentId);
+        inOrder.verify(cacheEvictService).clearSearchCache();
+    }
+
+    @Test
     @DisplayName("콘텐츠 삭제 이벤트 수신 시 문서를 삭제한다.")
     void handleDelete_success() {
         // given
@@ -86,7 +109,10 @@ class ContentIndexEventListenerTest {
                 .run(context -> {
                     context.publishEvent(new ContentCollectionFinishedEvent(3L, 0L, contentIds));
 
-                    verify(cacheEvictService).clearSearchCache();
+                    InOrder inOrder = inOrder(contentIndexService, cacheEvictService);
+
+                    inOrder.verify(contentIndexService).upsertAll(contentIds);
+                    inOrder.verify(cacheEvictService).clearSearchCache();
                 });
     }
 
@@ -118,7 +144,10 @@ class ContentIndexEventListenerTest {
                 .run(context -> {
                     context.publishEvent(new ContentCollectionFinishedEvent(0L, 2L, contentIds));
 
-                    verify(cacheEvictService).clearSearchCache();
+                    InOrder inOrder = inOrder(contentIndexService, cacheEvictService);
+
+                    inOrder.verify(contentIndexService).upsertAll(contentIds);
+                    inOrder.verify(cacheEvictService).clearSearchCache();
                 });
     }
 

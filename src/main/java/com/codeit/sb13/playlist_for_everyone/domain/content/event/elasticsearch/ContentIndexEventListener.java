@@ -18,31 +18,42 @@ public class ContentIndexEventListener {
 
     /**
      * DB 커밋 이후 콘텐츠 문서를 생성하거나 갱신한다.
+     * 색인 성공 여부와 관계없이 검색 캐시를 무효화한다.
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handleUpsert(ContentIndexUpsertEvent event) {
-        contentIndexService.upsert(event.contentId());
-        cacheEvictService.clearSearchCache();
+        try {
+            contentIndexService.upsert(event.contentId());
+        } finally {
+            cacheEvictService.clearSearchCache();
+        }
     }
 
     /**
      * DB 커밋 이후 콘텐츠 문서를 삭제한다.
+     * 색인 성공 여부와 관계없이 검색 캐시를 무효화한다.
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handleDelete(ContentIndexDeleteEvent event) {
-        contentIndexService.delete(event.contentId());
-        cacheEvictService.clearSearchCache();
+        try {
+            contentIndexService.delete(event.contentId());
+        } finally {
+            cacheEvictService.clearSearchCache();
+        }
     }
 
     /**
      * 콘텐츠 수집 완료 이후 변경된 콘텐츠를 일괄 인덱싱하고
-     * 검색 캐시를 무효화한다.
+     * 색인 성공 여부와 관계없이 검색 캐시를 무효화한다.
      */
     @EventListener
     public void handleCollection(ContentCollectionFinishedEvent event) {
         if (event.insertedCount() > 0 || event.updatedCount() > 0) {
-            contentIndexService.upsertAll(event.changedContentIds());
-            cacheEvictService.clearSearchCache();
+            try {
+                contentIndexService.upsertAll(event.changedContentIds());
+            } finally {
+                cacheEvictService.clearSearchCache();
+            }
         }
     }
 

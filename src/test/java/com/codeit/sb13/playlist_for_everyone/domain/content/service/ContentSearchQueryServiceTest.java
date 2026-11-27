@@ -8,7 +8,6 @@ import com.codeit.sb13.playlist_for_everyone.domain.content.entity.ContentType;
 import com.codeit.sb13.playlist_for_everyone.domain.content.mapper.ContentMapper;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.elasticsearch.ContentDocumentRepository;
 import com.codeit.sb13.playlist_for_everyone.domain.content.repository.ContentRepository;
-import com.codeit.sb13.playlist_for_everyone.domain.content.service.elasticsearch.ContentSearchQueryService;
 import com.codeit.sb13.playlist_for_everyone.global.domain.SortDirection;
 import com.codeit.sb13.playlist_for_everyone.global.websocket.watching.service.viewing.ViewingSessionService;
 import org.junit.jupiter.api.BeforeEach;
