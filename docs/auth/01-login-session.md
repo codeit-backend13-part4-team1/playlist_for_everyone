@@ -2,8 +2,7 @@
 
 모두의 플리의 로그인, JWT, 로그인 세션, 강제 로그아웃 구조를 설명합니다.
 
-**기준 범위** [#42 중복 로그인 차단 및 강제 로그아웃](https://github.com/codeit-backend13-part4-team1/playlist_for_everyone/issues/42)의 HTTP 요청 처리입니다.
-SSE·웹소켓 연결 종료는 후속 작업이며, 연결할 수 있는 지점만 제공합니다.
+HTTP 인증은 각 요청의 로그인 세션을 검증합니다. 이미 열린 연결은 폐기 이벤트를 받은 서버가 종료합니다. [WebSocket·SSE 세션 폐기 흐름](03-extension-points.md)
 
 ## 토큰 설명
 | 개념 | 설명                                                                       |
@@ -41,13 +40,14 @@ JWT 서명이 유효해도 `sid`가 Redis의 현재 세션과 다르면 인증�
 
 ## 요청별 처리
 
-### 로그인 (`JwtAuthenticationSuccessHandler`)
+### 로그인 세션 발급 (`LoginSessionIssuer`)
 
 1. 응답에 필요한 사용자 정보를 조회합니다. 실패하면 기존 세션을 교체하지 않습니다.
 2. `start()`로 세션을 시작합니다. 기존 세션은 이 시점에 무효가 됩니다.
 3. 같은 `sid`로 Access·Refresh Token을 발급합니다.
 4. Refresh Token을 Redis에 저장합니다.
 5. 교체된 세션이 있으면 `UserSessionRevokedEvent(DUPLICATE_LOGIN)`을 발행합니다.
+
 ### 인증이 필요한 요청 (`JwtAuthenticationFilter`)
 
 1. `parseAccess()`로 서명·만료·종류·`sid`를 검증합니다.
@@ -64,6 +64,7 @@ JWT 서명이 유효해도 `sid`가 Redis의 현재 세션과 다르면 인증�
 3. Redis 등록 여부, 토큰 소유자, 사용자 존재·잠금을 확인합니다.
 4. 같은 `sid`로 새 토큰을 발급하고 Refresh Token을 원자적으로 교체합니다.
 5. `extendIfCurrent()`로 세션 TTL을 연장합니다. 그 사이 세션이 종료되었으면 새 토큰을 반환하지 않습니다.
+
 ### 로그아웃 (`AuthService.logout`)
 
 1. Refresh Token에서 `sid`를 읽을 수 있으면 `endIfCurrent()`로 세션을 종료합니다.

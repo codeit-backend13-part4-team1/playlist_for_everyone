@@ -86,8 +86,7 @@ Pub/Sub 자체는 끊긴 동안의 신호를 보관하지 않습니다.
 재구독 자체가 모든 살아 있는 SSE 연결의 조회를 자동 실행하는 것은 아닙니다.
 
 정확히 한 번 전달이나 DB·Redis·브로커를 묶는 Outbox는 제공하지 않습니다.
-생산 이벤트를 알림으로 연결하는 흐름은 [#155 팔로우](../notification/07-domain-event-integration.md)와 [#156 권한 변경·구독](../notification/08-role-subscription-integration.md)에서 다룹니다.
-Kafka 전송 구현체, 이 세 종류 외의 업무 이벤트 알림 연동(#45), DM 본문 연동은 후속 작업입니다.
+Redis 전송 경로는 알림(`notifications`)과 DM 본문(`direct-messages`)이 공유합니다. 새 DM 알림은 알림 도메인이 생성하고, 본문은 대화 도메인이 메시지 커밋 후 발행합니다. [업무 이벤트별 알림](../notification/README.md) · [DM 본문 전달과 복구](../conversation/15-direct-message-event-sse.md)
 
 구현: [발행기](../../src/main/java/com/codeit/sb13/playlist_for_everyone/global/sse/event/impl/RedisSseEventPublisher.java),
 [수신자](../../src/main/java/com/codeit/sb13/playlist_for_everyone/global/sse/event/impl/RedisSseEventSubscriber.java).

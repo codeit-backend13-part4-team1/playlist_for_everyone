@@ -18,7 +18,8 @@
 ## 운영 환경변수
 
 ### 필수
-`application-prod.yaml`은 아래 변수에 기본값을 두지 않습니다. 하나라도 비어 있으면 서버가 시작되지 않습니다.
+
+운영 배포 시 아래 변수를 주입합니다. OAuth 리다이렉트 기준 주소와 WebSocket 허용 Origin에는 사용자가 접속하는 서비스 주소를 사용합니다.
 
 | 변수 | 설명 |
 | --- | --- |
@@ -32,6 +33,12 @@
 | `EVERYONE_S3_BUCKET` | 파일 저장 버킷 |
 | `EVERYONE_TMDB_ACCESS_TOKEN` | TMDB API 토큰 |
 | `JWT_SECRET_KEY` | 운영 전용 JWT 서명 키 (32바이트 이상, 로컬 키 재사용 금지) |
+| `EVERYONE_WEBSOCKET_ALLOWED_ORIGINS` | WebSocket·SockJS 연결을 허용할 프런트엔드 Origin. 여러 값은 쉼표로 구분하며 경로와 마지막 슬래시는 제외 |
+| `EVERYONE_OAUTH2_REDIRECT_BASE_URL` | OAuth 콜백과 로그인 결과 이동에 사용할 공개 서비스 주소. 제공자 콘솔에 등록한 콜백의 기준 URL입니다. 주소 끝에 `/`를 붙이지 않습니다. |
+| `EVERYONE_OAUTH2_GOOGLE_CLIENT_ID` | Google OAuth 클라이언트 ID |
+| `EVERYONE_OAUTH2_GOOGLE_CLIENT_SECRET` | Google OAuth 클라이언트 시크릿 |
+| `EVERYONE_OAUTH2_KAKAO_CLIENT_ID` | Kakao OAuth 클라이언트 ID |
+| `EVERYONE_OAUTH2_KAKAO_CLIENT_SECRET` | Kakao OAuth 클라이언트 시크릿 |
 
 ### 콘텐츠 정기 수집
 
