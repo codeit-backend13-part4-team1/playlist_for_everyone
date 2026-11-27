@@ -16,11 +16,13 @@ sequenceDiagram
     B->>S: GET /login/oauth2/code/{google|kakao}
     S->>S: 사용자 결정 → 로그인 세션 시작
     S->>B: Refresh Token 쿠키 + /#/contents로 이동
-    B->>S: POST /api/auth/refresh
+    B->>S: GET /api/auth/csrf-token
+    S->>B: XSRF-TOKEN 쿠키
+    B->>S: POST /api/auth/refresh (X-XSRF-TOKEN 헤더)
     S->>B: Access Token
 ```
 
-토큰은 주소에 넣지 않습니다. 서버는 Refresh Token 쿠키만 발급하고, 프런트가 재발급 API로 Access Token을 받습니다.
+토큰은 주소에 넣지 않습니다. 서버는 Refresh Token 쿠키만 발급하고, 프런트가 CSRF 토큰을 받은 뒤 재발급 API로 Access Token을 받습니다.
 
 ## 제공자별 차이
 
@@ -66,7 +68,7 @@ sequenceDiagram
 | 로그인 요청(state)을 Redis 세션에 저장 | 로그인을 시작한 태스크와 콜백을 받는 태스크가 달라도 이어집니다. 세션은 `everyone:oauth:session` 아래에 10분 동안 보관합니다 |
 | 세션 필터를 소셜 로그인 경로에만 등록 | 다른 API 요청은 Redis 세션을 만들지 않습니다 |
 | 세션 쿠키 `OAUTH_SESSION` (HttpOnly, SameSite=Lax) | 제공자에서 돌아오는 최상위 GET 이동에도 쿠키가 함께 전송됩니다. Secure는 Refresh Token 쿠키 설정을 따릅니다 |
-| 제공자 인증 결과를 세션에 남기지 않음 | 서비스의 로그인 상태는 Refresh Token 쿠키로만 관리합니다 |
+| 제공자 인증 결과(SecurityContext)를 세션에 남기지 않음 | 서비스의 로그인 상태는 Refresh Token 쿠키로만 관리합니다. 제공자 Access Token은 로그인 세션(Redis)에만 보관되어 10분 뒤 함께 만료되며, 로그인 후에는 사용하지 않습니다 |
 | 콜백과 결과 이동 주소를 설정값으로 고정 | CloudFront를 거치면 요청 Host가 ALB 주소로 바뀝니다. 상대 경로로 이동하면 Tomcat이 ALB 주소로 바꿔 버려 `EVERYONE_OAUTH2_REDIRECT_BASE_URL` 기준 절대 주소를 사용합니다 |
 
 ## 운영 설정
